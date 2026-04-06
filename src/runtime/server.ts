@@ -6,10 +6,16 @@ interface RuntimeOptions {
 	facade?: Facade;
 }
 
+// biome-ignore lint/complexity/noBannedTypes: Bun WS generic requires object type
+type WsClient = import("bun").ServerWebSocket<{}>;
+
 export function createRuntime(options: RuntimeOptions) {
 	const facade = options.facade ?? new ClaudeAdapter();
+	const clients = new Set<WsClient>();
+	let activeSessionId: string | undefined;
 
-	const server = Bun.serve<{ sessionId?: string }>({
+	// biome-ignore lint/complexity/noBannedTypes: Bun WS generic requires {}
+	const server = Bun.serve<{}>({
 		port: options.port,
 		fetch(req, server) {
 			if (server.upgrade(req, { data: {} })) {
@@ -18,18 +24,52 @@ export function createRuntime(options: RuntimeOptions) {
 			return new Response("misanthropic runtime", { status: 200 });
 		},
 		websocket: {
+			open(ws) {
+				clients.add(ws);
+			},
+			close(ws) {
+				clients.delete(ws);
+			},
 			async message(ws, message) {
 				try {
 					const data = JSON.parse(String(message));
 
 					if (data.type === "prompt") {
+						const isBroadcast = data.source === "telegram";
+
+						// Notify other clients about the incoming prompt
+						if (isBroadcast) {
+							const userPrompt = JSON.stringify({
+								type: "user_prompt",
+								prompt: data.prompt,
+								source: data.source,
+							});
+							for (const client of clients) {
+								if (client !== ws) {
+									client.send(userPrompt);
+								}
+							}
+						}
+
 						for await (const event of facade.run({
 							prompt: data.prompt,
-							resume: ws.data.sessionId,
+							resume: activeSessionId,
 						})) {
+							// Always send to the sender
 							ws.send(JSON.stringify(event));
+
+							// Broadcast to other clients if from telegram
+							if (isBroadcast) {
+								const serialized = JSON.stringify(event);
+								for (const client of clients) {
+									if (client !== ws) {
+										client.send(serialized);
+									}
+								}
+							}
+
 							if (event.type === "done") {
-								ws.data.sessionId = event.sessionId;
+								activeSessionId = event.sessionId;
 							}
 						}
 					}
@@ -42,7 +82,7 @@ export function createRuntime(options: RuntimeOptions) {
 	});
 
 	return {
-		port: server.port,
+		port: server.port as number,
 		stop() {
 			server.stop();
 		},

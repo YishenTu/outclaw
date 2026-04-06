@@ -25,7 +25,9 @@ function Tui({ url }: TuiProps) {
 
 		ws.onmessage = (msg) => {
 			const event = JSON.parse(String(msg.data));
-			if (event.type === "text") {
+			if (event.type === "user_prompt") {
+				setOutput((prev) => `${prev}[${event.source}] ${event.prompt}\n`);
+			} else if (event.type === "text") {
 				setOutput((prev) => prev + event.text);
 			} else if (event.type === "error") {
 				setOutput((prev) => `${prev}\n[error] ${event.message}`);
