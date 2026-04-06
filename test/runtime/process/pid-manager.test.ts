@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { PidManager } from "../../src/runtime/pid.ts";
+import { PidManager } from "../../../src/runtime/process/pid-manager.ts";
 
 const TEST_DIR = join(import.meta.dir, ".tmp-pid-test");
 const PID_PATH = join(TEST_DIR, "daemon.pid");

@@ -1,11 +1,13 @@
 import { Box, render, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isRuntimeCommand } from "../common/commands.ts";
+import { parseMessage, type ServerEvent } from "../common/protocol.ts";
 import {
-	parseMessage,
-	type ServerEvent,
-	serialize,
-} from "../common/protocol.ts";
+	openRuntimeSocket,
+	sendRuntimeCommand,
+	sendRuntimePrompt,
+} from "./runtime-client/index.ts";
 
 interface TuiProps {
 	url: string;
@@ -21,7 +23,8 @@ function Tui({ url }: TuiProps) {
 	const wsRef = useRef<WebSocket | null>(null);
 
 	useEffect(() => {
-		const ws = new WebSocket(url);
+		const socket = openRuntimeSocket(url);
+		const { ws } = socket;
 		wsRef.current = ws;
 
 		ws.onopen = () => setStatus("connected");
@@ -84,26 +87,19 @@ function Tui({ url }: TuiProps) {
 			}
 		};
 
-		return () => ws.close();
+		return () => socket.close();
 	}, [url]);
 
 	const handleSubmit = useCallback((value: string) => {
 		if (!value.trim() || !wsRef.current) return;
 		const trimmed = value.trim();
-		const isCommand =
-			trimmed === "/new" ||
-			trimmed === "/status" ||
-			trimmed.startsWith("/model") ||
-			trimmed.startsWith("/thinking") ||
-			trimmed.startsWith("/session") ||
-			["/opus", "/sonnet", "/haiku"].includes(trimmed);
-		if (isCommand) {
-			wsRef.current.send(serialize({ type: "command", command: trimmed }));
+		if (isRuntimeCommand(trimmed)) {
+			sendRuntimeCommand(wsRef.current, trimmed);
 			setInput("");
 			return;
 		}
 		setOutput((prev) => `${prev}> ${value}\n`);
-		wsRef.current.send(serialize({ type: "prompt", prompt: value }));
+		sendRuntimePrompt(wsRef.current, value);
 		setInput("");
 	}, []);
 

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { SessionStore } from "../../src/runtime/db.ts";
-import { SessionManager } from "../../src/runtime/session.ts";
+import { SessionManager } from "../../../src/runtime/persistence/session-manager.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-session-test.sqlite");
 
@@ -56,6 +56,42 @@ describe("SessionManager", () => {
 
 		const session = new SessionManager(store);
 		expect(session.id).toBe("sdk-456");
+
+		store.close();
+	});
+
+	test("restores stored title for the active session", () => {
+		const store = createTestStore();
+		store.upsert({
+			sdkSessionId: "sdk-456",
+			title: "Stored title",
+			model: "haiku",
+		});
+		store.setActiveSessionId("sdk-456");
+
+		const session = new SessionManager(store);
+		expect(session.id).toBe("sdk-456");
+		expect(session.title).toBe("Stored title");
+
+		store.close();
+	});
+
+	test("keeps stored title when resuming an existing session", () => {
+		let store = createTestStore();
+		store.upsert({
+			sdkSessionId: "sdk-123",
+			title: "Original title",
+			model: "sonnet",
+		});
+		store.setActiveSessionId("sdk-123");
+		store.close();
+
+		store = createTestStore();
+		const session = new SessionManager(store);
+		session.update("sdk-123", "opus");
+
+		expect(store.get("sdk-123")?.title).toBe("Original title");
+		expect(store.get("sdk-123")?.model).toBe("opus");
 
 		store.close();
 	});

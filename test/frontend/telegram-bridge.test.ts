@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createTelegramBridge } from "../../src/frontend/telegram/bridge.ts";
-import { createRuntime } from "../../src/runtime/server.ts";
+import { createRuntime } from "../../src/runtime/transport/ws-server.ts";
 import { MockFacade } from "../helpers/mock-facade.ts";
 
 describe("Telegram bridge", () => {

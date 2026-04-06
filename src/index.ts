@@ -2,9 +2,9 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { startTelegramBot } from "./frontend/telegram/index.ts";
-import { SessionStore } from "./runtime/db.ts";
-import { PidManager } from "./runtime/pid.ts";
-import { createRuntime } from "./runtime/server.ts";
+import { SessionStore } from "./runtime/persistence/session-store.ts";
+import { PidManager } from "./runtime/process/pid-manager.ts";
+import { createRuntime } from "./runtime/transport/ws-server.ts";
 
 const HOME_DIR = join(homedir(), ".misanthropic");
 mkdirSync(HOME_DIR, { recursive: true });

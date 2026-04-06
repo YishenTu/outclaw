@@ -1,6 +1,7 @@
 import { autoRetry } from "@grammyjs/auto-retry";
 import { type StreamFlavor, stream } from "@grammyjs/stream";
 import { Bot, type Context } from "grammy";
+import { MODEL_ALIAS_LIST } from "../../common/commands.ts";
 import { extractError } from "../../common/protocol.ts";
 import { createTelegramBridge } from "./bridge.ts";
 import { TELEGRAM_COMMANDS } from "./commands.ts";
@@ -42,7 +43,7 @@ export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
 		}
 	});
 
-	for (const alias of ["opus", "sonnet", "haiku"]) {
+	for (const alias of MODEL_ALIAS_LIST) {
 		bot.command(alias, async (ctx) => {
 			const event = await bridge.sendCommandAndWait(`/${alias}`);
 			if (event.type === "model_changed") {

@@ -9,6 +9,17 @@ A mini [OpenClaw](https://github.com/openclaw/openclaw) — autonomous AI agent 
 - **Frontend** — Ink TUI and Telegram bot, both connected to the same runtime session
 - **Common** — Shared protocol types and helpers
 
+## Runtime Layout
+
+```text
+src/runtime/
+├── application/   # runtime controller, state, message queue
+├── commands/      # shared runtime command handling
+├── persistence/   # session store, session manager, history reader
+├── process/       # daemon PID management
+└── transport/     # Bun WS server and client fan-out
+```
+
 ## Stack
 
 - [Bun](https://bun.sh) — runtime & package manager
@@ -58,6 +69,10 @@ The daemon stores its state in `~/.misanthropic/`:
 - `daemon.pid` — background daemon PID
 - `daemon.log` — daemon stdout/stderr from `ma start`
 - `db.sqlite` — session metadata and active session pointer
+
+State-changing runtime commands are shared across connected frontends. Model changes,
+thinking effort changes, session clears, session switches, and session history replay
+stay in sync between TUI and Telegram.
 
 ## License
 

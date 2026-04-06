@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { SessionStore } from "../../src/runtime/db.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-test.sqlite");
 

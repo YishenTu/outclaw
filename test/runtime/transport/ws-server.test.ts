@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { SessionStore } from "../../src/runtime/db.ts";
-import { createRuntime } from "../../src/runtime/server.ts";
-import { MockFacade } from "../helpers/mock-facade.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
+import { createRuntime } from "../../../src/runtime/transport/ws-server.ts";
+import { MockFacade } from "../../helpers/mock-facade.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-server-test.sqlite");
 
@@ -38,6 +38,28 @@ function collectUntilDone(ws: WebSocket) {
 				const event = JSON.parse(String(msg.data));
 				events.push(event);
 				if (event.type === "done" || event.type === "error") {
+					resolve(events);
+				}
+			};
+		},
+	);
+}
+
+function collectMatchingEvents(
+	ws: WebSocket,
+	predicate: (event: { type: string; [key: string]: unknown }) => boolean,
+	count: number,
+) {
+	return new Promise<Array<{ type: string; [key: string]: unknown }>>(
+		(resolve) => {
+			const events: Array<{ type: string; [key: string]: unknown }> = [];
+			ws.onmessage = (msg) => {
+				const event = JSON.parse(String(msg.data));
+				if (!predicate(event)) {
+					return;
+				}
+				events.push(event);
+				if (events.length === count) {
 					resolve(events);
 				}
 			};
@@ -155,6 +177,35 @@ describe("Runtime server", () => {
 		expect(newFacade.lastParams?.resume).toBeUndefined();
 
 		newServer.stop();
+	});
+
+	test("/new broadcasts session clear to other clients", async () => {
+		const sharedFacade = new MockFacade();
+		const sharedServer = createRuntime({ port: 0, facade: sharedFacade });
+		const sender = await connectWs(sharedServer.port);
+		const observer = await connectWs(sharedServer.port);
+
+		const collecting = collectUntilDone(sender);
+		sender.send(JSON.stringify({ type: "prompt", prompt: "first" }));
+		await collecting;
+
+		const senderEvents = collectMatchingEvents(
+			sender,
+			(event) => event.type === "session_cleared",
+			1,
+		);
+		const observerEvents = collectMatchingEvents(
+			observer,
+			(event) => event.type === "session_cleared",
+			1,
+		);
+		sender.send(JSON.stringify({ type: "command", command: "/new" }));
+
+		await Promise.all([senderEvents, observerEvents]);
+
+		sender.close();
+		observer.close();
+		sharedServer.stop();
 	});
 
 	test("resumes session across multiple prompts", async () => {
@@ -340,6 +391,36 @@ describe("Runtime server", () => {
 		modelServer.stop();
 	});
 
+	test("/model broadcasts changes to other clients", async () => {
+		const sharedServer = createRuntime({ port: 0, facade: new MockFacade() });
+		const sender = await connectWs(sharedServer.port);
+		const observer = await connectWs(sharedServer.port);
+
+		const senderEvents = collectMatchingEvents(
+			sender,
+			(event) => event.type === "model_changed",
+			1,
+		);
+		const observerEvents = collectMatchingEvents(
+			observer,
+			(event) => event.type === "model_changed",
+			1,
+		);
+
+		sender.send(JSON.stringify({ type: "command", command: "/model haiku" }));
+
+		const [senderResult, observerResult] = await Promise.all([
+			senderEvents,
+			observerEvents,
+		]);
+		expect(senderResult[0]?.model).toBe("haiku");
+		expect(observerResult[0]?.model).toBe("haiku");
+
+		sender.close();
+		observer.close();
+		sharedServer.stop();
+	});
+
 	test("/model with no arg returns current model", async () => {
 		const ws = await connectWs(port);
 		ws.send(JSON.stringify({ type: "command", command: "/model" }));
@@ -410,6 +491,36 @@ describe("Runtime server", () => {
 
 		ws.close();
 		effortServer.stop();
+	});
+
+	test("/thinking broadcasts changes to other clients", async () => {
+		const sharedServer = createRuntime({ port: 0, facade: new MockFacade() });
+		const sender = await connectWs(sharedServer.port);
+		const observer = await connectWs(sharedServer.port);
+
+		const senderEvents = collectMatchingEvents(
+			sender,
+			(event) => event.type === "effort_changed",
+			1,
+		);
+		const observerEvents = collectMatchingEvents(
+			observer,
+			(event) => event.type === "effort_changed",
+			1,
+		);
+
+		sender.send(JSON.stringify({ type: "command", command: "/thinking max" }));
+
+		const [senderResult, observerResult] = await Promise.all([
+			senderEvents,
+			observerEvents,
+		]);
+		expect(senderResult[0]?.effort).toBe("max");
+		expect(observerResult[0]?.effort).toBe("max");
+
+		sender.close();
+		observer.close();
+		sharedServer.stop();
 	});
 
 	test("/thinking with no arg returns current effort", async () => {
@@ -541,9 +652,115 @@ describe("Runtime server", () => {
 		await collecting;
 
 		expect(sessFacade.lastParams?.resume).toBe("sdk-target-abc");
+		expect(sessFacade.lastParams?.model).toBe("haiku");
 
 		ws.close();
 		sessServer.stop();
+		store.close();
+		if (existsSync(dbPath)) rmSync(dbPath);
+	});
+
+	test("/session switch broadcasts to other clients", async () => {
+		const dbPath = `${TEST_DB}-switch-broadcast`;
+		const store = createTestStore(dbPath);
+		store.upsert({
+			sdkSessionId: "sdk-target-abc",
+			title: "Target session",
+			model: "haiku",
+		});
+
+		const sharedServer = createRuntime({
+			port: 0,
+			facade: new MockFacade(),
+			store,
+		});
+		const sender = await connectWs(sharedServer.port);
+		const observer = await connectWs(sharedServer.port);
+
+		const senderEvents = collectMatchingEvents(
+			sender,
+			(event) => event.type === "session_switched",
+			1,
+		);
+		const observerEvents = collectMatchingEvents(
+			observer,
+			(event) => event.type === "session_switched",
+			1,
+		);
+
+		sender.send(
+			JSON.stringify({
+				type: "command",
+				command: "/session sdk-target",
+			}),
+		);
+
+		const [senderResult, observerResult] = await Promise.all([
+			senderEvents,
+			observerEvents,
+		]);
+		expect(senderResult[0]?.sdkSessionId).toBe("sdk-target-abc");
+		expect(observerResult[0]?.sdkSessionId).toBe("sdk-target-abc");
+
+		sender.close();
+		observer.close();
+		sharedServer.stop();
+		store.close();
+		if (existsSync(dbPath)) rmSync(dbPath);
+	});
+
+	test("session switch replays history to all connected clients", async () => {
+		const dbPath = `${TEST_DB}-switch-history`;
+		const store = createTestStore(dbPath);
+		store.upsert({
+			sdkSessionId: "sdk-target-abc",
+			title: "Target session",
+			model: "haiku",
+		});
+
+		const sharedServer = createRuntime({
+			port: 0,
+			facade: new MockFacade(),
+			store,
+			historyReader: async (sessionId) => [
+				{ role: "user", content: `history for ${sessionId}` },
+			],
+		});
+		const sender = await connectWs(sharedServer.port);
+		const observer = await connectWs(sharedServer.port);
+
+		const senderEvents = collectMatchingEvents(
+			sender,
+			(event) =>
+				event.type === "session_switched" || event.type === "history_replay",
+			2,
+		);
+		const observerEvents = collectMatchingEvents(
+			observer,
+			(event) =>
+				event.type === "session_switched" || event.type === "history_replay",
+			2,
+		);
+
+		sender.send(
+			JSON.stringify({
+				type: "command",
+				command: "/session sdk-target",
+			}),
+		);
+
+		const [senderResult, observerResult] = await Promise.all([
+			senderEvents,
+			observerEvents,
+		]);
+		expect(senderResult.map((event) => event.type)).toContain("history_replay");
+		expect(observerResult.map((event) => event.type)).toContain(
+			"history_replay",
+		);
+
+		sender.close();
+		observer.close();
+		sharedServer.stop();
 		store.close();
 		if (existsSync(dbPath)) rmSync(dbPath);
 	});

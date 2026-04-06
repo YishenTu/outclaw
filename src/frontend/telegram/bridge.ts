@@ -1,31 +1,27 @@
-import { parseMessage, serialize } from "../../common/protocol.ts";
+import { parseMessage } from "../../common/protocol.ts";
+import {
+	closeRuntimeSocket,
+	openRuntimeSocket,
+	sendRuntimeCommand,
+	sendRuntimePrompt,
+} from "../runtime-client/index.ts";
 
 export function createTelegramBridge(url: string) {
 	const sockets = new Set<WebSocket>();
 
 	function createSocket() {
-		const ws = new WebSocket(url);
+		const socket = openRuntimeSocket(url);
+		const { ws } = socket;
 		sockets.add(ws);
-
-		const ready = new Promise<void>((resolve, reject) => {
-			ws.onopen = () => resolve();
-			ws.onerror = () => reject(new Error("WebSocket error"));
-			ws.onclose = () => {
-				sockets.delete(ws);
-			};
-		});
-
-		return { ws, ready };
+		ws.onclose = () => {
+			sockets.delete(ws);
+		};
+		return socket;
 	}
 
 	function closeSocket(ws: WebSocket) {
 		sockets.delete(ws);
-		if (
-			ws.readyState === WebSocket.OPEN ||
-			ws.readyState === WebSocket.CONNECTING
-		) {
-			ws.close();
-		}
+		closeRuntimeSocket(ws);
 	}
 
 	return {
@@ -62,7 +58,7 @@ export function createTelegramBridge(url: string) {
 					reject(new Error("WebSocket error"));
 				};
 
-				ws.send(serialize({ type: "prompt", prompt, source: "telegram" }));
+				sendRuntimePrompt(ws, prompt, "telegram");
 			});
 		},
 
@@ -87,7 +83,7 @@ export function createTelegramBridge(url: string) {
 					closeSocket(ws);
 					reject(new Error("WebSocket error"));
 				};
-				ws.send(serialize({ type: "command", command }));
+				sendRuntimeCommand(ws, command);
 			});
 		},
 
@@ -144,7 +140,7 @@ export function createTelegramBridge(url: string) {
 				}
 			};
 
-			ws.send(serialize({ type: "prompt", prompt, source: "telegram" }));
+			sendRuntimePrompt(ws, prompt, "telegram");
 
 			while (true) {
 				if (pending.length > 0) {

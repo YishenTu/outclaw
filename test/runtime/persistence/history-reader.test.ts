@@ -37,7 +37,9 @@ describe("readHistory", () => {
 			getSessionMessages,
 		}));
 
-		const { readHistory } = await import("../../src/runtime/history.ts");
+		const { readHistory } = await import(
+			"../../../src/runtime/persistence/history-reader.ts"
+		);
 		const messages = await readHistory("sdk-123");
 
 		expect(messages).toEqual([

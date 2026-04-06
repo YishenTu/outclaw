@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { MessageQueue } from "../../src/runtime/queue.ts";
+import { MessageQueue } from "../../../src/runtime/application/message-queue.ts";
 
 describe("MessageQueue", () => {
 	test("processes tasks in order", async () => {

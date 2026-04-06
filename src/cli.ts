@@ -2,7 +2,7 @@
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { PidManager } from "./runtime/pid.ts";
+import { PidManager } from "./runtime/process/pid-manager.ts";
 
 const HOME_DIR = join(homedir(), ".misanthropic");
 const PID_PATH = join(HOME_DIR, "daemon.pid");

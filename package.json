@@ -28,10 +28,8 @@
 		"@grammyjs/auto-retry": "^2.0.2",
 		"@grammyjs/stream": "^1.0.1",
 		"grammy": "^1.42.0",
-		"hono": "^4.12.11",
 		"ink": "^6.8.0",
 		"ink-text-input": "^6.0.0",
-		"react": "^19.2.4",
-		"zod": "^4.3.6"
+		"react": "^19.2.4"
 	}
 }
