@@ -65,6 +65,77 @@ describe("Runtime server", () => {
 		expect(doneEvents.length).toBe(1);
 	});
 
+	test("passes cwd to facade", async () => {
+		const cwdFacade = new MockFacade();
+		const cwdServer = createRuntime({
+			port: 0,
+			facade: cwdFacade,
+			cwd: "/tmp/test-misanthropic",
+		});
+
+		const ws = await connectWs(cwdServer.port);
+		const collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "hi" }));
+		await collecting;
+		ws.close();
+
+		expect(cwdFacade.lastParams?.cwd).toBe("/tmp/test-misanthropic");
+
+		cwdServer.stop();
+	});
+
+	test("cwd is undefined when not provided", async () => {
+		const ws = await connectWs(port);
+		const collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "hi" }));
+		await collecting;
+		ws.close();
+
+		expect(facade.lastParams?.cwd).toBeUndefined();
+	});
+
+	test("/new clears session and notifies sender", async () => {
+		// Use a fresh runtime so activeSessionId starts undefined
+		const newFacade = new MockFacade();
+		const newServer = createRuntime({ port: 0, facade: newFacade });
+		const ws = await connectWs(newServer.port);
+
+		// Two prompts to establish a resumed session
+		let collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "first" }));
+		await collecting;
+
+		collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "second" }));
+		await collecting;
+
+		expect(newFacade.lastParams?.resume).toBe("mock-session-123");
+
+		// Send /new command
+		const newSessionEvent = new Promise<{
+			type: string;
+			[key: string]: unknown;
+		}>((resolve) => {
+			ws.onmessage = (msg) => {
+				resolve(JSON.parse(String(msg.data)));
+			};
+		});
+		ws.send(JSON.stringify({ type: "command", command: "/new" }));
+		const event = await newSessionEvent;
+
+		expect(event.type).toBe("session_cleared");
+
+		// Next prompt should NOT have resume
+		collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "fresh" }));
+		await collecting;
+		ws.close();
+
+		expect(newFacade.lastParams?.resume).toBeUndefined();
+
+		newServer.stop();
+	});
+
 	test("resumes session across multiple prompts", async () => {
 		const ws = await connectWs(port);
 

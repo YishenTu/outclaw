@@ -13,6 +13,7 @@ export class ClaudeAdapter implements Facade {
 					abortController,
 					resume: params.resume,
 					maxTurns: params.maxTurns,
+					cwd: params.cwd,
 					permissionMode: "bypassPermissions",
 					allowDangerouslySkipPermissions: true,
 				},

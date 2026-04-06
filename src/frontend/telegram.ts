@@ -10,6 +10,15 @@ export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
 	const bot = new Bot(token);
 	const bridge = createTelegramBridge(runtimeUrl);
 
+	bot.api.setMyCommands([
+		{ command: "new", description: "Start a new conversation" },
+	]);
+
+	bot.command("new", async (ctx) => {
+		bridge.sendCommand("/new");
+		await ctx.reply("Session cleared. Starting fresh.");
+	});
+
 	bot.on("message:text", async (ctx) => {
 		try {
 			const response = await bridge.send(ctx.message.text);

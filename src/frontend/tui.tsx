@@ -25,7 +25,9 @@ function Tui({ url }: TuiProps) {
 
 		ws.onmessage = (msg) => {
 			const event = JSON.parse(String(msg.data));
-			if (event.type === "user_prompt") {
+			if (event.type === "session_cleared") {
+				setOutput("");
+			} else if (event.type === "user_prompt") {
 				setOutput((prev) => `${prev}[${event.source}] ${event.prompt}\n`);
 			} else if (event.type === "text") {
 				setOutput((prev) => prev + event.text);
@@ -41,6 +43,11 @@ function Tui({ url }: TuiProps) {
 
 	const handleSubmit = useCallback((value: string) => {
 		if (!value.trim() || !wsRef.current) return;
+		if (value.trim() === "/new") {
+			wsRef.current.send(JSON.stringify({ type: "command", command: "/new" }));
+			setInput("");
+			return;
+		}
 		setOutput((prev) => `${prev}> ${value}\n`);
 		wsRef.current.send(JSON.stringify({ type: "prompt", prompt: value }));
 		setInput("");

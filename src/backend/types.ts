@@ -4,6 +4,7 @@ export interface RunParams {
 	abortController?: AbortController;
 	resume?: string;
 	maxTurns?: number;
+	cwd?: string;
 }
 
 export type FacadeEvent =

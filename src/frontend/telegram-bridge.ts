@@ -35,6 +35,10 @@ export function createTelegramBridge(url: string) {
 			});
 		},
 
+		sendCommand(command: string) {
+			ws.send(JSON.stringify({ type: "command", command }));
+		},
+
 		chunk(text: string, maxLength = TELEGRAM_MAX_LENGTH): string[] {
 			if (text.length <= maxLength) return [text];
 

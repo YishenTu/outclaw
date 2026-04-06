@@ -4,6 +4,7 @@ import type { Facade } from "../backend/types.ts";
 interface RuntimeOptions {
 	port: number;
 	facade?: Facade;
+	cwd?: string;
 }
 
 // biome-ignore lint/complexity/noBannedTypes: Bun WS generic requires object type
@@ -34,6 +35,12 @@ export function createRuntime(options: RuntimeOptions) {
 				try {
 					const data = JSON.parse(String(message));
 
+					if (data.type === "command" && data.command === "/new") {
+						activeSessionId = undefined;
+						ws.send(JSON.stringify({ type: "session_cleared" }));
+						return;
+					}
+
 					if (data.type === "prompt") {
 						const isBroadcast = data.source === "telegram";
 
@@ -54,6 +61,7 @@ export function createRuntime(options: RuntimeOptions) {
 						for await (const event of facade.run({
 							prompt: data.prompt,
 							resume: activeSessionId,
+							cwd: options.cwd,
 						})) {
 							// Always send to the sender
 							ws.send(JSON.stringify(event));
