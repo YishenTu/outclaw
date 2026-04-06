@@ -45,6 +45,23 @@ export function createTelegramBridge(url: string) {
 			ws.send(serialize({ type: "command", command }));
 		},
 
+		async sendCommandAndWait(
+			command: string,
+		): Promise<{ type: string; [key: string]: unknown }> {
+			await ready;
+			return new Promise((resolve) => {
+				ws.onmessage = (msg) => {
+					resolve(
+						parseMessage(msg.data as string) as {
+							type: string;
+							[key: string]: unknown;
+						},
+					);
+				};
+				ws.send(serialize({ type: "command", command }));
+			});
+		},
+
 		chunk(text: string, maxLength = TELEGRAM_MAX_LENGTH): string[] {
 			if (text.length <= maxLength) return [text];
 

@@ -34,6 +34,12 @@ function Tui({ url }: TuiProps) {
 				case "session_cleared":
 					setOutput("");
 					break;
+				case "model_changed":
+					setOutput((prev) => `${prev}[model] ${event.model}\n`);
+					break;
+				case "effort_changed":
+					setOutput((prev) => `${prev}[effort] ${event.effort}\n`);
+					break;
 				case "user_prompt":
 					setOutput((prev) => `${prev}[${event.source}] ${event.prompt}\n`);
 					break;
@@ -54,8 +60,14 @@ function Tui({ url }: TuiProps) {
 
 	const handleSubmit = useCallback((value: string) => {
 		if (!value.trim() || !wsRef.current) return;
-		if (value.trim() === "/new") {
-			wsRef.current.send(serialize({ type: "command", command: "/new" }));
+		const trimmed = value.trim();
+		const isCommand =
+			trimmed === "/new" ||
+			trimmed.startsWith("/model") ||
+			trimmed.startsWith("/thinking") ||
+			["/opus", "/sonnet", "/haiku"].includes(trimmed);
+		if (isCommand) {
+			wsRef.current.send(serialize({ type: "command", command: trimmed }));
 			setInput("");
 			return;
 		}

@@ -19,6 +19,13 @@ export class ClaudeAdapter implements Facade {
 					resume: params.resume,
 					maxTurns: params.maxTurns,
 					cwd: params.cwd,
+					model: params.model,
+					effort: params.effort as
+						| "low"
+						| "medium"
+						| "high"
+						| "max"
+						| undefined,
 					permissionMode: "bypassPermissions",
 					allowDangerouslySkipPermissions: true,
 				},

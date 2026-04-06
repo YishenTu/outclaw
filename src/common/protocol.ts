@@ -47,13 +47,25 @@ export interface SessionClearedEvent {
 	type: "session_cleared";
 }
 
+export interface ModelChangedEvent {
+	type: "model_changed";
+	model: string;
+}
+
+export interface EffortChangedEvent {
+	type: "effort_changed";
+	effort: string;
+}
+
 export type ServerEvent =
 	| TextEvent
 	| StatusEvent
 	| ErrorEvent
 	| DoneEvent
 	| UserPromptEvent
-	| SessionClearedEvent;
+	| SessionClearedEvent
+	| ModelChangedEvent
+	| EffortChangedEvent;
 
 // --- Facade types (backend contract) ---
 
@@ -66,6 +78,8 @@ export interface RunParams {
 	resume?: string;
 	maxTurns?: number;
 	cwd?: string;
+	model?: string;
+	effort?: string;
 }
 
 export interface Facade {

@@ -19,6 +19,37 @@ export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
 		await ctx.reply("Session cleared. Starting fresh.");
 	});
 
+	bot.command("model", async (ctx) => {
+		const arg = ctx.match?.trim();
+		const command = arg ? `/model ${arg}` : "/model";
+		const event = await bridge.sendCommandAndWait(command);
+		if (event.type === "model_changed") {
+			await ctx.reply(`Model: ${event.model}`);
+		} else if (event.type === "error") {
+			await ctx.reply(`[error] ${event.message}`);
+		}
+	});
+
+	for (const alias of ["opus", "sonnet", "haiku"]) {
+		bot.command(alias, async (ctx) => {
+			const event = await bridge.sendCommandAndWait(`/${alias}`);
+			if (event.type === "model_changed") {
+				await ctx.reply(`Model: ${event.model}`);
+			}
+		});
+	}
+
+	bot.command("thinking", async (ctx) => {
+		const arg = ctx.match?.trim();
+		const command = arg ? `/thinking ${arg}` : "/thinking";
+		const event = await bridge.sendCommandAndWait(command);
+		if (event.type === "effort_changed") {
+			await ctx.reply(`Thinking effort: ${event.effort}`);
+		} else if (event.type === "error") {
+			await ctx.reply(`[error] ${event.message}`);
+		}
+	});
+
 	bot.on("message:text", async (ctx) => {
 		try {
 			const response = await bridge.send(ctx.message.text);

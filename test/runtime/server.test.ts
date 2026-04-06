@@ -285,4 +285,157 @@ describe("Runtime server", () => {
 
 		queueServer.stop();
 	});
+
+	test("/model switches model and confirms", async () => {
+		const modelFacade = new MockFacade();
+		const modelServer = createRuntime({ port: 0, facade: modelFacade });
+		const ws = await connectWs(modelServer.port);
+
+		// Switch to haiku
+		const switchEvent = await new Promise<{
+			type: string;
+			model?: string;
+		}>((resolve) => {
+			ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
+			ws.send(JSON.stringify({ type: "command", command: "/model haiku" }));
+		});
+		expect(switchEvent.type).toBe("model_changed");
+		expect(switchEvent.model).toBe("haiku");
+
+		// Next prompt should use haiku
+		const collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "hi" }));
+		await collecting;
+
+		expect(modelFacade.lastParams?.model).toBe("haiku");
+
+		ws.close();
+		modelServer.stop();
+	});
+
+	test("/model with no arg returns current model", async () => {
+		const ws = await connectWs(port);
+
+		const event = await new Promise<{ type: string; model?: string }>(
+			(resolve) => {
+				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
+				ws.send(JSON.stringify({ type: "command", command: "/model" }));
+			},
+		);
+
+		expect(event.type).toBe("model_changed");
+		expect(event.model).toBe("sonnet");
+
+		ws.close();
+	});
+
+	test("/opus shorthand switches model", async () => {
+		const shortFacade = new MockFacade();
+		const shortServer = createRuntime({ port: 0, facade: shortFacade });
+		const ws = await connectWs(shortServer.port);
+
+		const event = await new Promise<{ type: string; model?: string }>(
+			(resolve) => {
+				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
+				ws.send(JSON.stringify({ type: "command", command: "/opus" }));
+			},
+		);
+
+		expect(event.type).toBe("model_changed");
+		expect(event.model).toBe("opus");
+
+		const collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "hi" }));
+		await collecting;
+
+		expect(shortFacade.lastParams?.model).toBe("opus");
+
+		ws.close();
+		shortServer.stop();
+	});
+
+	test("/model rejects invalid alias", async () => {
+		const ws = await connectWs(port);
+
+		const event = await new Promise<{ type: string; message?: string }>(
+			(resolve) => {
+				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
+				ws.send(
+					JSON.stringify({
+						type: "command",
+						command: "/model gpt-5",
+					}),
+				);
+			},
+		);
+
+		expect(event.type).toBe("error");
+
+		ws.close();
+	});
+
+	test("/thinking switches effort and confirms", async () => {
+		const effortFacade = new MockFacade();
+		const effortServer = createRuntime({ port: 0, facade: effortFacade });
+		const ws = await connectWs(effortServer.port);
+
+		const event = await new Promise<{ type: string; effort?: string }>(
+			(resolve) => {
+				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
+				ws.send(
+					JSON.stringify({
+						type: "command",
+						command: "/thinking max",
+					}),
+				);
+			},
+		);
+		expect(event.type).toBe("effort_changed");
+		expect(event.effort).toBe("max");
+
+		const collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "hi" }));
+		await collecting;
+
+		expect(effortFacade.lastParams?.effort).toBe("max");
+
+		ws.close();
+		effortServer.stop();
+	});
+
+	test("/thinking with no arg returns current effort", async () => {
+		const ws = await connectWs(port);
+
+		const event = await new Promise<{ type: string; effort?: string }>(
+			(resolve) => {
+				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
+				ws.send(JSON.stringify({ type: "command", command: "/thinking" }));
+			},
+		);
+
+		expect(event.type).toBe("effort_changed");
+		expect(event.effort).toBe("high");
+
+		ws.close();
+	});
+
+	test("/thinking rejects invalid effort", async () => {
+		const ws = await connectWs(port);
+
+		const event = await new Promise<{ type: string; message?: string }>(
+			(resolve) => {
+				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
+				ws.send(
+					JSON.stringify({
+						type: "command",
+						command: "/thinking turbo",
+					}),
+				);
+			},
+		);
+
+		expect(event.type).toBe("error");
+
+		ws.close();
+	});
 });
