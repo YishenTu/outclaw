@@ -1,11 +1,28 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { SessionStore } from "../../src/runtime/db.ts";
 import { createRuntime } from "../../src/runtime/server.ts";
 import { MockFacade } from "../helpers/mock-facade.ts";
+
+const TEST_DB = join(import.meta.dir, ".tmp-server-test.sqlite");
 
 function connectWs(port: number): Promise<WebSocket> {
 	return new Promise((resolve) => {
 		const ws = new WebSocket(`ws://localhost:${port}`);
 		ws.onopen = () => resolve(ws);
+	});
+}
+
+function waitForEvent(
+	ws: WebSocket,
+	predicate: (e: { type: string }) => boolean,
+) {
+	return new Promise<{ type: string; [key: string]: unknown }>((resolve) => {
+		ws.onmessage = (msg) => {
+			const event = JSON.parse(String(msg.data));
+			if (predicate(event)) resolve(event);
+		};
 	});
 }
 
@@ -218,12 +235,18 @@ describe("Runtime server", () => {
 
 	test("does not broadcast tui messages to other clients", async () => {
 		const observer = await connectWs(port);
-		const observerEvents: unknown[] = [];
+		const observerEvents: Array<{ type: string }> = [];
 		observer.onmessage = (msg) => {
-			observerEvents.push(JSON.parse(String(msg.data)));
+			const event = JSON.parse(String(msg.data));
+			// Ignore history_replay from connect
+			if (event.type !== "history_replay") {
+				observerEvents.push(event);
+			}
 		};
 
 		const tui = await connectWs(port);
+		// Wait briefly for any history_replay to settle
+		await new Promise((r) => setTimeout(r, 50));
 		const collecting = collectUntilDone(tui);
 		tui.send(JSON.stringify({ type: "prompt", prompt: "tui only" }));
 		await collecting;
@@ -315,17 +338,10 @@ describe("Runtime server", () => {
 
 	test("/model with no arg returns current model", async () => {
 		const ws = await connectWs(port);
+		ws.send(JSON.stringify({ type: "command", command: "/model" }));
+		const event = await waitForEvent(ws, (e) => e.type === "model_changed");
 
-		const event = await new Promise<{ type: string; model?: string }>(
-			(resolve) => {
-				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
-				ws.send(JSON.stringify({ type: "command", command: "/model" }));
-			},
-		);
-
-		expect(event.type).toBe("model_changed");
-		expect(event.model).toBe("sonnet");
-
+		expect(event.model).toBe("opus");
 		ws.close();
 	});
 
@@ -348,7 +364,7 @@ describe("Runtime server", () => {
 		ws.send(JSON.stringify({ type: "prompt", prompt: "hi" }));
 		await collecting;
 
-		expect(shortFacade.lastParams?.model).toBe("opus");
+		expect(shortFacade.lastParams?.model).toBe("claude-opus-4-6[1m]");
 
 		ws.close();
 		shortServer.stop();
@@ -356,21 +372,10 @@ describe("Runtime server", () => {
 
 	test("/model rejects invalid alias", async () => {
 		const ws = await connectWs(port);
-
-		const event = await new Promise<{ type: string; message?: string }>(
-			(resolve) => {
-				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
-				ws.send(
-					JSON.stringify({
-						type: "command",
-						command: "/model gpt-5",
-					}),
-				);
-			},
-		);
+		ws.send(JSON.stringify({ type: "command", command: "/model gpt-5" }));
+		const event = await waitForEvent(ws, (e) => e.type === "error");
 
 		expect(event.type).toBe("error");
-
 		ws.close();
 	});
 
@@ -405,36 +410,155 @@ describe("Runtime server", () => {
 
 	test("/thinking with no arg returns current effort", async () => {
 		const ws = await connectWs(port);
+		ws.send(JSON.stringify({ type: "command", command: "/thinking" }));
+		const event = await waitForEvent(ws, (e) => e.type === "effort_changed");
 
-		const event = await new Promise<{ type: string; effort?: string }>(
-			(resolve) => {
-				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
-				ws.send(JSON.stringify({ type: "command", command: "/thinking" }));
-			},
-		);
-
-		expect(event.type).toBe("effort_changed");
 		expect(event.effort).toBe("high");
-
 		ws.close();
 	});
 
 	test("/thinking rejects invalid effort", async () => {
 		const ws = await connectWs(port);
-
-		const event = await new Promise<{ type: string; message?: string }>(
-			(resolve) => {
-				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
-				ws.send(
-					JSON.stringify({
-						type: "command",
-						command: "/thinking turbo",
-					}),
-				);
-			},
-		);
+		ws.send(JSON.stringify({ type: "command", command: "/thinking turbo" }));
+		const event = await waitForEvent(ws, (e) => e.type === "error");
 
 		expect(event.type).toBe("error");
+		ws.close();
+	});
+
+	test("/session shows current session info", async () => {
+		const dbPath = `${TEST_DB}-info`;
+		const store = new SessionStore(dbPath);
+		const sessFacade = new MockFacade();
+		const sessServer = createRuntime({
+			port: 0,
+			facade: sessFacade,
+			store,
+		});
+		const ws = await connectWs(sessServer.port);
+
+		// Create a session first
+		const collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "Hello world" }));
+		await collecting;
+
+		const event = await new Promise<{
+			type: string;
+			[key: string]: unknown;
+		}>((resolve) => {
+			ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
+			ws.send(JSON.stringify({ type: "command", command: "/session" }));
+		});
+
+		expect(event.type).toBe("session_info");
+		expect(event.sdkSessionId).toBe("mock-session-123");
+		expect(event.title).toBe("Hello world");
+
+		ws.close();
+		sessServer.stop();
+		store.close();
+		if (existsSync(dbPath)) rmSync(dbPath);
+	});
+
+	test("/session list returns sessions", async () => {
+		const dbPath = `${TEST_DB}-list`;
+		const store = new SessionStore(dbPath);
+		store.upsert({
+			sdkSessionId: "sdk-aaa",
+			title: "First chat",
+			model: "sonnet",
+		});
+		store.upsert({
+			sdkSessionId: "sdk-bbb",
+			title: "Second chat",
+			model: "opus",
+		});
+
+		const sessServer = createRuntime({
+			port: 0,
+			facade: new MockFacade(),
+			store,
+		});
+		const ws = await connectWs(sessServer.port);
+
+		const event = await new Promise<{
+			type: string;
+			sessions?: unknown[];
+		}>((resolve) => {
+			ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
+			ws.send(JSON.stringify({ type: "command", command: "/session list" }));
+		});
+
+		expect(event.type).toBe("session_list");
+		expect(event.sessions?.length).toBe(2);
+
+		ws.close();
+		sessServer.stop();
+		store.close();
+		if (existsSync(dbPath)) rmSync(dbPath);
+	});
+
+	test("/session <id> switches to session", async () => {
+		const dbPath = `${TEST_DB}-switch`;
+		const store = new SessionStore(dbPath);
+		store.upsert({
+			sdkSessionId: "sdk-target-abc",
+			title: "Target session",
+			model: "haiku",
+		});
+
+		const sessFacade = new MockFacade();
+		const sessServer = createRuntime({
+			port: 0,
+			facade: sessFacade,
+			store,
+		});
+		const ws = await connectWs(sessServer.port);
+
+		const event = await new Promise<{
+			type: string;
+			sdkSessionId?: string;
+		}>((resolve) => {
+			ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
+			ws.send(
+				JSON.stringify({
+					type: "command",
+					command: "/session sdk-target",
+				}),
+			);
+		});
+
+		expect(event.type).toBe("session_switched");
+		expect(event.sdkSessionId).toBe("sdk-target-abc");
+
+		// Next prompt should resume this session
+		const collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "follow up" }));
+		await collecting;
+
+		expect(sessFacade.lastParams?.resume).toBe("sdk-target-abc");
+
+		ws.close();
+		sessServer.stop();
+		store.close();
+		if (existsSync(dbPath)) rmSync(dbPath);
+	});
+
+	test("/status returns model, effort, session, and usage", async () => {
+		const ws = await connectWs(port);
+
+		// Send a prompt first to populate usage
+		const collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "hi" }));
+		await collecting;
+
+		ws.send(JSON.stringify({ type: "command", command: "/status" }));
+		const event = await waitForEvent(ws, (e) => e.type === "runtime_status");
+
+		expect(event.type).toBe("runtime_status");
+		expect(event.model).toBe("opus");
+		expect(event.effort).toBe("high");
+		expect(event.sessionId).toBe("mock-session-123");
 
 		ws.close();
 	});

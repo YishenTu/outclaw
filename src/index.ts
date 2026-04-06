@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { startTelegramBot } from "./frontend/telegram/index.ts";
+import { SessionStore } from "./runtime/db.ts";
 import { PidManager } from "./runtime/pid.ts";
 import { createRuntime } from "./runtime/server.ts";
 
@@ -11,9 +12,10 @@ mkdirSync(HOME_DIR, { recursive: true });
 const pidManager = new PidManager(join(HOME_DIR, "daemon.pid"));
 pidManager.write(process.pid);
 
+const store = new SessionStore(join(HOME_DIR, "db.sqlite"));
 const PORT = Number(process.env.PORT ?? 4000);
 
-const runtime = createRuntime({ port: PORT, cwd: HOME_DIR });
+const runtime = createRuntime({ port: PORT, cwd: HOME_DIR, store });
 console.log(`misanthropic runtime listening on ws://localhost:${runtime.port}`);
 console.log(`agent cwd: ${HOME_DIR}`);
 console.log(`daemon pid: ${process.pid}`);
@@ -33,6 +35,7 @@ if (telegramToken) {
 function shutdown() {
 	telegram?.stop();
 	runtime.stop();
+	store.close();
 	pidManager.remove();
 	process.exit(0);
 }

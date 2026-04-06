@@ -34,9 +34,38 @@ function Tui({ url }: TuiProps) {
 				case "session_cleared":
 					setOutput("");
 					break;
+				case "session_switched":
+					setOutput("");
+					break;
+				case "history_replay": {
+					const history = event.messages
+						.map((m: { role: string; content: string }) =>
+							m.role === "user" ? `> ${m.content}\n` : `${m.content}\n`,
+						)
+						.join("\n");
+					setOutput(history);
+					break;
+				}
 				case "model_changed":
 					setOutput((prev) => `${prev}[model] ${event.model}\n`);
 					break;
+				case "runtime_status": {
+					const u = event.usage as
+						| {
+								contextTokens: number;
+								contextWindow: number;
+								percentage: number;
+						  }
+						| undefined;
+					const ctx = u
+						? `${u.contextTokens.toLocaleString()}/${u.contextWindow.toLocaleString()} tokens (${u.percentage}%)`
+						: "n/a";
+					setOutput(
+						(prev) =>
+							`${prev}[status] model=${event.model} effort=${event.effort} session=${event.sessionId ?? "none"} context=${ctx}\n`,
+					);
+					break;
+				}
 				case "effort_changed":
 					setOutput((prev) => `${prev}[effort] ${event.effort}\n`);
 					break;
@@ -63,8 +92,10 @@ function Tui({ url }: TuiProps) {
 		const trimmed = value.trim();
 		const isCommand =
 			trimmed === "/new" ||
+			trimmed === "/status" ||
 			trimmed.startsWith("/model") ||
 			trimmed.startsWith("/thinking") ||
+			trimmed.startsWith("/session") ||
 			["/opus", "/sonnet", "/haiku"].includes(trimmed);
 		if (isCommand) {
 			wsRef.current.send(serialize({ type: "command", command: trimmed }));

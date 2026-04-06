@@ -10,4 +10,6 @@ export const TELEGRAM_COMMANDS: BotCommand[] = [
 		command: "thinking",
 		description: "Set thinking effort (low/medium/high/max)",
 	},
+	{ command: "session", description: "Show/list/switch sessions" },
+	{ command: "status", description: "Show model, effort, and context usage" },
 ];

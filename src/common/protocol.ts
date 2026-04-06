@@ -30,11 +30,23 @@ export interface ErrorEvent {
 	message: string;
 }
 
+export interface UsageInfo {
+	inputTokens: number;
+	outputTokens: number;
+	cacheCreationTokens: number;
+	cacheReadTokens: number;
+	contextWindow: number;
+	maxOutputTokens: number;
+	contextTokens: number;
+	percentage: number;
+}
+
 export interface DoneEvent {
 	type: "done";
 	sessionId: string;
 	durationMs: number;
 	costUsd?: number;
+	usage?: UsageInfo;
 }
 
 export interface UserPromptEvent {
@@ -57,6 +69,42 @@ export interface EffortChangedEvent {
 	effort: string;
 }
 
+export interface SessionInfoEvent {
+	type: "session_info";
+	sdkSessionId: string;
+	title: string;
+	model: string;
+}
+
+export interface SessionListEvent {
+	type: "session_list";
+	sessions: Array<{
+		sdkSessionId: string;
+		title: string;
+		model: string;
+		lastActive: number;
+	}>;
+}
+
+export interface SessionSwitchedEvent {
+	type: "session_switched";
+	sdkSessionId: string;
+	title: string;
+}
+
+export interface RuntimeStatusEvent {
+	type: "runtime_status";
+	model: string;
+	effort: string;
+	sessionId?: string;
+	usage?: UsageInfo;
+}
+
+export interface HistoryReplayEvent {
+	type: "history_replay";
+	messages: Array<{ role: "user" | "assistant"; content: string }>;
+}
+
 export type ServerEvent =
 	| TextEvent
 	| StatusEvent
@@ -65,7 +113,12 @@ export type ServerEvent =
 	| UserPromptEvent
 	| SessionClearedEvent
 	| ModelChangedEvent
-	| EffortChangedEvent;
+	| EffortChangedEvent
+	| SessionInfoEvent
+	| SessionListEvent
+	| SessionSwitchedEvent
+	| RuntimeStatusEvent
+	| HistoryReplayEvent;
 
 // --- Facade types (backend contract) ---
 

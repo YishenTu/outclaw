@@ -4,7 +4,10 @@ import {
 	type Facade,
 	parseMessage,
 	serialize,
+	type UsageInfo,
 } from "../common/protocol.ts";
+import type { SessionStore } from "./db.ts";
+import { readHistory } from "./history.ts";
 import { MessageQueue } from "./queue.ts";
 import { SessionManager } from "./session.ts";
 
@@ -12,6 +15,7 @@ interface RuntimeOptions {
 	port: number;
 	facade?: Facade;
 	cwd?: string;
+	store?: SessionStore;
 }
 
 // biome-ignore lint/complexity/noBannedTypes: Bun WS generic requires object type
@@ -19,13 +23,19 @@ type WsClient = import("bun").ServerWebSocket<{}>;
 
 export function createRuntime(options: RuntimeOptions) {
 	const facade = options.facade ?? new ClaudeAdapter();
-	const VALID_MODELS = ["opus", "sonnet", "haiku"];
+	const MODEL_ALIASES: Record<string, string> = {
+		opus: "claude-opus-4-6[1m]",
+		sonnet: "sonnet",
+		haiku: "haiku",
+	};
+	const VALID_MODELS = Object.keys(MODEL_ALIASES);
 	const VALID_EFFORTS = ["low", "medium", "high", "max"];
 	const clients = new Set<WsClient>();
-	const session = new SessionManager();
+	const session = new SessionManager(options.store);
 	const queue = new MessageQueue();
-	let activeModel = "sonnet";
+	let activeModel = "opus";
 	let activeEffort = "high";
+	let lastUsage: UsageInfo | undefined;
 
 	// biome-ignore lint/complexity/noBannedTypes: Bun WS generic requires {}
 	const server = Bun.serve<{}>({
@@ -39,6 +49,15 @@ export function createRuntime(options: RuntimeOptions) {
 		websocket: {
 			open(ws) {
 				clients.add(ws);
+				// Replay active session history on connect
+				const sid = session.id;
+				if (sid) {
+					readHistory(sid)
+						.then((messages) => {
+							ws.send(serialize({ type: "history_replay", messages }));
+						})
+						.catch(() => {});
+				}
 			},
 			close(ws) {
 				clients.delete(ws);
@@ -52,15 +71,101 @@ export function createRuntime(options: RuntimeOptions) {
 				};
 
 				if (data.type === "command") {
+					if (data.command === "/status") {
+						ws.send(
+							serialize({
+								type: "runtime_status",
+								model: activeModel,
+								effort: activeEffort,
+								sessionId: session.id,
+								usage: lastUsage,
+							}),
+						);
+						return;
+					}
+
 					if (data.command === "/new") {
 						session.clear();
 						ws.send(serialize({ type: "session_cleared" }));
 						return;
 					}
 
+					const cmd = data.command ?? "";
+
+					// /session commands
+					if (cmd === "/session" || cmd.startsWith("/session ")) {
+						const arg = cmd.split(" ").slice(1).join(" ").trim();
+
+						if (!arg) {
+							// Show current session
+							const sid = session.id;
+							if (!sid) {
+								ws.send(
+									serialize({
+										type: "error",
+										message: "No active session",
+									}),
+								);
+								return;
+							}
+							const row = options.store?.get(sid);
+							ws.send(
+								serialize({
+									type: "session_info",
+									sdkSessionId: sid,
+									title: row?.title ?? "Untitled",
+									model: row?.model ?? activeModel,
+								}),
+							);
+							return;
+						}
+
+						if (arg === "list") {
+							const sessions = (options.store?.list() ?? []).map((s) => ({
+								sdkSessionId: s.sdkSessionId,
+								title: s.title,
+								model: s.model,
+								lastActive: s.lastActive,
+							}));
+							ws.send(serialize({ type: "session_list", sessions }));
+							return;
+						}
+
+						// Switch to session by partial ID match
+						const all = options.store?.list() ?? [];
+						const match = all.find((s) => s.sdkSessionId.startsWith(arg));
+						if (!match) {
+							ws.send(
+								serialize({
+									type: "error",
+									message: `No session matching: ${arg}`,
+								}),
+							);
+							return;
+						}
+						session.clear();
+						session.setTitle(match.title);
+						session.update(match.sdkSessionId, match.model);
+						ws.send(
+							serialize({
+								type: "session_switched",
+								sdkSessionId: match.sdkSessionId,
+								title: match.title,
+							}),
+						);
+						// Replay history async
+						readHistory(match.sdkSessionId)
+							.then((messages) => {
+								ws.send(serialize({ type: "history_replay", messages }));
+							})
+							.catch(() => {
+								// History unavailable — not fatal
+							});
+						return;
+					}
+
 					// /model opus OR /opus — both switch model
 					// /model with no arg — show current
-					const cmd = data.command ?? "";
 					const modelArg = cmd.startsWith("/model")
 						? cmd.split(" ")[1]?.trim()
 						: VALID_MODELS.find((m) => cmd === `/${m}`);
@@ -125,6 +230,10 @@ export function createRuntime(options: RuntimeOptions) {
 
 				if (data.type === "prompt" && data.prompt) {
 					const { prompt, source } = data;
+					// Auto-title from first prompt in a new session
+					if (!session.id) {
+						session.setTitle(prompt.slice(0, 100));
+					}
 					queue.enqueue(async () => {
 						try {
 							const isBroadcast = source === "telegram";
@@ -146,7 +255,7 @@ export function createRuntime(options: RuntimeOptions) {
 								prompt,
 								resume: session.id,
 								cwd: options.cwd,
-								model: activeModel,
+								model: MODEL_ALIASES[activeModel] ?? activeModel,
 								effort: activeEffort,
 							})) {
 								const serialized = serialize(event);
@@ -161,7 +270,8 @@ export function createRuntime(options: RuntimeOptions) {
 								}
 
 								if (event.type === "done") {
-									session.update(event.sessionId);
+									session.update(event.sessionId, activeModel);
+									lastUsage = event.usage;
 								}
 							}
 						} catch (err) {

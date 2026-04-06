@@ -50,6 +50,46 @@ export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
 		}
 	});
 
+	bot.command("session", async (ctx) => {
+		const arg = ctx.match?.trim();
+		const command = arg ? `/session ${arg}` : "/session";
+		const event = await bridge.sendCommandAndWait(command);
+		if (event.type === "session_info") {
+			await ctx.reply(
+				`Session: ${event.sdkSessionId}\nTitle: ${event.title}\nModel: ${event.model}`,
+			);
+		} else if (event.type === "session_list") {
+			const list = (
+				event.sessions as Array<{
+					sdkSessionId: string;
+					title: string;
+				}>
+			)
+				.map((s) => `${s.sdkSessionId.slice(0, 8)}  ${s.title}`)
+				.join("\n");
+			await ctx.reply(list || "No sessions");
+		} else if (event.type === "session_switched") {
+			await ctx.reply(`Switched to: ${event.title}`);
+		} else if (event.type === "error") {
+			await ctx.reply(`[error] ${event.message}`);
+		}
+	});
+
+	bot.command("status", async (ctx) => {
+		const event = await bridge.sendCommandAndWait("/status");
+		if (event.type === "runtime_status") {
+			const u = event.usage as
+				| { contextTokens: number; contextWindow: number; percentage: number }
+				| undefined;
+			const ctx_info = u
+				? `${(u.contextTokens as number).toLocaleString()}/${(u.contextWindow as number).toLocaleString()} (${u.percentage}%)`
+				: "n/a";
+			await ctx.reply(
+				`Model: ${event.model}\nEffort: ${event.effort}\nSession: ${event.sessionId ?? "none"}\nContext: ${ctx_info}`,
+			);
+		}
+	});
+
 	bot.on("message:text", async (ctx) => {
 		try {
 			const response = await bridge.send(ctx.message.text);
