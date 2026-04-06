@@ -4,20 +4,32 @@ A mini OpenClaw: autonomous AI agent powered by the Claude Agent SDK.
 
 ## Architecture
 
-- **Runtime** (`src/runtime/`): Orchestrates agent lifecycle, sessions, and message routing
-- **Backend** (`src/backend/`): HTTP/WebSocket server exposing the runtime
-- **Frontend** (`src/frontend/`): Optional browser UI and TUI
-- **Tools** (`src/tools/`): Custom MCP tools available to the agent
+- **Common** (`src/common/`): Shared protocol types, serialization, helpers
+- **Backend** (`src/backend/`): Facade interface + provider adapters (Claude)
+- **Runtime** (`src/runtime/`): WS server, session, message queue, PID management
+- **Frontend** (`src/frontend/`): TUI (Ink) and Telegram bot
+- **CLI** (`src/cli.ts`): `ma` command — start/stop/restart/status/tui/dev
 
 ## Stack
 
 - **Runtime**: Bun
 - **Agent**: `@anthropic-ai/claude-agent-sdk`
-- **HTTP**: Hono (or `Bun.serve()` directly)
-- **Validation**: Zod
+- **TUI**: Ink (React for terminal)
+- **IM**: grammY (Telegram)
 - **Language**: TypeScript (strict mode)
 
-## Commands
+## CLI Commands
+
+```
+ma start      # start daemon (background)
+ma stop       # stop daemon
+ma restart    # stop + start
+ma status     # check if running
+ma tui        # connect TUI to running daemon
+ma dev        # run daemon in foreground with hot reload
+```
+
+## Dev Commands
 
 - `bun run lint` — lint + format check (Biome)
 - `bun run lint:fix` — auto-fix lint/format issues
@@ -25,6 +37,13 @@ A mini OpenClaw: autonomous AI agent powered by the Claude Agent SDK.
 - `bun run test` — run tests
 - `bun run test:watch` — TDD watch mode
 - `bun run check` — lint + typecheck + test (full CI check)
+
+## User Commands (TUI / Telegram)
+
+- `/new` — start a new conversation
+- `/model opus|sonnet|haiku` or `/opus` `/sonnet` `/haiku` — switch model
+- `/thinking low|medium|high|max` — set thinking effort
+- `/model` or `/thinking` with no arg — show current value
 
 ## Workflow
 
@@ -60,8 +79,7 @@ When unsure about Claude Agent SDK behavior, write a throwaway script in `dev/` 
 
 ```
 common/  ← backend/  ← runtime/  ← frontend/
-                                  ← index.ts
+                                  ← index.ts / cli.ts
 ```
 
 `common/` imports nothing. `backend/` imports `common/`. `runtime/` imports `common/` and `backend/`. `frontend/` imports `common/` only. `frontend/` and `backend/` NEVER import from each other.
-
