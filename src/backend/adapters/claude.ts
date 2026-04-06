@@ -74,15 +74,18 @@ export class ClaudeAdapter implements Facade {
 						| undefined,
 					permissionMode: "bypassPermissions",
 					allowDangerouslySkipPermissions: true,
+					includePartialMessages: true,
 				},
 			});
 
 			for await (const event of conversation) {
-				if (event.type === "assistant") {
-					for (const block of event.message.content) {
-						if (block.type === "text" && block.text) {
-							yield { type: "text", text: block.text };
-						}
+				if (event.type === "stream_event") {
+					const raw = event.event;
+					if (
+						raw.type === "content_block_delta" &&
+						raw.delta.type === "text_delta"
+					) {
+						yield { type: "text", text: raw.delta.text };
 					}
 				} else if (event.type === "result") {
 					yield {

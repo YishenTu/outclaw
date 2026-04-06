@@ -6,8 +6,8 @@ A mini OpenClaw: autonomous AI agent powered by the Claude Agent SDK.
 
 - **Common** (`src/common/`): Shared protocol types, serialization, helpers
 - **Backend** (`src/backend/`): Facade interface + provider adapters (Claude)
-- **Runtime** (`src/runtime/`): WS server, session, message queue, PID management
-- **Frontend** (`src/frontend/`): TUI (Ink) and Telegram bot
+- **Runtime** (`src/runtime/`): WS server, shared active session, SQLite session store, history replay, message queue, PID management
+- **Frontend** (`src/frontend/`): TUI (Ink) and Telegram bot connected to the same runtime session
 - **CLI** (`src/cli.ts`): `ma` command — start/stop/restart/status/tui/dev
 
 ## Stack
@@ -38,13 +38,6 @@ ma dev        # run daemon in foreground with hot reload
 - `bun run test:watch` — TDD watch mode
 - `bun run check` — lint + typecheck + test (full CI check)
 
-## User Commands (TUI / Telegram)
-
-- `/new` — start a new conversation
-- `/model opus|sonnet|haiku` or `/opus` `/sonnet` `/haiku` — switch model
-- `/thinking low|medium|high|max` — set thinking effort
-- `/model` or `/thinking` with no arg — show current value
-
 ## Workflow
 
 **IMPORTANT: This project follows strict TDD (Red-Green-Refactor).**
@@ -57,7 +50,7 @@ Run `bun run check` before considering any work done.
 
 ## SDK exploration
 
-When unsure about Claude Agent SDK behavior, write a throwaway script in `dev/` to test it (e.g. `bun dev/test-query.ts`). No API key needed — the SDK uses the Claude Code session auth.
+When unsure about Claude Agent SDK behavior, write a throwaway script in `dev/`, but convert any settled behavior into automated tests and delete the probe afterward. No API key needed — the SDK uses the Claude Code session auth.
 
 ## Conventions
 

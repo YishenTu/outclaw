@@ -6,9 +6,15 @@ import { SessionManager } from "../../src/runtime/session.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-session-test.sqlite");
 
+function createTestStore() {
+	return new SessionStore(TEST_DB, { journalMode: "DELETE" });
+}
+
 describe("SessionManager", () => {
 	afterEach(() => {
 		if (existsSync(TEST_DB)) rmSync(TEST_DB);
+		if (existsSync(`${TEST_DB}-wal`)) rmSync(`${TEST_DB}-wal`);
+		if (existsSync(`${TEST_DB}-shm`)) rmSync(`${TEST_DB}-shm`);
 	});
 
 	test("starts with no active session (no store)", () => {
@@ -30,7 +36,7 @@ describe("SessionManager", () => {
 	});
 
 	test("persists to store on update", () => {
-		const store = new SessionStore(TEST_DB);
+		const store = createTestStore();
 		const session = new SessionManager(store);
 
 		session.setTitle("Hello world");
@@ -45,7 +51,7 @@ describe("SessionManager", () => {
 	});
 
 	test("restores active session from store", () => {
-		const store = new SessionStore(TEST_DB);
+		const store = createTestStore();
 		store.setActiveSessionId("sdk-456");
 
 		const session = new SessionManager(store);
@@ -55,7 +61,7 @@ describe("SessionManager", () => {
 	});
 
 	test("clear removes active from store", () => {
-		const store = new SessionStore(TEST_DB);
+		const store = createTestStore();
 		const session = new SessionManager(store);
 
 		session.update("sdk-123", "sonnet");

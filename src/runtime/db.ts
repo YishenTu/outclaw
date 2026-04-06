@@ -8,12 +8,16 @@ export interface SessionRow {
 	lastActive: number;
 }
 
+interface SessionStoreOptions {
+	journalMode?: "WAL" | "DELETE";
+}
+
 export class SessionStore {
 	private db: Database;
 
-	constructor(path: string) {
+	constructor(path: string, options: SessionStoreOptions = {}) {
 		this.db = new Database(path, { create: true });
-		this.db.exec("PRAGMA journal_mode=WAL");
+		this.db.exec(`PRAGMA journal_mode=${options.journalMode ?? "WAL"}`);
 		this.migrate();
 	}
 

@@ -4,9 +4,9 @@ A mini [OpenClaw](https://github.com/openclaw/openclaw) — autonomous AI agent 
 
 ## Architecture
 
-- **Runtime** — WS server, session management, message queue, daemon lifecycle
+- **Runtime** — WS server, shared active session, SQLite session store, history replay, message queue, daemon lifecycle
 - **Backend** — Facade interface with Claude Agent SDK adapter
-- **Frontend** — Ink TUI and Telegram bot
+- **Frontend** — Ink TUI and Telegram bot, both connected to the same runtime session
 - **Common** — Shared protocol types and helpers
 
 ## Stack
@@ -22,18 +22,42 @@ A mini [OpenClaw](https://github.com/openclaw/openclaw) — autonomous AI agent 
 ```sh
 bun install
 bun link               # makes 'ma' command available globally
-cp .env.example .env   # add TELEGRAM_BOT_TOKEN (optional)
+cp .env.example .env   # add TELEGRAM_BOT_TOKEN to enable Telegram
 ```
 
 ## Usage
 
 ```sh
 ma start     # start daemon (background)
+ma restart   # stop + start
+ma status    # check if running
 ma tui       # connect TUI
 ma stop      # stop daemon
-ma status    # check if running
 ma dev       # foreground with hot reload
 ```
+
+## User Commands
+
+Available from the TUI and Telegram:
+
+- `/new` — start a fresh conversation
+- `/model` — show the current model alias
+- `/model opus|sonnet|haiku` — switch model
+- `/opus`, `/sonnet`, `/haiku` — shorthand model switches
+- `/thinking` — show the current effort
+- `/thinking low|medium|high|max` — switch effort
+- `/session` — show the active session
+- `/session list` — list recent sessions from SQLite
+- `/session <id-prefix>` — switch to a stored session
+- `/status` — show model, effort, active session, and context usage
+
+## Runtime State
+
+The daemon stores its state in `~/.misanthropic/`:
+
+- `daemon.pid` — background daemon PID
+- `daemon.log` — daemon stdout/stderr from `ma start`
+- `db.sqlite` — session metadata and active session pointer
 
 ## License
 

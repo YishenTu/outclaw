@@ -36,17 +36,39 @@ describe("Telegram bridge", () => {
 		bridge.close();
 	});
 
-	test("chunks long responses at 4096 chars", () => {
+	test("calls onText callback with accumulated text", async () => {
 		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
 
-		const longText = "a".repeat(10000);
-		const chunks = bridge.chunk(longText, 4096);
+		const calls: string[] = [];
+		const response = await bridge.send("hello", (accumulated) => {
+			calls.push(accumulated);
+		});
 
-		expect(chunks.length).toBe(3);
-		expect(chunks[0]?.length).toBe(4096);
-		expect(chunks[1]?.length).toBe(4096);
-		expect(chunks[2]?.length).toBe(1808);
-		expect(chunks.join("")).toBe(longText);
+		expect(response).toBe("echo: hello");
+		expect(calls).toContain("echo: hello");
+
+		bridge.close();
+	});
+
+	test("stream() yields text deltas", async () => {
+		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
+
+		const chunks: string[] = [];
+		for await (const chunk of bridge.stream("hello")) {
+			chunks.push(chunk);
+		}
+
+		expect(chunks.join("")).toBe("echo: hello");
+
+		bridge.close();
+	});
+
+	test("sendCommandAndWait() returns command responses", async () => {
+		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
+		const event = await bridge.sendCommandAndWait("/model");
+
+		expect(event.type).toBe("model_changed");
+		expect(event.model).toBe("opus");
 
 		bridge.close();
 	});

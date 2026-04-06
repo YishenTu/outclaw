@@ -1,7 +1,11 @@
-import { Bot } from "grammy";
+import { autoRetry } from "@grammyjs/auto-retry";
+import { type StreamFlavor, stream } from "@grammyjs/stream";
+import { Bot, type Context } from "grammy";
 import { extractError } from "../../common/protocol.ts";
 import { createTelegramBridge } from "./bridge.ts";
 import { TELEGRAM_COMMANDS } from "./commands.ts";
+
+type MyContext = StreamFlavor<Context>;
 
 interface TelegramBotOptions {
 	token: string;
@@ -9,14 +13,22 @@ interface TelegramBotOptions {
 }
 
 export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
-	const bot = new Bot(token);
+	const bot = new Bot<MyContext>(token);
+	bot.api.config.use(autoRetry());
+	bot.use(stream());
 	const bridge = createTelegramBridge(runtimeUrl);
 
-	bot.api.setMyCommands(TELEGRAM_COMMANDS);
+	void bot.api.setMyCommands(TELEGRAM_COMMANDS).catch((err) => {
+		console.error(`Failed to register Telegram commands: ${extractError(err)}`);
+	});
 
 	bot.command("new", async (ctx) => {
-		bridge.sendCommand("/new");
-		await ctx.reply("Session cleared. Starting fresh.");
+		const event = await bridge.sendCommandAndWait("/new");
+		if (event.type === "session_cleared") {
+			await ctx.reply("Session cleared. Starting fresh.");
+		} else if (event.type === "error") {
+			await ctx.reply(`[error] ${event.message}`);
+		}
 	});
 
 	bot.command("model", async (ctx) => {
@@ -92,11 +104,16 @@ export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
 
 	bot.on("message:text", async (ctx) => {
 		try {
-			const response = await bridge.send(ctx.message.text);
-			const chunks = bridge.chunk(response);
-
-			for (const chunk of chunks) {
-				await ctx.reply(chunk);
+			await ctx.replyWithChatAction("typing");
+			const typingInterval = setInterval(() => {
+				ctx.replyWithChatAction("typing").catch(() => {});
+			}, 4000);
+			try {
+				await ctx.replyWithStream(bridge.stream(ctx.message.text), undefined, {
+					disable_notification: true,
+				});
+			} finally {
+				clearInterval(typingInterval);
 			}
 		} catch (err) {
 			await ctx.reply(`[error] ${extractError(err)}`);

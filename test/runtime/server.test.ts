@@ -7,6 +7,10 @@ import { MockFacade } from "../helpers/mock-facade.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-server-test.sqlite");
 
+function createTestStore(path: string) {
+	return new SessionStore(path, { journalMode: "DELETE" });
+}
+
 function connectWs(port: number): Promise<WebSocket> {
 	return new Promise((resolve) => {
 		const ws = new WebSocket(`ws://localhost:${port}`);
@@ -428,7 +432,7 @@ describe("Runtime server", () => {
 
 	test("/session shows current session info", async () => {
 		const dbPath = `${TEST_DB}-info`;
-		const store = new SessionStore(dbPath);
+		const store = createTestStore(dbPath);
 		const sessFacade = new MockFacade();
 		const sessServer = createRuntime({
 			port: 0,
@@ -462,7 +466,7 @@ describe("Runtime server", () => {
 
 	test("/session list returns sessions", async () => {
 		const dbPath = `${TEST_DB}-list`;
-		const store = new SessionStore(dbPath);
+		const store = createTestStore(dbPath);
 		store.upsert({
 			sdkSessionId: "sdk-aaa",
 			title: "First chat",
@@ -500,7 +504,7 @@ describe("Runtime server", () => {
 
 	test("/session <id> switches to session", async () => {
 		const dbPath = `${TEST_DB}-switch`;
-		const store = new SessionStore(dbPath);
+		const store = createTestStore(dbPath);
 		store.upsert({
 			sdkSessionId: "sdk-target-abc",
 			title: "Target session",

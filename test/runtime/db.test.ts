@@ -5,19 +5,25 @@ import { SessionStore } from "../../src/runtime/db.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-test.sqlite");
 
+function createTestStore() {
+	return new SessionStore(TEST_DB, { journalMode: "DELETE" });
+}
+
 describe("SessionStore", () => {
 	afterEach(() => {
 		if (existsSync(TEST_DB)) rmSync(TEST_DB);
+		if (existsSync(`${TEST_DB}-wal`)) rmSync(`${TEST_DB}-wal`);
+		if (existsSync(`${TEST_DB}-shm`)) rmSync(`${TEST_DB}-shm`);
 	});
 
 	test("creates DB and tables on init", () => {
-		const store = new SessionStore(TEST_DB);
+		const store = createTestStore();
 		expect(existsSync(TEST_DB)).toBe(true);
 		store.close();
 	});
 
 	test("upsert creates a new session", () => {
-		const store = new SessionStore(TEST_DB);
+		const store = createTestStore();
 
 		store.upsert({
 			sdkSessionId: "sdk-123",
@@ -35,7 +41,7 @@ describe("SessionStore", () => {
 	});
 
 	test("upsert updates existing session", () => {
-		const store = new SessionStore(TEST_DB);
+		const store = createTestStore();
 
 		store.upsert({ sdkSessionId: "sdk-123", title: "First", model: "sonnet" });
 		store.upsert({ sdkSessionId: "sdk-123", title: "Updated", model: "opus" });
@@ -48,7 +54,7 @@ describe("SessionStore", () => {
 	});
 
 	test("list returns sessions ordered by last_active desc", async () => {
-		const store = new SessionStore(TEST_DB);
+		const store = createTestStore();
 
 		store.upsert({ sdkSessionId: "old", title: "Old", model: "haiku" });
 		await new Promise((r) => setTimeout(r, 10));
@@ -62,7 +68,7 @@ describe("SessionStore", () => {
 	});
 
 	test("getActiveSessionId / setActiveSessionId", () => {
-		const store = new SessionStore(TEST_DB);
+		const store = createTestStore();
 
 		expect(store.getActiveSessionId()).toBeUndefined();
 
@@ -76,12 +82,26 @@ describe("SessionStore", () => {
 	});
 
 	test("active session persists across instances", () => {
-		let store = new SessionStore(TEST_DB);
+		let store = createTestStore();
 		store.setActiveSessionId("sdk-789");
 		store.close();
 
-		store = new SessionStore(TEST_DB);
+		store = createTestStore();
 		expect(store.getActiveSessionId()).toBe("sdk-789");
 		store.close();
+	});
+
+	test("DELETE journal mode avoids sqlite sidecar files", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			sdkSessionId: "sdk-123",
+			title: "Hello world",
+			model: "sonnet",
+		});
+		store.close();
+
+		expect(existsSync(`${TEST_DB}-wal`)).toBe(false);
+		expect(existsSync(`${TEST_DB}-shm`)).toBe(false);
 	});
 });
