@@ -5,6 +5,7 @@ import {
 	parseMessage,
 	serialize,
 } from "../common/protocol.ts";
+import { MessageQueue } from "./queue.ts";
 import { SessionManager } from "./session.ts";
 
 interface RuntimeOptions {
@@ -20,6 +21,7 @@ export function createRuntime(options: RuntimeOptions) {
 	const facade = options.facade ?? new ClaudeAdapter();
 	const clients = new Set<WsClient>();
 	const session = new SessionManager();
+	const queue = new MessageQueue();
 
 	// biome-ignore lint/complexity/noBannedTypes: Bun WS generic requires {}
 	const server = Bun.serve<{}>({
@@ -37,60 +39,68 @@ export function createRuntime(options: RuntimeOptions) {
 			close(ws) {
 				clients.delete(ws);
 			},
-			async message(ws, message) {
-				try {
-					const data = parseMessage(message as string) as {
-						type: string;
-						command?: string;
-						prompt?: string;
-						source?: string;
-					};
+			message(ws, message) {
+				const data = parseMessage(message as string) as {
+					type: string;
+					command?: string;
+					prompt?: string;
+					source?: string;
+				};
 
-					if (data.type === "command" && data.command === "/new") {
-						session.clear();
-						ws.send(serialize({ type: "session_cleared" }));
-						return;
-					}
+				if (data.type === "command" && data.command === "/new") {
+					session.clear();
+					ws.send(serialize({ type: "session_cleared" }));
+					return;
+				}
 
-					if (data.type === "prompt" && data.prompt) {
-						const isBroadcast = data.source === "telegram";
-
-						if (isBroadcast) {
-							const userPrompt = serialize({
-								type: "user_prompt",
-								prompt: data.prompt,
-								source: data.source ?? "unknown",
-							});
-							for (const client of clients) {
-								if (client !== ws) {
-									client.send(userPrompt);
-								}
-							}
-						}
-
-						for await (const event of facade.run({
-							prompt: data.prompt,
-							resume: session.id,
-							cwd: options.cwd,
-						})) {
-							const serialized = serialize(event);
-							ws.send(serialized);
+				if (data.type === "prompt" && data.prompt) {
+					const { prompt, source } = data;
+					queue.enqueue(async () => {
+						try {
+							const isBroadcast = source === "telegram";
 
 							if (isBroadcast) {
+								const userPrompt = serialize({
+									type: "user_prompt",
+									prompt,
+									source: source ?? "unknown",
+								});
 								for (const client of clients) {
 									if (client !== ws) {
-										client.send(serialized);
+										client.send(userPrompt);
 									}
 								}
 							}
 
-							if (event.type === "done") {
-								session.update(event.sessionId);
+							for await (const event of facade.run({
+								prompt,
+								resume: session.id,
+								cwd: options.cwd,
+							})) {
+								const serialized = serialize(event);
+								ws.send(serialized);
+
+								if (isBroadcast) {
+									for (const client of clients) {
+										if (client !== ws) {
+											client.send(serialized);
+										}
+									}
+								}
+
+								if (event.type === "done") {
+									session.update(event.sessionId);
+								}
 							}
+						} catch (err) {
+							ws.send(
+								serialize({
+									type: "error",
+									message: extractError(err),
+								}),
+							);
 						}
-					}
-				} catch (err) {
-					ws.send(serialize({ type: "error", message: extractError(err) }));
+					});
 				}
 			},
 		},

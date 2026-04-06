@@ -235,4 +235,54 @@ describe("Runtime server", () => {
 		observer.close();
 		tui.close();
 	});
+
+	test("queues concurrent prompts and processes in order", async () => {
+		const queueFacade = new MockFacade();
+		queueFacade.delayMs = 30;
+		const queueServer = createRuntime({ port: 0, facade: queueFacade });
+
+		const ws = await connectWs(queueServer.port);
+
+		// Fire 3 prompts without waiting
+		const allEvents: Array<{ type: string; [key: string]: unknown }> = [];
+		let doneCount = 0;
+		const allDone = new Promise<void>((resolve) => {
+			ws.onmessage = (msg) => {
+				const event = JSON.parse(String(msg.data));
+				allEvents.push(event);
+				if (event.type === "done") {
+					doneCount++;
+					if (doneCount === 3) resolve();
+				}
+			};
+		});
+
+		ws.send(JSON.stringify({ type: "prompt", prompt: "A" }));
+		ws.send(JSON.stringify({ type: "prompt", prompt: "B" }));
+		ws.send(JSON.stringify({ type: "prompt", prompt: "C" }));
+
+		await allDone;
+		ws.close();
+
+		// All 3 should complete
+		expect(doneCount).toBe(3);
+
+		// Should be processed in order
+		expect(queueFacade.callOrder).toEqual(["A", "B", "C"]);
+
+		// Events must be strictly sequential: text A, done A, text B, done B, text C, done C
+		const significant = allEvents.filter(
+			(e) => e.type === "text" || e.type === "done",
+		);
+		expect(significant.map((e) => e.type)).toEqual([
+			"text",
+			"done",
+			"text",
+			"done",
+			"text",
+			"done",
+		]);
+
+		queueServer.stop();
+	});
 });

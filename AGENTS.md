@@ -48,3 +48,20 @@ When unsure about Claude Agent SDK behavior, write a throwaway script in `dev/` 
 - Tests go in `test/` mirroring `src/` structure (e.g. `src/runtime/agent.ts` → `test/runtime/agent.test.ts`)
 - Biome handles linting and formatting (tabs, double quotes)
 - All shared types live in `src/common/protocol.ts` — do NOT create re-export shims or barrel files. Import directly from the source module.
+
+## Code organization
+
+**Keep files small and focused.** One responsibility per file. When adding a new feature:
+
+- If it's a new concept (e.g. cron scheduler, memory store), create a new file — don't append to an existing one.
+- If a file grows past ~100 lines, look for extraction opportunities.
+- Group related files in a directory with `index.ts` as the entry point (e.g. `src/frontend/telegram/`).
+- Follow this import direction (arrows = "can import from"):
+
+```
+common/  ← backend/  ← runtime/  ← frontend/
+                                  ← index.ts
+```
+
+`common/` imports nothing. `backend/` imports `common/`. `runtime/` imports `common/` and `backend/`. `frontend/` imports `common/` only. `frontend/` and `backend/` NEVER import from each other.
+
