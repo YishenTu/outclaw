@@ -1,6 +1,11 @@
 import { Box, render, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	parseMessage,
+	type ServerEvent,
+	serialize,
+} from "../common/protocol.ts";
 
 interface TuiProps {
 	url: string;
@@ -24,17 +29,23 @@ function Tui({ url }: TuiProps) {
 		ws.onerror = () => setStatus("disconnected");
 
 		ws.onmessage = (msg) => {
-			const event = JSON.parse(String(msg.data));
-			if (event.type === "session_cleared") {
-				setOutput("");
-			} else if (event.type === "user_prompt") {
-				setOutput((prev) => `${prev}[${event.source}] ${event.prompt}\n`);
-			} else if (event.type === "text") {
-				setOutput((prev) => prev + event.text);
-			} else if (event.type === "error") {
-				setOutput((prev) => `${prev}\n[error] ${event.message}`);
-			} else if (event.type === "done") {
-				setOutput((prev) => `${prev}\n`);
+			const event = parseMessage(msg.data as string) as ServerEvent;
+			switch (event.type) {
+				case "session_cleared":
+					setOutput("");
+					break;
+				case "user_prompt":
+					setOutput((prev) => `${prev}[${event.source}] ${event.prompt}\n`);
+					break;
+				case "text":
+					setOutput((prev) => prev + event.text);
+					break;
+				case "error":
+					setOutput((prev) => `${prev}\n[error] ${event.message}`);
+					break;
+				case "done":
+					setOutput((prev) => `${prev}\n`);
+					break;
 			}
 		};
 
@@ -44,12 +55,12 @@ function Tui({ url }: TuiProps) {
 	const handleSubmit = useCallback((value: string) => {
 		if (!value.trim() || !wsRef.current) return;
 		if (value.trim() === "/new") {
-			wsRef.current.send(JSON.stringify({ type: "command", command: "/new" }));
+			wsRef.current.send(serialize({ type: "command", command: "/new" }));
 			setInput("");
 			return;
 		}
 		setOutput((prev) => `${prev}> ${value}\n`);
-		wsRef.current.send(JSON.stringify({ type: "prompt", prompt: value }));
+		wsRef.current.send(serialize({ type: "prompt", prompt: value }));
 		setInput("");
 	}, []);
 

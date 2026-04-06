@@ -1,5 +1,7 @@
 import { Bot } from "grammy";
-import { createTelegramBridge } from "./telegram-bridge.ts";
+import { extractError } from "../../common/protocol.ts";
+import { createTelegramBridge } from "./bridge.ts";
+import { TELEGRAM_COMMANDS } from "./commands.ts";
 
 interface TelegramBotOptions {
 	token: string;
@@ -10,9 +12,7 @@ export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
 	const bot = new Bot(token);
 	const bridge = createTelegramBridge(runtimeUrl);
 
-	bot.api.setMyCommands([
-		{ command: "new", description: "Start a new conversation" },
-	]);
+	bot.api.setMyCommands(TELEGRAM_COMMANDS);
 
 	bot.command("new", async (ctx) => {
 		bridge.sendCommand("/new");
@@ -28,8 +28,7 @@ export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
 				await ctx.reply(chunk);
 			}
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			await ctx.reply(`[error] ${message}`);
+			await ctx.reply(`[error] ${extractError(err)}`);
 		}
 	});
 

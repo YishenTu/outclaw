@@ -47,3 +47,4 @@ When unsure about Claude Agent SDK behavior, write a throwaway script in `dev/` 
 - Prefer `Bun.serve()` built-ins (WebSocket, routes) over third-party equivalents
 - Tests go in `test/` mirroring `src/` structure (e.g. `src/runtime/agent.ts` → `test/runtime/agent.test.ts`)
 - Biome handles linting and formatting (tabs, double quotes)
+- All shared types live in `src/common/protocol.ts` — do NOT create re-export shims or barrel files. Import directly from the source module.

@@ -1,3 +1,5 @@
+import { parseMessage, serialize } from "../../common/protocol.ts";
+
 const TELEGRAM_MAX_LENGTH = 4096;
 
 export function createTelegramBridge(url: string) {
@@ -19,11 +21,15 @@ export function createTelegramBridge(url: string) {
 				let text = "";
 
 				ws.onmessage = (msg) => {
-					const event = JSON.parse(String(msg.data));
-					if (event.type === "text") {
+					const event = parseMessage(msg.data as string) as {
+						type: string;
+						text?: string;
+						message?: string;
+					};
+					if (event.type === "text" && event.text) {
 						text += event.text;
 					} else if (event.type === "error") {
-						reject(new Error(event.message));
+						reject(new Error(event.message ?? "Unknown error"));
 					} else if (event.type === "done") {
 						resolve(text);
 					}
@@ -31,12 +37,12 @@ export function createTelegramBridge(url: string) {
 
 				ws.onerror = () => reject(new Error("WebSocket error"));
 
-				ws.send(JSON.stringify({ type: "prompt", prompt, source: "telegram" }));
+				ws.send(serialize({ type: "prompt", prompt, source: "telegram" }));
 			});
 		},
 
 		sendCommand(command: string) {
-			ws.send(JSON.stringify({ type: "command", command }));
+			ws.send(serialize({ type: "command", command }));
 		},
 
 		chunk(text: string, maxLength = TELEGRAM_MAX_LENGTH): string[] {

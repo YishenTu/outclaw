@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { startTelegramBot } from "./frontend/telegram.ts";
+import { startTelegramBot } from "./frontend/telegram/index.ts";
 import { createRuntime } from "./runtime/server.ts";
 
 const HOME_DIR = join(homedir(), ".misanthropic");

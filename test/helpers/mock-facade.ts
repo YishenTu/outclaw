@@ -2,7 +2,7 @@ import type {
 	Facade,
 	FacadeEvent,
 	RunParams,
-} from "../../src/backend/types.ts";
+} from "../../src/common/protocol.ts";
 
 const SESSION_ID = "mock-session-123";
 

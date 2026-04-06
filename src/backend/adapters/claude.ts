@@ -1,5 +1,10 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { Facade, FacadeEvent, RunParams } from "../types.ts";
+import {
+	extractError,
+	type Facade,
+	type FacadeEvent,
+	type RunParams,
+} from "../../common/protocol.ts";
 
 export class ClaudeAdapter implements Facade {
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
@@ -36,8 +41,7 @@ export class ClaudeAdapter implements Facade {
 				}
 			}
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			yield { type: "error", message };
+			yield { type: "error", message: extractError(err) };
 		}
 	}
 }

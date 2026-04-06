@@ -1,5 +1,11 @@
 import { ClaudeAdapter } from "../backend/adapters/claude.ts";
-import type { Facade } from "../backend/types.ts";
+import {
+	extractError,
+	type Facade,
+	parseMessage,
+	serialize,
+} from "../common/protocol.ts";
+import { SessionManager } from "./session.ts";
 
 interface RuntimeOptions {
 	port: number;
@@ -13,7 +19,7 @@ type WsClient = import("bun").ServerWebSocket<{}>;
 export function createRuntime(options: RuntimeOptions) {
 	const facade = options.facade ?? new ClaudeAdapter();
 	const clients = new Set<WsClient>();
-	let activeSessionId: string | undefined;
+	const session = new SessionManager();
 
 	// biome-ignore lint/complexity/noBannedTypes: Bun WS generic requires {}
 	const server = Bun.serve<{}>({
@@ -33,23 +39,27 @@ export function createRuntime(options: RuntimeOptions) {
 			},
 			async message(ws, message) {
 				try {
-					const data = JSON.parse(String(message));
+					const data = parseMessage(message as string) as {
+						type: string;
+						command?: string;
+						prompt?: string;
+						source?: string;
+					};
 
 					if (data.type === "command" && data.command === "/new") {
-						activeSessionId = undefined;
-						ws.send(JSON.stringify({ type: "session_cleared" }));
+						session.clear();
+						ws.send(serialize({ type: "session_cleared" }));
 						return;
 					}
 
-					if (data.type === "prompt") {
+					if (data.type === "prompt" && data.prompt) {
 						const isBroadcast = data.source === "telegram";
 
-						// Notify other clients about the incoming prompt
 						if (isBroadcast) {
-							const userPrompt = JSON.stringify({
+							const userPrompt = serialize({
 								type: "user_prompt",
 								prompt: data.prompt,
-								source: data.source,
+								source: data.source ?? "unknown",
 							});
 							for (const client of clients) {
 								if (client !== ws) {
@@ -60,15 +70,13 @@ export function createRuntime(options: RuntimeOptions) {
 
 						for await (const event of facade.run({
 							prompt: data.prompt,
-							resume: activeSessionId,
+							resume: session.id,
 							cwd: options.cwd,
 						})) {
-							// Always send to the sender
-							ws.send(JSON.stringify(event));
+							const serialized = serialize(event);
+							ws.send(serialized);
 
-							// Broadcast to other clients if from telegram
 							if (isBroadcast) {
-								const serialized = JSON.stringify(event);
 								for (const client of clients) {
 									if (client !== ws) {
 										client.send(serialized);
@@ -77,13 +85,12 @@ export function createRuntime(options: RuntimeOptions) {
 							}
 
 							if (event.type === "done") {
-								activeSessionId = event.sessionId;
+								session.update(event.sessionId);
 							}
 						}
 					}
 				} catch (err) {
-					const msg = err instanceof Error ? err.message : String(err);
-					ws.send(JSON.stringify({ type: "error", message: msg }));
+					ws.send(serialize({ type: "error", message: extractError(err) }));
 				}
 			},
 		},
