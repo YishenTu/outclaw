@@ -10,11 +10,14 @@
 		"typecheck": "tsc --noEmit",
 		"test": "bun test",
 		"test:watch": "bun test --watch",
-		"check": "bun run lint && bun run typecheck && bun run test"
+		"check": "bun run lint && bun run typecheck && bun run test",
+		"start": "bun src/index.ts",
+		"tui": "bun src/tui.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",
-		"@types/bun": "latest"
+		"@types/bun": "latest",
+		"@types/react": "^19.2.14"
 	},
 	"peerDependencies": {
 		"typescript": "^5"
@@ -22,6 +25,9 @@
 	"dependencies": {
 		"@anthropic-ai/claude-agent-sdk": "^0.2.92",
 		"hono": "^4.12.11",
+		"ink": "^6.8.0",
+		"ink-text-input": "^6.0.0",
+		"react": "^19.2.4",
 		"zod": "^4.3.6"
 	}
 }
