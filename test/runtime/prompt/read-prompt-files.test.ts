@@ -19,19 +19,26 @@ describe("readPromptFiles", () => {
 		expect(await readPromptFiles(tmp)).toBe("");
 	});
 
-	test("reads a single file", async () => {
+	test("reads a single file wrapped in xml tag", async () => {
 		writeFileSync(join(tmp, "AGENTS.md"), "instructions here");
-		expect(await readPromptFiles(tmp)).toBe("instructions here");
+		expect(await readPromptFiles(tmp)).toBe(
+			"<agents>\ninstructions here\n</agents>",
+		);
 	});
 
-	test("concatenates all 4 files in order", async () => {
+	test("concatenates all 4 files in order with xml tags", async () => {
 		writeFileSync(join(tmp, "AGENTS.md"), "agents");
 		writeFileSync(join(tmp, "SOUL.md"), "soul");
 		writeFileSync(join(tmp, "USER.md"), "user");
 		writeFileSync(join(tmp, "MEMORY.md"), "memory");
 
 		const result = await readPromptFiles(tmp);
-		expect(result).toBe("agents\n\nsoul\n\nuser\n\nmemory");
+		expect(result).toBe(
+			"<agents>\nagents\n</agents>\n\n" +
+				"<soul>\nsoul\n</soul>\n\n" +
+				"<user>\nuser\n</user>\n\n" +
+				"<memory>\nmemory\n</memory>",
+		);
 	});
 
 	test("skips missing files", async () => {
@@ -39,7 +46,9 @@ describe("readPromptFiles", () => {
 		writeFileSync(join(tmp, "MEMORY.md"), "memory");
 
 		const result = await readPromptFiles(tmp);
-		expect(result).toBe("agents\n\nmemory");
+		expect(result).toBe(
+			"<agents>\nagents\n</agents>\n\n<memory>\nmemory\n</memory>",
+		);
 	});
 
 	test("skips empty files", async () => {
@@ -48,7 +57,7 @@ describe("readPromptFiles", () => {
 		writeFileSync(join(tmp, "USER.md"), "user");
 
 		const result = await readPromptFiles(tmp);
-		expect(result).toBe("agents\n\nuser");
+		expect(result).toBe("<agents>\nagents\n</agents>\n\n<user>\nuser\n</user>");
 	});
 
 	test("throws on unexpected filesystem errors", async () => {

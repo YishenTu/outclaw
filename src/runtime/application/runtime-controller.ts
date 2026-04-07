@@ -142,11 +142,9 @@ export class RuntimeController {
 				);
 			}
 
-			const systemPrompt = await assembleSystemPrompt({
-				promptHomeDir: this.options.promptHomeDir,
-				source,
-				sessionId: this.state.sessionId,
-			});
+			const systemPrompt = this.options.promptHomeDir
+				? await assembleSystemPrompt(this.options.promptHomeDir)
+				: undefined;
 
 			for await (const event of this.options.facade.run({
 				prompt,

@@ -166,7 +166,7 @@ describe("RuntimeController", () => {
 	});
 
 	describe("prompt execution", () => {
-		test("does not load prompt files from process cwd when cwd is undefined", async () => {
+		test("systemPrompt is undefined when promptHomeDir is not set", async () => {
 			const { controller, facade } = createController();
 			const ws = mockWs();
 			controller.handleOpen(ws);
@@ -175,8 +175,7 @@ describe("RuntimeController", () => {
 			await drain(controller, facade);
 
 			const call = facade.allParams.find((p) => p.prompt === "hello");
-			expect(call?.systemPrompt).toContain("Invocation Context");
-			expect(call?.systemPrompt).not.toContain("# misanthropic");
+			expect(call?.systemPrompt).toBeUndefined();
 		});
 
 		test("passes systemPrompt to facade", async () => {
@@ -200,7 +199,7 @@ describe("RuntimeController", () => {
 				const call = facade.allParams.find((p) => p.prompt === "hello");
 				expect(call?.systemPrompt).toBeDefined();
 				expect(call?.systemPrompt).toContain("be helpful");
-				expect(call?.systemPrompt).toContain("Invocation Context");
+				expect(call?.systemPrompt).toContain("<agents>");
 			} finally {
 				rmSync(tmp, { recursive: true });
 			}
