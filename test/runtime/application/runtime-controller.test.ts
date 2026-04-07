@@ -21,6 +21,7 @@ function createController(
 	overrides: {
 		facade?: MockFacade;
 		cwd?: string;
+		promptHomeDir?: string;
 		store?: SessionStore;
 		historyReader?: (
 			id: string,
@@ -33,6 +34,7 @@ function createController(
 		controller: new RuntimeController({
 			facade,
 			cwd: overrides.cwd,
+			promptHomeDir: overrides.promptHomeDir,
 			store: overrides.store,
 			historyReader: overrides.historyReader,
 		}),
@@ -164,6 +166,46 @@ describe("RuntimeController", () => {
 	});
 
 	describe("prompt execution", () => {
+		test("does not load prompt files from process cwd when cwd is undefined", async () => {
+			const { controller, facade } = createController();
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("hello"));
+			await drain(controller, facade);
+
+			const call = facade.allParams.find((p) => p.prompt === "hello");
+			expect(call?.systemPrompt).toContain("Invocation Context");
+			expect(call?.systemPrompt).not.toContain("# misanthropic");
+		});
+
+		test("passes systemPrompt to facade", async () => {
+			const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+			const { tmpdir } = await import("node:os");
+			const { join } = await import("node:path");
+
+			const tmp = mkdtempSync(join(tmpdir(), "mis-test-"));
+			try {
+				writeFileSync(join(tmp, "AGENTS.md"), "be helpful");
+
+				const { controller, facade } = createController({
+					promptHomeDir: tmp,
+				});
+				const ws = mockWs();
+				controller.handleOpen(ws);
+
+				controller.handleMessage(ws, prompt("hello"));
+				await drain(controller, facade);
+
+				const call = facade.allParams.find((p) => p.prompt === "hello");
+				expect(call?.systemPrompt).toBeDefined();
+				expect(call?.systemPrompt).toContain("be helpful");
+				expect(call?.systemPrompt).toContain("Invocation Context");
+			} finally {
+				rmSync(tmp, { recursive: true });
+			}
+		});
+
 		test("passes cwd to facade", async () => {
 			const { controller, facade } = createController({
 				cwd: "/test/project",

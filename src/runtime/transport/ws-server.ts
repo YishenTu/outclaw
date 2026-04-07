@@ -8,6 +8,7 @@ interface RuntimeOptions {
 	port: number;
 	facade?: Facade;
 	cwd?: string;
+	promptHomeDir?: string;
 	historyReader?: (
 		sdkSessionId: string,
 	) => Promise<HistoryReplayEvent["messages"]>;
@@ -17,6 +18,7 @@ interface RuntimeOptions {
 export function createRuntime(options: RuntimeOptions) {
 	const controller = new RuntimeController({
 		cwd: options.cwd,
+		promptHomeDir: options.promptHomeDir,
 		facade: options.facade ?? new ClaudeAdapter(),
 		historyReader: options.historyReader ?? readHistory,
 		store: options.store,

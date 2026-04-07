@@ -3,12 +3,14 @@ import { extractError, parseMessage } from "../../common/protocol.ts";
 import { handleRuntimeCommand } from "../commands/handle-command.ts";
 import { readHistory } from "../persistence/history-reader.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
+import { assembleSystemPrompt } from "../prompt/assemble-system-prompt.ts";
 import { ClientHub, type WsClient } from "../transport/client-hub.ts";
 import { MessageQueue } from "./message-queue.ts";
 import { RuntimeState } from "./runtime-state.ts";
 
 interface RuntimeControllerOptions {
 	cwd?: string;
+	promptHomeDir?: string;
 	facade: Facade;
 	historyReader?: (
 		sdkSessionId: string,
@@ -140,8 +142,15 @@ export class RuntimeController {
 				);
 			}
 
+			const systemPrompt = await assembleSystemPrompt({
+				promptHomeDir: this.options.promptHomeDir,
+				source,
+				sessionId: this.state.sessionId,
+			});
+
 			for await (const event of this.options.facade.run({
 				prompt,
+				systemPrompt,
 				abortController,
 				resume: this.state.sessionId,
 				cwd: this.options.cwd,
