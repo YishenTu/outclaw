@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ServerEvent } from "../../../src/common/protocol.ts";
+import type { ImageRef, ServerEvent } from "../../../src/common/protocol.ts";
 import { RuntimeController } from "../../../src/runtime/application/runtime-controller.ts";
 import type { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
@@ -41,8 +41,8 @@ function createController(
 	};
 }
 
-function prompt(text: string, source?: string) {
-	return JSON.stringify({ type: "prompt", prompt: text, source });
+function prompt(text: string, source?: string, images?: ImageRef[]) {
+	return JSON.stringify({ type: "prompt", prompt: text, source, images });
 }
 
 function command(cmd: string) {
@@ -253,6 +253,20 @@ describe("RuntimeController", () => {
 			expect(doneEvents.length).toBeGreaterThanOrEqual(1);
 		});
 
+		test("streams image events to sender", async () => {
+			const facade = new MockFacade();
+			facade.imageEvents = [{ path: "/tmp/chart.png" }];
+			const { controller } = createController({ facade });
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("plot"));
+			await drain(controller, facade);
+
+			const imageEvents = ws.events().filter((event) => event.type === "image");
+			expect(imageEvents).toEqual([{ type: "image", path: "/tmp/chart.png" }]);
+		});
+
 		test("resumes session on subsequent prompts", async () => {
 			const { controller, facade } = createController();
 			const ws = mockWs();
@@ -292,6 +306,43 @@ describe("RuntimeController", () => {
 			expect(info).toBeDefined();
 			expect(info?.title).toBe("What is the meaning of life?");
 		});
+
+		test("sets session title for an image-only prompt", async () => {
+			const { controller, facade } = createController();
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(
+				ws,
+				prompt("", undefined, [
+					{ path: "/tmp/cat.png", mediaType: "image/png" },
+				]),
+			);
+			await drain(controller, facade);
+
+			controller.handleMessage(ws, command("/session"));
+			await new Promise((r) => setTimeout(r, 10));
+
+			const info = ws.events().find((e) => e.type === "session_info") as
+				| { title: string }
+				| undefined;
+			expect(info?.title).toBe("Image");
+		});
+
+		test("accepts image-only prompts and forwards images to the facade", async () => {
+			const { controller, facade } = createController();
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			const images: ImageRef[] = [
+				{ path: "/tmp/cat.png", mediaType: "image/png" },
+			];
+			controller.handleMessage(ws, prompt("", undefined, images));
+			await drain(controller, facade);
+
+			expect(facade.allParams[0]?.prompt).toBe("");
+			expect(facade.allParams[0]?.images).toEqual(images);
+		});
 	});
 
 	describe("telegram broadcast", () => {
@@ -312,6 +363,45 @@ describe("RuntimeController", () => {
 
 			const tuiText = tuiEvents.filter((e) => e.type === "text");
 			expect(tuiText.length).toBeGreaterThanOrEqual(1);
+		});
+
+		test("broadcasts image prompts to observers", async () => {
+			const { controller, facade } = createController();
+			const tui = mockWs();
+			const tg = mockWs();
+
+			controller.handleOpen(tui);
+			controller.handleOpen(tg);
+
+			const images: ImageRef[] = [
+				{ path: "/tmp/cat.png", mediaType: "image/png" },
+			];
+			controller.handleMessage(tg, prompt("", "telegram", images));
+			await drain(controller, facade);
+
+			const userPrompt = tui
+				.events()
+				.find((event) => event.type === "user_prompt") as
+				| { images?: ImageRef[] }
+				| undefined;
+			expect(userPrompt?.images).toEqual(images);
+		});
+
+		test("broadcasts image events to observers", async () => {
+			const facade = new MockFacade();
+			facade.imageEvents = [{ path: "/tmp/chart.png" }];
+			const { controller } = createController({ facade });
+			const tui = mockWs();
+			const tg = mockWs();
+
+			controller.handleOpen(tui);
+			controller.handleOpen(tg);
+
+			controller.handleMessage(tg, prompt("plot", "telegram"));
+			await drain(controller, facade);
+
+			const imageEvent = tui.events().find((event) => event.type === "image");
+			expect(imageEvent).toEqual({ type: "image", path: "/tmp/chart.png" });
 		});
 
 		test("non-telegram source does not broadcast", async () => {

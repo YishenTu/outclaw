@@ -1,4 +1,8 @@
-import type { ServerEvent } from "../../common/protocol.ts";
+import type {
+	DisplayImage,
+	DisplayMessage,
+	ServerEvent,
+} from "../../common/protocol.ts";
 
 export interface TuiEventUpdate {
 	append?: string;
@@ -31,13 +35,7 @@ export function getTuiEventUpdate(
 			return { replace: "" };
 		case "history_replay":
 			return {
-				replace: event.messages
-					.map((message) =>
-						message.role === "user"
-							? `> ${message.content}\n`
-							: `${message.content}\n`,
-					)
-					.join("\n"),
+				replace: event.messages.map(formatReplayMessage).join("\n"),
 			};
 		case "model_changed":
 			return { append: `[model] ${event.model}\n` };
@@ -52,9 +50,13 @@ export function getTuiEventUpdate(
 		case "effort_changed":
 			return { append: `[effort] ${event.effort}\n` };
 		case "user_prompt":
-			return { append: `[${event.source}] ${event.prompt}\n` };
+			return {
+				append: formatLivePrompt(event.source, event.prompt, event.images),
+			};
 		case "text":
 			return { append: event.text };
+		case "image":
+			return { append: `[image: ${event.path}]\n` };
 		case "error":
 			return {
 				append: `\n[error] ${event.message}`,
@@ -66,4 +68,44 @@ export function getTuiEventUpdate(
 				running: false,
 			};
 	}
+}
+
+function formatImage(image: DisplayImage): string {
+	return image.path ? `[image: ${image.path}]` : "[image]";
+}
+
+function formatLivePrompt(
+	source: string,
+	prompt: string,
+	images?: DisplayImage[],
+): string {
+	const lines: string[] = [];
+	const prefix = `[${source}] `;
+
+	if (prompt) {
+		lines.push(`${prefix}${prompt}`);
+	}
+
+	for (const image of images ?? []) {
+		lines.push(`${prefix}${formatImage(image)}`);
+	}
+
+	return lines.length > 0 ? `${lines.join("\n")}\n` : "";
+}
+
+function formatReplayMessage(message: DisplayMessage): string {
+	if (message.role === "assistant") {
+		return `${message.content}\n`;
+	}
+
+	const lines: string[] = [];
+	if (message.content) {
+		lines.push(`> ${message.content}`);
+	}
+
+	for (const image of message.images ?? []) {
+		lines.push(`> ${formatImage(image)}`);
+	}
+
+	return lines.length > 0 ? `${lines.join("\n")}\n` : "";
 }

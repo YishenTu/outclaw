@@ -8,6 +8,7 @@ import {
 } from "../../common/commands.ts";
 import type {
 	DoneEvent,
+	ImageRef,
 	RuntimeStatusEvent,
 	UsageInfo,
 } from "../../common/protocol.ts";
@@ -59,9 +60,12 @@ export class RuntimeState {
 		};
 	}
 
-	preparePrompt(prompt: string) {
+	preparePrompt(prompt: string, images?: ImageRef[]) {
 		if (!this.session.id && !this.session.title) {
-			this.session.setTitle(prompt.slice(0, 100));
+			const title = deriveSessionTitle(prompt, images);
+			if (title) {
+				this.session.setTitle(title);
+			}
 		}
 	}
 
@@ -93,4 +97,24 @@ export class RuntimeState {
 		this.session.update(event.sessionId, this.activeModel, source);
 		this.lastUsage = event.usage;
 	}
+}
+
+function deriveSessionTitle(
+	prompt: string,
+	images?: ImageRef[],
+): string | undefined {
+	const trimmedPrompt = prompt.trim();
+	if (trimmedPrompt) {
+		return trimmedPrompt.slice(0, 100);
+	}
+
+	const imageCount = images?.length ?? 0;
+	if (imageCount === 1) {
+		return "Image";
+	}
+	if (imageCount > 1) {
+		return `${imageCount} images`;
+	}
+
+	return undefined;
 }

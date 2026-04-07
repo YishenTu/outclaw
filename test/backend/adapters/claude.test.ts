@@ -1,4 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("ClaudeAdapter", () => {
 	test("implements Facade interface", async () => {
@@ -161,5 +164,136 @@ describe("ClaudeAdapter", () => {
 		}
 
 		expect(events).toEqual([{ type: "error", message: "sdk boom" }]);
+	});
+
+	test("emits image events for assistant-reported local image files", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "mis-images-out-"));
+		try {
+			const imagePath = join(tmp, "chart.png");
+			writeFileSync(imagePath, "png-bytes");
+
+			const query = mock((_params: unknown) =>
+				(async function* () {
+					yield {
+						type: "assistant",
+						message: {
+							content: [
+								{
+									type: "text",
+									text: `Saved chart to ${imagePath}`,
+								},
+							],
+						},
+					};
+					yield {
+						type: "result",
+						session_id: "sdk-456",
+						duration_ms: 12,
+						total_cost_usd: 0,
+					};
+				})(),
+			);
+
+			mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+
+			const { ClaudeAdapter } = await import(
+				"../../../src/backend/adapters/claude.ts"
+			);
+			const adapter = new ClaudeAdapter();
+			const events = [];
+
+			for await (const event of adapter.run({ prompt: "plot something" })) {
+				events.push(event);
+			}
+
+			expect(events).toEqual([
+				{
+					type: "image",
+					path: imagePath,
+				},
+				{
+					type: "done",
+					sessionId: "sdk-456",
+					durationMs: 12,
+					costUsd: 0,
+					usage: undefined,
+				},
+			]);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	test("sends multimodal SDK user messages when images are present", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "result",
+					session_id: "sdk-789",
+					duration_ms: 10,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+
+		const tmp = mkdtempSync(join(tmpdir(), "mis-images-"));
+		try {
+			const imagePath = join(tmp, "cat.png");
+			writeFileSync(imagePath, "image-bytes");
+
+			const { ClaudeAdapter } = await import(
+				"../../../src/backend/adapters/claude.ts"
+			);
+			const adapter = new ClaudeAdapter();
+
+			for await (const _event of adapter.run({
+				prompt: "describe this image",
+				images: [{ path: imagePath, mediaType: "image/png" }],
+			})) {
+				// Drain
+			}
+
+			const args = query.mock.calls[0]?.[0] as {
+				prompt:
+					| string
+					| AsyncIterable<{
+							type: string;
+							parent_tool_use_id: string | null;
+							message: { role: string; content: Array<unknown> };
+					  }>;
+			};
+
+			expect(typeof args.prompt).not.toBe("string");
+
+			const messages = [];
+			for await (const message of args.prompt as AsyncIterable<unknown>) {
+				messages.push(message);
+			}
+
+			expect(messages).toEqual([
+				{
+					type: "user",
+					parent_tool_use_id: null,
+					message: {
+						role: "user",
+						content: [
+							{
+								type: "image",
+								source: {
+									type: "base64",
+									media_type: "image/png",
+									data: Buffer.from("image-bytes").toString("base64"),
+								},
+							},
+							{ type: "text", text: "describe this image" },
+						],
+					},
+				},
+			]);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
 	});
 });

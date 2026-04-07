@@ -2,10 +2,13 @@ import { autoRetry } from "@grammyjs/auto-retry";
 import { type StreamFlavor, stream } from "@grammyjs/stream";
 import { Bot, type Context } from "grammy";
 import { MODEL_ALIAS_LIST } from "../../common/commands.ts";
+import type { ImageRef } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import { createTelegramBridge } from "./bridge.ts";
 import { TELEGRAM_COMMANDS } from "./commands.ts";
+import { handleTelegramPhotoMessage } from "./photo-message.ts";
 import { registerTelegramRuntimeCommands } from "./runtime-commands.ts";
+import { handleTelegramTextMessage } from "./text-message.ts";
 
 type MyContext = StreamFlavor<Context>;
 
@@ -13,12 +16,26 @@ interface TelegramBotOptions {
 	token: string;
 	runtimeUrl: string;
 	allowedUsers: number[];
+	mediaRoot: string;
+	resolveMessageImage?: (
+		chatId: number,
+		messageId: number,
+	) => Promise<ImageRef | undefined>;
+	rememberMessageImage?: (params: {
+		chatId: number;
+		messageId: number;
+		image: ImageRef;
+		direction: "inbound" | "outbound";
+	}) => Promise<void>;
 }
 
 export function startTelegramBot({
 	token,
 	runtimeUrl,
 	allowedUsers,
+	mediaRoot,
+	resolveMessageImage,
+	rememberMessageImage,
 }: TelegramBotOptions) {
 	const bot = new Bot<MyContext>(token);
 	bot.api.config.use(autoRetry());
@@ -53,21 +70,52 @@ export function startTelegramBot({
 	}
 
 	bot.on("message:text", async (ctx) => {
-		try {
-			await ctx.replyWithChatAction("typing");
-			const typingInterval = setInterval(() => {
-				ctx.replyWithChatAction("typing").catch(() => {});
-			}, 4000);
-			try {
-				await ctx.replyWithStream(bridge.stream(ctx.message.text), undefined, {
-					disable_notification: true,
-				});
-			} finally {
-				clearInterval(typingInterval);
-			}
-		} catch (err) {
-			await ctx.reply(`[error] ${extractError(err)}`);
+		await handleTelegramTextMessage(
+			{
+				chat: ctx.chat,
+				message: ctx.message,
+				reply: (text) => ctx.reply(text),
+				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
+				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
+				replyWithStream: (iterable, placeholder, options) =>
+					ctx.replyWithStream(iterable, placeholder, options),
+			},
+			{
+				resolveMessageImage,
+				rememberMessageImage,
+				streamPrompt: (prompt, images, onImage) =>
+					bridge.stream(prompt, images, onImage),
+			},
+		);
+	});
+
+	bot.on("message:photo", async (ctx) => {
+		const largestPhoto = ctx.message.photo.at(-1);
+		if (!largestPhoto) {
+			await ctx.reply("[error] Telegram photo message is missing photo sizes");
+			return;
 		}
+
+		await handleTelegramPhotoMessage(
+			{
+				chat: ctx.chat,
+				getFile: () => ctx.api.getFile(largestPhoto.file_id),
+				message: ctx.message,
+				reply: (text) => ctx.reply(text),
+				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
+				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
+				replyWithStream: (iterable, placeholder, options) =>
+					ctx.replyWithStream(iterable, placeholder, options),
+			},
+			{
+				resolveMessageImage,
+				rememberMessageImage,
+				token,
+				mediaRoot,
+				streamPrompt: (prompt, images, onImage) =>
+					bridge.stream(prompt, images, onImage),
+			},
+		);
 	});
 
 	bot.start();

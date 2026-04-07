@@ -1,8 +1,25 @@
 // --- Client → Server messages ---
 
+export type ImageMediaType =
+	| "image/jpeg"
+	| "image/png"
+	| "image/gif"
+	| "image/webp";
+
+export interface ImageRef {
+	path: string;
+	mediaType: ImageMediaType;
+}
+
+export interface DisplayImage {
+	path?: string;
+	mediaType?: ImageMediaType;
+}
+
 export interface PromptMessage {
 	type: "prompt";
 	prompt: string;
+	images?: ImageRef[];
 	source?: "telegram";
 }
 
@@ -18,6 +35,12 @@ export type ClientMessage = PromptMessage | CommandMessage;
 export interface TextEvent {
 	type: "text";
 	text: string;
+}
+
+export interface ImageEvent {
+	type: "image";
+	path: string;
+	caption?: string;
 }
 
 export interface StatusEvent {
@@ -52,6 +75,7 @@ export interface DoneEvent {
 export interface UserPromptEvent {
 	type: "user_prompt";
 	prompt: string;
+	images?: DisplayImage[];
 	source: string;
 }
 
@@ -100,13 +124,20 @@ export interface RuntimeStatusEvent {
 	usage?: UsageInfo;
 }
 
+export interface DisplayMessage {
+	role: "user" | "assistant";
+	content: string;
+	images?: DisplayImage[];
+}
+
 export interface HistoryReplayEvent {
 	type: "history_replay";
-	messages: Array<{ role: "user" | "assistant"; content: string }>;
+	messages: DisplayMessage[];
 }
 
 export type ServerEvent =
 	| TextEvent
+	| ImageEvent
 	| StatusEvent
 	| ErrorEvent
 	| DoneEvent
@@ -122,10 +153,16 @@ export type ServerEvent =
 
 // --- Facade types (backend contract) ---
 
-export type FacadeEvent = TextEvent | StatusEvent | ErrorEvent | DoneEvent;
+export type FacadeEvent =
+	| TextEvent
+	| ImageEvent
+	| StatusEvent
+	| ErrorEvent
+	| DoneEvent;
 
 export interface RunParams {
 	prompt: string;
+	images?: ImageRef[];
 	systemPrompt?: string;
 	abortController?: AbortController;
 	resume?: string;

@@ -1,4 +1,8 @@
-import { parseMessage } from "../../common/protocol.ts";
+import {
+	type ImageEvent,
+	type ImageRef,
+	parseMessage,
+} from "../../common/protocol.ts";
 import {
 	closeRuntimeSocket,
 	openRuntimeSocket,
@@ -28,6 +32,7 @@ export function createTelegramBridge(url: string) {
 		async send(
 			prompt: string,
 			onText?: (accumulated: string) => void,
+			images?: ImageRef[],
 		): Promise<string> {
 			const { ws, ready } = createSocket();
 			await ready;
@@ -58,7 +63,7 @@ export function createTelegramBridge(url: string) {
 					reject(new Error("WebSocket error"));
 				};
 
-				sendRuntimePrompt(ws, prompt, "telegram");
+				sendRuntimePrompt(ws, prompt, "telegram", images);
 			});
 		},
 
@@ -81,6 +86,7 @@ export function createTelegramBridge(url: string) {
 							if (!expectedTypes.has(event.type)) return;
 						} else if (
 							event.type === "history_replay" ||
+							event.type === "image" ||
 							event.type === "text" ||
 							event.type === "done" ||
 							event.type === "user_prompt"
@@ -99,20 +105,38 @@ export function createTelegramBridge(url: string) {
 			});
 		},
 
-		async *stream(prompt: string): AsyncIterable<string> {
+		async *stream(
+			prompt: string,
+			images?: ImageRef[],
+			onImage?: (event: ImageEvent) => void | Promise<void>,
+		): AsyncIterable<string> {
 			const { ws, ready } = createSocket();
 			await ready;
 
 			let resolve: ((value: IteratorResult<string>) => void) | null = null;
 			let done = false;
 			let error: Error | null = null;
+			let pendingImageWork = Promise.resolve();
 			const pending: string[] = [];
+
+			const finishWithError = (err: Error) => {
+				error = err;
+				done = true;
+				closeSocket(ws);
+				if (resolve) {
+					const r = resolve;
+					resolve = null;
+					r({ value: undefined as unknown as string, done: true });
+				}
+			};
 
 			ws.onmessage = (msg) => {
 				const event = parseMessage(msg.data as string) as {
 					type: string;
 					text?: string;
 					message?: string;
+					path?: string;
+					caption?: string;
 				};
 				if (event.type === "text" && event.text) {
 					if (resolve) {
@@ -122,15 +146,26 @@ export function createTelegramBridge(url: string) {
 					} else {
 						pending.push(event.text);
 					}
-				} else if (event.type === "error") {
-					error = new Error(event.message ?? "Unknown error");
-					done = true;
-					closeSocket(ws);
-					if (resolve) {
-						const r = resolve;
-						resolve = null;
-						r({ value: undefined as unknown as string, done: true });
+				} else if (event.type === "image" && event.path) {
+					if (!onImage) {
+						return;
 					}
+					pendingImageWork = pendingImageWork
+						.then(() =>
+							onImage({
+								type: "image",
+								path: event.path as string,
+								caption:
+									typeof event.caption === "string" ? event.caption : undefined,
+							}),
+						)
+						.catch((err) => {
+							finishWithError(
+								err instanceof Error ? err : new Error(String(err)),
+							);
+						});
+				} else if (event.type === "error") {
+					finishWithError(new Error(event.message ?? "Unknown error"));
 				} else if (event.type === "done") {
 					done = true;
 					closeSocket(ws);
@@ -142,17 +177,10 @@ export function createTelegramBridge(url: string) {
 				}
 			};
 			ws.onerror = () => {
-				error = new Error("WebSocket error");
-				done = true;
-				closeSocket(ws);
-				if (resolve) {
-					const r = resolve;
-					resolve = null;
-					r({ value: undefined as unknown as string, done: true });
-				}
+				finishWithError(new Error("WebSocket error"));
 			};
 
-			sendRuntimePrompt(ws, prompt, "telegram");
+			sendRuntimePrompt(ws, prompt, "telegram", images);
 
 			while (true) {
 				if (pending.length > 0) {
@@ -166,6 +194,7 @@ export function createTelegramBridge(url: string) {
 				if (result.done) break;
 				yield result.value;
 			}
+			await pendingImageWork;
 			if (error) throw error;
 		},
 

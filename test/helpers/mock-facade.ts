@@ -12,6 +12,7 @@ export class MockFacade implements Facade {
 	callCount = 0;
 	delayMs = 0;
 	callOrder: string[] = [];
+	imageEvents: Array<{ path: string; caption?: string }> = [];
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		this.lastParams = params;
@@ -29,6 +30,9 @@ export class MockFacade implements Facade {
 		}
 
 		yield { type: "text", text: `echo: ${params.prompt}` };
+		for (const imageEvent of this.imageEvents) {
+			yield { type: "image", ...imageEvent };
+		}
 		yield {
 			type: "done",
 			sessionId: SESSION_ID,

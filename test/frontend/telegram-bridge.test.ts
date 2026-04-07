@@ -5,9 +5,11 @@ import { MockFacade } from "../helpers/mock-facade.ts";
 
 describe("Telegram bridge", () => {
 	let server: ReturnType<typeof createRuntime>;
+	let facade: MockFacade;
 
 	beforeAll(() => {
-		server = createRuntime({ port: 0, facade: new MockFacade() });
+		facade = new MockFacade();
+		server = createRuntime({ port: 0, facade });
 	});
 
 	afterAll(() => {
@@ -59,6 +61,46 @@ describe("Telegram bridge", () => {
 		}
 
 		expect(chunks.join("")).toBe("echo: hello");
+
+		bridge.close();
+	});
+
+	test("stream() forwards image events to callback", async () => {
+		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
+		facade.imageEvents = [{ path: "/tmp/chart.png" }];
+
+		try {
+			const chunks: string[] = [];
+			const imageEvents: Array<{ type: string; path: string }> = [];
+
+			for await (const chunk of bridge.stream("hello", undefined, (event) => {
+				imageEvents.push(event);
+			})) {
+				chunks.push(chunk);
+			}
+
+			expect(chunks.join("")).toBe("echo: hello");
+			expect(imageEvents).toEqual([{ type: "image", path: "/tmp/chart.png" }]);
+		} finally {
+			facade.imageEvents = [];
+			bridge.close();
+		}
+	});
+
+	test("stream() forwards prompt images", async () => {
+		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
+
+		const chunks: string[] = [];
+		for await (const chunk of bridge.stream("", [
+			{ path: "/tmp/cat.png", mediaType: "image/png" },
+		])) {
+			chunks.push(chunk);
+		}
+
+		expect(chunks.join("")).toBe("echo: ");
+		expect(facade.lastParams?.images).toEqual([
+			{ path: "/tmp/cat.png", mediaType: "image/png" },
+		]);
 
 		bridge.close();
 	});

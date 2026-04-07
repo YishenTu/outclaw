@@ -108,6 +108,25 @@ describe("Runtime server", () => {
 		expect(doneEvents.length).toBe(1);
 	});
 
+	test("forwards image events over websocket", async () => {
+		const imageFacade = new MockFacade();
+		imageFacade.imageEvents = [{ path: "/tmp/chart.png" }];
+		const imageServer = createRuntime({ port: 0, facade: imageFacade });
+
+		const ws = await connectWs(imageServer.port);
+		const collecting = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "plot" }));
+		const events = await collecting;
+		ws.close();
+
+		expect(events.find((event) => event.type === "image")).toEqual({
+			type: "image",
+			path: "/tmp/chart.png",
+		});
+
+		imageServer.stop();
+	});
+
 	test("passes cwd to facade", async () => {
 		const cwdFacade = new MockFacade();
 		const cwdServer = createRuntime({

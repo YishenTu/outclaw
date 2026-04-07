@@ -1,4 +1,8 @@
-import type { Facade, HistoryReplayEvent } from "../../common/protocol.ts";
+import type {
+	Facade,
+	HistoryReplayEvent,
+	ImageRef,
+} from "../../common/protocol.ts";
 import { extractError, parseMessage } from "../../common/protocol.ts";
 import { handleRuntimeCommand } from "../commands/handle-command.ts";
 import { readHistory } from "../persistence/history-reader.ts";
@@ -20,6 +24,7 @@ interface RuntimeControllerOptions {
 
 interface IncomingMessage {
 	command?: string;
+	images?: ImageRef[];
 	prompt?: string;
 	source?: string;
 	type?: string;
@@ -76,10 +81,14 @@ export class RuntimeController {
 			return;
 		}
 
-		if (data.type === "prompt" && data.prompt) {
-			this.state.preparePrompt(data.prompt);
+		const prompt = data.prompt ?? "";
+		const hasPrompt = prompt !== "";
+		const hasImages = (data.images?.length ?? 0) > 0;
+
+		if (data.type === "prompt" && (hasPrompt || hasImages)) {
+			this.state.preparePrompt(prompt, data.images);
 			this.queue.enqueue(() =>
-				this.runPrompt(ws, data.prompt as string, data.source),
+				this.runPrompt(ws, prompt, data.source, data.images),
 			);
 		}
 	};
@@ -123,7 +132,12 @@ export class RuntimeController {
 		}
 	}
 
-	private async runPrompt(ws: WsClient, prompt: string, source?: string) {
+	private async runPrompt(
+		ws: WsClient,
+		prompt: string,
+		source?: string,
+		images?: ImageRef[],
+	) {
 		const abortController = new AbortController();
 		this.activeAbort = abortController;
 		const generation = this.state.generation;
@@ -136,6 +150,7 @@ export class RuntimeController {
 					{
 						type: "user_prompt",
 						prompt,
+						images,
 						source,
 					},
 					ws,
@@ -148,6 +163,7 @@ export class RuntimeController {
 
 			for await (const event of this.options.facade.run({
 				prompt,
+				images,
 				systemPrompt,
 				abortController,
 				resume: this.state.sessionId,

@@ -47,4 +47,49 @@ describe("readHistory", () => {
 			{ role: "assistant", content: "hi there" },
 		]);
 	});
+
+	test("preserves multimodal user prompts in replayable form", async () => {
+		const getSessionMessages = mock(async () => [
+			{
+				type: "user",
+				message: {
+					content: [
+						{
+							type: "image",
+							source: {
+								type: "base64",
+								media_type: "image/png",
+								data: "abc123",
+							},
+						},
+						{ type: "text", text: "describe this" },
+					],
+				},
+			},
+			{
+				type: "assistant",
+				message: {
+					content: [{ type: "text", text: "It is a cat." }],
+				},
+			},
+		]);
+
+		mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+			getSessionMessages,
+		}));
+
+		const { readHistory } = await import(
+			"../../../src/runtime/persistence/history-reader.ts"
+		);
+		const messages = await readHistory("sdk-456");
+
+		expect(messages).toEqual([
+			{
+				role: "user",
+				content: "describe this",
+				images: [{ mediaType: "image/png" }],
+			},
+			{ role: "assistant", content: "It is a cat." },
+		]);
+	});
 });

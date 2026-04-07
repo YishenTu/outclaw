@@ -1,4 +1,8 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type {
+	ContentBlockParam,
+	MessageParam,
+} from "@anthropic-ai/sdk/resources/messages/messages";
 import {
 	extractError,
 	type Facade,
@@ -6,6 +10,7 @@ import {
 	type RunParams,
 	type UsageInfo,
 } from "../../common/protocol.ts";
+import { extractImageEvents } from "./image-events.ts";
 
 function extractUsage(event: {
 	modelUsage?: Record<
@@ -63,10 +68,11 @@ export class ClaudeAdapter implements Facade {
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		const abortController = params.abortController ?? new AbortController();
+		const emittedImagePaths = new Set<string>();
 
 		try {
 			const conversation = query({
-				prompt: params.prompt,
+				prompt: createPromptInput(params),
 				options: {
 					systemPrompt: params.systemPrompt,
 					abortController,
@@ -96,7 +102,12 @@ export class ClaudeAdapter implements Facade {
 					) {
 						yield { type: "text", text: raw.delta.text };
 					}
-				} else if (event.type === "result") {
+					continue;
+				}
+
+				yield* extractImageEvents(event, emittedImagePaths);
+
+				if (event.type === "result") {
 					yield {
 						type: "done",
 						sessionId: event.session_id,
@@ -110,4 +121,45 @@ export class ClaudeAdapter implements Facade {
 			yield { type: "error", message: extractError(err) };
 		}
 	}
+}
+
+function createPromptInput(
+	params: RunParams,
+): string | AsyncIterable<SDKUserMessage> {
+	if (!params.images || params.images.length === 0) {
+		return params.prompt;
+	}
+
+	return (async function* (): AsyncIterable<SDKUserMessage> {
+		const content: ContentBlockParam[] = [];
+
+		for (const image of params.images ?? []) {
+			const data = Buffer.from(
+				await Bun.file(image.path).arrayBuffer(),
+			).toString("base64");
+			content.push({
+				type: "image",
+				source: {
+					type: "base64",
+					data,
+					media_type: image.mediaType,
+				},
+			});
+		}
+
+		if (params.prompt) {
+			content.push({ type: "text", text: params.prompt });
+		}
+
+		const message: MessageParam = {
+			role: "user",
+			content,
+		};
+
+		yield {
+			type: "user",
+			message,
+			parent_tool_use_id: null,
+		};
+	})();
 }

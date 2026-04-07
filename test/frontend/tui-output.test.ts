@@ -36,4 +36,45 @@ describe("TUI event output", () => {
 				"[status] model=opus effort=high session=session-123 context=1,234/200,000 tokens (1%)\n",
 		});
 	});
+
+	test("renders live image prompts", () => {
+		const update = getTuiEventUpdate({
+			type: "user_prompt",
+			prompt: "what is this?",
+			images: [{ path: "/tmp/cat.png", mediaType: "image/png" }],
+			source: "telegram",
+		});
+
+		expect(update).toEqual({
+			append: "[telegram] what is this?\n[telegram] [image: /tmp/cat.png]\n",
+		});
+	});
+
+	test("renders outbound image events", () => {
+		const update = getTuiEventUpdate({
+			type: "image",
+			path: "/tmp/chart.png",
+		});
+
+		expect(update).toEqual({
+			append: "[image: /tmp/chart.png]\n",
+		});
+	});
+
+	test("renders replayed image prompts without a path", () => {
+		const update = getTuiEventUpdate({
+			type: "history_replay",
+			messages: [
+				{
+					role: "user",
+					content: "",
+					images: [{ mediaType: "image/png" }],
+				},
+			],
+		});
+
+		expect(update).toEqual({
+			replace: "> [image]\n",
+		});
+	});
 });

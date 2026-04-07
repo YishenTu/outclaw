@@ -1,4 +1,4 @@
-import { serialize } from "../../common/protocol.ts";
+import { type ImageRef, serialize } from "../../common/protocol.ts";
 
 export interface RuntimeSocket {
 	close: () => void;
@@ -56,6 +56,7 @@ export function sendRuntimePrompt(
 	ws: WebSocket,
 	prompt: string,
 	source?: "telegram",
+	images?: ImageRef[],
 ) {
-	ws.send(serialize({ type: "prompt", prompt, source }));
+	ws.send(serialize({ type: "prompt", prompt, source, images }));
 }
