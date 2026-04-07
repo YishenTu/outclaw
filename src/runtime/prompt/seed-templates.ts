@@ -7,7 +7,6 @@ const TEMPLATE_FILES = [
 	"USER.md",
 	"MEMORY.md",
 	"HEARTBEAT.md",
-	"config.json",
 ] as const;
 
 function shouldSkipTemplateCopy(error: unknown, sourcePath: string): boolean {

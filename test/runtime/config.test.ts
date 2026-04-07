@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../../src/runtime/config.ts";
@@ -9,7 +9,7 @@ function tmp() {
 }
 
 describe("loadConfig", () => {
-	test("returns defaults when no config file exists", () => {
+	test("returns defaults and writes config.json when none exists", () => {
 		const dir = tmp();
 		try {
 			const config = loadConfig(dir);
@@ -17,6 +17,7 @@ describe("loadConfig", () => {
 			expect(config.telegram.botToken).toBe("");
 			expect(config.telegram.allowedUsers).toEqual([]);
 			expect(config.permissionMode).toBe("bypassPermissions");
+			expect(existsSync(join(dir, "config.json"))).toBe(true);
 		} finally {
 			rmSync(dir, { recursive: true });
 		}

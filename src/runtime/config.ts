@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface Config {
@@ -59,6 +59,7 @@ export function loadConfig(homeDir: string): Config {
 	const configPath = join(homeDir, "config.json");
 
 	if (!existsSync(configPath)) {
+		writeFileSync(configPath, `${JSON.stringify(DEFAULTS, null, "\t")}\n`);
 		return { ...DEFAULTS, telegram: { ...DEFAULTS.telegram } };
 	}
 
