@@ -4,6 +4,7 @@ export interface SessionRow {
 	sdkSessionId: string;
 	title: string;
 	model: string;
+	source: string;
 	createdAt: number;
 	lastActive: number;
 }
@@ -26,6 +27,7 @@ export class SessionStore {
 			sdk_session_id TEXT PRIMARY KEY,
 			title TEXT NOT NULL,
 			model TEXT NOT NULL,
+			source TEXT NOT NULL DEFAULT 'tui',
 			created_at INTEGER NOT NULL,
 			last_active INTEGER NOT NULL
 		)`);
@@ -35,12 +37,17 @@ export class SessionStore {
 		)`);
 	}
 
-	upsert(params: { sdkSessionId: string; title: string; model: string }) {
+	upsert(params: {
+		sdkSessionId: string;
+		title: string;
+		model: string;
+		source?: string;
+	}) {
 		const now = Date.now();
 		this.db
 			.query(
-				`INSERT INTO sessions (sdk_session_id, title, model, created_at, last_active)
-			 VALUES ($id, $title, $model, $now, $now)
+				`INSERT INTO sessions (sdk_session_id, title, model, source, created_at, last_active)
+			 VALUES ($id, $title, $model, $source, $now, $now)
 			 ON CONFLICT(sdk_session_id) DO UPDATE SET
 				title = $title, model = $model, last_active = $now`,
 			)
@@ -48,6 +55,7 @@ export class SessionStore {
 				$id: params.sdkSessionId,
 				$title: params.title,
 				$model: params.model,
+				$source: params.source ?? "tui",
 				$now: now,
 			});
 	}
@@ -55,12 +63,13 @@ export class SessionStore {
 	get(sdkSessionId: string): SessionRow | undefined {
 		const row = this.db
 			.query(
-				"SELECT sdk_session_id, title, model, created_at, last_active FROM sessions WHERE sdk_session_id = $id",
+				"SELECT sdk_session_id, title, model, source, created_at, last_active FROM sessions WHERE sdk_session_id = $id",
 			)
 			.get({ $id: sdkSessionId }) as {
 			sdk_session_id: string;
 			title: string;
 			model: string;
+			source: string;
 			created_at: number;
 			last_active: number;
 		} | null;
@@ -70,6 +79,7 @@ export class SessionStore {
 			sdkSessionId: row.sdk_session_id,
 			title: row.title,
 			model: row.model,
+			source: row.source,
 			createdAt: row.created_at,
 			lastActive: row.last_active,
 		};
@@ -78,12 +88,13 @@ export class SessionStore {
 	list(limit = 20): SessionRow[] {
 		const rows = this.db
 			.query(
-				"SELECT sdk_session_id, title, model, created_at, last_active FROM sessions ORDER BY last_active DESC LIMIT $limit",
+				"SELECT sdk_session_id, title, model, source, created_at, last_active FROM sessions ORDER BY last_active DESC LIMIT $limit",
 			)
 			.all({ $limit: limit }) as Array<{
 			sdk_session_id: string;
 			title: string;
 			model: string;
+			source: string;
 			created_at: number;
 			last_active: number;
 		}>;
@@ -92,6 +103,7 @@ export class SessionStore {
 			sdkSessionId: row.sdk_session_id,
 			title: row.title,
 			model: row.model,
+			source: row.source,
 			createdAt: row.created_at,
 			lastActive: row.last_active,
 		}));

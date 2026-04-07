@@ -82,8 +82,8 @@ export class RuntimeState {
 		this.lastUsage = undefined;
 	}
 
-	completeRun(event: DoneEvent) {
-		this.session.update(event.sessionId, this.activeModel);
+	completeRun(event: DoneEvent, source?: string) {
+		this.session.update(event.sessionId, this.activeModel, source);
 		this.lastUsage = event.usage;
 	}
 }

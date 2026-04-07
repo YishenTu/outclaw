@@ -19,7 +19,7 @@ export class SessionManager {
 		return this.currentTitle;
 	}
 
-	update(sessionId: string, model: string) {
+	update(sessionId: string, model: string, source?: string) {
 		const storedTitle = this.store?.get(sessionId)?.title;
 		const title =
 			sessionId === this.activeSessionId
@@ -33,6 +33,7 @@ export class SessionManager {
 			sdkSessionId: sessionId,
 			title: title ?? "Untitled",
 			model,
+			source,
 		});
 	}
 

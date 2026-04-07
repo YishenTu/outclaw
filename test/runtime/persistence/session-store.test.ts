@@ -40,6 +40,59 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("upsert persists source", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			sdkSessionId: "sdk-tg",
+			title: "From Telegram",
+			model: "opus",
+			source: "telegram",
+		});
+
+		const session = store.get("sdk-tg");
+		expect(session?.source).toBe("telegram");
+
+		store.close();
+	});
+
+	test("source defaults to tui when not provided", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			sdkSessionId: "sdk-tui",
+			title: "From TUI",
+			model: "opus",
+		});
+
+		const session = store.get("sdk-tui");
+		expect(session?.source).toBe("tui");
+
+		store.close();
+	});
+
+	test("upsert does not overwrite source on update", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			sdkSessionId: "sdk-123",
+			title: "First",
+			model: "sonnet",
+			source: "telegram",
+		});
+		store.upsert({
+			sdkSessionId: "sdk-123",
+			title: "Updated",
+			model: "opus",
+		});
+
+		const session = store.get("sdk-123");
+		expect(session?.title).toBe("Updated");
+		expect(session?.source).toBe("telegram");
+
+		store.close();
+	});
+
 	test("upsert updates existing session", () => {
 		const store = createTestStore();
 

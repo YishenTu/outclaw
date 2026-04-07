@@ -142,7 +142,7 @@ export class RuntimeController {
 					this.hub.broadcast(event, ws);
 				}
 				if (event.type === "done") {
-					this.state.completeRun(event);
+					this.state.completeRun(event, source);
 				}
 			}
 		} catch (err) {
