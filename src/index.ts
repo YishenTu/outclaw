@@ -21,12 +21,23 @@ console.log(`agent cwd: ${HOME_DIR}`);
 console.log(`daemon pid: ${process.pid}`);
 
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+const allowedUsers = process.env.TELEGRAM_ALLOWED_USERS?.split(",")
+	.map(Number)
+	.filter(Boolean);
 let telegram: ReturnType<typeof startTelegramBot> | undefined;
 
 if (telegramToken) {
+	if (!allowedUsers || allowedUsers.length === 0) {
+		console.error(
+			"TELEGRAM_BOT_TOKEN is set but TELEGRAM_ALLOWED_USERS is missing or empty. " +
+				"Set TELEGRAM_ALLOWED_USERS to a comma-separated list of Telegram user IDs.",
+		);
+		process.exit(1);
+	}
 	telegram = startTelegramBot({
 		token: telegramToken,
 		runtimeUrl: `ws://localhost:${runtime.port}`,
+		allowedUsers,
 	});
 } else {
 	console.log("TELEGRAM_BOT_TOKEN not set, skipping Telegram");

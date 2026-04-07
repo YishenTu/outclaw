@@ -64,6 +64,7 @@ export function createTelegramBridge(url: string) {
 
 		async sendCommandAndWait(
 			command: string,
+			expectedTypes?: ReadonlySet<string>,
 		): Promise<{ type: string; [key: string]: unknown }> {
 			const { ws, ready } = createSocket();
 			await ready;
@@ -73,8 +74,19 @@ export function createTelegramBridge(url: string) {
 						type: string;
 						[key: string]: unknown;
 					};
-					if (event.type === "history_replay") {
-						return;
+					// Always accept error events; skip everything else
+					// that isn't in the expected set.
+					if (event.type !== "error") {
+						if (expectedTypes) {
+							if (!expectedTypes.has(event.type)) return;
+						} else if (
+							event.type === "history_replay" ||
+							event.type === "text" ||
+							event.type === "done" ||
+							event.type === "user_prompt"
+						) {
+							return;
+						}
 					}
 					closeSocket(ws);
 					resolve(event);

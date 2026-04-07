@@ -54,9 +54,13 @@ export class RuntimeController {
 		}
 
 		if (data.type === "command" && data.command) {
-			if (data.command.trim() === "/stop") {
+			const cmd = data.command.trim();
+			if (cmd === "/stop") {
 				this.handleStop(ws);
 				return;
+			}
+			if (cmd === "/new" || this.isSessionMutation(cmd)) {
+				this.activeAbort?.abort();
 			}
 			void handleRuntimeCommand({
 				command: data.command,
@@ -82,6 +86,12 @@ export class RuntimeController {
 		this.hub.add(ws);
 		void this.replayHistory([ws]);
 	};
+
+	private isSessionMutation(cmd: string): boolean {
+		if (!cmd.startsWith("/session ")) return false;
+		const arg = cmd.slice("/session ".length).trim();
+		return arg !== "" && arg !== "list";
+	}
 
 	private handleStop(ws: WsClient) {
 		if (this.activeAbort) {
@@ -114,6 +124,7 @@ export class RuntimeController {
 	private async runPrompt(ws: WsClient, prompt: string, source?: string) {
 		const abortController = new AbortController();
 		this.activeAbort = abortController;
+		const generation = this.state.generation;
 
 		try {
 			const isBroadcast = source === "telegram";
@@ -141,7 +152,7 @@ export class RuntimeController {
 				if (isBroadcast) {
 					this.hub.broadcast(event, ws);
 				}
-				if (event.type === "done") {
+				if (event.type === "done" && this.state.generation === generation) {
 					this.state.completeRun(event, source);
 				}
 			}

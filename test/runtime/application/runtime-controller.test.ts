@@ -373,6 +373,52 @@ describe("RuntimeController", () => {
 		});
 	});
 
+	describe("session mutation during active run", () => {
+		test("/new during active run does not let stale completeRun overwrite session", async () => {
+			const facade = new MockFacade();
+			facade.delayMs = 100;
+			const { controller } = createController({ facade });
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			// Start a slow prompt — establishes a session
+			controller.handleMessage(ws, prompt("setup"));
+			await new Promise((r) => setTimeout(r, 30));
+
+			// /new while run is active — should abort and clear session
+			controller.handleMessage(ws, command("/new"));
+			await new Promise((r) => setTimeout(r, 150));
+
+			// Session should be cleared, not restored by stale completeRun
+			controller.handleMessage(ws, command("/status"));
+			await new Promise((r) => setTimeout(r, 10));
+
+			const events = ws.events();
+			const status = events.findLast((e) => e.type === "runtime_status") as
+				| { sessionId?: string }
+				| undefined;
+			expect(status).toBeDefined();
+			expect(status?.sessionId).toBeUndefined();
+		});
+
+		test("/new aborts the active run", async () => {
+			const facade = new MockFacade();
+			facade.delayMs = 200;
+			const { controller } = createController({ facade });
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("slow"));
+			await new Promise((r) => setTimeout(r, 30));
+
+			controller.handleMessage(ws, command("/new"));
+			await new Promise((r) => setTimeout(r, 50));
+
+			const slowCall = facade.allParams.find((p) => p.prompt === "slow");
+			expect(slowCall?.abortController?.signal.aborted).toBe(true);
+		});
+	});
+
 	describe("abort", () => {
 		test("/stop aborts a running prompt", async () => {
 			const facade = new MockFacade();

@@ -19,9 +19,14 @@ export class RuntimeState {
 	private activeEffort: EffortLevel = DEFAULT_EFFORT;
 	private lastUsage: UsageInfo | undefined;
 	private session: SessionManager;
+	private _generation = 0;
 
 	constructor(store?: SessionStore) {
 		this.session = new SessionManager(store);
+	}
+
+	get generation(): number {
+		return this._generation;
 	}
 
 	get effort(): EffortLevel {
@@ -61,6 +66,7 @@ export class RuntimeState {
 	}
 
 	clearSession() {
+		this._generation++;
 		this.session.clear();
 		this.lastUsage = undefined;
 	}
@@ -74,6 +80,7 @@ export class RuntimeState {
 	}
 
 	switchToSession(session: SessionRow) {
+		this._generation++;
 		this.session.setTitle(session.title);
 		this.session.update(session.sdkSessionId, session.model);
 		if (isModelAlias(session.model)) {

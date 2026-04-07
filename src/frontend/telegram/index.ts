@@ -12,12 +12,25 @@ type MyContext = StreamFlavor<Context>;
 interface TelegramBotOptions {
 	token: string;
 	runtimeUrl: string;
+	allowedUsers: number[];
 }
 
-export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
+export function startTelegramBot({
+	token,
+	runtimeUrl,
+	allowedUsers,
+}: TelegramBotOptions) {
 	const bot = new Bot<MyContext>(token);
 	bot.api.config.use(autoRetry());
 	bot.use(stream());
+
+	const allowed = new Set(allowedUsers);
+	bot.use(async (ctx, next) => {
+		if (ctx.from && allowed.has(ctx.from.id)) {
+			return next();
+		}
+	});
+
 	const bridge = createTelegramBridge(runtimeUrl);
 
 	void bot.api.setMyCommands(TELEGRAM_COMMANDS).catch((err) => {
@@ -26,9 +39,13 @@ export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
 
 	registerTelegramRuntimeCommands(bot, bridge);
 
+	const modelExpectedTypes = new Set(["model_changed"]);
 	for (const alias of MODEL_ALIAS_LIST) {
 		bot.command(alias, async (ctx) => {
-			const event = await bridge.sendCommandAndWait(`/${alias}`);
+			const event = await bridge.sendCommandAndWait(
+				`/${alias}`,
+				modelExpectedTypes,
+			);
 			if (event.type === "model_changed") {
 				await ctx.reply(`Model: ${event.model}`);
 			}

@@ -6,7 +6,10 @@ interface TelegramCommandEvent {
 }
 
 export interface TelegramRuntimeCommandBridge {
-	sendCommandAndWait(command: string): Promise<TelegramCommandEvent>;
+	sendCommandAndWait(
+		command: string,
+		expectedTypes?: ReadonlySet<string>,
+	): Promise<TelegramCommandEvent>;
 }
 
 interface TelegramCommandContext {
@@ -31,6 +34,7 @@ type TelegramRuntimeCommandName =
 
 interface TelegramRuntimeCommandDefinition {
 	buildCommand(match?: string): string;
+	expectedTypes: ReadonlySet<string>;
 	formatReply(event: TelegramCommandEvent): string | undefined;
 }
 
@@ -58,6 +62,7 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 > = {
 	new: {
 		buildCommand: () => "/new",
+		expectedTypes: new Set(["session_cleared"]),
 		formatReply: (event) =>
 			event.type === "session_cleared"
 				? "Session cleared. Starting fresh."
@@ -65,6 +70,7 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	},
 	model: {
 		buildCommand: (match) => (match ? `/model ${match}` : "/model"),
+		expectedTypes: new Set(["model_changed"]),
 		formatReply: (event) =>
 			event.type === "model_changed"
 				? `Model: ${String(event.model)}`
@@ -72,6 +78,7 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	},
 	thinking: {
 		buildCommand: (match) => (match ? `/thinking ${match}` : "/thinking"),
+		expectedTypes: new Set(["effort_changed"]),
 		formatReply: (event) =>
 			event.type === "effort_changed"
 				? `Thinking effort: ${String(event.effort)}`
@@ -79,6 +86,11 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	},
 	session: {
 		buildCommand: (match) => (match ? `/session ${match}` : "/session"),
+		expectedTypes: new Set([
+			"session_info",
+			"session_list",
+			"session_switched",
+		]),
 		formatReply: (event) => {
 			if (event.type === "session_info") {
 				return `Session: ${String(event.sdkSessionId)}\nTitle: ${String(event.title)}\nModel: ${String(event.model)}`;
@@ -104,6 +116,7 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	},
 	status: {
 		buildCommand: () => "/status",
+		expectedTypes: new Set(["runtime_status"]),
 		formatReply: (event) => {
 			if (event.type !== "runtime_status") {
 				return formatError(event);
@@ -119,6 +132,7 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	},
 	stop: {
 		buildCommand: () => "/stop",
+		expectedTypes: new Set(["status"]),
 		formatReply: (event) =>
 			event.type === "status" ? String(event.message) : formatError(event),
 	},
@@ -136,6 +150,7 @@ export async function executeTelegramRuntimeCommand(
 	const definition = TELEGRAM_RUNTIME_COMMAND_DEFINITIONS[command];
 	const event = await bridge.sendCommandAndWait(
 		definition.buildCommand(match?.trim()),
+		definition.expectedTypes,
 	);
 	return definition.formatReply(event);
 }

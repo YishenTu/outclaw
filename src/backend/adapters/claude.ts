@@ -52,7 +52,18 @@ function extractUsage(event: {
 	};
 }
 
+type PermissionMode = "default" | "plan" | "bypassPermissions";
+
 export class ClaudeAdapter implements Facade {
+	private permissionMode: PermissionMode;
+
+	constructor(permissionMode?: PermissionMode) {
+		this.permissionMode =
+			permissionMode ??
+			(process.env.PERMISSION_MODE as PermissionMode | undefined) ??
+			"bypassPermissions";
+	}
+
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		const abortController = params.abortController ?? new AbortController();
 
@@ -72,8 +83,9 @@ export class ClaudeAdapter implements Facade {
 						| "high"
 						| "max"
 						| undefined,
-					permissionMode: "bypassPermissions",
-					allowDangerouslySkipPermissions: true,
+					permissionMode: this.permissionMode,
+					allowDangerouslySkipPermissions:
+						this.permissionMode === "bypassPermissions",
 					includePartialMessages: true,
 				},
 			});
