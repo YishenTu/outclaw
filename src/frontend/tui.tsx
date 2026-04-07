@@ -8,6 +8,7 @@ import {
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "./runtime-client/index.ts";
+import { getTuiEventUpdate } from "./tui/output.ts";
 
 interface TuiProps {
 	url: string;
@@ -20,6 +21,7 @@ function Tui({ url }: TuiProps) {
 	const [status, setStatus] = useState<
 		"connecting" | "connected" | "disconnected"
 	>("connecting");
+	const [running, setRunning] = useState(false);
 	const wsRef = useRef<WebSocket | null>(null);
 
 	useEffect(() => {
@@ -33,78 +35,49 @@ function Tui({ url }: TuiProps) {
 
 		ws.onmessage = (msg) => {
 			const event = parseMessage(msg.data as string) as ServerEvent;
-			switch (event.type) {
-				case "session_cleared":
-					setOutput("");
-					break;
-				case "session_switched":
-					setOutput("");
-					break;
-				case "history_replay": {
-					const history = event.messages
-						.map((m: { role: string; content: string }) =>
-							m.role === "user" ? `> ${m.content}\n` : `${m.content}\n`,
-						)
-						.join("\n");
-					setOutput(history);
-					break;
-				}
-				case "model_changed":
-					setOutput((prev) => `${prev}[model] ${event.model}\n`);
-					break;
-				case "runtime_status": {
-					const u = event.usage as
-						| {
-								contextTokens: number;
-								contextWindow: number;
-								percentage: number;
-						  }
-						| undefined;
-					const ctx = u
-						? `${u.contextTokens.toLocaleString()}/${u.contextWindow.toLocaleString()} tokens (${u.percentage}%)`
-						: "n/a";
-					setOutput(
-						(prev) =>
-							`${prev}[status] model=${event.model} effort=${event.effort} session=${event.sessionId ?? "none"} context=${ctx}\n`,
-					);
-					break;
-				}
-				case "effort_changed":
-					setOutput((prev) => `${prev}[effort] ${event.effort}\n`);
-					break;
-				case "user_prompt":
-					setOutput((prev) => `${prev}[${event.source}] ${event.prompt}\n`);
-					break;
-				case "text":
-					setOutput((prev) => prev + event.text);
-					break;
-				case "error":
-					setOutput((prev) => `${prev}\n[error] ${event.message}`);
-					break;
-				case "done":
-					setOutput((prev) => `${prev}\n`);
-					break;
+			const update = getTuiEventUpdate(event);
+			if (!update) {
+				return;
+			}
+			if (update.replace !== undefined) {
+				setOutput(update.replace);
+			}
+			if (update.append) {
+				setOutput((prev) => `${prev}${update.append}`);
+			}
+			if (update.running !== undefined) {
+				setRunning(update.running);
 			}
 		};
 
 		return () => socket.close();
 	}, [url]);
 
-	const handleSubmit = useCallback((value: string) => {
-		if (!value.trim() || !wsRef.current) return;
-		const trimmed = value.trim();
-		if (isRuntimeCommand(trimmed)) {
-			sendRuntimeCommand(wsRef.current, trimmed);
+	const handleSubmit = useCallback(
+		(value: string) => {
+			if (!value.trim() || !wsRef.current) return;
+			const trimmed = value.trim();
+			if (trimmed === "/exit") {
+				exit();
+				return;
+			}
+			if (isRuntimeCommand(trimmed)) {
+				sendRuntimeCommand(wsRef.current, trimmed);
+				setInput("");
+				return;
+			}
+			setOutput((prev) => `${prev}> ${value}\n`);
+			setRunning(true);
+			sendRuntimePrompt(wsRef.current, value);
 			setInput("");
-			return;
-		}
-		setOutput((prev) => `${prev}> ${value}\n`);
-		sendRuntimePrompt(wsRef.current, value);
-		setInput("");
-	}, []);
+		},
+		[exit],
+	);
 
 	useInput((_, key) => {
-		if (key.escape) exit();
+		if (key.escape && running && wsRef.current) {
+			sendRuntimeCommand(wsRef.current, "/stop");
+		}
 	});
 
 	return (

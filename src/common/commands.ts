@@ -27,6 +27,7 @@ export const RUNTIME_COMMANDS = [
 	},
 	{ command: "session", description: "Show/list/switch sessions" },
 	{ command: "status", description: "Show model, effort, and context usage" },
+	{ command: "stop", description: "Cancel the current agent run" },
 ] as const;
 
 export function isModelAlias(value: string): value is ModelAlias {
@@ -49,6 +50,7 @@ export function isRuntimeCommand(input: string): boolean {
 
 	return (
 		trimmed === "/new" ||
+		trimmed === "/stop" ||
 		trimmed === "/status" ||
 		trimmed === "/model" ||
 		trimmed.startsWith("/model ") ||

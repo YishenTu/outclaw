@@ -57,7 +57,10 @@ function start() {
 		env: { ...process.env },
 	});
 
-	// Wait briefly to confirm it started
+	// Write PID immediately — don't wait for the daemon to write it
+	pid.write(child.pid);
+
+	// Wait briefly to confirm it's still alive (catches init crashes)
 	setTimeout(() => {
 		if (pid.isRunning()) {
 			console.log(`Daemon started (pid ${child.pid})`);
@@ -65,6 +68,7 @@ function start() {
 		} else {
 			console.log("Daemon failed to start. Check logs:");
 			console.log(`  cat ${LOG_PATH}`);
+			pid.remove();
 			process.exit(1);
 		}
 		process.exit(0);

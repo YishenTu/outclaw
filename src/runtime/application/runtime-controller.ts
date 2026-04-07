@@ -24,6 +24,7 @@ interface IncomingMessage {
 }
 
 export class RuntimeController {
+	private activeAbort: AbortController | undefined;
 	private hub = new ClientHub();
 	private queue = new MessageQueue();
 	private readHistory: (
@@ -53,6 +54,10 @@ export class RuntimeController {
 		}
 
 		if (data.type === "command" && data.command) {
+			if (data.command.trim() === "/stop") {
+				this.handleStop(ws);
+				return;
+			}
 			void handleRuntimeCommand({
 				command: data.command,
 				hub: this.hub,
@@ -78,6 +83,15 @@ export class RuntimeController {
 		void this.replayHistory([ws]);
 	};
 
+	private handleStop(ws: WsClient) {
+		if (this.activeAbort) {
+			this.activeAbort.abort();
+			this.hub.send(ws, { type: "status", message: "Stopping current run" });
+			return;
+		}
+		this.hub.send(ws, { type: "status", message: "Nothing to stop" });
+	}
+
 	private async replayHistory(
 		targets: Iterable<WsClient>,
 		sessionId = this.state.sessionId,
@@ -98,6 +112,9 @@ export class RuntimeController {
 	}
 
 	private async runPrompt(ws: WsClient, prompt: string, source?: string) {
+		const abortController = new AbortController();
+		this.activeAbort = abortController;
+
 		try {
 			const isBroadcast = source === "telegram";
 
@@ -114,6 +131,7 @@ export class RuntimeController {
 
 			for await (const event of this.options.facade.run({
 				prompt,
+				abortController,
 				resume: this.state.sessionId,
 				cwd: this.options.cwd,
 				model: this.state.resolvedModel,
@@ -132,6 +150,8 @@ export class RuntimeController {
 				type: "error",
 				message: extractError(err),
 			});
+		} finally {
+			this.activeAbort = undefined;
 		}
 	}
 }

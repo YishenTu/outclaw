@@ -5,6 +5,7 @@ import { MODEL_ALIAS_LIST } from "../../common/commands.ts";
 import { extractError } from "../../common/protocol.ts";
 import { createTelegramBridge } from "./bridge.ts";
 import { TELEGRAM_COMMANDS } from "./commands.ts";
+import { registerTelegramRuntimeCommands } from "./runtime-commands.ts";
 
 type MyContext = StreamFlavor<Context>;
 
@@ -23,25 +24,7 @@ export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
 		console.error(`Failed to register Telegram commands: ${extractError(err)}`);
 	});
 
-	bot.command("new", async (ctx) => {
-		const event = await bridge.sendCommandAndWait("/new");
-		if (event.type === "session_cleared") {
-			await ctx.reply("Session cleared. Starting fresh.");
-		} else if (event.type === "error") {
-			await ctx.reply(`[error] ${event.message}`);
-		}
-	});
-
-	bot.command("model", async (ctx) => {
-		const arg = ctx.match?.trim();
-		const command = arg ? `/model ${arg}` : "/model";
-		const event = await bridge.sendCommandAndWait(command);
-		if (event.type === "model_changed") {
-			await ctx.reply(`Model: ${event.model}`);
-		} else if (event.type === "error") {
-			await ctx.reply(`[error] ${event.message}`);
-		}
-	});
+	registerTelegramRuntimeCommands(bot, bridge);
 
 	for (const alias of MODEL_ALIAS_LIST) {
 		bot.command(alias, async (ctx) => {
@@ -51,57 +34,6 @@ export function startTelegramBot({ token, runtimeUrl }: TelegramBotOptions) {
 			}
 		});
 	}
-
-	bot.command("thinking", async (ctx) => {
-		const arg = ctx.match?.trim();
-		const command = arg ? `/thinking ${arg}` : "/thinking";
-		const event = await bridge.sendCommandAndWait(command);
-		if (event.type === "effort_changed") {
-			await ctx.reply(`Thinking effort: ${event.effort}`);
-		} else if (event.type === "error") {
-			await ctx.reply(`[error] ${event.message}`);
-		}
-	});
-
-	bot.command("session", async (ctx) => {
-		const arg = ctx.match?.trim();
-		const command = arg ? `/session ${arg}` : "/session";
-		const event = await bridge.sendCommandAndWait(command);
-		if (event.type === "session_info") {
-			await ctx.reply(
-				`Session: ${event.sdkSessionId}\nTitle: ${event.title}\nModel: ${event.model}`,
-			);
-		} else if (event.type === "session_list") {
-			const list = (
-				event.sessions as Array<{
-					sdkSessionId: string;
-					title: string;
-				}>
-			)
-				.map((s) => `${s.sdkSessionId.slice(0, 8)}  ${s.title}`)
-				.join("\n");
-			await ctx.reply(list || "No sessions");
-		} else if (event.type === "session_switched") {
-			await ctx.reply(`Switched to: ${event.title}`);
-		} else if (event.type === "error") {
-			await ctx.reply(`[error] ${event.message}`);
-		}
-	});
-
-	bot.command("status", async (ctx) => {
-		const event = await bridge.sendCommandAndWait("/status");
-		if (event.type === "runtime_status") {
-			const u = event.usage as
-				| { contextTokens: number; contextWindow: number; percentage: number }
-				| undefined;
-			const ctx_info = u
-				? `${(u.contextTokens as number).toLocaleString()}/${(u.contextWindow as number).toLocaleString()} (${u.percentage}%)`
-				: "n/a";
-			await ctx.reply(
-				`Model: ${event.model}\nEffort: ${event.effort}\nSession: ${event.sessionId ?? "none"}\nContext: ${ctx_info}`,
-			);
-		}
-	});
 
 	bot.on("message:text", async (ctx) => {
 		try {

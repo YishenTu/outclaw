@@ -1,0 +1,166 @@
+import { RUNTIME_COMMANDS } from "../../common/commands.ts";
+
+interface TelegramCommandEvent {
+	type: string;
+	[key: string]: unknown;
+}
+
+export interface TelegramRuntimeCommandBridge {
+	sendCommandAndWait(command: string): Promise<TelegramCommandEvent>;
+}
+
+interface TelegramCommandContext {
+	match?: string;
+	reply(text: string): Promise<unknown>;
+}
+
+interface TelegramCommandRegistrar {
+	command(
+		command: string,
+		handler: (ctx: TelegramCommandContext) => Promise<void>,
+	): unknown;
+}
+
+type TelegramRuntimeCommandName =
+	| "new"
+	| "model"
+	| "thinking"
+	| "session"
+	| "status"
+	| "stop";
+
+interface TelegramRuntimeCommandDefinition {
+	buildCommand(match?: string): string;
+	formatReply(event: TelegramCommandEvent): string | undefined;
+}
+
+const COMMAND_DESCRIPTIONS = new Map(
+	RUNTIME_COMMANDS.map((command) => [command.command, command.description]),
+);
+
+function getCommandDescription(command: TelegramRuntimeCommandName): string {
+	const description = COMMAND_DESCRIPTIONS.get(command);
+	if (!description) {
+		throw new Error(`Missing description for Telegram command: ${command}`);
+	}
+	return description;
+}
+
+function formatError(event: TelegramCommandEvent): string | undefined {
+	return event.type === "error"
+		? `[error] ${String(event.message ?? "")}`
+		: undefined;
+}
+
+const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
+	TelegramRuntimeCommandName,
+	TelegramRuntimeCommandDefinition
+> = {
+	new: {
+		buildCommand: () => "/new",
+		formatReply: (event) =>
+			event.type === "session_cleared"
+				? "Session cleared. Starting fresh."
+				: formatError(event),
+	},
+	model: {
+		buildCommand: (match) => (match ? `/model ${match}` : "/model"),
+		formatReply: (event) =>
+			event.type === "model_changed"
+				? `Model: ${String(event.model)}`
+				: formatError(event),
+	},
+	thinking: {
+		buildCommand: (match) => (match ? `/thinking ${match}` : "/thinking"),
+		formatReply: (event) =>
+			event.type === "effort_changed"
+				? `Thinking effort: ${String(event.effort)}`
+				: formatError(event),
+	},
+	session: {
+		buildCommand: (match) => (match ? `/session ${match}` : "/session"),
+		formatReply: (event) => {
+			if (event.type === "session_info") {
+				return `Session: ${String(event.sdkSessionId)}\nTitle: ${String(event.title)}\nModel: ${String(event.model)}`;
+			}
+			if (event.type === "session_list") {
+				const sessions = event.sessions as Array<{
+					sdkSessionId: string;
+					title: string;
+				}>;
+				const list = sessions
+					.map(
+						(session) =>
+							`${session.sdkSessionId.slice(0, 8)}  ${session.title}`,
+					)
+					.join("\n");
+				return list || "No sessions";
+			}
+			if (event.type === "session_switched") {
+				return `Switched to: ${String(event.title)}`;
+			}
+			return formatError(event);
+		},
+	},
+	status: {
+		buildCommand: () => "/status",
+		formatReply: (event) => {
+			if (event.type !== "runtime_status") {
+				return formatError(event);
+			}
+			const usage = event.usage as
+				| { contextTokens: number; contextWindow: number; percentage: number }
+				| undefined;
+			const contextInfo = usage
+				? `${usage.contextTokens.toLocaleString()}/${usage.contextWindow.toLocaleString()} (${usage.percentage}%)`
+				: "n/a";
+			return `Model: ${String(event.model)}\nEffort: ${String(event.effort)}\nSession: ${String(event.sessionId ?? "none")}\nContext: ${contextInfo}`;
+		},
+	},
+	stop: {
+		buildCommand: () => "/stop",
+		formatReply: (event) =>
+			event.type === "status" ? String(event.message) : formatError(event),
+	},
+};
+
+export const TELEGRAM_RUNTIME_COMMAND_NAMES = Object.keys(
+	TELEGRAM_RUNTIME_COMMAND_DEFINITIONS,
+) as TelegramRuntimeCommandName[];
+
+export async function executeTelegramRuntimeCommand(
+	command: TelegramRuntimeCommandName,
+	bridge: TelegramRuntimeCommandBridge,
+	match?: string,
+): Promise<string | undefined> {
+	const definition = TELEGRAM_RUNTIME_COMMAND_DEFINITIONS[command];
+	const event = await bridge.sendCommandAndWait(
+		definition.buildCommand(match?.trim()),
+	);
+	return definition.formatReply(event);
+}
+
+export function registerTelegramRuntimeCommands(
+	registrar: TelegramCommandRegistrar,
+	bridge: TelegramRuntimeCommandBridge,
+) {
+	for (const command of TELEGRAM_RUNTIME_COMMAND_NAMES) {
+		registrar.command(command, async (ctx) => {
+			const reply = await executeTelegramRuntimeCommand(
+				command,
+				bridge,
+				ctx.match,
+			);
+			if (reply) {
+				await ctx.reply(reply);
+			}
+		});
+	}
+}
+
+export const TELEGRAM_COMMANDS = TELEGRAM_RUNTIME_COMMAND_NAMES.map(
+	(command) => ({
+		command,
+		description: getCommandDescription(command),
+	}),
+);
