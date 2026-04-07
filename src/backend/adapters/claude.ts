@@ -57,11 +57,8 @@ type PermissionMode = "default" | "plan" | "bypassPermissions";
 export class ClaudeAdapter implements Facade {
 	private permissionMode: PermissionMode;
 
-	constructor(permissionMode?: PermissionMode) {
-		this.permissionMode =
-			permissionMode ??
-			(process.env.PERMISSION_MODE as PermissionMode | undefined) ??
-			"bypassPermissions";
+	constructor(permissionMode: PermissionMode = "bypassPermissions") {
+		this.permissionMode = permissionMode;
 	}
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
