@@ -49,7 +49,7 @@ export class SessionStore {
 				`INSERT INTO sessions (sdk_session_id, title, model, source, created_at, last_active)
 			 VALUES ($id, $title, $model, $source, $now, $now)
 			 ON CONFLICT(sdk_session_id) DO UPDATE SET
-				title = $title, model = $model, last_active = $now`,
+				title = $title, model = $model, source = $source, last_active = $now`,
 			)
 			.run({
 				$id: params.sdkSessionId,
@@ -118,14 +118,46 @@ export class SessionStore {
 
 	setActiveSessionId(id: string | undefined) {
 		if (id) {
-			this.db
-				.query(
-					"INSERT OR REPLACE INTO state (key, value) VALUES ('active_session_id', $id)",
-				)
-				.run({ $id: id });
+			this.setStateValue("active_session_id", id);
 		} else {
-			this.db.query("DELETE FROM state WHERE key = 'active_session_id'").run();
+			this.deleteStateValue("active_session_id");
 		}
+	}
+
+	getLastTelegramChatId(): number | undefined {
+		const value = this.getStateValue("last_telegram_chat_id");
+		if (!value) {
+			return undefined;
+		}
+
+		const chatId = Number(value);
+		return Number.isFinite(chatId) ? chatId : undefined;
+	}
+
+	setLastTelegramChatId(chatId: number | undefined) {
+		if (chatId === undefined) {
+			this.deleteStateValue("last_telegram_chat_id");
+			return;
+		}
+
+		this.setStateValue("last_telegram_chat_id", String(chatId));
+	}
+
+	private deleteStateValue(key: string) {
+		this.db.query("DELETE FROM state WHERE key = $key").run({ $key: key });
+	}
+
+	private getStateValue(key: string): string | undefined {
+		const row = this.db
+			.query("SELECT value FROM state WHERE key = $key")
+			.get({ $key: key }) as { value: string | null } | null;
+		return row?.value ?? undefined;
+	}
+
+	private setStateValue(key: string, value: string) {
+		this.db
+			.query("INSERT OR REPLACE INTO state (key, value) VALUES ($key, $value)")
+			.run({ $key: key, $value: value });
 	}
 
 	close() {

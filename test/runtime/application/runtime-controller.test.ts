@@ -6,9 +6,12 @@ import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
 
 // Minimal WsClient stub — ClientHub only calls .send()
-function mockWs(): WsClient & { events: () => ServerEvent[] } {
+function mockWs(
+	clientType: "telegram" | "tui" = "tui",
+): WsClient & { events: () => ServerEvent[] } {
 	const sent: string[] = [];
 	const ws = {
+		data: { clientType },
 		send: (data: string) => {
 			sent.push(data);
 		},
@@ -21,6 +24,11 @@ function createController(
 	overrides: {
 		facade?: MockFacade;
 		cwd?: string;
+		deliverHeartbeatResult?: (params: {
+			images: Array<{ path: string; caption?: string }>;
+			telegramChatId: number;
+			text: string;
+		}) => Promise<void> | void;
 		promptHomeDir?: string;
 		store?: SessionStore;
 		historyReader?: (
@@ -37,12 +45,24 @@ function createController(
 			promptHomeDir: overrides.promptHomeDir,
 			store: overrides.store,
 			historyReader: overrides.historyReader,
+			deliverHeartbeatResult: overrides.deliverHeartbeatResult,
 		}),
 	};
 }
 
-function prompt(text: string, source?: string, images?: ImageRef[]) {
-	return JSON.stringify({ type: "prompt", prompt: text, source, images });
+function prompt(
+	text: string,
+	source?: string,
+	images?: ImageRef[],
+	telegramChatId?: number,
+) {
+	return JSON.stringify({
+		type: "prompt",
+		prompt: text,
+		source,
+		images,
+		telegramChatId,
+	});
 }
 
 function command(cmd: string) {
@@ -67,6 +87,19 @@ async function drain(
 			}
 		}, 5);
 		controller.handleMessage(sentinel, prompt("__drain__"));
+	});
+}
+
+async function waitForDone(
+	ws: WsClient & { events: () => ServerEvent[] },
+): Promise<void> {
+	return new Promise<void>((resolve) => {
+		const check = setInterval(() => {
+			if (ws.events().some((event) => event.type === "done")) {
+				clearInterval(check);
+				resolve();
+			}
+		}, 5);
 	});
 }
 
@@ -501,6 +534,204 @@ describe("RuntimeController", () => {
 			);
 			const types = significant.map((e) => e.type);
 			expect(types).toEqual(["text", "done", "text", "done", "text", "done"]);
+		});
+	});
+
+	describe("heartbeat", () => {
+		test("shows heartbeat prompt and live response to tui clients", async () => {
+			const facade = new MockFacade();
+			facade.delayMs = 40;
+			const { controller } = createController({ facade });
+			const setup = mockWs();
+			controller.handleOpen(setup);
+			controller.handleMessage(setup, prompt("setup"));
+			await drain(controller, facade);
+
+			const tui = mockWs("tui");
+			const tg = mockWs("telegram");
+			controller.handleOpen(tui);
+			controller.handleOpen(tg);
+			await new Promise((r) => setTimeout(r, 20));
+
+			const scheduledAt = Date.now();
+			expect(controller.enqueueHeartbeat("check tasks", scheduledAt, 0)).toBe(
+				true,
+			);
+			await new Promise((r) => setTimeout(r, 10));
+
+			const earlyTuiEvents = tui
+				.events()
+				.filter((event) => event.type !== "history_replay");
+			expect(earlyTuiEvents).toContainEqual({
+				type: "user_prompt",
+				prompt: "check tasks",
+				source: "heartbeat",
+			});
+
+			await new Promise((r) => setTimeout(r, 80));
+
+			const tuiEvents = tui
+				.events()
+				.filter((event) => event.type !== "history_replay");
+			expect(tuiEvents).toContainEqual({
+				type: "user_prompt",
+				prompt: "check tasks",
+				source: "heartbeat",
+			});
+			expect(tuiEvents).toContainEqual({
+				type: "text",
+				text: "echo: check tasks",
+			});
+			expect(tuiEvents.some((event) => event.type === "done")).toBe(true);
+
+			const tgEvents = tg
+				.events()
+				.filter((event) => event.type !== "history_replay");
+			expect(tgEvents).toHaveLength(0);
+		});
+
+		test("also delivers the final heartbeat result to the last telegram chat", async () => {
+			const delivered: Array<{
+				images: Array<{ path: string; caption?: string }>;
+				telegramChatId: number;
+				text: string;
+			}> = [];
+			const { controller, facade } = createController({
+				deliverHeartbeatResult: (params) => {
+					delivered.push(params);
+				},
+			});
+			const tui = mockWs("tui");
+			const tg = mockWs("telegram");
+			controller.handleOpen(tui);
+			controller.handleOpen(tg);
+
+			controller.handleMessage(
+				tg,
+				prompt("hello from tg", "telegram", [], 123),
+			);
+			await waitForDone(tg);
+
+			expect(controller.enqueueHeartbeat("check in", Date.now(), 0)).toBe(true);
+			await drain(controller, facade);
+
+			expect(delivered).toEqual([
+				{
+					telegramChatId: 123,
+					text: "echo: check in",
+					images: [],
+				},
+			]);
+
+			const tuiEvents = tui
+				.events()
+				.filter((event) => event.type !== "history_replay");
+			expect(tuiEvents).toContainEqual({
+				type: "user_prompt",
+				prompt: "check in",
+				source: "heartbeat",
+			});
+			expect(tuiEvents).toContainEqual({
+				type: "text",
+				text: "echo: check in",
+			});
+
+			const tgEvents = tg
+				.events()
+				.filter((event) => event.type !== "history_replay");
+			expect(
+				tgEvents.some(
+					(event) => event.type === "text" && event.text === "echo: check in",
+				),
+			).toBe(false);
+		});
+
+		test("telegram forwarding failure does not emit a heartbeat error to tui", async () => {
+			const originalConsoleError = console.error;
+			const consoleErrorCalls: string[] = [];
+			console.error = (message?: unknown) => {
+				consoleErrorCalls.push(String(message));
+			};
+
+			try {
+				const { controller, facade } = createController({
+					deliverHeartbeatResult: async () => {
+						throw new Error("telegram send failed");
+					},
+				});
+				const tui = mockWs("tui");
+				const tg = mockWs("telegram");
+				controller.handleOpen(tui);
+				controller.handleOpen(tg);
+
+				controller.handleMessage(
+					tg,
+					prompt("hello from tg", "telegram", [], 123),
+				);
+				await waitForDone(tg);
+
+				expect(
+					controller.enqueueHeartbeat("check failure", Date.now(), 0),
+				).toBe(true);
+				await drain(controller, facade);
+
+				const tuiEvents = tui
+					.events()
+					.filter((event) => event.type !== "history_replay");
+				expect(tuiEvents).toContainEqual({
+					type: "user_prompt",
+					prompt: "check failure",
+					source: "heartbeat",
+				});
+				expect(tuiEvents).toContainEqual({
+					type: "text",
+					text: "echo: check failure",
+				});
+				expect(tuiEvents.some((event) => event.type === "done")).toBe(true);
+				expect(tuiEvents.some((event) => event.type === "error")).toBe(false);
+				expect(consoleErrorCalls).toEqual([
+					"Failed to deliver heartbeat result to Telegram: telegram send failed",
+				]);
+			} finally {
+				console.error = originalConsoleError;
+			}
+		});
+
+		test("drops queued heartbeat when user activity happens after scheduling", async () => {
+			const { controller, facade } = createController();
+			const ws = mockWs();
+			controller.handleOpen(ws);
+			controller.handleMessage(ws, prompt("setup"));
+			await drain(controller, facade);
+
+			expect(controller.enqueueHeartbeat("stale heartbeat", 100, 0)).toBe(true);
+			controller.handleMessage(ws, prompt("fresh user prompt"));
+			await drain(controller, facade);
+
+			expect(facade.callOrder).not.toContain("stale heartbeat");
+			expect(facade.callOrder).toContain("fresh user prompt");
+		});
+
+		test("does not enqueue a second heartbeat while one is pending", async () => {
+			const facade = new MockFacade();
+			const { controller } = createController({ facade });
+			const ws = mockWs();
+			controller.handleOpen(ws);
+			controller.handleMessage(ws, prompt("setup"));
+			await drain(controller, facade);
+
+			facade.delayMs = 40;
+			const scheduledAt = Date.now();
+			expect(
+				controller.enqueueHeartbeat("first heartbeat", scheduledAt, 0),
+			).toBe(true);
+			expect(
+				controller.enqueueHeartbeat("second heartbeat", scheduledAt + 1, 0),
+			).toBe(false);
+			await new Promise((r) => setTimeout(r, 120));
+
+			expect(facade.callOrder).toContain("first heartbeat");
+			expect(facade.callOrder).not.toContain("second heartbeat");
 		});
 	});
 

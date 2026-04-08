@@ -21,11 +21,27 @@ export interface PromptMessage {
 	prompt: string;
 	images?: ImageRef[];
 	source?: "telegram";
+	telegramChatId?: number;
 }
 
 export interface CommandMessage {
 	type: "command";
 	command: string;
+}
+
+export type RuntimeClientType = "telegram" | "tui";
+
+export interface HeartbeatDeliveryTarget {
+	clientType: RuntimeClientType;
+	telegramChatId?: number;
+}
+
+export interface HeartbeatResult {
+	images: Array<{
+		path: string;
+		caption?: string;
+	}>;
+	text: string;
 }
 
 export type ClientMessage = PromptMessage | CommandMessage;
@@ -169,6 +185,7 @@ export interface RunParams {
 	cwd?: string;
 	model?: string;
 	effort?: string;
+	stream?: boolean;
 }
 
 export interface Facade {

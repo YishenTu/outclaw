@@ -1,10 +1,9 @@
+import { EFFORT_LEVELS, isEffortLevel } from "../../common/commands.ts";
 import {
-	EFFORT_LEVELS,
-	isEffortLevel,
 	isModelAlias,
 	MODEL_ALIAS_LIST,
 	type ModelAlias,
-} from "../../common/commands.ts";
+} from "../../common/models.ts";
 import type {
 	EffortChangedEvent,
 	ModelChangedEvent,

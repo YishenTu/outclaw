@@ -1,5 +1,7 @@
 import type {
 	Facade,
+	FacadeEvent,
+	HeartbeatResult,
 	HistoryReplayEvent,
 	ImageRef,
 } from "../../common/protocol.ts";
@@ -14,6 +16,11 @@ import { RuntimeState } from "./runtime-state.ts";
 
 interface RuntimeControllerOptions {
 	cwd?: string;
+	deliverHeartbeatResult?: (
+		params: {
+			telegramChatId: number;
+		} & HeartbeatResult,
+	) => Promise<void> | void;
 	promptHomeDir?: string;
 	facade: Facade;
 	historyReader?: (
@@ -27,12 +34,35 @@ interface IncomingMessage {
 	images?: ImageRef[];
 	prompt?: string;
 	source?: string;
+	telegramChatId?: number;
 	type?: string;
+}
+
+type PromptSource = "heartbeat" | "telegram" | "tui";
+
+interface HeartbeatTask {
+	prompt: string;
+	scheduledAt: number;
+	sessionId: string;
+}
+
+interface PromptExecution {
+	images?: ImageRef[];
+	prompt: string;
+	sender?: WsClient;
+	source: PromptSource;
+	stream?: boolean;
+	telegramChatId?: number;
 }
 
 export class RuntimeController {
 	private activeAbort: AbortController | undefined;
+	private deliverHeartbeatResult:
+		| RuntimeControllerOptions["deliverHeartbeatResult"]
+		| undefined;
+	private heartbeatPending = false;
 	private hub = new ClientHub();
+	private lastUserActivityAt = Date.now();
 	private queue = new MessageQueue();
 	private readHistory: (
 		sdkSessionId: string,
@@ -40,8 +70,15 @@ export class RuntimeController {
 	private state: RuntimeState;
 
 	constructor(private options: RuntimeControllerOptions) {
+		this.deliverHeartbeatResult = options.deliverHeartbeatResult;
 		this.state = new RuntimeState(options.store);
 		this.readHistory = options.historyReader ?? readHistory;
+	}
+
+	setHeartbeatResultHandler(
+		handler: RuntimeControllerOptions["deliverHeartbeatResult"],
+	) {
+		this.deliverHeartbeatResult = handler;
 	}
 
 	handleClose = (ws: WsClient) => {
@@ -86,10 +123,13 @@ export class RuntimeController {
 		const hasImages = (data.images?.length ?? 0) > 0;
 
 		if (data.type === "prompt" && (hasPrompt || hasImages)) {
-			this.state.preparePrompt(prompt, data.images);
-			this.queue.enqueue(() =>
-				this.runPrompt(ws, prompt, data.source, data.images),
-			);
+			this.enqueuePrompt({
+				sender: ws,
+				prompt,
+				source: data.source === "telegram" ? "telegram" : "tui",
+				images: data.images,
+				telegramChatId: data.telegramChatId,
+			});
 		}
 	};
 
@@ -132,60 +172,198 @@ export class RuntimeController {
 		}
 	}
 
-	private async runPrompt(
-		ws: WsClient,
+	enqueueHeartbeat(
 		prompt: string,
-		source?: string,
-		images?: ImageRef[],
-	) {
+		scheduledAt: number,
+		deferMinutes: number,
+	): boolean {
+		if (!this.shouldAttemptHeartbeat(scheduledAt, deferMinutes)) {
+			return false;
+		}
+
+		const sessionId = this.state.sessionId;
+		if (!sessionId) {
+			return false;
+		}
+
+		this.heartbeatPending = true;
+		this.queue.enqueue(() =>
+			this.runHeartbeat({
+				prompt,
+				scheduledAt,
+				sessionId,
+			}),
+		);
+		return true;
+	}
+
+	shouldAttemptHeartbeat(scheduledAt: number, deferMinutes: number): boolean {
+		if (!this.state.sessionId || this.heartbeatPending) {
+			return false;
+		}
+
+		if (deferMinutes === 0) {
+			return true;
+		}
+
+		return scheduledAt - this.lastUserActivityAt >= deferMinutes * 60_000;
+	}
+
+	private enqueuePrompt(task: PromptExecution) {
+		this.state.preparePrompt(task.prompt, task.images);
+		this.lastUserActivityAt = Date.now();
+		this.queue.enqueue(() => this.runPrompt(task));
+	}
+
+	private tuiTargets(exclude?: WsClient): WsClient[] {
+		return this.hub.listByType("tui", exclude);
+	}
+
+	private async runHeartbeat(task: HeartbeatTask) {
+		try {
+			if (this.state.sessionId !== task.sessionId) {
+				return;
+			}
+			if (this.lastUserActivityAt > task.scheduledAt) {
+				return;
+			}
+
+			this.state.preparePrompt(task.prompt);
+			await this.runPrompt({
+				prompt: task.prompt,
+				source: "heartbeat",
+			});
+		} finally {
+			this.heartbeatPending = false;
+		}
+	}
+
+	private async runPrompt(task: PromptExecution) {
 		const abortController = new AbortController();
 		this.activeAbort = abortController;
 		const generation = this.state.generation;
+		const observers =
+			task.source === "telegram" || task.source === "heartbeat"
+				? this.tuiTargets(task.sender)
+				: [];
+		const heartbeatDeliveryTarget =
+			task.source === "heartbeat"
+				? this.state.createHeartbeatDeliveryTarget()
+				: undefined;
+		const heartbeatBuffer: FacadeEvent[] = [];
 
 		try {
-			const isBroadcast = source === "telegram";
-
-			if (isBroadcast) {
-				this.hub.broadcast(
-					{
+			try {
+				if (task.source === "telegram" || task.source === "heartbeat") {
+					this.hub.sendMany(observers, {
 						type: "user_prompt",
-						prompt,
-						images,
-						source,
-					},
-					ws,
-				);
+						prompt: task.prompt,
+						images: task.images,
+						source: task.source,
+					});
+				}
+
+				for await (const event of this.runFacade(task, abortController)) {
+					if (task.source === "heartbeat") {
+						heartbeatBuffer.push(event);
+					}
+					if (task.sender) {
+						this.hub.send(task.sender, event);
+					}
+					this.hub.sendMany(observers, event);
+					if (event.type === "done" && this.state.generation === generation) {
+						this.state.completeRun(event, task.source, task.telegramChatId);
+					}
+				}
+			} catch (err) {
+				const errorEvent = {
+					type: "error" as const,
+					message: extractError(err),
+				};
+				if (task.source === "heartbeat") {
+					heartbeatBuffer.push(errorEvent);
+				}
+				if (task.sender) {
+					this.hub.send(task.sender, errorEvent);
+				}
+				this.hub.sendMany(observers, errorEvent);
+
+				if (task.source !== "heartbeat") {
+					return;
+				}
 			}
 
-			const systemPrompt = this.options.promptHomeDir
-				? await assembleSystemPrompt(this.options.promptHomeDir)
-				: undefined;
-
-			for await (const event of this.options.facade.run({
-				prompt,
-				images,
-				systemPrompt,
-				abortController,
-				resume: this.state.sessionId,
-				cwd: this.options.cwd,
-				model: this.state.resolvedModel,
-				effort: this.state.effort,
-			})) {
-				this.hub.send(ws, event);
-				if (isBroadcast) {
-					this.hub.broadcast(event, ws);
-				}
-				if (event.type === "done" && this.state.generation === generation) {
-					this.state.completeRun(event, source);
+			if (
+				task.source === "heartbeat" &&
+				heartbeatDeliveryTarget?.clientType === "telegram" &&
+				heartbeatDeliveryTarget.telegramChatId !== undefined &&
+				this.deliverHeartbeatResult
+			) {
+				try {
+					await this.deliverHeartbeatResult({
+						telegramChatId: heartbeatDeliveryTarget.telegramChatId,
+						...toHeartbeatResult(heartbeatBuffer),
+					});
+				} catch (err) {
+					console.error(
+						`Failed to deliver heartbeat result to Telegram: ${extractError(err)}`,
+					);
 				}
 			}
-		} catch (err) {
-			this.hub.send(ws, {
-				type: "error",
-				message: extractError(err),
-			});
 		} finally {
 			this.activeAbort = undefined;
 		}
 	}
+
+	private async *runFacade(
+		task: PromptExecution,
+		abortController: AbortController,
+	): AsyncIterable<FacadeEvent> {
+		const systemPrompt = this.options.promptHomeDir
+			? await assembleSystemPrompt(this.options.promptHomeDir)
+			: undefined;
+
+		yield* this.options.facade.run({
+			prompt: task.prompt,
+			images: task.images,
+			systemPrompt,
+			abortController,
+			resume: this.state.sessionId,
+			cwd: this.options.cwd,
+			model: this.state.resolvedModel,
+			effort: this.state.effort,
+			stream: task.stream,
+		});
+	}
+}
+
+function toHeartbeatResult(events: FacadeEvent[]): HeartbeatResult {
+	let text = "";
+	const images: HeartbeatResult["images"] = [];
+
+	for (const event of events) {
+		if (event.type === "text") {
+			text += event.text;
+			continue;
+		}
+
+		if (event.type === "image") {
+			images.push({
+				path: event.path,
+				caption: event.caption,
+			});
+			continue;
+		}
+
+		if (event.type === "error") {
+			text = text
+				? `${text}\n[error] ${event.message}`
+				: `[error] ${event.message}`;
+		}
+	}
+
+	return {
+		images,
+		text,
+	};
 }

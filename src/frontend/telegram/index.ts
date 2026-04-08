@@ -1,11 +1,12 @@
 import { autoRetry } from "@grammyjs/auto-retry";
 import { type StreamFlavor, stream } from "@grammyjs/stream";
-import { Bot, type Context } from "grammy";
-import { MODEL_ALIAS_LIST } from "../../common/commands.ts";
+import { Bot, type Context, InputFile } from "grammy";
+import { MODEL_ALIAS_LIST } from "../../common/models.ts";
 import type { ImageRef } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import { createTelegramBridge } from "./bridge.ts";
 import { TELEGRAM_COMMANDS } from "./commands.ts";
+import { sendTelegramHeartbeatResult } from "./heartbeat-result.ts";
 import { handleTelegramPhotoMessage } from "./photo-message.ts";
 import { registerTelegramRuntimeCommands } from "./runtime-commands.ts";
 import { handleTelegramTextMessage } from "./text-message.ts";
@@ -84,7 +85,7 @@ export function startTelegramBot({
 				resolveMessageImage,
 				rememberMessageImage,
 				streamPrompt: (prompt, images, onImage) =>
-					bridge.stream(prompt, images, onImage),
+					bridge.stream(prompt, images, onImage, ctx.chat.id),
 			},
 		);
 	});
@@ -113,7 +114,7 @@ export function startTelegramBot({
 				token,
 				mediaRoot,
 				streamPrompt: (prompt, images, onImage) =>
-					bridge.stream(prompt, images, onImage),
+					bridge.stream(prompt, images, onImage, ctx.chat.id),
 			},
 		);
 	});
@@ -123,6 +124,24 @@ export function startTelegramBot({
 	console.log("Telegram bot started");
 
 	return {
+		async sendHeartbeatResult(params: {
+			telegramChatId: number;
+			text: string;
+			images: Array<{ path: string; caption?: string }>;
+		}) {
+			await sendTelegramHeartbeatResult(
+				{
+					sendMessage: (chatId, text, options) =>
+						bot.api.sendMessage(chatId, text, options),
+					sendPhoto: (chatId, path, options) =>
+						bot.api.sendPhoto(chatId, new InputFile(path), options),
+				},
+				{
+					...params,
+					rememberMessageImage,
+				},
+			);
+		},
 		stop() {
 			bot.stop();
 			bridge.close();

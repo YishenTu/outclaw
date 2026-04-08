@@ -25,7 +25,7 @@ function Tui({ url }: TuiProps) {
 	const wsRef = useRef<WebSocket | null>(null);
 
 	useEffect(() => {
-		const socket = openRuntimeSocket(url);
+		const socket = openRuntimeSocket(url, "tui");
 		const { ws } = socket;
 		wsRef.current = ws;
 

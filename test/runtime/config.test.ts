@@ -16,6 +16,10 @@ describe("loadConfig", () => {
 			expect(config.port).toBe(4000);
 			expect(config.telegram.botToken).toBe("");
 			expect(config.telegram.allowedUsers).toEqual([]);
+			expect(config.heartbeat).toEqual({
+				intervalMinutes: 30,
+				deferMinutes: 0,
+			});
 			expect(config.permissionMode).toBe("bypassPermissions");
 			expect(existsSync(join(dir, "config.json"))).toBe(true);
 		} finally {
@@ -34,6 +38,10 @@ describe("loadConfig", () => {
 						botToken: "abc:123",
 						allowedUsers: [111, 222],
 					},
+					heartbeat: {
+						intervalMinutes: 15,
+						deferMinutes: 3,
+					},
 					permissionMode: "default",
 				}),
 			);
@@ -42,6 +50,10 @@ describe("loadConfig", () => {
 			expect(config.port).toBe(5000);
 			expect(config.telegram.botToken).toBe("abc:123");
 			expect(config.telegram.allowedUsers).toEqual([111, 222]);
+			expect(config.heartbeat).toEqual({
+				intervalMinutes: 15,
+				deferMinutes: 3,
+			});
 			expect(config.permissionMode).toBe("default");
 		} finally {
 			rmSync(dir, { recursive: true });
@@ -57,6 +69,10 @@ describe("loadConfig", () => {
 			expect(config.port).toBe(3000);
 			expect(config.telegram.botToken).toBe("");
 			expect(config.telegram.allowedUsers).toEqual([]);
+			expect(config.heartbeat).toEqual({
+				intervalMinutes: 30,
+				deferMinutes: 0,
+			});
 		} finally {
 			rmSync(dir, { recursive: true });
 		}
@@ -73,6 +89,28 @@ describe("loadConfig", () => {
 			const config = loadConfig(dir);
 			expect(config.telegram.botToken).toBe("tok");
 			expect(config.telegram.allowedUsers).toEqual([]);
+			expect(config.heartbeat).toEqual({
+				intervalMinutes: 30,
+				deferMinutes: 0,
+			});
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
+	test("merges partial heartbeat config with defaults", () => {
+		const dir = tmp();
+		try {
+			writeFileSync(
+				join(dir, "config.json"),
+				JSON.stringify({ heartbeat: { intervalMinutes: 5 } }),
+			);
+
+			const config = loadConfig(dir);
+			expect(config.heartbeat).toEqual({
+				intervalMinutes: 5,
+				deferMinutes: 0,
+			});
 		} finally {
 			rmSync(dir, { recursive: true });
 		}

@@ -2,12 +2,15 @@ import {
 	DEFAULT_EFFORT,
 	DEFAULT_MODEL,
 	type EffortLevel,
+} from "../../common/commands.ts";
+import {
 	isModelAlias,
 	type ModelAlias,
 	resolveModelAlias,
-} from "../../common/commands.ts";
+} from "../../common/models.ts";
 import type {
 	DoneEvent,
+	HeartbeatDeliveryTarget,
 	ImageRef,
 	RuntimeStatusEvent,
 	UsageInfo,
@@ -19,11 +22,15 @@ export class RuntimeState {
 	private activeModel: ModelAlias = DEFAULT_MODEL;
 	private activeEffort: EffortLevel = DEFAULT_EFFORT;
 	private lastUsage: UsageInfo | undefined;
+	private lastTelegramChatId: number | undefined;
 	private session: SessionManager;
 	private _generation = 0;
+	private store?: SessionStore;
 
 	constructor(store?: SessionStore) {
+		this.store = store;
 		this.session = new SessionManager(store);
+		this.lastTelegramChatId = store?.getLastTelegramChatId();
 	}
 
 	get generation(): number {
@@ -48,6 +55,19 @@ export class RuntimeState {
 
 	get sessionTitle(): string | undefined {
 		return this.session.title;
+	}
+
+	createHeartbeatDeliveryTarget(): HeartbeatDeliveryTarget {
+		if (this.session.source === "telegram") {
+			return {
+				clientType: "telegram",
+				telegramChatId: this.lastTelegramChatId,
+			};
+		}
+
+		return {
+			clientType: "tui",
+		};
 	}
 
 	createStatusEvent(): RuntimeStatusEvent {
@@ -93,8 +113,18 @@ export class RuntimeState {
 		this.lastUsage = undefined;
 	}
 
-	completeRun(event: DoneEvent, source?: string) {
-		this.session.update(event.sessionId, this.activeModel, source);
+	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
+		if (source === "telegram") {
+			this.session.update(event.sessionId, this.activeModel, "telegram");
+			if (telegramChatId !== undefined) {
+				this.lastTelegramChatId = telegramChatId;
+				this.store?.setLastTelegramChatId(telegramChatId);
+			}
+		} else if (source === "heartbeat") {
+			this.session.update(event.sessionId, this.activeModel);
+		} else {
+			this.session.update(event.sessionId, this.activeModel, "tui");
+		}
 		this.lastUsage = event.usage;
 	}
 }

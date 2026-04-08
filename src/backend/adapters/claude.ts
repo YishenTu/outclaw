@@ -10,7 +10,7 @@ import {
 	type RunParams,
 	type UsageInfo,
 } from "../../common/protocol.ts";
-import { extractImageEvents } from "./image-events.ts";
+import { extractImageEvents } from "../../runtime/image-events.ts";
 
 function extractUsage(event: {
 	modelUsage?: Record<
@@ -88,7 +88,7 @@ export class ClaudeAdapter implements Facade {
 					permissionMode: this.permissionMode,
 					allowDangerouslySkipPermissions:
 						this.permissionMode === "bypassPermissions",
-					includePartialMessages: true,
+					includePartialMessages: params.stream ?? true,
 				},
 			});
 
@@ -106,6 +106,16 @@ export class ClaudeAdapter implements Facade {
 
 				yield* extractImageEvents(event, emittedImagePaths);
 
+				if (event.type === "assistant" && params.stream === false) {
+					const text = extractAssistantText(event);
+					if (text) {
+						yield {
+							type: "text",
+							text,
+						};
+					}
+				}
+
 				if (event.type === "result") {
 					yield {
 						type: "done",
@@ -120,6 +130,22 @@ export class ClaudeAdapter implements Facade {
 			yield { type: "error", message: extractError(err) };
 		}
 	}
+}
+
+function extractAssistantText(event: {
+	message?: {
+		content?: Array<{
+			type?: string;
+			text?: string;
+		}>;
+	};
+}): string {
+	return (
+		event.message?.content
+			?.filter((block) => block.type === "text")
+			.map((block) => block.text ?? "")
+			.join("") ?? ""
+	);
 }
 
 function createPromptInput(

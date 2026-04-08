@@ -1,7 +1,16 @@
 import { describe, expect, mock, test } from "bun:test";
-import { sendRuntimePrompt } from "../../src/frontend/runtime-client/index.ts";
+import {
+	buildRuntimeSocketUrl,
+	sendRuntimePrompt,
+} from "../../src/frontend/runtime-client/index.ts";
 
 describe("runtime client", () => {
+	test("adds the client type to the runtime socket URL", () => {
+		expect(buildRuntimeSocketUrl("ws://localhost:4000", "telegram")).toBe(
+			"ws://localhost:4000/?client=telegram",
+		);
+	});
+
 	test("serializes prompt images into the websocket message", () => {
 		const send = mock((_data: string) => {});
 		const ws = { send } as unknown as WebSocket;

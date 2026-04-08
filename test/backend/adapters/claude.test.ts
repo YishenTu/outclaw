@@ -221,6 +221,66 @@ describe("ClaudeAdapter", () => {
 		}
 	});
 
+	test("uses assistant messages as final text when streaming is disabled", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "assistant",
+					message: {
+						content: [
+							{
+								type: "text",
+								text: "final answer",
+							},
+						],
+					},
+				};
+				yield {
+					type: "result",
+					session_id: "sdk-final",
+					duration_ms: 22,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
+		);
+		const adapter = new ClaudeAdapter();
+		const events = [];
+
+		for await (const event of adapter.run({
+			prompt: "heartbeat",
+			stream: false,
+		})) {
+			events.push(event);
+		}
+
+		const args = query.mock.calls[0]?.[0] as {
+			options: {
+				includePartialMessages?: boolean;
+			};
+		};
+
+		expect(args.options.includePartialMessages).toBe(false);
+		expect(events).toEqual([
+			{
+				type: "text",
+				text: "final answer",
+			},
+			{
+				type: "done",
+				sessionId: "sdk-final",
+				durationMs: 22,
+				costUsd: 0,
+				usage: undefined,
+			},
+		]);
+	});
+
 	test("sends multimodal SDK user messages when images are present", async () => {
 		const query = mock((_params: unknown) =>
 			(async function* () {

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { ImageEvent } from "../../common/protocol.ts";
+import type { ImageEvent } from "../common/protocol.ts";
 
 const IMAGE_PATH_PATTERN = /\/[^\s"'`<>|]+?\.(?:png|jpe?g|gif|webp)\b/gi;
 

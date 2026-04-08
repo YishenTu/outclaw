@@ -1,6 +1,14 @@
-import { type ServerEvent, serialize } from "../../common/protocol.ts";
+import {
+	type RuntimeClientType,
+	type ServerEvent,
+	serialize,
+} from "../../common/protocol.ts";
 
-export type WsClient = import("bun").ServerWebSocket<Record<string, never>>;
+export interface RuntimeClientData {
+	clientType: RuntimeClientType;
+}
+
+export type WsClient = import("bun").ServerWebSocket<RuntimeClientData>;
 
 export class ClientHub {
 	private clients = new Set<WsClient>();
@@ -15,6 +23,12 @@ export class ClientHub {
 
 	list(): Iterable<WsClient> {
 		return this.clients;
+	}
+
+	listByType(type: RuntimeClientType, exclude?: WsClient): WsClient[] {
+		return [...this.clients].filter(
+			(client) => client !== exclude && client.data.clientType === type,
+		);
 	}
 
 	send(client: WsClient, event: ServerEvent) {

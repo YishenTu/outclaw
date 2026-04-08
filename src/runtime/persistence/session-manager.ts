@@ -1,13 +1,17 @@
+import type { RuntimeClientType } from "../../common/protocol.ts";
 import type { SessionStore } from "./session-store.ts";
 
 export class SessionManager {
 	private activeSessionId: string | undefined;
+	private currentSource: RuntimeClientType = "tui";
 	private currentTitle: string | undefined;
 
 	constructor(private store?: SessionStore) {
 		this.activeSessionId = store?.getActiveSessionId();
 		if (this.activeSessionId) {
-			this.currentTitle = store?.get(this.activeSessionId)?.title;
+			const row = store?.get(this.activeSessionId);
+			this.currentTitle = row?.title;
+			this.currentSource = row?.source === "telegram" ? "telegram" : "tui";
 		}
 	}
 
@@ -19,21 +23,34 @@ export class SessionManager {
 		return this.currentTitle;
 	}
 
-	update(sessionId: string, model: string, source?: string) {
-		const storedTitle = this.store?.get(sessionId)?.title;
+	get source(): RuntimeClientType {
+		return this.currentSource;
+	}
+
+	update(sessionId: string, model: string, source?: RuntimeClientType) {
+		const storedSession = this.store?.get(sessionId);
+		const storedTitle = storedSession?.title;
 		const title =
 			sessionId === this.activeSessionId
 				? (this.currentTitle ?? storedTitle)
 				: (storedTitle ?? this.currentTitle);
+		const fallbackSource =
+			storedSession?.source === "telegram" ? "telegram" : "tui";
+		const nextSource =
+			source ??
+			(sessionId === this.activeSessionId
+				? this.currentSource
+				: fallbackSource);
 
 		this.activeSessionId = sessionId;
 		this.currentTitle = title;
+		this.currentSource = nextSource;
 		this.store?.setActiveSessionId(sessionId);
 		this.store?.upsert({
 			sdkSessionId: sessionId,
 			title: title ?? "Untitled",
 			model,
-			source,
+			source: nextSource,
 		});
 	}
 
@@ -43,6 +60,7 @@ export class SessionManager {
 
 	clear() {
 		this.activeSessionId = undefined;
+		this.currentSource = "tui";
 		this.currentTitle = undefined;
 		this.store?.setActiveSessionId(undefined);
 	}

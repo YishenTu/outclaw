@@ -1,4 +1,8 @@
-import { type ImageRef, serialize } from "../../common/protocol.ts";
+import {
+	type ImageRef,
+	type RuntimeClientType,
+	serialize,
+} from "../../common/protocol.ts";
 
 export interface RuntimeSocket {
 	close: () => void;
@@ -15,8 +19,20 @@ export function closeRuntimeSocket(ws: WebSocket) {
 	}
 }
 
-export function openRuntimeSocket(url: string): RuntimeSocket {
-	const ws = new WebSocket(url);
+export function buildRuntimeSocketUrl(
+	url: string,
+	clientType: RuntimeClientType,
+): string {
+	const runtimeUrl = new URL(url);
+	runtimeUrl.searchParams.set("client", clientType);
+	return runtimeUrl.toString();
+}
+
+export function openRuntimeSocket(
+	url: string,
+	clientType: RuntimeClientType = "tui",
+): RuntimeSocket {
+	const ws = new WebSocket(buildRuntimeSocketUrl(url, clientType));
 	const ready = new Promise<void>((resolve, reject) => {
 		const handleOpen = () => {
 			cleanup();
@@ -57,6 +73,9 @@ export function sendRuntimePrompt(
 	prompt: string,
 	source?: "telegram",
 	images?: ImageRef[],
+	telegramChatId?: number,
 ) {
-	ws.send(serialize({ type: "prompt", prompt, source, images }));
+	ws.send(
+		serialize({ type: "prompt", prompt, source, images, telegramChatId }),
+	);
 }

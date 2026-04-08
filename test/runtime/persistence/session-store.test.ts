@@ -71,7 +71,7 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
-	test("upsert does not overwrite source on update", () => {
+	test("upsert overwrites source on update", () => {
 		const store = createTestStore();
 
 		store.upsert({
@@ -84,11 +84,23 @@ describe("SessionStore", () => {
 			sdkSessionId: "sdk-123",
 			title: "Updated",
 			model: "opus",
+			source: "tui",
 		});
 
 		const session = store.get("sdk-123");
 		expect(session?.title).toBe("Updated");
-		expect(session?.source).toBe("telegram");
+		expect(session?.source).toBe("tui");
+
+		store.close();
+	});
+
+	test("persists last telegram chat id", () => {
+		let store = createTestStore();
+		store.setLastTelegramChatId(123);
+		store.close();
+
+		store = createTestStore();
+		expect(store.getLastTelegramChatId()).toBe(123);
 
 		store.close();
 	});

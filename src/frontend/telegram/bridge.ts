@@ -14,7 +14,7 @@ export function createTelegramBridge(url: string) {
 	const sockets = new Set<WebSocket>();
 
 	function createSocket() {
-		const socket = openRuntimeSocket(url);
+		const socket = openRuntimeSocket(url, "telegram");
 		const { ws } = socket;
 		sockets.add(ws);
 		ws.onclose = () => {
@@ -33,6 +33,7 @@ export function createTelegramBridge(url: string) {
 			prompt: string,
 			onText?: (accumulated: string) => void,
 			images?: ImageRef[],
+			telegramChatId?: number,
 		): Promise<string> {
 			const { ws, ready } = createSocket();
 			await ready;
@@ -63,7 +64,7 @@ export function createTelegramBridge(url: string) {
 					reject(new Error("WebSocket error"));
 				};
 
-				sendRuntimePrompt(ws, prompt, "telegram", images);
+				sendRuntimePrompt(ws, prompt, "telegram", images, telegramChatId);
 			});
 		},
 
@@ -109,6 +110,7 @@ export function createTelegramBridge(url: string) {
 			prompt: string,
 			images?: ImageRef[],
 			onImage?: (event: ImageEvent) => void | Promise<void>,
+			telegramChatId?: number,
 		): AsyncIterable<string> {
 			const { ws, ready } = createSocket();
 			await ready;
@@ -180,7 +182,7 @@ export function createTelegramBridge(url: string) {
 				finishWithError(new Error("WebSocket error"));
 			};
 
-			sendRuntimePrompt(ws, prompt, "telegram", images);
+			sendRuntimePrompt(ws, prompt, "telegram", images, telegramChatId);
 
 			while (true) {
 				if (pending.length > 0) {

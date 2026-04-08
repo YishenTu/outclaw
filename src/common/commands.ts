@@ -1,16 +1,9 @@
+import { MODEL_ALIAS_LIST } from "./models.ts";
+
 export const DEFAULT_MODEL = "opus";
 export const DEFAULT_EFFORT = "high";
 
-export const MODEL_ALIASES = {
-	opus: "claude-opus-4-6[1m]",
-	sonnet: "sonnet",
-	haiku: "haiku",
-} as const;
-
-export type ModelAlias = keyof typeof MODEL_ALIASES;
-
-export const MODEL_ALIAS_LIST = Object.keys(MODEL_ALIASES) as ModelAlias[];
-export const MODEL_ALIAS_COMMANDS = MODEL_ALIAS_LIST.map(
+const MODEL_ALIAS_COMMANDS = MODEL_ALIAS_LIST.map(
 	(alias) => `/${alias}`,
 ) as string[];
 
@@ -30,16 +23,8 @@ export const RUNTIME_COMMANDS = [
 	{ command: "stop", description: "Cancel the current agent run" },
 ] as const;
 
-export function isModelAlias(value: string): value is ModelAlias {
-	return Object.hasOwn(MODEL_ALIASES, value);
-}
-
 export function isEffortLevel(value: string): value is EffortLevel {
 	return EFFORT_LEVELS.includes(value as EffortLevel);
-}
-
-export function resolveModelAlias(value: string): string {
-	return isModelAlias(value) ? MODEL_ALIASES[value] : value;
 }
 
 export function isRuntimeCommand(input: string): boolean {

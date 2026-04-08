@@ -2,6 +2,10 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface Config {
+	heartbeat: {
+		intervalMinutes: number;
+		deferMinutes: number;
+	};
 	port: number;
 	telegram: {
 		botToken: string;
@@ -11,6 +15,10 @@ export interface Config {
 }
 
 const DEFAULTS: Config = {
+	heartbeat: {
+		intervalMinutes: 30,
+		deferMinutes: 0,
+	},
 	port: 4000,
 	telegram: {
 		botToken: "",
@@ -66,6 +74,12 @@ export function loadConfig(homeDir: string): Config {
 	const raw = JSON.parse(readFileSync(configPath, "utf-8"));
 
 	return {
+		heartbeat: {
+			intervalMinutes:
+				raw.heartbeat?.intervalMinutes ?? DEFAULTS.heartbeat.intervalMinutes,
+			deferMinutes:
+				raw.heartbeat?.deferMinutes ?? DEFAULTS.heartbeat.deferMinutes,
+		},
 		port: raw.port ?? DEFAULTS.port,
 		telegram: {
 			botToken: resolveEnv(
