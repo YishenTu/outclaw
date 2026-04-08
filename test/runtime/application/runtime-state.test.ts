@@ -162,6 +162,7 @@ describe("RuntimeState", () => {
 				title: "Old chat",
 				model: "sonnet",
 				source: "tui",
+				tag: "chat",
 				createdAt: Date.now(),
 				lastActive: Date.now(),
 			});
@@ -179,6 +180,7 @@ describe("RuntimeState", () => {
 				title: "t",
 				model: "haiku",
 				source: "tui",
+				tag: "chat",
 				createdAt: 0,
 				lastActive: 0,
 			});
@@ -192,6 +194,7 @@ describe("RuntimeState", () => {
 				title: "t",
 				model: "unknown-model",
 				source: "tui",
+				tag: "chat",
 				createdAt: 0,
 				lastActive: 0,
 			});

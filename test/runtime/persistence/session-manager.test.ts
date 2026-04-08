@@ -96,6 +96,24 @@ describe("SessionManager", () => {
 		store.close();
 	});
 
+	test("preserves stored session tags on update", () => {
+		const store = createTestStore();
+		store.upsert({
+			sdkSessionId: "sdk-cron",
+			title: "Daily summary",
+			model: "haiku",
+			tag: "cron",
+		});
+		store.setActiveSessionId("sdk-cron");
+
+		const session = new SessionManager(store);
+		session.update("sdk-cron", "opus");
+
+		expect(store.get("sdk-cron")?.tag).toBe("cron");
+
+		store.close();
+	});
+
 	test("clear removes active from store", () => {
 		const store = createTestStore();
 		const session = new SessionManager(store);

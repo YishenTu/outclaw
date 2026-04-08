@@ -124,6 +124,18 @@ export function startTelegramBot({
 	console.log("Telegram bot started");
 
 	return {
+		async sendCronResult(params: {
+			jobName: string;
+			telegramChatId: number;
+			text: string;
+		}) {
+			const message = params.text.trim()
+				? `[cron] ${params.jobName}\n${params.text}`
+				: `[cron] ${params.jobName}`;
+			await bot.api.sendMessage(params.telegramChatId, message, {
+				disable_notification: true,
+			});
+		},
 		async sendHeartbeatResult(params: {
 			telegramChatId: number;
 			text: string;

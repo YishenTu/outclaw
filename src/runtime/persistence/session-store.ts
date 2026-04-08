@@ -1,10 +1,13 @@
 import { Database } from "bun:sqlite";
 
+export type SessionTag = "chat" | "cron";
+
 export interface SessionRow {
 	sdkSessionId: string;
 	title: string;
 	model: string;
 	source: string;
+	tag: SessionTag;
 	createdAt: number;
 	lastActive: number;
 }
@@ -24,17 +27,29 @@ export class SessionStore {
 
 	private migrate() {
 		this.db.exec(`CREATE TABLE IF NOT EXISTS sessions (
-			sdk_session_id TEXT PRIMARY KEY,
-			title TEXT NOT NULL,
-			model TEXT NOT NULL,
-			source TEXT NOT NULL DEFAULT 'tui',
-			created_at INTEGER NOT NULL,
-			last_active INTEGER NOT NULL
-		)`);
+				sdk_session_id TEXT PRIMARY KEY,
+				title TEXT NOT NULL,
+				model TEXT NOT NULL,
+				source TEXT NOT NULL DEFAULT 'tui',
+				tag TEXT NOT NULL DEFAULT 'chat',
+				created_at INTEGER NOT NULL,
+				last_active INTEGER NOT NULL
+			)`);
 		this.db.exec(`CREATE TABLE IF NOT EXISTS state (
-			key TEXT PRIMARY KEY,
-			value TEXT
-		)`);
+				key TEXT PRIMARY KEY,
+				value TEXT
+			)`);
+
+		const columns = this.db
+			.query("PRAGMA table_info(sessions)")
+			.all() as Array<{
+			name: string;
+		}>;
+		if (!columns.some((column) => column.name === "tag")) {
+			this.db.exec(
+				"ALTER TABLE sessions ADD COLUMN tag TEXT NOT NULL DEFAULT 'chat'",
+			);
+		}
 	}
 
 	upsert(params: {
@@ -42,20 +57,22 @@ export class SessionStore {
 		title: string;
 		model: string;
 		source?: string;
+		tag?: SessionTag;
 	}) {
 		const now = Date.now();
 		this.db
 			.query(
-				`INSERT INTO sessions (sdk_session_id, title, model, source, created_at, last_active)
-			 VALUES ($id, $title, $model, $source, $now, $now)
-			 ON CONFLICT(sdk_session_id) DO UPDATE SET
-				title = $title, model = $model, source = $source, last_active = $now`,
+				`INSERT INTO sessions (sdk_session_id, title, model, source, tag, created_at, last_active)
+				 VALUES ($id, $title, $model, $source, $tag, $now, $now)
+				 ON CONFLICT(sdk_session_id) DO UPDATE SET
+					title = $title, model = $model, source = $source, tag = $tag, last_active = $now`,
 			)
 			.run({
 				$id: params.sdkSessionId,
 				$title: params.title,
 				$model: params.model,
 				$source: params.source ?? "tui",
+				$tag: params.tag ?? "chat",
 				$now: now,
 			});
 	}
@@ -63,13 +80,14 @@ export class SessionStore {
 	get(sdkSessionId: string): SessionRow | undefined {
 		const row = this.db
 			.query(
-				"SELECT sdk_session_id, title, model, source, created_at, last_active FROM sessions WHERE sdk_session_id = $id",
+				"SELECT sdk_session_id, title, model, source, tag, created_at, last_active FROM sessions WHERE sdk_session_id = $id",
 			)
 			.get({ $id: sdkSessionId }) as {
 			sdk_session_id: string;
 			title: string;
 			model: string;
 			source: string;
+			tag: SessionTag;
 			created_at: number;
 			last_active: number;
 		} | null;
@@ -80,6 +98,7 @@ export class SessionStore {
 			title: row.title,
 			model: row.model,
 			source: row.source,
+			tag: row.tag,
 			createdAt: row.created_at,
 			lastActive: row.last_active,
 		};
@@ -88,13 +107,14 @@ export class SessionStore {
 	list(limit = 20): SessionRow[] {
 		const rows = this.db
 			.query(
-				"SELECT sdk_session_id, title, model, source, created_at, last_active FROM sessions ORDER BY last_active DESC LIMIT $limit",
+				"SELECT sdk_session_id, title, model, source, tag, created_at, last_active FROM sessions ORDER BY last_active DESC LIMIT $limit",
 			)
 			.all({ $limit: limit }) as Array<{
 			sdk_session_id: string;
 			title: string;
 			model: string;
 			source: string;
+			tag: SessionTag;
 			created_at: number;
 			last_active: number;
 		}>;
@@ -104,6 +124,7 @@ export class SessionStore {
 			title: row.title,
 			model: row.model,
 			source: row.source,
+			tag: row.tag,
 			createdAt: row.created_at,
 			lastActive: row.last_active,
 		}));

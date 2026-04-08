@@ -27,6 +27,7 @@ const telegramMediaRefStore = new TelegramMediaRefStore(dbPath);
 const runtime = createRuntime({
 	port: config.port,
 	cwd: HOME_DIR,
+	cronDir: join(HOME_DIR, "cron"),
 	heartbeat: config.heartbeat,
 	promptHomeDir: HOME_DIR,
 	permissionMode: config.permissionMode,
@@ -75,6 +76,7 @@ if (config.telegram.botToken) {
 		runtime.setHeartbeatResultHandler((params) =>
 			telegram?.sendHeartbeatResult(params),
 		);
+		runtime.setCronResultHandler((params) => telegram?.sendCronResult(params));
 	}
 } else {
 	console.log("Telegram not configured, skipping");

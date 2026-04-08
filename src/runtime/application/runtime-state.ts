@@ -45,6 +45,10 @@ export class RuntimeState {
 		return this.activeModel;
 	}
 
+	getLastTelegramChatId(): number | undefined {
+		return this.lastTelegramChatId;
+	}
+
 	get resolvedModel(): string {
 		return resolveModelAlias(this.activeModel);
 	}

@@ -151,6 +151,12 @@ export interface HistoryReplayEvent {
 	messages: DisplayMessage[];
 }
 
+export interface CronResultEvent {
+	type: "cron_result";
+	jobName: string;
+	text: string;
+}
+
 export type ServerEvent =
 	| TextEvent
 	| ImageEvent
@@ -165,7 +171,8 @@ export type ServerEvent =
 	| SessionListEvent
 	| SessionSwitchedEvent
 	| RuntimeStatusEvent
-	| HistoryReplayEvent;
+	| HistoryReplayEvent
+	| CronResultEvent;
 
 // --- Facade types (backend contract) ---
 

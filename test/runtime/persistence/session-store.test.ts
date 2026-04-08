@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -67,6 +68,35 @@ describe("SessionStore", () => {
 
 		const session = store.get("sdk-tui");
 		expect(session?.source).toBe("tui");
+
+		store.close();
+	});
+
+	test("tag defaults to chat when not provided", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			sdkSessionId: "sdk-chat",
+			title: "Interactive chat",
+			model: "opus",
+		});
+
+		expect(store.get("sdk-chat")?.tag).toBe("chat");
+
+		store.close();
+	});
+
+	test("upsert persists cron tags", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			sdkSessionId: "sdk-cron",
+			title: "daily-summary",
+			model: "haiku",
+			tag: "cron",
+		});
+
+		expect(store.get("sdk-cron")?.tag).toBe("cron");
 
 		store.close();
 	});
@@ -153,6 +183,35 @@ describe("SessionStore", () => {
 
 		store = createTestStore();
 		expect(store.getActiveSessionId()).toBe("sdk-789");
+		store.close();
+	});
+
+	test("migrates legacy sessions tables by adding tag", () => {
+		const db = new Database(TEST_DB, { create: true });
+		db.exec(`CREATE TABLE sessions (
+			sdk_session_id TEXT PRIMARY KEY,
+			title TEXT NOT NULL,
+			model TEXT NOT NULL,
+			source TEXT NOT NULL DEFAULT 'tui',
+			created_at INTEGER NOT NULL,
+			last_active INTEGER NOT NULL
+		)`);
+		db.exec(`CREATE TABLE state (
+			key TEXT PRIMARY KEY,
+			value TEXT
+		)`);
+		db.close();
+
+		const store = createTestStore();
+		store.upsert({
+			sdkSessionId: "sdk-cron",
+			title: "daily-summary",
+			model: "haiku",
+			tag: "cron",
+		});
+
+		expect(store.get("sdk-cron")?.tag).toBe("cron");
+
 		store.close();
 	});
 

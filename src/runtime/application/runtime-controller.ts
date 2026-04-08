@@ -1,4 +1,5 @@
 import type {
+	CronResultEvent,
 	Facade,
 	FacadeEvent,
 	HeartbeatResult,
@@ -16,6 +17,11 @@ import { RuntimeState } from "./runtime-state.ts";
 
 interface RuntimeControllerOptions {
 	cwd?: string;
+	deliverCronResult?: (params: {
+		jobName: string;
+		telegramChatId: number;
+		text: string;
+	}) => Promise<void> | void;
 	deliverHeartbeatResult?: (
 		params: {
 			telegramChatId: number;
@@ -55,8 +61,18 @@ interface PromptExecution {
 	telegramChatId?: number;
 }
 
+interface CronExecutionResult {
+	jobName: string;
+	model: string;
+	sessionId?: string;
+	text: string;
+}
+
 export class RuntimeController {
 	private activeAbort: AbortController | undefined;
+	private deliverCronResult:
+		| RuntimeControllerOptions["deliverCronResult"]
+		| undefined;
 	private deliverHeartbeatResult:
 		| RuntimeControllerOptions["deliverHeartbeatResult"]
 		| undefined;
@@ -70,9 +86,53 @@ export class RuntimeController {
 	private state: RuntimeState;
 
 	constructor(private options: RuntimeControllerOptions) {
+		this.deliverCronResult = options.deliverCronResult;
 		this.deliverHeartbeatResult = options.deliverHeartbeatResult;
 		this.state = new RuntimeState(options.store);
 		this.readHistory = options.historyReader ?? readHistory;
+	}
+
+	get currentModel(): string {
+		return this.state.model;
+	}
+
+	async broadcastCronResult(result: CronExecutionResult) {
+		if (result.sessionId) {
+			this.options.store?.upsert({
+				sdkSessionId: result.sessionId,
+				title: result.jobName,
+				model: result.model,
+				tag: "cron",
+			});
+		}
+
+		const event: CronResultEvent = {
+			type: "cron_result",
+			jobName: result.jobName,
+			text: result.text,
+		};
+		this.hub.broadcast(event);
+
+		const telegramChatId = this.state.getLastTelegramChatId();
+		if (!this.deliverCronResult || telegramChatId === undefined) {
+			return;
+		}
+
+		try {
+			await this.deliverCronResult({
+				jobName: result.jobName,
+				telegramChatId,
+				text: result.text,
+			});
+		} catch (err) {
+			console.error(
+				`Failed to deliver cron result to Telegram: ${extractError(err)}`,
+			);
+		}
+	}
+
+	setCronResultHandler(handler: RuntimeControllerOptions["deliverCronResult"]) {
+		this.deliverCronResult = handler;
 	}
 
 	setHeartbeatResultHandler(

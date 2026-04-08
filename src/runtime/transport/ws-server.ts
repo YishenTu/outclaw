@@ -7,6 +7,7 @@ import type {
 } from "../../common/protocol.ts";
 import { RuntimeController } from "../application/runtime-controller.ts";
 import type { Config } from "../config.ts";
+import { CronScheduler, createCronAgentRunner } from "../cron/index.ts";
 import { HeartbeatScheduler } from "../heartbeat/scheduler.ts";
 import { readHistory } from "../persistence/history-reader.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
@@ -15,6 +16,12 @@ interface RuntimeOptions {
 	port: number;
 	facade?: Facade;
 	cwd?: string;
+	cronDir?: string;
+	deliverCronResult?: (params: {
+		jobName: string;
+		telegramChatId: number;
+		text: string;
+	}) => Promise<void> | void;
 	deliverHeartbeatResult?: (
 		params: {
 			telegramChatId: number;
@@ -30,10 +37,12 @@ interface RuntimeOptions {
 }
 
 export function createRuntime(options: RuntimeOptions) {
+	const facade = options.facade ?? new ClaudeAdapter(options.permissionMode);
 	const controller = new RuntimeController({
 		cwd: options.cwd,
 		promptHomeDir: options.promptHomeDir,
-		facade: options.facade ?? new ClaudeAdapter(options.permissionMode),
+		facade,
+		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
 		historyReader: options.historyReader ?? readHistory,
 		store: options.store,
@@ -47,6 +56,20 @@ export function createRuntime(options: RuntimeOptions) {
 						controller.shouldAttemptHeartbeat(scheduledAt, deferMinutes),
 					requestHeartbeat: (prompt, scheduledAt, deferMinutes) =>
 						controller.enqueueHeartbeat(prompt, scheduledAt, deferMinutes),
+				})
+			: undefined;
+
+	const cronScheduler =
+		options.cronDir && options.promptHomeDir
+			? new CronScheduler({
+					cronDir: options.cronDir,
+					runAgent: createCronAgentRunner({
+						facade,
+						promptHomeDir: options.promptHomeDir,
+						cwd: options.cwd ?? process.cwd(),
+					}),
+					onResult: (event) => controller.broadcastCronResult(event),
+					getDefaultModel: () => controller.currentModel,
 				})
 			: undefined;
 
@@ -66,15 +89,20 @@ export function createRuntime(options: RuntimeOptions) {
 		},
 	});
 	heartbeat?.start();
+	cronScheduler?.start();
 
 	return {
 		port: server.port as number,
+		setCronResultHandler(handler: RuntimeOptions["deliverCronResult"]) {
+			controller.setCronResultHandler(handler);
+		},
 		setHeartbeatResultHandler(
 			handler: RuntimeOptions["deliverHeartbeatResult"],
 		) {
 			controller.setHeartbeatResultHandler(handler);
 		},
 		stop() {
+			cronScheduler?.stop();
 			heartbeat?.stop();
 			server.stop();
 		},

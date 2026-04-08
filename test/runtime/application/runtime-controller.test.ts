@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import type { ImageRef, ServerEvent } from "../../../src/common/protocol.ts";
 import { RuntimeController } from "../../../src/runtime/application/runtime-controller.ts";
-import type { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
+
+const TEST_DB = join(import.meta.dir, ".tmp-runtime-controller.sqlite");
 
 // Minimal WsClient stub — ClientHub only calls .send()
 function mockWs(
@@ -24,6 +28,11 @@ function createController(
 	overrides: {
 		facade?: MockFacade;
 		cwd?: string;
+		deliverCronResult?: (params: {
+			jobName: string;
+			telegramChatId: number;
+			text: string;
+		}) => Promise<void> | void;
 		deliverHeartbeatResult?: (params: {
 			images: Array<{ path: string; caption?: string }>;
 			telegramChatId: number;
@@ -45,6 +54,7 @@ function createController(
 			promptHomeDir: overrides.promptHomeDir,
 			store: overrides.store,
 			historyReader: overrides.historyReader,
+			deliverCronResult: overrides.deliverCronResult,
 			deliverHeartbeatResult: overrides.deliverHeartbeatResult,
 		}),
 	};
@@ -101,6 +111,12 @@ async function waitForDone(
 			}
 		}, 5);
 	});
+}
+
+function cleanupStore(path: string) {
+	if (existsSync(path)) rmSync(path);
+	if (existsSync(`${path}-wal`)) rmSync(`${path}-wal`);
+	if (existsSync(`${path}-shm`)) rmSync(`${path}-shm`);
 }
 
 describe("RuntimeController", () => {
@@ -732,6 +748,85 @@ describe("RuntimeController", () => {
 
 			expect(facade.callOrder).toContain("first heartbeat");
 			expect(facade.callOrder).not.toContain("second heartbeat");
+		});
+	});
+
+	describe("cron", () => {
+		test("broadcasts cron results to tui clients and forwards them to the last telegram chat", async () => {
+			const delivered: Array<{
+				jobName: string;
+				telegramChatId: number;
+				text: string;
+			}> = [];
+			const { controller } = createController({
+				deliverCronResult: (params) => {
+					delivered.push(params);
+				},
+			});
+			const tui = mockWs("tui");
+			const tg = mockWs("telegram");
+			controller.handleOpen(tui);
+			controller.handleOpen(tg);
+
+			controller.handleMessage(
+				tg,
+				prompt("hello from telegram", "telegram", [], 123),
+			);
+			await waitForDone(tg);
+
+			await controller.broadcastCronResult({
+				jobName: "daily-summary",
+				model: "haiku",
+				sessionId: "cron-session-1",
+				text: "All clear",
+			});
+
+			expect(
+				tui.events().filter((event) => event.type === "cron_result"),
+			).toEqual([
+				{
+					type: "cron_result",
+					jobName: "daily-summary",
+					text: "All clear",
+				},
+			]);
+			expect(delivered).toEqual([
+				{
+					jobName: "daily-summary",
+					telegramChatId: 123,
+					text: "All clear",
+				},
+			]);
+		});
+
+		test("records cron runs as tagged sessions without replacing the active session", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const { controller } = createController({ store });
+			const ws = mockWs("tui");
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("main prompt"));
+			await waitForDone(ws);
+			expect(store.getActiveSessionId()).toBe("mock-session-123");
+
+			await controller.broadcastCronResult({
+				jobName: "daily-summary",
+				model: "haiku",
+				sessionId: "cron-session-1",
+				text: "All clear",
+			});
+
+			expect(store.get("cron-session-1")).toMatchObject({
+				sdkSessionId: "cron-session-1",
+				title: "daily-summary",
+				model: "haiku",
+				tag: "cron",
+			});
+			expect(store.getActiveSessionId()).toBe("mock-session-123");
+
+			store.close();
+			cleanupStore(TEST_DB);
 		});
 	});
 

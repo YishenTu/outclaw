@@ -1,5 +1,5 @@
 import type { RuntimeClientType } from "../../common/protocol.ts";
-import type { SessionStore } from "./session-store.ts";
+import type { SessionStore, SessionTag } from "./session-store.ts";
 
 export class SessionManager {
 	private activeSessionId: string | undefined;
@@ -27,7 +27,12 @@ export class SessionManager {
 		return this.currentSource;
 	}
 
-	update(sessionId: string, model: string, source?: RuntimeClientType) {
+	update(
+		sessionId: string,
+		model: string,
+		source?: RuntimeClientType,
+		tag?: SessionTag,
+	) {
 		const storedSession = this.store?.get(sessionId);
 		const storedTitle = storedSession?.title;
 		const title =
@@ -41,6 +46,7 @@ export class SessionManager {
 			(sessionId === this.activeSessionId
 				? this.currentSource
 				: fallbackSource);
+		const nextTag = tag ?? storedSession?.tag ?? "chat";
 
 		this.activeSessionId = sessionId;
 		this.currentTitle = title;
@@ -51,6 +57,7 @@ export class SessionManager {
 			title: title ?? "Untitled",
 			model,
 			source: nextSource,
+			tag: nextTag,
 		});
 	}
 

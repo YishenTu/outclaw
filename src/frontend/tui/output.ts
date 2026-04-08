@@ -57,6 +57,10 @@ export function getTuiEventUpdate(
 			return { append: event.text };
 		case "image":
 			return { append: `[image: ${event.path}]\n` };
+		case "cron_result":
+			return {
+				append: `[cron] ${event.jobName}\n${event.text}\n`,
+			};
 		case "error":
 			return {
 				append: `\n[error] ${event.message}`,

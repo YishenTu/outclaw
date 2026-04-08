@@ -61,6 +61,18 @@ describe("TUI event output", () => {
 		});
 	});
 
+	test("renders cron results", () => {
+		const update = getTuiEventUpdate({
+			type: "cron_result",
+			jobName: "daily-summary",
+			text: "All clear",
+		});
+
+		expect(update).toEqual({
+			append: "[cron] daily-summary\nAll clear\n",
+		});
+	});
+
 	test("renders replayed image prompts without a path", () => {
 		const update = getTuiEventUpdate({
 			type: "history_replay",
