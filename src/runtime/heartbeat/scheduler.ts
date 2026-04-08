@@ -1,5 +1,5 @@
 import type { Config } from "../config.ts";
-import { readHeartbeatPrompt } from "./read-heartbeat-prompt.ts";
+import { createHeartbeatPrompt } from "./create-heartbeat-prompt.ts";
 
 type TimerHandle = unknown;
 
@@ -8,7 +8,6 @@ interface HeartbeatSchedulerOptions {
 	promptHomeDir: string;
 	now?: () => number;
 	clearIntervalFn?: (timer: TimerHandle) => void;
-	readHeartbeatPrompt?: (promptHomeDir: string) => Promise<string | undefined>;
 	requestHeartbeat: (
 		prompt: string,
 		scheduledAt: number,
@@ -69,13 +68,7 @@ export class HeartbeatScheduler {
 			return;
 		}
 
-		const prompt = await (
-			this.options.readHeartbeatPrompt ?? readHeartbeatPrompt
-		)(this.options.promptHomeDir);
-		if (!prompt) {
-			return;
-		}
-
+		const prompt = createHeartbeatPrompt(this.options.promptHomeDir);
 		await this.options.requestHeartbeat(
 			prompt,
 			scheduledAt,

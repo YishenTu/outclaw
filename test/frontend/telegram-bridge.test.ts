@@ -3,6 +3,54 @@ import { createTelegramBridge } from "../../src/frontend/telegram/bridge.ts";
 import { createRuntime } from "../../src/runtime/transport/ws-server.ts";
 import { MockFacade } from "../helpers/mock-facade.ts";
 
+function createClosingServer() {
+	const server = Bun.serve({
+		port: 0,
+		fetch(req, runtime) {
+			if (runtime.upgrade(req)) {
+				return;
+			}
+			return new Response("ok");
+		},
+		websocket: {
+			message(ws) {
+				ws.close();
+			},
+		},
+	});
+
+	return {
+		port: server.port as number,
+		stop() {
+			server.stop();
+		},
+	};
+}
+
+function createStatusServer(message: string) {
+	const server = Bun.serve({
+		port: 0,
+		fetch(req, runtime) {
+			if (runtime.upgrade(req)) {
+				return;
+			}
+			return new Response("ok");
+		},
+		websocket: {
+			message(ws) {
+				ws.send(JSON.stringify({ type: "status", message }));
+			},
+		},
+	});
+
+	return {
+		port: server.port as number,
+		stop() {
+			server.stop();
+		},
+	};
+}
+
 describe("Telegram bridge", () => {
 	let server: ReturnType<typeof createRuntime>;
 	let facade: MockFacade;
@@ -113,5 +161,81 @@ describe("Telegram bridge", () => {
 		expect(event.model).toBe("opus");
 
 		bridge.close();
+	});
+
+	test("send() rejects when the runtime socket closes unexpectedly", async () => {
+		const closingServer = createClosingServer();
+		const bridge = createTelegramBridge(`ws://localhost:${closingServer.port}`);
+
+		try {
+			await expect(bridge.send("hello")).rejects.toThrow("WebSocket closed");
+		} finally {
+			bridge.close();
+			closingServer.stop();
+		}
+	});
+
+	test("sendCommandAndWait() rejects when the runtime socket closes unexpectedly", async () => {
+		const closingServer = createClosingServer();
+		const bridge = createTelegramBridge(`ws://localhost:${closingServer.port}`);
+
+		try {
+			await expect(bridge.sendCommandAndWait("/model")).rejects.toThrow(
+				"WebSocket closed",
+			);
+		} finally {
+			bridge.close();
+			closingServer.stop();
+		}
+	});
+
+	test("stream() throws when the runtime socket closes unexpectedly", async () => {
+		const closingServer = createClosingServer();
+		const bridge = createTelegramBridge(`ws://localhost:${closingServer.port}`);
+
+		try {
+			const consume = async () => {
+				for await (const _chunk of bridge.stream("hello")) {
+					// Drain
+				}
+			};
+
+			await expect(consume()).rejects.toThrow("WebSocket closed");
+		} finally {
+			bridge.close();
+			closingServer.stop();
+		}
+	});
+
+	test("send() rejects with runtime status messages", async () => {
+		const statusServer = createStatusServer("Runtime shutting down");
+		const bridge = createTelegramBridge(`ws://localhost:${statusServer.port}`);
+
+		try {
+			await expect(bridge.send("hello")).rejects.toThrow(
+				"Runtime shutting down",
+			);
+		} finally {
+			bridge.close();
+			statusServer.stop();
+		}
+	});
+
+	test("stream() throws with runtime status messages", async () => {
+		const statusServer = createStatusServer("Runtime shutting down");
+		const bridge = createTelegramBridge(`ws://localhost:${statusServer.port}`);
+
+		try {
+			const consume = async () => {
+				for await (const _chunk of bridge.stream("hello")) {
+					// Drain
+				}
+			};
+
+			await expect(consume()).rejects.toThrow("Runtime shutting down");
+		} finally {
+			bridge.close();
+			statusServer.stop();
+		}
 	});
 });

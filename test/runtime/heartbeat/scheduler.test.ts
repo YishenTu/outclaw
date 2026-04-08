@@ -1,9 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
+import { createHeartbeatPrompt } from "../../../src/runtime/heartbeat/create-heartbeat-prompt.ts";
 import { HeartbeatScheduler } from "../../../src/runtime/heartbeat/scheduler.ts";
 
 describe("HeartbeatScheduler", () => {
-	test("does not read HEARTBEAT.md when runtime says scheduling should be skipped", async () => {
-		const readHeartbeatPrompt = mock(async (_homeDir: string) => "unused");
+	test("does not request a heartbeat when runtime says scheduling should be skipped", async () => {
 		const requestHeartbeat = mock(
 			async (_prompt: string, _scheduledAt: number, _deferMinutes: number) =>
 				false,
@@ -14,17 +14,15 @@ describe("HeartbeatScheduler", () => {
 			promptHomeDir: "/tmp/home",
 			shouldAttemptHeartbeat: () => false,
 			requestHeartbeat,
-			readHeartbeatPrompt,
 			now: () => 123,
 		});
 
 		await scheduler.tick();
 
-		expect(readHeartbeatPrompt).not.toHaveBeenCalled();
 		expect(requestHeartbeat).not.toHaveBeenCalled();
 	});
 
-	test("reads HEARTBEAT.md and requests heartbeat with scheduler metadata", async () => {
+	test("builds the wrapper prompt and requests heartbeat with scheduler metadata", async () => {
 		const requestHeartbeat = mock(
 			async (_prompt: string, _scheduledAt: number, _deferMinutes: number) =>
 				true,
@@ -35,13 +33,16 @@ describe("HeartbeatScheduler", () => {
 			promptHomeDir: "/tmp/home",
 			shouldAttemptHeartbeat: () => true,
 			requestHeartbeat,
-			readHeartbeatPrompt: async () => "check queue",
 			now: () => 456,
 		});
 
 		await scheduler.tick();
 
-		expect(requestHeartbeat).toHaveBeenCalledWith("check queue", 456, 7);
+		expect(requestHeartbeat).toHaveBeenCalledWith(
+			createHeartbeatPrompt("/tmp/home"),
+			456,
+			7,
+		);
 	});
 
 	test("starts an interval and clears it on stop", () => {
@@ -54,7 +55,6 @@ describe("HeartbeatScheduler", () => {
 			promptHomeDir: "/tmp/home",
 			shouldAttemptHeartbeat: () => false,
 			requestHeartbeat: async () => false,
-			readHeartbeatPrompt: async () => undefined,
 			setIntervalFn: ((_handler: () => void, timeout?: number) => {
 				scheduledMs = timeout;
 				return intervalToken;

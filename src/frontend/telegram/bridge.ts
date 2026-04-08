@@ -17,9 +17,9 @@ export function createTelegramBridge(url: string) {
 		const socket = openRuntimeSocket(url, "telegram");
 		const { ws } = socket;
 		sockets.add(ws);
-		ws.onclose = () => {
+		ws.addEventListener("close", () => {
 			sockets.delete(ws);
-		};
+		});
 		return socket;
 	}
 
@@ -40,6 +40,21 @@ export function createTelegramBridge(url: string) {
 
 			return new Promise<string>((resolve, reject) => {
 				let text = "";
+				let settled = false;
+
+				const rejectOnce = (error: Error) => {
+					if (settled) return;
+					settled = true;
+					closeSocket(ws);
+					reject(error);
+				};
+
+				const resolveOnce = (value: string) => {
+					if (settled) return;
+					settled = true;
+					closeSocket(ws);
+					resolve(value);
+				};
 
 				ws.onmessage = (msg) => {
 					const event = parseMessage(msg.data as string) as {
@@ -50,18 +65,29 @@ export function createTelegramBridge(url: string) {
 					if (event.type === "text" && event.text) {
 						text += event.text;
 						onText?.(text);
+					} else if (event.type === "status") {
+						rejectOnce(
+							new Error(
+								typeof event.message === "string"
+									? event.message
+									: "Unexpected status event",
+							),
+						);
 					} else if (event.type === "error") {
-						closeSocket(ws);
-						reject(new Error(event.message ?? "Unknown error"));
+						rejectOnce(new Error(event.message ?? "Unknown error"));
 					} else if (event.type === "done") {
-						closeSocket(ws);
-						resolve(text);
+						resolveOnce(text);
 					}
 				};
 
 				ws.onerror = () => {
-					closeSocket(ws);
-					reject(new Error("WebSocket error"));
+					rejectOnce(new Error("WebSocket error"));
+				};
+
+				ws.onclose = () => {
+					if (settled) return;
+					settled = true;
+					reject(new Error("WebSocket closed"));
 				};
 
 				sendRuntimePrompt(ws, prompt, "telegram", images, telegramChatId);
@@ -75,6 +101,25 @@ export function createTelegramBridge(url: string) {
 			const { ws, ready } = createSocket();
 			await ready;
 			return new Promise((resolve, reject) => {
+				let settled = false;
+
+				const rejectOnce = (error: Error) => {
+					if (settled) return;
+					settled = true;
+					closeSocket(ws);
+					reject(error);
+				};
+
+				const resolveOnce = (event: {
+					type: string;
+					[key: string]: unknown;
+				}) => {
+					if (settled) return;
+					settled = true;
+					closeSocket(ws);
+					resolve(event);
+				};
+
 				ws.onmessage = (msg) => {
 					const event = parseMessage(msg.data as string) as {
 						type: string;
@@ -95,12 +140,15 @@ export function createTelegramBridge(url: string) {
 							return;
 						}
 					}
-					closeSocket(ws);
-					resolve(event);
+					resolveOnce(event);
 				};
 				ws.onerror = () => {
-					closeSocket(ws);
-					reject(new Error("WebSocket error"));
+					rejectOnce(new Error("WebSocket error"));
+				};
+				ws.onclose = () => {
+					if (settled) return;
+					settled = true;
+					reject(new Error("WebSocket closed"));
 				};
 				sendRuntimeCommand(ws, command);
 			});
@@ -168,6 +216,14 @@ export function createTelegramBridge(url: string) {
 						});
 				} else if (event.type === "error") {
 					finishWithError(new Error(event.message ?? "Unknown error"));
+				} else if (event.type === "status") {
+					finishWithError(
+						new Error(
+							typeof event.message === "string"
+								? event.message
+								: "Unexpected status event",
+						),
+					);
 				} else if (event.type === "done") {
 					done = true;
 					closeSocket(ws);
@@ -180,6 +236,10 @@ export function createTelegramBridge(url: string) {
 			};
 			ws.onerror = () => {
 				finishWithError(new Error("WebSocket error"));
+			};
+			ws.onclose = () => {
+				if (done) return;
+				finishWithError(new Error("WebSocket closed"));
 			};
 
 			sendRuntimePrompt(ws, prompt, "telegram", images, telegramChatId);

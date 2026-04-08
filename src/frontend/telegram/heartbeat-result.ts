@@ -34,6 +34,11 @@ interface TelegramHeartbeatResultParams {
 	}) => Promise<void>;
 }
 
+function shouldSendHeartbeatText(text: string): boolean {
+	const trimmed = text.trim();
+	return trimmed !== "" && trimmed !== "HEARTBEAT_OK";
+}
+
 export async function sendTelegramHeartbeatResult(
 	ctx: TelegramHeartbeatResultContext,
 	params: TelegramHeartbeatResultParams,
@@ -54,7 +59,7 @@ export async function sendTelegramHeartbeatResult(
 		});
 	}
 
-	if (params.text.trim() === "") {
+	if (!shouldSendHeartbeatText(params.text)) {
 		return;
 	}
 

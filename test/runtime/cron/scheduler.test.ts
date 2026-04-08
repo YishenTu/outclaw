@@ -25,6 +25,22 @@ async function waitForWatcher() {
 	await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
+async function waitForCondition(
+	check: () => boolean | Promise<boolean>,
+	timeoutMs = 500,
+) {
+	const deadline = Date.now() + timeoutMs;
+
+	while (Date.now() < deadline) {
+		if (await check()) {
+			return;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+
+	throw new Error("Timed out waiting for condition");
+}
+
 const SIMPLE_JOB = `
 name: test-job
 schedule: "* * * * *"
@@ -195,13 +211,29 @@ prompt: do something
 		expect(receivedModel).toBe("sonnet");
 	});
 
-	test("suppresses no_reply results", async () => {
+	test("suppresses NO_REPLY results", async () => {
 		const cronDir = makeCronDir();
 		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
 
 		const results: ScheduledCronResult[] = [];
 		const scheduler = createScheduler(cronDir, {
-			runAgent: async () => "no_reply",
+			runAgent: async () => "NO_REPLY",
+			onResult: (event) => results.push(event),
+		});
+		scheduler.start();
+
+		await scheduler.triggerJob("test-job");
+
+		expect(results).toEqual([]);
+	});
+
+	test("suppresses legacy no_reply results", async () => {
+		const cronDir = makeCronDir();
+		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
+
+		const results: ScheduledCronResult[] = [];
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async () => " no_reply ",
 			onResult: (event) => results.push(event),
 		});
 		scheduler.start();
@@ -252,7 +284,12 @@ prompt: do something
 				"prompt: say goodbye",
 			),
 		);
-		await waitForWatcher();
+		await waitForCondition(async () => {
+			prompts.length = 0;
+			await scheduler.triggerJob("renamed-job");
+			return prompts.at(-1) === "say goodbye";
+		});
+		prompts.length = 0;
 
 		await scheduler.triggerJob("test-job");
 		await scheduler.triggerJob("renamed-job");

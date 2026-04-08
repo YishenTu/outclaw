@@ -90,6 +90,7 @@ export function createRuntime(options: RuntimeOptions) {
 	});
 	heartbeat?.start();
 	cronScheduler?.start();
+	let stopPromise: Promise<void> | undefined;
 
 	return {
 		port: server.port as number,
@@ -102,9 +103,16 @@ export function createRuntime(options: RuntimeOptions) {
 			controller.setHeartbeatResultHandler(handler);
 		},
 		stop() {
-			cronScheduler?.stop();
-			heartbeat?.stop();
-			server.stop();
+			if (!stopPromise) {
+				stopPromise = (async () => {
+					cronScheduler?.stop();
+					heartbeat?.stop();
+					controller.beginShutdown();
+					await controller.drain();
+					server.stop();
+				})();
+			}
+			return stopPromise;
 		},
 	};
 }

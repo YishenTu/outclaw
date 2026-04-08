@@ -15,8 +15,11 @@ A mini [OpenClaw](https://github.com/openclaw/openclaw) — autonomous AI agent 
 src/runtime/
 ├── application/   # runtime controller, state, message queue
 ├── commands/      # shared runtime command handling
+├── cron/          # cron job scheduler and agent runner
+├── heartbeat/     # periodic heartbeat scheduling
 ├── persistence/   # session store, session manager, history reader
 ├── process/       # daemon PID management
+├── prompt/        # system prompt assembly and template seeding
 └── transport/     # Bun WS server and client fan-out
 ```
 
@@ -61,6 +64,7 @@ Available from the TUI and Telegram:
 - `/session list` — list recent sessions from SQLite
 - `/session <id-prefix>` — switch to a stored session
 - `/status` — show model, effort, active session, and context usage
+- `/stop` — cancel the current agent run
 
 ## Runtime State
 
@@ -69,10 +73,25 @@ The daemon stores its state in `~/.misanthropic/`:
 - `daemon.pid` — background daemon PID
 - `daemon.log` — daemon stdout/stderr from `ma start`
 - `db.sqlite` — session metadata and active session pointer
+- `cron/` — YAML cron job definitions (one file per job)
 
 State-changing runtime commands are shared across connected frontends. Model changes,
 thinking effort changes, session clears, session switches, and session history replay
 stay in sync between TUI and Telegram.
+
+## Heartbeat
+
+Periodic internal prompt injected into the active session. The runtime enqueues a
+fixed wrapper prompt that tells the agent to read `HEARTBEAT.md`, act only on its
+current contents, and reply `HEARTBEAT_OK` when nothing needs attention.
+Configurable via `config.json` (`heartbeat.intervalMinutes`, `heartbeat.deferMinutes`).
+
+## Cron Jobs
+
+Parallel agent instances that run independently on a schedule. One YAML file per job
+in `~/.misanthropic/cron/`. Jobs share the same system prompt and tools as the main
+agent. Results are broadcast to all connected frontends and optionally forwarded to
+Telegram. The `cron/` directory is watched for live reload without daemon restart.
 
 ## License
 

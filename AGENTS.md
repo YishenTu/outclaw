@@ -6,7 +6,7 @@ A mini OpenClaw: autonomous AI agent powered by the Claude Agent SDK.
 
 - **Common** (`src/common/`): Shared protocol types, serialization, helpers
 - **Backend** (`src/backend/`): Facade interface + provider adapters (Claude)
-- **Runtime** (`src/runtime/`): WS server, shared active session, SQLite session store, history replay, message queue, PID management
+- **Runtime** (`src/runtime/`): WS server, shared active session, SQLite session store, history replay, message queue, PID management, heartbeat scheduler, cron scheduler, system prompt assembly
 - **Frontend** (`src/frontend/`): TUI (Ink) and Telegram bot connected to the same runtime session
 - **CLI** (`src/cli.ts`): `ma` command — start/stop/restart/status/tui/dev
 

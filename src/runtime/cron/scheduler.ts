@@ -123,7 +123,7 @@ export class CronScheduler {
 				await this.options.runAgent(config.prompt, model),
 			);
 
-			if (runResult.text === "no_reply") return;
+			if (isSuppressedCronResult(runResult.text)) return;
 
 			await this.options.onResult({
 				jobName: config.name,
@@ -201,4 +201,8 @@ function normalizeRunResult(
 	}
 
 	return result;
+}
+
+function isSuppressedCronResult(text: string): boolean {
+	return text.trim().toUpperCase() === "NO_REPLY";
 }

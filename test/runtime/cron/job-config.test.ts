@@ -8,7 +8,7 @@ model: haiku
 enabled: true
 prompt: |
   Summarize yesterday's activity.
-  If nothing noteworthy, reply no_reply.
+  If nothing noteworthy, reply NO_REPLY.
 `.trim();
 
 describe("parseJobConfig", () => {
@@ -20,7 +20,7 @@ describe("parseJobConfig", () => {
 			model: "haiku",
 			enabled: true,
 			prompt:
-				"Summarize yesterday's activity.\nIf nothing noteworthy, reply no_reply.\n",
+				"Summarize yesterday's activity.\nIf nothing noteworthy, reply NO_REPLY.\n",
 		});
 	});
 

@@ -383,6 +383,33 @@ describe("Runtime server", () => {
 		queueServer.stop();
 	});
 
+	test("stop() waits for queued work to finish before closing client streams", async () => {
+		const stopFacade = new MockFacade();
+		stopFacade.delayMs = 40;
+		const stopServer = createRuntime({ port: 0, facade: stopFacade });
+		const ws = await connectWs(stopServer.port);
+
+		let doneCount = 0;
+		ws.onmessage = (msg) => {
+			const event = JSON.parse(String(msg.data)) as { type: string };
+			if (event.type === "done") {
+				doneCount++;
+			}
+		};
+
+		ws.send(JSON.stringify({ type: "prompt", prompt: "first" }));
+		ws.send(JSON.stringify({ type: "prompt", prompt: "second" }));
+		await new Promise((r) => setTimeout(r, 10));
+
+		await stopServer.stop();
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(stopFacade.callOrder).toEqual(["first", "second"]);
+		expect(doneCount).toBe(2);
+
+		ws.close();
+	});
+
 	test("/model switches model and confirms", async () => {
 		const modelFacade = new MockFacade();
 		const modelServer = createRuntime({ port: 0, facade: modelFacade });

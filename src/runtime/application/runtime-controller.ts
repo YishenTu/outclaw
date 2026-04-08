@@ -80,6 +80,7 @@ export class RuntimeController {
 	private hub = new ClientHub();
 	private lastUserActivityAt = Date.now();
 	private queue = new MessageQueue();
+	private shuttingDown = false;
 	private readHistory: (
 		sdkSessionId: string,
 	) => Promise<HistoryReplayEvent["messages"]>;
@@ -146,6 +147,14 @@ export class RuntimeController {
 	};
 
 	handleMessage = (ws: WsClient, message: string | Buffer) => {
+		if (this.shuttingDown) {
+			this.hub.send(ws, {
+				type: "status",
+				message: "Runtime shutting down",
+			});
+			return;
+		}
+
 		let data: IncomingMessage;
 		try {
 			data = parseMessage(message) as IncomingMessage;
@@ -197,6 +206,14 @@ export class RuntimeController {
 		this.hub.add(ws);
 		void this.replayHistory([ws]);
 	};
+
+	beginShutdown() {
+		this.shuttingDown = true;
+	}
+
+	drain(): Promise<void> {
+		return this.queue.drain();
+	}
 
 	private isSessionMutation(cmd: string): boolean {
 		if (!cmd.startsWith("/session ")) return false;

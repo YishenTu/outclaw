@@ -82,14 +82,25 @@ if (config.telegram.botToken) {
 	console.log("Telegram not configured, skipping");
 }
 
-function shutdown() {
+let shuttingDown = false;
+
+async function shutdown() {
+	if (shuttingDown) {
+		return;
+	}
+	shuttingDown = true;
+
+	await runtime.stop();
 	telegram?.stop();
-	runtime.stop();
 	store.close();
 	telegramMediaRefStore.close();
 	pidManager.remove();
 	process.exit(0);
 }
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => {
+	void shutdown();
+});
+process.on("SIGTERM", () => {
+	void shutdown();
+});

@@ -57,4 +57,27 @@ describe("sendTelegramHeartbeatResult", () => {
 		expect(sendPhoto).not.toHaveBeenCalled();
 		expect(sendMessage).not.toHaveBeenCalled();
 	});
+
+	test("skips HEARTBEAT_OK text messages", async () => {
+		const sendMessage = mock(async () => ({}));
+		const sendPhoto = mock(async () => ({ message_id: 77 }));
+
+		await sendTelegramHeartbeatResult(
+			{
+				sendMessage,
+				sendPhoto,
+			},
+			{
+				telegramChatId: 123,
+				text: "  HEARTBEAT_OK  ",
+				images: [{ path: "/tmp/chart.png" }],
+			},
+		);
+
+		expect(sendPhoto).toHaveBeenCalledWith(123, "/tmp/chart.png", {
+			caption: undefined,
+			disable_notification: true,
+		});
+		expect(sendMessage).not.toHaveBeenCalled();
+	});
 });

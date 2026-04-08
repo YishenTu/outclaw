@@ -1,7 +1,7 @@
 # Heartbeat
 
-<!-- Add tasks below. The agent checks this file on each heartbeat poll. -->
-<!-- Remove or comment out tasks to skip them. -->
+<!-- Add tasks below. The runtime asks the agent to read this file on each heartbeat poll. -->
+<!-- Delete tasks you do not want heartbeat to act on. -->
 
 ## Session Reflection
 
