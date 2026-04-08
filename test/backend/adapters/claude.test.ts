@@ -79,7 +79,6 @@ describe("ClaudeAdapter", () => {
 			prompt: "hello",
 			systemPrompt: "system",
 			resume: "sdk-123",
-			maxTurns: 2,
 			cwd: "/tmp/misanthropic",
 			model: "claude-opus-4-6[1m]",
 			effort: "max",
@@ -93,7 +92,6 @@ describe("ClaudeAdapter", () => {
 				systemPrompt?: string;
 				abortController?: AbortController;
 				resume?: string;
-				maxTurns?: number;
 				cwd?: string;
 				model?: string;
 				effort?: string;
@@ -106,7 +104,6 @@ describe("ClaudeAdapter", () => {
 		expect(args.prompt).toBe("hello");
 		expect(args.options.systemPrompt).toBe("system");
 		expect(args.options.resume).toBe("sdk-123");
-		expect(args.options.maxTurns).toBe(2);
 		expect(args.options.cwd).toBe("/tmp/misanthropic");
 		expect(args.options.model).toBe("claude-opus-4-6[1m]");
 		expect(args.options.effort).toBe("max");

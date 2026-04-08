@@ -77,7 +77,6 @@ export class ClaudeAdapter implements Facade {
 					systemPrompt: params.systemPrompt,
 					abortController,
 					resume: params.resume,
-					maxTurns: params.maxTurns,
 					cwd: params.cwd,
 					model: params.model,
 					effort: params.effort as

@@ -166,7 +166,6 @@ export interface RunParams {
 	systemPrompt?: string;
 	abortController?: AbortController;
 	resume?: string;
-	maxTurns?: number;
 	cwd?: string;
 	model?: string;
 	effort?: string;
