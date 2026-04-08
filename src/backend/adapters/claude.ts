@@ -10,7 +10,6 @@ import {
 	type RunParams,
 	type UsageInfo,
 } from "../../common/protocol.ts";
-import { extractImageEvents } from "../../runtime/image-events.ts";
 
 function extractUsage(event: {
 	modelUsage?: Record<
@@ -68,7 +67,7 @@ export class ClaudeAdapter implements Facade {
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		const abortController = params.abortController ?? new AbortController();
-		const emittedImagePaths = new Set<string>();
+		let emittedAssistantText = "";
 
 		try {
 			const conversation = query({
@@ -99,20 +98,22 @@ export class ClaudeAdapter implements Facade {
 						raw.type === "content_block_delta" &&
 						raw.delta.type === "text_delta"
 					) {
+						emittedAssistantText += raw.delta.text;
 						yield { type: "text", text: raw.delta.text };
 					}
 					continue;
 				}
 
-				yield* extractImageEvents(event, emittedImagePaths);
-
-				if (event.type === "assistant" && params.stream === false) {
-					const text = extractAssistantText(event);
+				if (event.type === "assistant") {
+					const nextText = extractAssistantText(event);
+					const text = normalizeAssistantText(
+						nextText,
+						emittedAssistantText,
+						params.stream,
+					);
 					if (text) {
-						yield {
-							type: "text",
-							text,
-						};
+						emittedAssistantText += text;
+						yield { type: "text", text };
 					}
 				}
 
@@ -146,6 +147,27 @@ function extractAssistantText(event: {
 			.map((block) => block.text ?? "")
 			.join("") ?? ""
 	);
+}
+
+function normalizeAssistantText(
+	text: string,
+	emittedText: string,
+	stream: boolean | undefined,
+): string | undefined {
+	if (!text) {
+		return undefined;
+	}
+
+	if (stream === false || emittedText === "") {
+		return text;
+	}
+
+	if (!text.startsWith(emittedText)) {
+		return undefined;
+	}
+
+	const remainder = text.slice(emittedText.length);
+	return remainder || undefined;
 }
 
 function createPromptInput(

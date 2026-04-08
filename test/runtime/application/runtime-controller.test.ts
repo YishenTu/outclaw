@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ImageRef, ServerEvent } from "../../../src/common/protocol.ts";
 import { RuntimeController } from "../../../src/runtime/application/runtime-controller.ts";
@@ -8,6 +9,7 @@ import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-runtime-controller.sqlite");
+const IMAGE_TMP = mkdtempSync(join(tmpdir(), "mis-runtime-controller-"));
 
 // Minimal WsClient stub — ClientHub only calls .send()
 function mockWs(
@@ -117,6 +119,12 @@ function cleanupStore(path: string) {
 	if (existsSync(path)) rmSync(path);
 	if (existsSync(`${path}-wal`)) rmSync(`${path}-wal`);
 	if (existsSync(`${path}-shm`)) rmSync(`${path}-shm`);
+}
+
+function createImagePath(name: string): string {
+	const path = join(IMAGE_TMP, name);
+	writeFileSync(path, "bytes");
+	return path;
 }
 
 describe("RuntimeController", () => {
@@ -304,7 +312,8 @@ describe("RuntimeController", () => {
 
 		test("streams image events to sender", async () => {
 			const facade = new MockFacade();
-			facade.imageEvents = [{ path: "/tmp/chart.png" }];
+			const imagePath = createImagePath("sender-chart.png");
+			facade.textChunks = [`Saved chart to ${imagePath}`];
 			const { controller } = createController({ facade });
 			const ws = mockWs();
 			controller.handleOpen(ws);
@@ -313,7 +322,7 @@ describe("RuntimeController", () => {
 			await drain(controller, facade);
 
 			const imageEvents = ws.events().filter((event) => event.type === "image");
-			expect(imageEvents).toEqual([{ type: "image", path: "/tmp/chart.png" }]);
+			expect(imageEvents).toEqual([{ type: "image", path: imagePath }]);
 		});
 
 		test("resumes session on subsequent prompts", async () => {
@@ -438,7 +447,8 @@ describe("RuntimeController", () => {
 
 		test("broadcasts image events to observers", async () => {
 			const facade = new MockFacade();
-			facade.imageEvents = [{ path: "/tmp/chart.png" }];
+			const imagePath = createImagePath("observer-chart.png");
+			facade.textChunks = [`Saved chart to ${imagePath}`];
 			const { controller } = createController({ facade });
 			const tui = mockWs();
 			const tg = mockWs();
@@ -450,7 +460,7 @@ describe("RuntimeController", () => {
 			await drain(controller, facade);
 
 			const imageEvent = tui.events().find((event) => event.type === "image");
-			expect(imageEvent).toEqual({ type: "image", path: "/tmp/chart.png" });
+			expect(imageEvent).toEqual({ type: "image", path: imagePath });
 		});
 
 		test("non-telegram source does not broadcast", async () => {

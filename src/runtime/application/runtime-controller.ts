@@ -12,6 +12,7 @@ import { readHistory } from "../persistence/history-reader.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
 import { assembleSystemPrompt } from "../prompt/assemble-system-prompt.ts";
 import { ClientHub, type WsClient } from "../transport/client-hub.ts";
+import { RuntimeImageEventExtractor } from "./image-event-extractor.ts";
 import { MessageQueue } from "./message-queue.ts";
 import { RuntimeState } from "./runtime-state.ts";
 
@@ -328,6 +329,7 @@ export class RuntimeController {
 				? this.state.createHeartbeatDeliveryTarget()
 				: undefined;
 		const heartbeatBuffer: FacadeEvent[] = [];
+		const imageEventExtractor = new RuntimeImageEventExtractor();
 
 		try {
 			try {
@@ -340,7 +342,7 @@ export class RuntimeController {
 					});
 				}
 
-				for await (const event of this.runFacade(task, abortController)) {
+				const emit = (event: FacadeEvent) => {
 					if (task.source === "heartbeat") {
 						heartbeatBuffer.push(event);
 					}
@@ -350,6 +352,17 @@ export class RuntimeController {
 					this.hub.sendMany(observers, event);
 					if (event.type === "done" && this.state.generation === generation) {
 						this.state.completeRun(event, task.source, task.telegramChatId);
+					}
+				};
+
+				for await (const event of this.runFacade(task, abortController)) {
+					emit(event);
+					if (event.type !== "text") {
+						continue;
+					}
+
+					for (const imageEvent of imageEventExtractor.extract(event.text)) {
+						emit(imageEvent);
 					}
 				}
 			} catch (err) {

@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createTelegramBridge } from "../../src/frontend/telegram/bridge.ts";
 import { createRuntime } from "../../src/runtime/transport/ws-server.ts";
 import { MockFacade } from "../helpers/mock-facade.ts";
@@ -54,6 +57,13 @@ function createStatusServer(message: string) {
 describe("Telegram bridge", () => {
 	let server: ReturnType<typeof createRuntime>;
 	let facade: MockFacade;
+	const imageTmp = mkdtempSync(join(tmpdir(), "mis-telegram-bridge-"));
+
+	function createImagePath(name: string): string {
+		const path = join(imageTmp, name);
+		writeFileSync(path, "bytes");
+		return path;
+	}
 
 	beforeAll(() => {
 		facade = new MockFacade();
@@ -62,6 +72,7 @@ describe("Telegram bridge", () => {
 
 	afterAll(() => {
 		server.stop();
+		rmSync(imageTmp, { recursive: true, force: true });
 	});
 
 	test("sends a prompt and collects the full response", async () => {
@@ -115,7 +126,8 @@ describe("Telegram bridge", () => {
 
 	test("stream() forwards image events to callback", async () => {
 		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
-		facade.imageEvents = [{ path: "/tmp/chart.png" }];
+		const imagePath = createImagePath("bridge-chart.png");
+		facade.textChunks = [`Saved chart to ${imagePath}`];
 
 		try {
 			const chunks: string[] = [];
@@ -127,10 +139,10 @@ describe("Telegram bridge", () => {
 				chunks.push(chunk);
 			}
 
-			expect(chunks.join("")).toBe("echo: hello");
-			expect(imageEvents).toEqual([{ type: "image", path: "/tmp/chart.png" }]);
+			expect(chunks.join("")).toBe(`Saved chart to ${imagePath}`);
+			expect(imageEvents).toEqual([{ type: "image", path: imagePath }]);
 		} finally {
-			facade.imageEvents = [];
+			facade.textChunks = undefined;
 			bridge.close();
 		}
 	});

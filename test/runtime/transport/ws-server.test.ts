@@ -1,14 +1,22 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 import { createRuntime } from "../../../src/runtime/transport/ws-server.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-server-test.sqlite");
+const IMAGE_TMP = mkdtempSync(join(tmpdir(), "mis-runtime-server-"));
 
 function createTestStore(path: string) {
 	return new SessionStore(path, { journalMode: "DELETE" });
+}
+
+function createImagePath(name: string): string {
+	const path = join(IMAGE_TMP, name);
+	writeFileSync(path, "bytes");
+	return path;
 }
 
 function connectWs(port: number): Promise<WebSocket> {
@@ -110,7 +118,8 @@ describe("Runtime server", () => {
 
 	test("forwards image events over websocket", async () => {
 		const imageFacade = new MockFacade();
-		imageFacade.imageEvents = [{ path: "/tmp/chart.png" }];
+		const imagePath = createImagePath("server-chart.png");
+		imageFacade.textChunks = [`Saved chart to ${imagePath}`];
 		const imageServer = createRuntime({ port: 0, facade: imageFacade });
 
 		const ws = await connectWs(imageServer.port);
@@ -121,7 +130,7 @@ describe("Runtime server", () => {
 
 		expect(events.find((event) => event.type === "image")).toEqual({
 			type: "image",
-			path: "/tmp/chart.png",
+			path: imagePath,
 		});
 
 		imageServer.stop();

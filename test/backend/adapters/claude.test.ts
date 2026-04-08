@@ -163,7 +163,7 @@ describe("ClaudeAdapter", () => {
 		expect(events).toEqual([{ type: "error", message: "sdk boom" }]);
 	});
 
-	test("emits image events for assistant-reported local image files", async () => {
+	test("emits assistant text when no streamed text deltas were produced", async () => {
 		const tmp = mkdtempSync(join(tmpdir(), "mis-images-out-"));
 		try {
 			const imagePath = join(tmp, "chart.png");
@@ -205,8 +205,8 @@ describe("ClaudeAdapter", () => {
 
 			expect(events).toEqual([
 				{
-					type: "image",
-					path: imagePath,
+					type: "text",
+					text: `Saved chart to ${imagePath}`,
 				},
 				{
 					type: "done",
