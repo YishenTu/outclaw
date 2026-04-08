@@ -18,9 +18,7 @@ describe("TelegramMediaRefStore", () => {
 	});
 
 	test("stores and retrieves telegram message image refs", () => {
-		const store = new TelegramMediaRefStore(TEST_DB, {
-			journalMode: "DELETE",
-		});
+		const store = new TelegramMediaRefStore(TEST_DB);
 
 		store.upsert({
 			chatId: 123,
@@ -43,12 +41,8 @@ describe("TelegramMediaRefStore", () => {
 	});
 
 	test("uses the same sqlite file cleanly alongside SessionStore", () => {
-		const sessionStore = new SessionStore(TEST_DB, {
-			journalMode: "DELETE",
-		});
-		const mediaRefStore = new TelegramMediaRefStore(TEST_DB, {
-			journalMode: "DELETE",
-		});
+		const sessionStore = new SessionStore(TEST_DB);
+		const mediaRefStore = new TelegramMediaRefStore(TEST_DB);
 
 		sessionStore.upsert({
 			sdkSessionId: "sdk-123",
@@ -68,5 +62,21 @@ describe("TelegramMediaRefStore", () => {
 
 		sessionStore.close();
 		mediaRefStore.close();
+	});
+
+	test("default journal mode avoids sqlite sidecar files", () => {
+		const store = new TelegramMediaRefStore(TEST_DB);
+
+		store.upsert({
+			chatId: 1,
+			messageId: 2,
+			path: "/tmp/chart.png",
+			mediaType: "image/png",
+			direction: "outbound",
+		});
+		store.close();
+
+		expect(existsSync(`${TEST_DB}-wal`)).toBe(false);
+		expect(existsSync(`${TEST_DB}-shm`)).toBe(false);
 	});
 });

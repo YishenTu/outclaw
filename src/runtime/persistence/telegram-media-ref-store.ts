@@ -21,7 +21,7 @@ export class TelegramMediaRefStore {
 
 	constructor(path: string, options: TelegramMediaRefStoreOptions = {}) {
 		this.db = new Database(path, { create: true });
-		this.db.exec(`PRAGMA journal_mode=${options.journalMode ?? "WAL"}`);
+		this.db.exec(`PRAGMA journal_mode=${options.journalMode ?? "DELETE"}`);
 		this.migrate();
 	}
 

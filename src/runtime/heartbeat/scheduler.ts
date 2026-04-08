@@ -30,7 +30,6 @@ export class HeartbeatScheduler {
 			return;
 		}
 
-		void this.tick();
 		const setIntervalFn =
 			this.options.setIntervalFn ??
 			((handler: () => void, timeout?: number) =>

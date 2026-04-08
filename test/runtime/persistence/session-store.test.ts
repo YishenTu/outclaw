@@ -7,7 +7,7 @@ import { SessionStore } from "../../../src/runtime/persistence/session-store.ts"
 const TEST_DB = join(import.meta.dir, ".tmp-test.sqlite");
 
 function createTestStore() {
-	return new SessionStore(TEST_DB, { journalMode: "DELETE" });
+	return new SessionStore(TEST_DB);
 }
 
 describe("SessionStore", () => {
@@ -215,7 +215,7 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
-	test("DELETE journal mode avoids sqlite sidecar files", () => {
+	test("default journal mode avoids sqlite sidecar files", () => {
 		const store = createTestStore();
 
 		store.upsert({

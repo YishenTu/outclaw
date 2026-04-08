@@ -46,16 +46,23 @@ describe("HeartbeatScheduler", () => {
 	});
 
 	test("starts an interval and clears it on stop", () => {
+		let intervalHandler: (() => void) | undefined;
 		let scheduledMs: number | undefined;
 		let cleared = false;
 		const intervalToken = {} as ReturnType<typeof setInterval>;
+		const requestHeartbeat = mock(
+			async (_prompt: string, _scheduledAt: number, _deferMinutes: number) =>
+				true,
+		);
 
 		const scheduler = new HeartbeatScheduler({
 			config: { intervalMinutes: 30, deferMinutes: 0 },
 			promptHomeDir: "/tmp/home",
-			shouldAttemptHeartbeat: () => false,
-			requestHeartbeat: async () => false,
+			shouldAttemptHeartbeat: () => true,
+			requestHeartbeat,
+			now: () => 789,
 			setIntervalFn: ((_handler: () => void, timeout?: number) => {
+				intervalHandler = _handler;
 				scheduledMs = timeout;
 				return intervalToken;
 			}) as typeof setInterval,
@@ -65,8 +72,15 @@ describe("HeartbeatScheduler", () => {
 		});
 
 		scheduler.start();
+		expect(requestHeartbeat).not.toHaveBeenCalled();
+		intervalHandler?.();
 		scheduler.stop();
 
+		expect(requestHeartbeat).toHaveBeenCalledWith(
+			createHeartbeatPrompt("/tmp/home"),
+			789,
+			0,
+		);
 		expect(scheduledMs).toBe(30 * 60_000);
 		expect(cleared).toBe(true);
 	});
