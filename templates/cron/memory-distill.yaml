@@ -1,0 +1,25 @@
+name: memory-distill
+schedule: "45 5 * * *"
+model: opus
+enabled: true
+prompt: |
+  Distill yesterday's daily notes into long-term memory.
+  Read MEMORY.md and yesterday's daily note (daily-memories/YYYY-MM-DD.md).
+
+  MEMORY.md holds learned knowledge — facts you picked up, not rules you follow or traits you have.
+  Only promote items that belong there:
+  - Learned facts with no other source of truth
+  - Stable preferences or durable decisions
+  - Repeated patterns that should be remembered
+
+  Do NOT promote:
+  - Personality or working style observations (those belong in SOUL.md)
+  - Operational rules or instructions (those belong in AGENTS.md)
+  - User profile facts (those belong in USER.md)
+  - Routine task logs or one-off operations
+  - Project details that have their own source of truth
+  - Anything already captured in MEMORY.md
+
+  Remove outdated info from MEMORY.md that's no longer relevant.
+  If nothing qualifies, don't edit MEMORY.md.
+  Reply with a summary of changes, or `NO_REPLY` if none.

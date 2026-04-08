@@ -1,4 +1,10 @@
-import { constants, copyFileSync, existsSync } from "node:fs";
+import {
+	constants,
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+} from "node:fs";
 import { join } from "node:path";
 
 const TEMPLATE_FILES = [
@@ -14,22 +20,35 @@ function shouldSkipTemplateCopy(error: unknown, sourcePath: string): boolean {
 	return code === "EEXIST" || (code === "ENOENT" && !existsSync(sourcePath));
 }
 
+function tryCopyFile(sourcePath: string, targetPath: string): void {
+	try {
+		copyFileSync(sourcePath, targetPath, constants.COPYFILE_EXCL);
+	} catch (error) {
+		if (shouldSkipTemplateCopy(error, sourcePath)) {
+			return;
+		}
+		throw error;
+	}
+}
+
 export function seedTemplates(
 	promptHomeDir: string,
 	templatesDir: string,
 ): void {
 	for (const file of TEMPLATE_FILES) {
-		const sourcePath = join(templatesDir, file);
-		const targetPath = join(promptHomeDir, file);
+		tryCopyFile(join(templatesDir, file), join(promptHomeDir, file));
+	}
 
-		try {
-			copyFileSync(sourcePath, targetPath, constants.COPYFILE_EXCL);
-		} catch (error) {
-			// File already exists or source missing — skip silently
-			if (shouldSkipTemplateCopy(error, sourcePath)) {
-				continue;
-			}
-			throw error;
-		}
+	seedCronTemplates(join(promptHomeDir, "cron"), join(templatesDir, "cron"));
+}
+
+function seedCronTemplates(cronDir: string, templateCronDir: string): void {
+	if (!existsSync(templateCronDir)) return;
+
+	mkdirSync(cronDir, { recursive: true });
+
+	for (const file of readdirSync(templateCronDir)) {
+		if (!file.endsWith(".yaml") && !file.endsWith(".yml")) continue;
+		tryCopyFile(join(templateCronDir, file), join(cronDir, file));
 	}
 }
