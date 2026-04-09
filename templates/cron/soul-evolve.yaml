@@ -20,4 +20,4 @@ prompt: |
   Do NOT add operational rules or instructions (those belong in AGENTS.md).
   Do NOT rewrite core truths or safety rules unless explicitly asked.
 
-  Reply with a summary of changes, or `NO_REPLY` if none.
+  Reply with a summary of changes, or reply only NO_REPLY if none, no explanation.

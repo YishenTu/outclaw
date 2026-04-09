@@ -876,7 +876,7 @@ describe("Runtime server", () => {
 					(event) =>
 						event.type === "user_prompt" &&
 						event.prompt ===
-							"Read HEARTBEAT.md and follow its instructions. Only act on what the file currently says — do not repeat tasks from earlier heartbeats or infer tasks from conversation history. If the file is missing or nothing needs attention, reply HEARTBEAT_OK.",
+							"Read HEARTBEAT.md and follow its instructions. Only act on what the file currently says — do not repeat tasks from earlier heartbeats or infer tasks from conversation history. If the file is missing or nothing needs attention, reply only `HEARTBEAT_OK`, no explaination.",
 				),
 				new Promise<never>((_, reject) =>
 					setTimeout(
