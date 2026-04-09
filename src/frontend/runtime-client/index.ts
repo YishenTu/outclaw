@@ -10,6 +10,12 @@ export interface RuntimeSocket {
 	ws: WebSocket;
 }
 
+export function isRuntimeSocketOpen(
+	ws: WebSocket | null | undefined,
+): ws is WebSocket {
+	return ws !== null && ws !== undefined && ws.readyState === WebSocket.OPEN;
+}
+
 export function closeRuntimeSocket(ws: WebSocket) {
 	if (
 		ws.readyState === WebSocket.OPEN ||
@@ -64,7 +70,14 @@ export function openRuntimeSocket(
 	};
 }
 
+function assertRuntimeSocketOpen(ws: WebSocket) {
+	if (!isRuntimeSocketOpen(ws)) {
+		throw new Error("Runtime socket is not connected");
+	}
+}
+
 export function sendRuntimeCommand(ws: WebSocket, command: string) {
+	assertRuntimeSocketOpen(ws);
 	ws.send(serialize({ type: "command", command }));
 }
 
@@ -75,6 +88,7 @@ export function sendRuntimePrompt(
 	images?: ImageRef[],
 	telegramChatId?: number,
 ) {
+	assertRuntimeSocketOpen(ws);
 	ws.send(
 		serialize({ type: "prompt", prompt, source, images, telegramChatId }),
 	);

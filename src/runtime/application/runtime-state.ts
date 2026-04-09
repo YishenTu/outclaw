@@ -114,7 +114,7 @@ export class RuntimeState {
 		if (isModelAlias(session.model)) {
 			this.activeModel = session.model;
 		}
-		this.lastUsage = undefined;
+		this.lastUsage = this.store?.getUsage(session.sdkSessionId);
 	}
 
 	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
@@ -130,6 +130,9 @@ export class RuntimeState {
 			this.session.update(event.sessionId, this.activeModel, "tui");
 		}
 		this.lastUsage = event.usage;
+		if (event.usage && event.sessionId) {
+			this.store?.setUsage(event.sessionId, event.usage);
+		}
 	}
 }
 

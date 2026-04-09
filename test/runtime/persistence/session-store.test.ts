@@ -269,6 +269,42 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("setUsage and getUsage persist usage per session", () => {
+		const store = createTestStore();
+
+		store.upsert({ sdkSessionId: "sdk-1", title: "Chat", model: "opus" });
+
+		const usage = {
+			inputTokens: 100,
+			outputTokens: 200,
+			cacheCreationTokens: 50,
+			cacheReadTokens: 25,
+			contextWindow: 200000,
+			maxOutputTokens: 32000,
+			contextTokens: 1234,
+			percentage: 1,
+		};
+		store.setUsage("sdk-1", usage);
+
+		const restored = store.getUsage("sdk-1");
+		expect(restored).toEqual(usage);
+
+		store.close();
+	});
+
+	test("getUsage returns undefined for missing session", () => {
+		const store = createTestStore();
+		expect(store.getUsage("nonexistent")).toBeUndefined();
+		store.close();
+	});
+
+	test("getUsage returns undefined when no usage saved", () => {
+		const store = createTestStore();
+		store.upsert({ sdkSessionId: "sdk-1", title: "Chat", model: "opus" });
+		expect(store.getUsage("sdk-1")).toBeUndefined();
+		store.close();
+	});
+
 	test("default journal mode avoids sqlite sidecar files", () => {
 		const store = createTestStore();
 

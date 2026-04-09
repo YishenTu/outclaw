@@ -46,6 +46,7 @@ export async function handleRuntimeCommand(
 	if (command === "/new") {
 		options.state.clearSession();
 		options.hub.broadcast({ type: "session_cleared" });
+		options.hub.broadcast(options.state.createStatusEvent());
 		return;
 	}
 
@@ -136,6 +137,7 @@ export async function handleRuntimeCommand(
 			sdkSessionId: match.sdkSessionId,
 			title: match.title,
 		});
+		options.hub.broadcast(options.state.createStatusEvent());
 		await options.replayHistoryToAll(match.sdkSessionId);
 		return;
 	}

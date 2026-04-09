@@ -163,7 +163,8 @@ describe("RuntimeController", () => {
 			controller.handleOpen(ws);
 			await new Promise((r) => setTimeout(r, 20));
 
-			expect(ws.events()).toHaveLength(0);
+			const events = ws.events().filter((e) => e.type !== "runtime_status");
+			expect(events).toHaveLength(0);
 		});
 
 		test("handleClose removes client so it no longer receives events", async () => {
@@ -179,8 +180,9 @@ describe("RuntimeController", () => {
 			controller.handleMessage(ws1, prompt("hi", "telegram"));
 			await drain(controller, facade);
 
-			// ws2 should have no events after being removed
-			expect(ws2.events()).toHaveLength(0);
+			// ws2 should have no events after being removed (except initial status)
+			const ws2Events = ws2.events().filter((e) => e.type !== "runtime_status");
+			expect(ws2Events).toHaveLength(0);
 		});
 	});
 
@@ -192,7 +194,7 @@ describe("RuntimeController", () => {
 
 			controller.handleMessage(ws, "not json{{{");
 
-			const events = ws.events();
+			const events = ws.events().filter((e) => e.type !== "runtime_status");
 			expect(events).toHaveLength(1);
 			expect(events[0]?.type).toBe("error");
 		});
@@ -620,7 +622,10 @@ describe("RuntimeController", () => {
 
 			const tgEvents = tg
 				.events()
-				.filter((event) => event.type !== "history_replay");
+				.filter(
+					(event) =>
+						event.type !== "history_replay" && event.type !== "runtime_status",
+				);
 			expect(tgEvents).toHaveLength(0);
 		});
 

@@ -73,7 +73,7 @@ export function loadConfig(homeDir: string): Config {
 
 	const raw = JSON.parse(readFileSync(configPath, "utf-8"));
 
-	return {
+	const merged = {
 		heartbeat: {
 			intervalMinutes:
 				raw.heartbeat?.intervalMinutes ?? DEFAULTS.heartbeat.intervalMinutes,
@@ -82,11 +82,22 @@ export function loadConfig(homeDir: string): Config {
 		},
 		port: raw.port ?? DEFAULTS.port,
 		telegram: {
-			botToken: resolveEnv(
-				raw.telegram?.botToken ?? DEFAULTS.telegram.botToken,
-			),
-			allowedUsers: resolveAllowedUsers(raw.telegram?.allowedUsers),
+			botToken: raw.telegram?.botToken ?? DEFAULTS.telegram.botToken,
+			allowedUsers:
+				raw.telegram?.allowedUsers ?? DEFAULTS.telegram.allowedUsers,
 		},
 		permissionMode: raw.permissionMode ?? DEFAULTS.permissionMode,
+	};
+
+	if (JSON.stringify(merged) !== JSON.stringify(raw)) {
+		writeFileSync(configPath, `${JSON.stringify(merged, null, "\t")}\n`);
+	}
+
+	return {
+		...merged,
+		telegram: {
+			botToken: resolveEnv(merged.telegram.botToken),
+			allowedUsers: resolveAllowedUsers(merged.telegram.allowedUsers),
+		},
 	};
 }

@@ -125,6 +125,8 @@ export function createTelegramBridge(url: string) {
 						type: string;
 						[key: string]: unknown;
 					};
+					// Always skip runtime_status (sent on connect).
+					if (event.type === "runtime_status") return;
 					// Always accept error events; skip everything else
 					// that isn't in the expected set.
 					if (event.type !== "error") {

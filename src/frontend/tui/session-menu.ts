@@ -44,17 +44,29 @@ export function formatSessionMenuItem(
 	choice: SessionMenuChoice,
 	width: number,
 ): string {
+	const safeWidth = Math.max(width, 0);
+	if (safeWidth === 0) {
+		return "";
+	}
+
 	const ago = formatTimeAgo(choice.lastActive);
 	const marker = choice.active ? " ●" : "";
 	const right = `${ago}${marker}`;
+	if (safeWidth <= right.length) {
+		return right.slice(0, safeWidth);
+	}
+
 	const gap = 2;
-	const maxTitle = width - right.length - gap;
+	const maxTitle = Math.max(safeWidth - right.length - gap, 0);
 
 	let title = choice.title;
 	if (title.length > maxTitle) {
-		title = `${title.slice(0, maxTitle - 3)}...`;
+		title =
+			maxTitle <= 3
+				? title.slice(0, maxTitle)
+				: `${title.slice(0, maxTitle - 3)}...`;
 	}
 
-	const padding = width - title.length - right.length;
+	const padding = Math.max(safeWidth - title.length - right.length, 0);
 	return `${title}${" ".repeat(padding)}${right}`;
 }

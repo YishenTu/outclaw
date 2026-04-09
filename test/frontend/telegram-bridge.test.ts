@@ -404,6 +404,39 @@ describe("Telegram bridge", () => {
 		bridge.close();
 	});
 
+	test("sendCommandAndWait() ignores runtime_status before the real command response", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+
+		let settled = false;
+		const response = bridge.sendCommandAndWait("/model").then((event) => {
+			settled = true;
+			return event;
+		});
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		ws.dispatch("open");
+		await flushMicrotasks();
+		ws.dispatch("message", {
+			data: JSON.stringify({
+				type: "runtime_status",
+				model: "opus",
+				effort: "high",
+			}),
+		});
+		await flushMicrotasks();
+		expect(settled).toBeFalse();
+
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "model_changed", model: "haiku" }),
+		});
+		await expect(response).resolves.toEqual({
+			type: "model_changed",
+			model: "haiku",
+		});
+
+		bridge.close();
+	});
+
 	test("sendCommandAndWait() rejects on websocket error after opening", async () => {
 		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 		const bridge = createTelegramBridge("ws://fake");

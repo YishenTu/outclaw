@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SessionMenuData } from "../../src/frontend/tui/output.ts";
+import type { SessionMenuData } from "../../src/frontend/tui/messages.ts";
 import {
 	applySessionEventToMenuData,
 	shouldEnableGlobalStopShortcut,

@@ -117,6 +117,22 @@ describe("formatSessionMenuItem", () => {
 			expect(label.length).toBe(width);
 		}
 	});
+
+	test("narrow widths do not throw", () => {
+		for (const width of [0, 1, 4, 8]) {
+			const label = formatSessionMenuItem(
+				{
+					sdkSessionId: "sdk-narrow",
+					title: "A very long title",
+					model: "opus",
+					lastActive: Date.now() - 60_000,
+					active: true,
+				},
+				width,
+			);
+			expect(label.length).toBe(width);
+		}
+	});
 });
 
 describe("formatTimeAgo", () => {

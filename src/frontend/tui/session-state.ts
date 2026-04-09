@@ -1,5 +1,5 @@
 import type { ServerEvent } from "../../common/protocol.ts";
-import type { SessionMenuData } from "./output.ts";
+import type { SessionMenuData } from "./messages.ts";
 
 export function applySessionEventToMenuData(
 	menuData: SessionMenuData | null,

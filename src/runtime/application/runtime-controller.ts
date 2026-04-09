@@ -205,6 +205,7 @@ export class RuntimeController {
 
 	handleOpen = (ws: WsClient) => {
 		this.hub.add(ws);
+		this.hub.send(ws, this.state.createStatusEvent());
 		void this.replayHistory([ws]);
 	};
 
@@ -352,6 +353,7 @@ export class RuntimeController {
 					this.hub.sendMany(observers, event);
 					if (event.type === "done" && this.state.generation === generation) {
 						this.state.completeRun(event, task.source, task.telegramChatId);
+						this.hub.broadcast(this.state.createStatusEvent());
 					}
 				};
 

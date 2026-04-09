@@ -194,16 +194,8 @@ describe("Runtime server", () => {
 		expect(newFacade.lastParams?.resume).toBe("mock-session-123");
 
 		// Send /new command
-		const newSessionEvent = new Promise<{
-			type: string;
-			[key: string]: unknown;
-		}>((resolve) => {
-			ws.onmessage = (msg) => {
-				resolve(JSON.parse(String(msg.data)));
-			};
-		});
 		ws.send(JSON.stringify({ type: "command", command: "/new" }));
-		const event = await newSessionEvent;
+		const event = await waitForEvent(ws, (e) => e.type === "session_cleared");
 
 		expect(event.type).toBe("session_cleared");
 
@@ -332,8 +324,8 @@ describe("Runtime server", () => {
 		const observerEvents: Array<{ type: string }> = [];
 		observer.onmessage = (msg) => {
 			const event = JSON.parse(String(msg.data));
-			// Ignore history_replay from connect
-			if (event.type !== "history_replay") {
+			// Ignore history_replay and runtime_status from connect
+			if (event.type !== "history_replay" && event.type !== "runtime_status") {
 				observerEvents.push(event);
 			}
 		};
@@ -436,13 +428,11 @@ describe("Runtime server", () => {
 		const ws = await connectWs(modelServer.port);
 
 		// Switch to haiku
-		const switchEvent = await new Promise<{
-			type: string;
-			model?: string;
-		}>((resolve) => {
-			ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
-			ws.send(JSON.stringify({ type: "command", command: "/model haiku" }));
-		});
+		ws.send(JSON.stringify({ type: "command", command: "/model haiku" }));
+		const switchEvent = await waitForEvent(
+			ws,
+			(e) => e.type === "model_changed",
+		);
 		expect(switchEvent.type).toBe("model_changed");
 		expect(switchEvent.model).toBe("haiku");
 
@@ -501,12 +491,8 @@ describe("Runtime server", () => {
 		const shortServer = createRuntime({ port: 0, facade: shortFacade });
 		const ws = await connectWs(shortServer.port);
 
-		const event = await new Promise<{ type: string; model?: string }>(
-			(resolve) => {
-				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
-				ws.send(JSON.stringify({ type: "command", command: "/opus" }));
-			},
-		);
+		ws.send(JSON.stringify({ type: "command", command: "/opus" }));
+		const event = await waitForEvent(ws, (e) => e.type === "model_changed");
 
 		expect(event.type).toBe("model_changed");
 		expect(event.model).toBe("opus");
@@ -535,17 +521,8 @@ describe("Runtime server", () => {
 		const effortServer = createRuntime({ port: 0, facade: effortFacade });
 		const ws = await connectWs(effortServer.port);
 
-		const event = await new Promise<{ type: string; effort?: string }>(
-			(resolve) => {
-				ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
-				ws.send(
-					JSON.stringify({
-						type: "command",
-						command: "/thinking max",
-					}),
-				);
-			},
-		);
+		ws.send(JSON.stringify({ type: "command", command: "/thinking max" }));
+		const event = await waitForEvent(ws, (e) => e.type === "effort_changed");
 		expect(event.type).toBe("effort_changed");
 		expect(event.effort).toBe("max");
 
@@ -623,13 +600,8 @@ describe("Runtime server", () => {
 		ws.send(JSON.stringify({ type: "prompt", prompt: "Hello world" }));
 		await collecting;
 
-		const event = await new Promise<{
-			type: string;
-			[key: string]: unknown;
-		}>((resolve) => {
-			ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
-			ws.send(JSON.stringify({ type: "command", command: "/session" }));
-		});
+		ws.send(JSON.stringify({ type: "command", command: "/session" }));
+		const event = await waitForEvent(ws, (e) => e.type === "session_menu");
 
 		expect(event.type).toBe("session_menu");
 		const sessions = event.sessions as Array<{
@@ -666,16 +638,11 @@ describe("Runtime server", () => {
 		});
 		const ws = await connectWs(sessServer.port);
 
-		const event = await new Promise<{
-			type: string;
-			sessions?: unknown[];
-		}>((resolve) => {
-			ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
-			ws.send(JSON.stringify({ type: "command", command: "/session list" }));
-		});
+		ws.send(JSON.stringify({ type: "command", command: "/session list" }));
+		const event = await waitForEvent(ws, (e) => e.type === "session_list");
 
 		expect(event.type).toBe("session_list");
-		expect(event.sessions?.length).toBe(2);
+		expect((event.sessions as unknown[])?.length).toBe(2);
 
 		ws.close();
 		sessServer.stop();
@@ -700,18 +667,10 @@ describe("Runtime server", () => {
 		});
 		const ws = await connectWs(sessServer.port);
 
-		const event = await new Promise<{
-			type: string;
-			sdkSessionId?: string;
-		}>((resolve) => {
-			ws.onmessage = (msg) => resolve(JSON.parse(String(msg.data)));
-			ws.send(
-				JSON.stringify({
-					type: "command",
-					command: "/session sdk-target",
-				}),
-			);
-		});
+		ws.send(
+			JSON.stringify({ type: "command", command: "/session sdk-target" }),
+		);
+		const event = await waitForEvent(ws, (e) => e.type === "session_switched");
 
 		expect(event.type).toBe("session_switched");
 		expect(event.sdkSessionId).toBe("sdk-target-abc");

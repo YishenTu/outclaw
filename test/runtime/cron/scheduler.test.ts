@@ -275,6 +275,7 @@ prompt: do something
 			},
 		});
 		scheduler.start();
+		await waitForWatcher();
 
 		writeJob(
 			cronDir,

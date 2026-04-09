@@ -2,7 +2,9 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
 	buildRuntimeSocketUrl,
 	closeRuntimeSocket,
+	isRuntimeSocketOpen,
 	openRuntimeSocket,
+	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "../../src/frontend/runtime-client/index.ts";
 
@@ -89,7 +91,7 @@ describe("runtime client", () => {
 
 	test("serializes prompt images into the websocket message", () => {
 		const send = mock((_data: string) => {});
-		const ws = { send } as unknown as WebSocket;
+		const ws = { send, readyState: WebSocket.OPEN } as unknown as WebSocket;
 
 		sendRuntimePrompt(ws, "", "telegram", [
 			{ path: "/tmp/cat.png", mediaType: "image/png" },
@@ -102,6 +104,36 @@ describe("runtime client", () => {
 			source: "telegram",
 			images: [{ path: "/tmp/cat.png", mediaType: "image/png" }],
 		});
+	});
+
+	test("isRuntimeSocketOpen only accepts open sockets", () => {
+		expect(isRuntimeSocketOpen(undefined)).toBeFalse();
+		expect(
+			isRuntimeSocketOpen({
+				readyState: WebSocket.CONNECTING,
+			} as WebSocket),
+		).toBeFalse();
+		expect(
+			isRuntimeSocketOpen({
+				readyState: WebSocket.OPEN,
+			} as WebSocket),
+		).toBeTrue();
+	});
+
+	test("send helpers reject sockets that are not open", () => {
+		const send = mock((_data: string) => {});
+		const ws = {
+			send,
+			readyState: WebSocket.CLOSED,
+		} as unknown as WebSocket;
+
+		expect(() => sendRuntimeCommand(ws, "/status")).toThrow(
+			"Runtime socket is not connected",
+		);
+		expect(() => sendRuntimePrompt(ws, "hello")).toThrow(
+			"Runtime socket is not connected",
+		);
+		expect(send).not.toHaveBeenCalled();
 	});
 
 	test("openRuntimeSocket resolves on open and close() closes connecting sockets", async () => {

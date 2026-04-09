@@ -1,14 +1,25 @@
-import { Box, render, Text, useApp, useInput, useStdout } from "ink";
-import TextInput from "ink-text-input";
+import { Box, render, Text, useApp, useStdout } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isRuntimeCommand } from "../common/commands.ts";
-import { parseMessage, type ServerEvent } from "../common/protocol.ts";
 import {
+	extractError,
+	parseMessage,
+	type ServerEvent,
+} from "../common/protocol.ts";
+import {
+	isRuntimeSocketOpen,
 	openRuntimeSocket,
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "./runtime-client/index.ts";
-import { getTuiEventUpdate, type SessionMenuData } from "./tui/output.ts";
+import { applyAction, mapEventToAction } from "./tui/event-reducer.ts";
+import { HeaderBar } from "./tui/header-bar.tsx";
+import {
+	applyCollapsedPasteKeypress,
+	createPasteAwareDraft,
+} from "./tui/large-paste.ts";
+import { MessageList } from "./tui/message-list.tsx";
+import { initialTuiState, type SessionMenuData } from "./tui/messages.ts";
 import {
 	formatSessionMenuItem,
 	type SessionMenuChoice,
@@ -18,6 +29,13 @@ import {
 	applySessionEventToMenuData,
 	shouldEnableGlobalStopShortcut,
 } from "./tui/session-state.ts";
+import {
+	type ConnectionStatus,
+	type RuntimeInfo,
+	StatusBar,
+} from "./tui/status-bar.tsx";
+import { TextArea } from "./tui/text-area.tsx";
+import { useTerminalInput, useTextAreaInput } from "./tui/text-area-input.ts";
 
 interface SessionMenuProps {
 	choices: SessionMenuChoice[];
@@ -39,41 +57,51 @@ function SessionMenu({
 	const [renameValue, setRenameValue] = useState("");
 	const { stdout } = useStdout();
 	const columns = stdout?.columns ?? 80;
-	const labelWidth = columns - 4; // 2 pointer + 2 box padding
+	const labelWidth = columns - 4;
 
-	useInput(
-		(input, key) => {
+	// Clamp cursor when list shrinks after delete
+	useEffect(() => {
+		if (cursor >= choices.length && choices.length > 0) {
+			setCursor(choices.length - 1);
+		}
+	}, [choices.length, cursor]);
+
+	useTerminalInput(({ input, key }) => {
+		if (choices.length === 0) {
 			if (key.escape) {
 				onDismiss();
-				return;
 			}
-			if (key.return) {
-				const choice = choices[cursor];
-				if (choice) onSelect(choice);
-				return;
+			return;
+		}
+		if (key.escape) {
+			onDismiss();
+			return;
+		}
+		if (key.return) {
+			const choice = choices[cursor];
+			if (choice) onSelect(choice);
+			return;
+		}
+		if (input === "d") {
+			const choice = choices[cursor];
+			if (choice) onDelete(choice);
+			return;
+		}
+		if (input === "r") {
+			const choice = choices[cursor];
+			if (choice) {
+				setRenameValue(choice.title);
+				setRenaming(true);
 			}
-			if (input === "d") {
-				const choice = choices[cursor];
-				if (choice) onDelete(choice);
-				return;
-			}
-			if (input === "r") {
-				const choice = choices[cursor];
-				if (choice) {
-					setRenameValue(choice.title);
-					setRenaming(true);
-				}
-				return;
-			}
-			if (key.upArrow) {
-				setCursor((prev) => (prev > 0 ? prev - 1 : choices.length - 1));
-			}
-			if (key.downArrow) {
-				setCursor((prev) => (prev < choices.length - 1 ? prev + 1 : 0));
-			}
-		},
-		{ isActive: !renaming },
-	);
+			return;
+		}
+		if (key.upArrow) {
+			setCursor((prev) => (prev > 0 ? prev - 1 : choices.length - 1));
+		}
+		if (key.downArrow) {
+			setCursor((prev) => (prev < choices.length - 1 ? prev + 1 : 0));
+		}
+	}, !renaming);
 
 	const handleRenameSubmit = useCallback(
 		(value: string) => {
@@ -140,156 +168,321 @@ function RenameInput({
 	onSubmit: (value: string) => void;
 	onCancel: () => void;
 }) {
-	useInput((_, key) => {
-		if (key.escape) {
-			onCancel();
-		}
-	});
+	useTerminalInput(({ key }) => {
+		if (key.escape) onCancel();
+	}, true);
 
-	return <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />;
+	return (
+		<TextArea
+			value={value}
+			onChange={onChange}
+			onSubmit={onSubmit}
+			rows={1}
+			maxRows={1}
+		/>
+	);
 }
 
 interface TuiProps {
 	url: string;
 }
 
-function Tui({ url }: TuiProps) {
-	const { exit } = useApp();
-	const [input, setInput] = useState("");
-	const [output, setOutput] = useState("");
-	const [status, setStatus] = useState<
-		"connecting" | "connected" | "disconnected"
-	>("connecting");
-	const [running, setRunning] = useState(false);
-	const [menuData, setMenuData] = useState<SessionMenuData | null>(null);
-	const wsRef = useRef<WebSocket | null>(null);
+function useTerminalSize(): { columns: number; rows: number } {
+	const { stdout } = useStdout();
+	const [size, setSize] = useState({
+		columns: stdout?.columns ?? 80,
+		rows: stdout?.rows ?? 24,
+	});
 
 	useEffect(() => {
-		const socket = openRuntimeSocket(url, "tui");
-		const { ws } = socket;
-		wsRef.current = ws;
-
-		ws.onopen = () => setStatus("connected");
-		ws.onclose = () => setStatus("disconnected");
-		ws.onerror = () => setStatus("disconnected");
-
-		ws.onmessage = (msg) => {
-			const event = parseMessage(msg.data as string) as ServerEvent;
-			const update = getTuiEventUpdate(event);
-			if (!update) {
-				return;
-			}
-			if (update.sessionMenu) {
-				setMenuData(update.sessionMenu);
-				return;
-			}
-			setMenuData((prev) => applySessionEventToMenuData(prev, event));
-			if (update.replace !== undefined) {
-				setOutput(update.replace);
-			}
-			if (update.append) {
-				setOutput((prev) => `${prev}${update.append}`);
-			}
-			if (update.running !== undefined) {
-				setRunning(update.running);
-			}
+		const onResize = () =>
+			setSize({
+				columns: stdout?.columns ?? 80,
+				rows: stdout?.rows ?? 24,
+			});
+		stdout?.on("resize", onResize);
+		return () => {
+			stdout?.off("resize", onResize);
 		};
+	}, [stdout]);
 
-		return () => socket.close();
+	return size;
+}
+
+function Tui({ url }: TuiProps) {
+	const { exit } = useApp();
+	const { columns, rows: termRows } = useTerminalSize();
+	const [composerDraft, setComposerDraft] = useState(() =>
+		createPasteAwareDraft(),
+	);
+	const input = composerDraft.value;
+	const draftCursor = composerDraft.cursor;
+	const ignoreTextAreaChange = useCallback((_value: string) => {}, []);
+	const ignoreTextAreaSubmit = useCallback((_value: string) => {}, []);
+	const resetComposer = useCallback(() => {
+		setComposerDraft(createPasteAwareDraft());
+	}, []);
+	const [tuiState, setTuiState] = useState(initialTuiState);
+	const [status, setStatus] = useState<ConnectionStatus>("connecting");
+	const [menuData, setMenuData] = useState<SessionMenuData | null>(null);
+	const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo>({});
+	const wsRef = useRef<WebSocket | null>(null);
+	const pushLocalMessage = useCallback(
+		(role: "error" | "info", text: string) => {
+			setTuiState((prev) => applyAction(prev, { type: "push", role, text }));
+		},
+		[],
+	);
+	const withOpenSocket = useCallback(
+		(send: (ws: WebSocket) => void): boolean => {
+			const ws = wsRef.current;
+			if (!isRuntimeSocketOpen(ws)) {
+				pushLocalMessage(
+					"error",
+					"Runtime disconnected. Waiting to reconnect.",
+				);
+				return false;
+			}
+			try {
+				send(ws);
+				return true;
+			} catch (error) {
+				pushLocalMessage("error", extractError(error));
+				return false;
+			}
+		},
+		[pushLocalMessage],
+	);
+
+	useEffect(() => {
+		let cancelled = false;
+		let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+		function connect() {
+			if (cancelled) return;
+			const socket = openRuntimeSocket(url, "tui");
+			const { ws } = socket;
+			wsRef.current = ws;
+			setStatus("connecting");
+			void socket.ready.catch(() => {
+				// onclose drives reconnect scheduling; suppress unhandled rejections.
+			});
+
+			ws.onopen = () => setStatus("connected");
+
+			ws.onclose = () => {
+				if (cancelled) return;
+				setStatus("disconnected");
+				retryTimer = setTimeout(connect, 3000);
+			};
+
+			ws.onerror = () => {
+				// onclose will fire after this — reconnect handled there
+			};
+
+			ws.onmessage = (msg) => {
+				const event = parseMessage(msg.data as string) as ServerEvent;
+
+				if (event.type === "runtime_status") {
+					setRuntimeInfo({
+						model: event.model,
+						effort: event.effort,
+						contextPercentage: event.usage?.percentage,
+					});
+					return;
+				}
+				if (event.type === "model_changed") {
+					setRuntimeInfo((prev) => ({ ...prev, model: event.model }));
+				} else if (event.type === "effort_changed") {
+					setRuntimeInfo((prev) => ({ ...prev, effort: event.effort }));
+				}
+
+				const action = mapEventToAction(event);
+
+				if (action.type === "session_menu") {
+					setMenuData(action.data);
+					return;
+				}
+
+				setMenuData((prev) => applySessionEventToMenuData(prev, event));
+				setTuiState((prev) => applyAction(prev, action));
+			};
+		}
+
+		connect();
+
+		return () => {
+			cancelled = true;
+			if (retryTimer) clearTimeout(retryTimer);
+			if (wsRef.current) wsRef.current.close();
+		};
 	}, [url]);
 
 	const handleSubmit = useCallback(
 		(value: string) => {
-			if (!value.trim() || !wsRef.current) return;
-			const trimmed = value.trim();
+			const text = value;
+			if (!text.trim()) return;
+			const trimmed = text.trim();
 			if (trimmed === "/exit") {
 				exit();
 				return;
 			}
 			if (isRuntimeCommand(trimmed)) {
-				sendRuntimeCommand(wsRef.current, trimmed);
-				setInput("");
+				if (!withOpenSocket((ws) => sendRuntimeCommand(ws, trimmed))) {
+					return;
+				}
+				resetComposer();
 				return;
 			}
-			setOutput((prev) => `${prev}> ${value}\n`);
-			setRunning(true);
-			sendRuntimePrompt(wsRef.current, value);
-			setInput("");
+			if (!withOpenSocket((ws) => sendRuntimePrompt(ws, text))) {
+				return;
+			}
+			setTuiState((prev) =>
+				applyAction(prev, {
+					type: "push",
+					role: "user",
+					text,
+				}),
+			);
+			setTuiState((prev) => ({
+				...prev,
+				running: true,
+			}));
+			resetComposer();
 		},
-		[exit],
+		[exit, resetComposer, withOpenSocket],
 	);
 
-	const handleMenuSelect = useCallback((choice: SessionMenuChoice) => {
-		if (!wsRef.current) return;
-		sendRuntimeCommand(wsRef.current, `/session ${choice.sdkSessionId}`);
-		setMenuData(null);
-	}, []);
+	const handleMenuSelect = useCallback(
+		(choice: SessionMenuChoice) => {
+			if (
+				!withOpenSocket((ws) =>
+					sendRuntimeCommand(ws, `/session ${choice.sdkSessionId}`),
+				)
+			) {
+				return;
+			}
+			setMenuData(null);
+		},
+		[withOpenSocket],
+	);
 
-	const handleMenuDelete = useCallback((choice: SessionMenuChoice) => {
-		if (!wsRef.current) return;
-		sendRuntimeCommand(wsRef.current, `/session delete ${choice.sdkSessionId}`);
-	}, []);
+	const handleMenuDelete = useCallback(
+		(choice: SessionMenuChoice) => {
+			withOpenSocket((ws) =>
+				sendRuntimeCommand(ws, `/session delete ${choice.sdkSessionId}`),
+			);
+		},
+		[withOpenSocket],
+	);
 
 	const handleMenuRename = useCallback(
 		(choice: SessionMenuChoice, title: string) => {
-			if (!wsRef.current) return;
-			sendRuntimeCommand(
-				wsRef.current,
-				`/session rename ${choice.sdkSessionId} ${title}`,
+			withOpenSocket((ws) =>
+				sendRuntimeCommand(
+					ws,
+					`/session rename ${choice.sdkSessionId} ${title}`,
+				),
 			);
 		},
-		[],
+		[withOpenSocket],
 	);
 
 	const handleMenuDismiss = useCallback(() => {
 		setMenuData(null);
 	}, []);
 
-	useInput(
-		(_, key) => {
-			if (key.escape && wsRef.current) {
-				sendRuntimeCommand(wsRef.current, "/stop");
+	const inputActive = !tuiState.running && menuData === null;
+
+	useTextAreaInput(({ input: inputKey, key, sequence }) => {
+		const action = applyCollapsedPasteKeypress(
+			composerDraft,
+			inputKey,
+			key,
+			sequence,
+		);
+		if (action.type === "ignore") {
+			return;
+		}
+		if (action.type === "clear") {
+			resetComposer();
+			return;
+		}
+		if (action.type === "submit") {
+			handleSubmit(action.value ?? composerDraft.value);
+			return;
+		}
+		if (action.type === "update" && action.draft) {
+			setComposerDraft(action.draft);
+		}
+	}, inputActive);
+
+	useTerminalInput(
+		({ key }) => {
+			if (key.escape) {
+				withOpenSocket((ws) => sendRuntimeCommand(ws, "/stop"));
 			}
 		},
-		{
-			isActive: shouldEnableGlobalStopShortcut(running, menuData !== null),
-		},
+		shouldEnableGlobalStopShortcut(tuiState.running, menuData !== null),
 	);
 
 	const choices = menuData
 		? sessionMenuChoices(menuData.sessions, menuData.activeSessionId)
 		: null;
 
+	const divider = "─".repeat(columns);
+
 	return (
-		<Box flexDirection="column" padding={1}>
-			<Box marginBottom={1}>
-				<Text bold>outclaw</Text>
-				<Text> — </Text>
-				<Text color={status === "connected" ? "green" : "red"}>{status}</Text>
+		<Box flexDirection="column" paddingY={1}>
+			<Box paddingX={1}>
+				<HeaderBar />
 			</Box>
-			<Box flexGrow={1}>
-				<Text>{output}</Text>
+			<Text color="#f97316">{"═".repeat(columns)}</Text>
+			<Box marginTop={1} marginBottom={1} flexGrow={1} flexDirection="column">
+				<MessageList
+					messages={tuiState.messages}
+					streaming={tuiState.streaming}
+					running={tuiState.running}
+					columns={columns}
+				/>
 			</Box>
 			{choices ? (
-				<SessionMenu
-					choices={choices}
-					onSelect={handleMenuSelect}
-					onDelete={handleMenuDelete}
-					onRename={handleMenuRename}
-					onDismiss={handleMenuDismiss}
-				/>
-			) : (
-				<Box>
-					<Text bold color="cyan">
-						{"❯ "}
-					</Text>
-					<TextInput
-						value={input}
-						onChange={setInput}
-						onSubmit={handleSubmit}
+				<Box paddingX={1}>
+					<SessionMenu
+						choices={choices}
+						onSelect={handleMenuSelect}
+						onDelete={handleMenuDelete}
+						onRename={handleMenuRename}
+						onDismiss={handleMenuDismiss}
 					/>
 				</Box>
+			) : (
+				<Box flexDirection="column">
+					<Text dimColor>{divider}</Text>
+					<Box paddingX={1} alignItems="flex-start">
+						<Text bold color="cyan">
+							{"❯ "}
+						</Text>
+						<Box flexGrow={1} flexDirection="column">
+							<TextArea
+								key="draft-editor"
+								value={input}
+								onChange={ignoreTextAreaChange}
+								onSubmit={ignoreTextAreaSubmit}
+								cursor={draftCursor}
+								focus={inputActive}
+								captureInput={false}
+								rows={1}
+								maxRows={Math.max(5, Math.floor(termRows / 3))}
+							/>
+						</Box>
+					</Box>
+					<Text dimColor>{divider}</Text>
+				</Box>
 			)}
+			<Box paddingX={1}>
+				<StatusBar status={status} info={runtimeInfo} />
+			</Box>
 		</Box>
 	);
 }

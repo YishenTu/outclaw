@@ -4,10 +4,10 @@ A mini [OpenClaw](https://github.com/openclaw/openclaw) — autonomous AI agent 
 
 ## Architecture
 
-- **Runtime** — WS server, shared active session, SQLite session store, history replay, message queue, daemon lifecycle
-- **Backend** — Facade interface with Claude Agent SDK adapter
-- **Frontend** — Ink TUI and Telegram bot, both connected to the same runtime session
-- **Common** — Shared protocol types and helpers
+- **Common** — Shared protocol types, commands, model aliases, and serialization helpers
+- **Backend** — Facade interface with the Claude Agent SDK adapter
+- **Runtime** — WebSocket server, shared active session, SQLite session store, history replay, daemon lifecycle, heartbeat scheduler, cron scheduler
+- **Frontend** — Ink TUI and Telegram bot connected to the same runtime session
 
 ## Runtime Layout
 
@@ -27,7 +27,9 @@ src/runtime/
 
 - [Bun](https://bun.sh) — runtime & package manager
 - [@anthropic-ai/claude-agent-sdk](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) — agent backend
-- [Ink](https://github.com/vadimdemedes/ink) — terminal UI
+- [Ink](https://github.com/vadimdemedes/ink) + [ink-multiline-input](https://www.npmjs.com/package/ink-multiline-input) — terminal UI
+- [figlet](https://www.npmjs.com/package/figlet) — TUI banner rendering
+- [marked](https://www.npmjs.com/package/marked) + [marked-terminal](https://www.npmjs.com/package/marked-terminal) — assistant markdown rendering in the TUI
 - [grammY](https://grammy.dev) — Telegram bot
 - TypeScript (strict mode)
 
@@ -35,9 +37,18 @@ src/runtime/
 
 ```sh
 bun install
-bun link               # makes 'oc' command available globally
-cp .env.example .env   # add TELEGRAM_BOT_TOKEN to enable Telegram
+bun link
 ```
+
+Run `oc start` or `oc dev` once to create `~/.outclaw/`. The runtime keeps its own
+state and configuration there.
+
+Optional Telegram setup:
+
+- Put Telegram settings in `~/.outclaw/config.json`
+- Use literal values or `$ENV_VAR` references for `telegram.botToken`
+- Use an array or a `$ENV_VAR` reference for `telegram.allowedUsers`
+- Put those referenced env vars in the shell environment or in `~/.outclaw/.env`
 
 ## Usage
 
@@ -72,21 +83,43 @@ Available from the TUI and Telegram:
 
 The daemon stores its state in `~/.outclaw/`:
 
+- `config.json` — normalized runtime config with defaults filled in
+- `.env` — optional env file for config values referenced as `$NAME`
 - `daemon.pid` — background daemon PID
 - `daemon.log` — daemon stdout/stderr from `oc start`
-- `db.sqlite` — session metadata and active session pointer
+- `db.sqlite` — sessions, active session pointer, Telegram media refs, and last known usage stats
 - `cron/` — YAML cron job definitions (one file per job)
+- `media/` — copied Telegram media used by the runtime
+- `AGENTS.md`, `USER.md`, `SOUL.md`, `MEMORY.md`, `HEARTBEAT.md` — seeded prompt templates
 
 State-changing runtime commands are shared across connected frontends. Model changes,
 thinking effort changes, session clears, session switches, and session history replay
 stay in sync between TUI and Telegram.
+
+The runtime also restores saved usage info when switching sessions, so context usage
+survives reconnects and session changes.
+
+## TUI
+
+The TUI now renders structured messages instead of a flat output buffer:
+
+- user prompts as highlighted blocks
+- assistant replies as terminal-rendered markdown
+- info and error events as separate message types
+- a status bar with connection state, model, effort, and context percentage
+- an interactive session picker with select, rename, and delete actions
+
+The composer is a multiline editor with terminal-style navigation and editing
+shortcuts. Large pastes over 3 lines are collapsed into visible summary tokens and
+expanded back to full content only when sent.
 
 ## Heartbeat
 
 Periodic internal prompt injected into the active session. The runtime enqueues a
 fixed wrapper prompt that tells the agent to read `HEARTBEAT.md`, act only on its
 current contents, and reply `HEARTBEAT_OK` when nothing needs attention.
-Configurable via `config.json` (`heartbeat.intervalMinutes`, `heartbeat.deferMinutes`).
+Configurable via `~/.outclaw/config.json`
+(`heartbeat.intervalMinutes`, `heartbeat.deferMinutes`).
 
 ## Cron Jobs
 

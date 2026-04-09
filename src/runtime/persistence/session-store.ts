@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import type { UsageInfo } from "../../common/protocol.ts";
 
 export type SessionTag = "chat" | "cron";
 
@@ -49,6 +50,20 @@ export class SessionStore {
 			this.db.exec(
 				"ALTER TABLE sessions ADD COLUMN tag TEXT NOT NULL DEFAULT 'chat'",
 			);
+		}
+		for (const col of [
+			"input_tokens",
+			"output_tokens",
+			"cache_creation_tokens",
+			"cache_read_tokens",
+			"context_window",
+			"max_output_tokens",
+			"context_tokens",
+			"percentage",
+		]) {
+			if (!columns.some((column) => column.name === col)) {
+				this.db.exec(`ALTER TABLE sessions ADD COLUMN ${col} INTEGER`);
+			}
 		}
 	}
 
@@ -193,6 +208,63 @@ export class SessionStore {
 		this.db
 			.query("INSERT OR REPLACE INTO state (key, value) VALUES ($key, $value)")
 			.run({ $key: key, $value: value });
+	}
+
+	setUsage(sdkSessionId: string, usage: UsageInfo) {
+		this.db
+			.query(
+				`UPDATE sessions SET
+					input_tokens = $inputTokens,
+					output_tokens = $outputTokens,
+					cache_creation_tokens = $cacheCreationTokens,
+					cache_read_tokens = $cacheReadTokens,
+					context_window = $contextWindow,
+					max_output_tokens = $maxOutputTokens,
+					context_tokens = $contextTokens,
+					percentage = $percentage
+				WHERE sdk_session_id = $id`,
+			)
+			.run({
+				$id: sdkSessionId,
+				$inputTokens: usage.inputTokens,
+				$outputTokens: usage.outputTokens,
+				$cacheCreationTokens: usage.cacheCreationTokens,
+				$cacheReadTokens: usage.cacheReadTokens,
+				$contextWindow: usage.contextWindow,
+				$maxOutputTokens: usage.maxOutputTokens,
+				$contextTokens: usage.contextTokens,
+				$percentage: usage.percentage,
+			});
+	}
+
+	getUsage(sdkSessionId: string): UsageInfo | undefined {
+		const row = this.db
+			.query(
+				`SELECT input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+						context_window, max_output_tokens, context_tokens, percentage
+				FROM sessions WHERE sdk_session_id = $id`,
+			)
+			.get({ $id: sdkSessionId }) as {
+			input_tokens: number | null;
+			output_tokens: number | null;
+			cache_creation_tokens: number | null;
+			cache_read_tokens: number | null;
+			context_window: number | null;
+			max_output_tokens: number | null;
+			context_tokens: number | null;
+			percentage: number | null;
+		} | null;
+		if (!row || row.context_window === null) return undefined;
+		return {
+			inputTokens: row.input_tokens ?? 0,
+			outputTokens: row.output_tokens ?? 0,
+			cacheCreationTokens: row.cache_creation_tokens ?? 0,
+			cacheReadTokens: row.cache_read_tokens ?? 0,
+			contextWindow: row.context_window,
+			maxOutputTokens: row.max_output_tokens ?? 0,
+			contextTokens: row.context_tokens ?? 0,
+			percentage: row.percentage ?? 0,
+		};
 	}
 
 	close() {
