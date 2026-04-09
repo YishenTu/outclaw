@@ -10,7 +10,7 @@ import { PidManager } from "./runtime/process/pid-manager.ts";
 import { seedTemplates } from "./runtime/prompt/seed-templates.ts";
 import { createRuntime } from "./runtime/transport/ws-server.ts";
 
-const HOME_DIR = join(homedir(), ".misanthropic");
+const HOME_DIR = join(homedir(), ".outclaw");
 mkdirSync(HOME_DIR, { recursive: true });
 seedTemplates(HOME_DIR, join(import.meta.dir, "templates"));
 
@@ -33,7 +33,7 @@ const runtime = createRuntime({
 	permissionMode: config.permissionMode,
 	store,
 });
-console.log(`misanthropic runtime listening on ws://localhost:${runtime.port}`);
+console.log(`outclaw runtime listening on ws://localhost:${runtime.port}`);
 console.log(`agent cwd: ${HOME_DIR}`);
 console.log(`daemon pid: ${process.pid}`);
 
@@ -43,7 +43,7 @@ if (config.telegram.botToken) {
 	if (config.telegram.allowedUsers.length === 0) {
 		console.warn(
 			"WARNING: telegram.botToken is set but telegram.allowedUsers is empty. " +
-				"Telegram bot will not start. Add allowed user IDs to ~/.misanthropic/config.json.",
+				"Telegram bot will not start. Add allowed user IDs to ~/.outclaw/config.json.",
 		);
 	} else {
 		telegram = startTelegramBot({

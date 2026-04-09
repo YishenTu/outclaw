@@ -79,7 +79,7 @@ describe("ClaudeAdapter", () => {
 			prompt: "hello",
 			systemPrompt: "system",
 			resume: "sdk-123",
-			cwd: "/tmp/misanthropic",
+			cwd: "/tmp/outclaw",
 			model: "claude-opus-4-6[1m]",
 			effort: "max",
 		})) {
@@ -104,7 +104,7 @@ describe("ClaudeAdapter", () => {
 		expect(args.prompt).toBe("hello");
 		expect(args.options.systemPrompt).toBe("system");
 		expect(args.options.resume).toBe("sdk-123");
-		expect(args.options.cwd).toBe("/tmp/misanthropic");
+		expect(args.options.cwd).toBe("/tmp/outclaw");
 		expect(args.options.model).toBe("claude-opus-4-6[1m]");
 		expect(args.options.effort).toBe("max");
 		expect(args.options.permissionMode).toBe("bypassPermissions");

@@ -1,4 +1,4 @@
-# misanthropic
+# outclaw
 
 A mini OpenClaw: autonomous AI agent powered by the Claude Agent SDK.
 
@@ -8,7 +8,7 @@ A mini OpenClaw: autonomous AI agent powered by the Claude Agent SDK.
 - **Backend** (`src/backend/`): Facade interface + provider adapters (Claude)
 - **Runtime** (`src/runtime/`): WS server, shared active session, SQLite session store, history replay, message queue, PID management, heartbeat scheduler, cron scheduler, system prompt assembly
 - **Frontend** (`src/frontend/`): TUI (Ink) and Telegram bot connected to the same runtime session
-- **CLI** (`src/cli.ts`): `ma` command — start/stop/restart/status/tui/dev
+- **CLI** (`src/cli.ts`): `oc` command — start/stop/restart/status/tui/dev
 
 ## Stack
 
@@ -21,12 +21,12 @@ A mini OpenClaw: autonomous AI agent powered by the Claude Agent SDK.
 ## CLI Commands
 
 ```
-ma start      # start daemon (background)
-ma stop       # stop daemon
-ma restart    # stop + start
-ma status     # check if running
-ma tui        # connect TUI to running daemon
-ma dev        # run daemon in foreground with hot reload
+oc start      # start daemon (background)
+oc stop       # stop daemon
+oc restart    # stop + start
+oc status     # check if running
+oc tui        # connect TUI to running daemon
+oc dev        # run daemon in foreground with hot reload
 ```
 
 ## Dev Commands

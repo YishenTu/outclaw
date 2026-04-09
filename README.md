@@ -1,4 +1,4 @@
-# misanthropic
+# outclaw
 
 A mini [OpenClaw](https://github.com/openclaw/openclaw) — autonomous AI agent powered by the Claude Agent SDK.
 
@@ -35,19 +35,19 @@ src/runtime/
 
 ```sh
 bun install
-bun link               # makes 'ma' command available globally
+bun link               # makes 'oc' command available globally
 cp .env.example .env   # add TELEGRAM_BOT_TOKEN to enable Telegram
 ```
 
 ## Usage
 
 ```sh
-ma start     # start daemon (background)
-ma restart   # stop + start
-ma status    # check if running
-ma tui       # connect TUI (--watch for auto-reload)
-ma stop      # stop daemon
-ma dev       # foreground with hot reload
+oc start     # start daemon (background)
+oc restart   # stop + start
+oc status    # check if running
+oc tui       # connect TUI (--watch for auto-reload)
+oc stop      # stop daemon
+oc dev       # foreground with hot reload
 ```
 
 ## User Commands
@@ -70,10 +70,10 @@ Available from the TUI and Telegram:
 
 ## Runtime State
 
-The daemon stores its state in `~/.misanthropic/`:
+The daemon stores its state in `~/.outclaw/`:
 
 - `daemon.pid` — background daemon PID
-- `daemon.log` — daemon stdout/stderr from `ma start`
+- `daemon.log` — daemon stdout/stderr from `oc start`
 - `db.sqlite` — session metadata and active session pointer
 - `cron/` — YAML cron job definitions (one file per job)
 
@@ -91,7 +91,7 @@ Configurable via `config.json` (`heartbeat.intervalMinutes`, `heartbeat.deferMin
 ## Cron Jobs
 
 Parallel agent instances that run independently on a schedule. One YAML file per job
-in `~/.misanthropic/cron/`. Jobs share the same system prompt and tools as the main
+in `~/.outclaw/cron/`. Jobs share the same system prompt and tools as the main
 agent. Results are broadcast to all connected frontends and optionally forwarded to
 Telegram. The `cron/` directory is watched for live reload without daemon restart.
 

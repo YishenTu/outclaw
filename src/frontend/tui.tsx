@@ -263,7 +263,7 @@ function Tui({ url }: TuiProps) {
 	return (
 		<Box flexDirection="column" padding={1}>
 			<Box marginBottom={1}>
-				<Text bold>misanthropic</Text>
+				<Text bold>outclaw</Text>
 				<Text> — </Text>
 				<Text color={status === "connected" ? "green" : "red"}>{status}</Text>
 			</Box>

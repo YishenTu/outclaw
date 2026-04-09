@@ -1,11 +1,11 @@
 {
-	"name": "misanthropic",
+	"name": "outclaw",
 	"description": "A mini OpenClaw — autonomous AI agent with Claude Agent SDK backend, optional browser/TUI frontend, and a runtime orchestrator",
 	"module": "src/index.ts",
 	"type": "module",
 	"private": true,
 	"bin": {
-		"ma": "src/cli.ts"
+		"oc": "src/cli.ts"
 	},
 	"scripts": {
 		"lint": "biome check .",

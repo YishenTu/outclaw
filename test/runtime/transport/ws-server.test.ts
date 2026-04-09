@@ -108,7 +108,7 @@ describe("Runtime server", () => {
 		const response = await fetch(`http://127.0.0.1:${port}/`);
 
 		expect(response.status).toBe(200);
-		expect(await response.text()).toBe("misanthropic runtime");
+		expect(await response.text()).toBe("outclaw runtime");
 	});
 
 	test("forwards a prompt and receives events", async () => {
@@ -152,7 +152,7 @@ describe("Runtime server", () => {
 		const cwdServer = createRuntime({
 			port: 0,
 			facade: cwdFacade,
-			cwd: "/tmp/test-misanthropic",
+			cwd: "/tmp/test-outclaw",
 		});
 
 		const ws = await connectWs(cwdServer.port);
@@ -161,7 +161,7 @@ describe("Runtime server", () => {
 		await collecting;
 		ws.close();
 
-		expect(cwdFacade.lastParams?.cwd).toBe("/tmp/test-misanthropic");
+		expect(cwdFacade.lastParams?.cwd).toBe("/tmp/test-outclaw");
 
 		cwdServer.stop();
 	});

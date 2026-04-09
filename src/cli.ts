@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { PidManager } from "./runtime/process/pid-manager.ts";
 
-const HOME_DIR = join(homedir(), ".misanthropic");
+const HOME_DIR = join(homedir(), ".outclaw");
 const PID_PATH = join(HOME_DIR, "daemon.pid");
 const LOG_PATH = join(HOME_DIR, "daemon.log");
 const DAEMON_ENTRY = join(import.meta.dir, "index.ts");
@@ -34,7 +34,7 @@ switch (command) {
 		dev();
 		break;
 	default:
-		console.log("Usage: ma <start|stop|restart|status|tui|dev>");
+		console.log("Usage: oc <start|stop|restart|status|tui|dev>");
 		process.exit(1);
 }
 
@@ -103,7 +103,7 @@ function dev() {
 
 	if (pid.isRunning()) {
 		console.log(
-			`Daemon already running (pid ${pid.read()}). Stop it first: ma stop`,
+			`Daemon already running (pid ${pid.read()}). Stop it first: oc stop`,
 		);
 		process.exit(1);
 	}
@@ -117,7 +117,7 @@ function dev() {
 
 function tui() {
 	if (!pid.isRunning()) {
-		console.log("Daemon is not running. Start it first: ma start");
+		console.log("Daemon is not running. Start it first: oc start");
 		process.exit(1);
 	}
 

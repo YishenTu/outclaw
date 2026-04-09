@@ -80,7 +80,7 @@ export function createRuntime(options: RuntimeOptions) {
 			if (server.upgrade(req, { data: { clientType } })) {
 				return;
 			}
-			return new Response("misanthropic runtime", { status: 200 });
+			return new Response("outclaw runtime", { status: 200 });
 		},
 		websocket: {
 			close: controller.handleClose,

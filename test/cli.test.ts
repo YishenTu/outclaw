@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const TEST_HOME = join(import.meta.dir, ".tmp-cli-test");
-const MISANTHROPIC_DIR = join(TEST_HOME, ".misanthropic");
-const PID_PATH = join(MISANTHROPIC_DIR, "daemon.pid");
+const OUTCLAW_DIR = join(TEST_HOME, ".outclaw");
+const PID_PATH = join(OUTCLAW_DIR, "daemon.pid");
 const CLI_PATH = join(import.meta.dir, "../src/cli.ts");
 
 function runCli(...args: string[]) {
@@ -19,7 +19,7 @@ function runCli(...args: string[]) {
 }
 
 function writePid(pid: number) {
-	mkdirSync(MISANTHROPIC_DIR, { recursive: true });
+	mkdirSync(OUTCLAW_DIR, { recursive: true });
 	writeFileSync(PID_PATH, String(pid));
 }
 
