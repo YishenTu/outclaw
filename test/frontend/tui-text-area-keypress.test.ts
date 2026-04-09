@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Key } from "ink";
 import {
 	deleteWordForward,
+	getCursorColumn,
 	moveWordBack,
 	moveWordForward,
 } from "../../src/frontend/tui/text-area-edit.ts";
@@ -47,6 +48,10 @@ describe("moveWordBack", () => {
 	test("moves across a newline one boundary at a time", () => {
 		expect(moveWordBack("abc\ndef", 4)).toBe(3);
 	});
+
+	test("stops at the start after trimming leading whitespace", () => {
+		expect(moveWordBack("  hello", 2)).toBe(0);
+	});
 });
 
 describe("moveWordForward", () => {
@@ -60,6 +65,10 @@ describe("moveWordForward", () => {
 
 	test("moves across a newline one boundary at a time", () => {
 		expect(moveWordForward("abc\ndef", 3)).toBe(4);
+	});
+
+	test("stops at the end after skipping trailing whitespace", () => {
+		expect(moveWordForward("hi   ", 2)).toBe(5);
 	});
 });
 
@@ -79,6 +88,12 @@ describe("deleteWordForward", () => {
 	});
 });
 
+describe("getCursorColumn", () => {
+	test("clamps cursors beyond the end of the value to the last line length", () => {
+		expect(getCursorColumn("ab\nc", 99)).toBe(1);
+	});
+});
+
 describe("normalizeTextAreaInput", () => {
 	test("preserves DEL as a delete key with the original sequence", () => {
 		expect(normalizeTextAreaInput("\x7f")).toMatchObject({
@@ -93,6 +108,41 @@ describe("normalizeTextAreaInput", () => {
 			input: "",
 			sequence: "\x1b[3~",
 			key: { delete: true, backspace: false, meta: false },
+		});
+	});
+
+	test("uses kitty printable payloads and modifier flags", () => {
+		expect(normalizeTextAreaInput("\x1b[97;39:2;65:769u")).toMatchObject({
+			input: "Á",
+			sequence: "\x1b[97;39:2;65:769u",
+			key: {
+				ctrl: true,
+				meta: true,
+				shift: false,
+				eventType: "repeat",
+			},
+		});
+	});
+
+	test("maps kitty control letters to ctrl input", () => {
+		expect(normalizeTextAreaInput("\x1b[3;5u")).toMatchObject({
+			input: "c",
+			sequence: "\x1b[3;5u",
+			key: {
+				ctrl: true,
+				meta: false,
+			},
+		});
+	});
+
+	test("strips the escape prefix from meta-shifted printable keys", () => {
+		expect(normalizeTextAreaInput("\x1bA")).toMatchObject({
+			input: "A",
+			sequence: "\x1bA",
+			key: {
+				meta: true,
+				shift: true,
+			},
 		});
 	});
 });
@@ -287,6 +337,23 @@ describe("applyTextAreaKeypress", () => {
 		});
 	});
 
+	test("Meta+Delete deletes forward by word when reported separately from DEL", () => {
+		expect(
+			applyTextAreaKeypress(
+				{ value: "hello world", cursor: 6 },
+				"",
+				key({ meta: true, delete: true }),
+				"\x1b[3~",
+			),
+		).toMatchObject({
+			value: "hello ",
+			cursor: 6,
+			change: { start: 6, end: 11, text: "" },
+			handled: true,
+			submit: false,
+		});
+	});
+
 	test("Meta+Backspace deletes backward by word", () => {
 		expect(
 			applyTextAreaKeypress(
@@ -350,6 +417,34 @@ describe("applyTextAreaKeypress", () => {
 		});
 	});
 
+	test("Ctrl+A and Ctrl+E use line navigation shortcuts", () => {
+		expect(
+			applyTextAreaKeypress(
+				{ value: "ab\ncde", cursor: 5 },
+				"a",
+				key({ ctrl: true }),
+			),
+		).toMatchObject({
+			value: "ab\ncde",
+			cursor: 3,
+			handled: true,
+			submit: false,
+		});
+
+		expect(
+			applyTextAreaKeypress(
+				{ value: "ab\ncde", cursor: 3 },
+				"e",
+				key({ ctrl: true }),
+			),
+		).toMatchObject({
+			value: "ab\ncde",
+			cursor: 6,
+			handled: true,
+			submit: false,
+		});
+	});
+
 	test("Ctrl+H and Ctrl+D delete backward and forward", () => {
 		expect(
 			applyTextAreaKeypress(
@@ -378,6 +473,68 @@ describe("applyTextAreaKeypress", () => {
 		});
 	});
 
+	test("Ctrl+K deletes to the end of the line and keeps change empty when nothing changes", () => {
+		expect(
+			applyTextAreaKeypress(
+				{ value: "ab\ncde", cursor: 3 },
+				"k",
+				key({ ctrl: true }),
+			),
+		).toMatchObject({
+			value: "ab\n",
+			cursor: 3,
+			change: { start: 3, end: 6, text: "" },
+			handled: true,
+			submit: false,
+		});
+
+		expect(
+			applyTextAreaKeypress(
+				{ value: "abc", cursor: 3 },
+				"k",
+				key({ ctrl: true }),
+			),
+		).toMatchObject({
+			value: "abc",
+			cursor: 3,
+			change: undefined,
+			handled: true,
+			submit: false,
+		});
+	});
+
+	test("Ctrl+W deletes the previous word with a backward change range", () => {
+		expect(
+			applyTextAreaKeypress(
+				{ value: "hello world", cursor: 11 },
+				"w",
+				key({ ctrl: true }),
+			),
+		).toMatchObject({
+			value: "hello ",
+			cursor: 6,
+			change: { start: 6, end: 11, text: "" },
+			handled: true,
+			submit: false,
+		});
+	});
+
+	test("Ctrl+J inserts a newline without submitting", () => {
+		expect(
+			applyTextAreaKeypress(
+				{ value: "ab", cursor: 1 },
+				"j",
+				key({ ctrl: true }),
+			),
+		).toMatchObject({
+			value: "a\nb",
+			cursor: 2,
+			change: { start: 1, end: 1, text: "\n" },
+			handled: true,
+			submit: false,
+		});
+	});
+
 	test("Meta+Return inserts a newline instead of submitting", () => {
 		expect(
 			applyTextAreaKeypress(
@@ -388,6 +545,22 @@ describe("applyTextAreaKeypress", () => {
 		).toMatchObject({
 			value: "hello\n",
 			cursor: 6,
+			handled: true,
+			submit: false,
+		});
+	});
+
+	test("Shift+Return inserts a newline instead of submitting", () => {
+		expect(
+			applyTextAreaKeypress(
+				{ value: "hello", cursor: 5 },
+				"",
+				key({ shift: true, return: true }),
+			),
+		).toMatchObject({
+			value: "hello\n",
+			cursor: 6,
+			change: { start: 5, end: 5, text: "\n" },
 			handled: true,
 			submit: false,
 		});
@@ -421,6 +594,68 @@ describe("applyTextAreaKeypress", () => {
 			cursor: 5,
 			handled: true,
 			submit: true,
+		});
+	});
+
+	test("Tab and Escape are ignored while preserving the current selection state", () => {
+		expect(
+			applyTextAreaKeypress(
+				{ value: "hello", cursor: 2, preferredColumn: 4 },
+				"",
+				key({ tab: true }),
+			),
+		).toMatchObject({
+			value: "hello",
+			cursor: 2,
+			preferredColumn: 4,
+			handled: true,
+			submit: false,
+		});
+
+		expect(
+			applyTextAreaKeypress(
+				{ value: "hello", cursor: 2, preferredColumn: 4 },
+				"",
+				key({ escape: true }),
+			),
+		).toMatchObject({
+			value: "hello",
+			cursor: 2,
+			preferredColumn: 4,
+			handled: true,
+			submit: false,
+		});
+	});
+
+	test("returns a noop result for unhandled key combinations", () => {
+		expect(
+			applyTextAreaKeypress(
+				{ value: "hello world", cursor: 5, preferredColumn: 3 },
+				"",
+				key({ ctrl: true }),
+			),
+		).toMatchObject({
+			value: "hello world",
+			cursor: 5,
+			preferredColumn: 3,
+			handled: false,
+			submit: false,
+		});
+	});
+
+	test("keeps delete ranges undefined when backspace has nothing to remove", () => {
+		expect(
+			applyTextAreaKeypress(
+				{ value: "abc", cursor: 0 },
+				"",
+				key({ backspace: true }),
+			),
+		).toMatchObject({
+			value: "abc",
+			cursor: 0,
+			change: undefined,
+			handled: true,
+			submit: false,
 		});
 	});
 

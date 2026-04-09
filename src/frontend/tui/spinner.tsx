@@ -1,5 +1,6 @@
 import { Text } from "ink";
 import { useEffect, useState } from "react";
+import { theme } from "./theme.ts";
 
 const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -19,7 +20,7 @@ export function Spinner({ label }: SpinnerProps) {
 
 	return (
 		<Text>
-			<Text color="cyan">{frames[i]}</Text>
+			<Text color={theme.accent}>{frames[i]}</Text>
 			{label ? ` ${label}` : ""}
 		</Text>
 	);

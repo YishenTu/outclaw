@@ -36,6 +36,7 @@ import {
 } from "./tui/status-bar.tsx";
 import { TextArea } from "./tui/text-area.tsx";
 import { useTerminalInput, useTextAreaInput } from "./tui/text-area-input.ts";
+import { theme } from "./tui/theme.ts";
 
 interface SessionMenuProps {
 	choices: SessionMenuChoice[];
@@ -127,7 +128,7 @@ function SessionMenu({
 				if (renaming && i === cursor) {
 					return (
 						<Box key={choice.sdkSessionId}>
-							<Text color="cyan">{pointer}</Text>
+							<Text color={theme.accent}>{pointer}</Text>
 							<RenameInput
 								value={renameValue}
 								onChange={setRenameValue}
@@ -141,7 +142,7 @@ function SessionMenu({
 				return (
 					<Text
 						key={choice.sdkSessionId}
-						color={i === cursor ? "cyan" : undefined}
+						color={i === cursor ? theme.accent : undefined}
 					>
 						{pointer}
 						{label}
@@ -437,7 +438,7 @@ function Tui({ url }: TuiProps) {
 			<Box paddingX={1}>
 				<HeaderBar />
 			</Box>
-			<Text color="#f97316">{"═".repeat(columns)}</Text>
+			<Text color={theme.brand}>{"═".repeat(columns)}</Text>
 			<Box marginTop={1} marginBottom={1} flexGrow={1} flexDirection="column">
 				<MessageList
 					messages={tuiState.messages}
@@ -460,7 +461,7 @@ function Tui({ url }: TuiProps) {
 				<Box flexDirection="column">
 					<Text dimColor>{divider}</Text>
 					<Box paddingX={1} alignItems="flex-start">
-						<Text bold color="cyan">
+						<Text bold color={theme.accent}>
 							{"❯ "}
 						</Text>
 						<Box flexGrow={1} flexDirection="column">

@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import { renderMarkdown } from "./markdown.ts";
 import type { TuiMessage } from "./messages.ts";
+import { theme } from "./theme.ts";
 
 interface MessageItemProps {
 	message: TuiMessage;
@@ -41,7 +42,7 @@ export function MessageItem({ message, columns }: MessageItemProps) {
 		case "user":
 			return (
 				<Box marginTop={1}>
-					<Text backgroundColor="#3b3b3b" color="white" bold>
+					<Text backgroundColor={theme.userMsgBg} color={theme.userMsgFg} bold>
 						{wrapUserMessage(message.text, columns)}
 					</Text>
 				</Box>
@@ -62,10 +63,10 @@ export function MessageItem({ message, columns }: MessageItemProps) {
 			return (
 				<Box paddingX={1}>
 					<Text>
-						<Text color="red" bold>
+						<Text color={theme.error} bold>
 							{"✗ "}
 						</Text>
-						<Text color="red">{message.text}</Text>
+						<Text color={theme.error}>{message.text}</Text>
 					</Text>
 				</Box>
 			);
