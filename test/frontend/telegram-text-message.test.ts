@@ -109,4 +109,35 @@ describe("handleTelegramTextMessage", () => {
 			direction: "outbound",
 		});
 	});
+
+	test("reports an error when prompt execution fails", async () => {
+		const reply = mock(async (_text: string) => undefined);
+
+		await handleTelegramTextMessage(
+			{
+				chat: { id: 321 },
+				message: {
+					text: "plot",
+					message_id: 10,
+				},
+				reply,
+				replyWithChatAction: async (_action: string) => undefined,
+				replyWithPhoto: async (_photo: unknown, _options: unknown) => ({
+					message_id: 88,
+				}),
+				replyWithStream: async (
+					_iterable: AsyncIterable<string>,
+					_placeholder: unknown,
+					_options: unknown,
+				) => undefined,
+			},
+			{
+				streamPrompt: () => {
+					throw new Error("bridge exploded");
+				},
+			},
+		);
+
+		expect(reply).toHaveBeenCalledWith("[error] bridge exploded");
+	});
 });

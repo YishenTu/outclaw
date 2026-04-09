@@ -1,10 +1,86 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
 	buildRuntimeSocketUrl,
+	closeRuntimeSocket,
+	openRuntimeSocket,
 	sendRuntimePrompt,
 } from "../../src/frontend/runtime-client/index.ts";
 
+class FakeWebSocket {
+	static readonly CONNECTING = 0;
+	static readonly OPEN = 1;
+	static readonly CLOSING = 2;
+	static readonly CLOSED = 3;
+	static instances: FakeWebSocket[] = [];
+
+	readyState = FakeWebSocket.CONNECTING;
+	readonly sent: string[] = [];
+	closeCount = 0;
+	onclose: ((event?: unknown) => void) | null = null;
+	onerror: ((event?: unknown) => void) | null = null;
+	onmessage: ((event: { data: string }) => void) | null = null;
+	private listeners = new Map<string, Set<(event?: unknown) => void>>();
+
+	constructor(readonly url: string) {
+		FakeWebSocket.instances.push(this);
+	}
+
+	static reset() {
+		FakeWebSocket.instances.length = 0;
+	}
+
+	addEventListener(type: string, handler: (event?: unknown) => void) {
+		let handlers = this.listeners.get(type);
+		if (!handlers) {
+			handlers = new Set();
+			this.listeners.set(type, handlers);
+		}
+		handlers.add(handler);
+	}
+
+	removeEventListener(type: string, handler: (event?: unknown) => void) {
+		this.listeners.get(type)?.delete(handler);
+	}
+
+	send(data: string) {
+		this.sent.push(data);
+	}
+
+	close() {
+		this.closeCount++;
+		this.readyState = FakeWebSocket.CLOSED;
+		this.dispatch("close");
+	}
+
+	dispatch(type: "open" | "error" | "close" | "message", event?: unknown) {
+		if (type === "open") {
+			this.readyState = FakeWebSocket.OPEN;
+		}
+		if (type === "close") {
+			this.readyState = FakeWebSocket.CLOSED;
+		}
+		for (const handler of this.listeners.get(type) ?? []) {
+			handler(event);
+		}
+		if (type === "message") {
+			this.onmessage?.(event as { data: string });
+			return;
+		}
+
+		const propertyHandler =
+			type === "close" ? this.onclose : type === "error" ? this.onerror : null;
+		propertyHandler?.(event);
+	}
+}
+
 describe("runtime client", () => {
+	const realWebSocket = globalThis.WebSocket;
+
+	afterEach(() => {
+		globalThis.WebSocket = realWebSocket;
+		FakeWebSocket.reset();
+	});
+
 	test("adds the client type to the runtime socket URL", () => {
 		expect(buildRuntimeSocketUrl("ws://localhost:4000", "telegram")).toBe(
 			"ws://localhost:4000/?client=telegram",
@@ -26,5 +102,53 @@ describe("runtime client", () => {
 			source: "telegram",
 			images: [{ path: "/tmp/cat.png", mediaType: "image/png" }],
 		});
+	});
+
+	test("openRuntimeSocket resolves on open and close() closes connecting sockets", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const socket = openRuntimeSocket("ws://localhost:4000");
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		expect(ws?.url).toBe("ws://localhost:4000/?client=tui");
+
+		ws.dispatch("open");
+		await expect(socket.ready).resolves.toBeUndefined();
+
+		socket.close();
+		expect(ws.closeCount).toBe(1);
+	});
+
+	test("openRuntimeSocket rejects on websocket error before opening", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const socket = openRuntimeSocket("ws://localhost:4000", "telegram");
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		ws.dispatch("error");
+
+		await expect(socket.ready).rejects.toThrow("WebSocket error");
+	});
+
+	test("openRuntimeSocket rejects when the websocket closes before opening", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const socket = openRuntimeSocket("ws://localhost:4000", "telegram");
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		ws.dispatch("close");
+
+		await expect(socket.ready).rejects.toThrow(
+			"WebSocket closed before opening",
+		);
+	});
+
+	test("closeRuntimeSocket ignores sockets that are already closed", () => {
+		const close = mock(() => {});
+		const ws = {
+			close,
+			readyState: WebSocket.CLOSED,
+		} as unknown as WebSocket;
+
+		closeRuntimeSocket(ws);
+
+		expect(close).not.toHaveBeenCalled();
 	});
 });

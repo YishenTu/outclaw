@@ -1,5 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -47,6 +53,43 @@ describe("saveTelegramMedia", () => {
 			expect(readFileSync(saved.path, "utf8")).toBe("chart-bytes");
 		} finally {
 			rmSync(sourcePath, { force: true });
+		}
+	});
+
+	test("returns managed media paths without copying them again", async () => {
+		const managedDir = join(mediaRoot, "nested");
+		mkdirSync(managedDir, { recursive: true });
+		writeFileSync(join(managedDir, "managed.png"), "managed-bytes");
+		const sourcePath = join(managedDir, "managed.png");
+
+		const saved = await copyTelegramMedia(mediaRoot, sourcePath, "image/png");
+
+		expect(saved).toEqual({
+			path: sourcePath,
+			mediaType: "image/png",
+		});
+		expect(readFileSync(sourcePath, "utf8")).toBe("managed-bytes");
+	});
+
+	test("throws when Telegram download fails", async () => {
+		const failingServer = Bun.serve({
+			port: 0,
+			fetch() {
+				return new Response("missing", { status: 404 });
+			},
+		});
+
+		try {
+			await expect(
+				saveTelegramMedia(
+					mediaRoot,
+					`http://127.0.0.1:${failingServer.port}/cat.png`,
+					".png",
+					"image/png",
+				),
+			).rejects.toThrow("Failed to download Telegram media: 404");
+		} finally {
+			failingServer.stop();
 		}
 	});
 });

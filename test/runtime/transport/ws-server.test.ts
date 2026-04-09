@@ -19,6 +19,10 @@ function createImagePath(name: string): string {
 	return path;
 }
 
+function createTempDir(prefix: string): string {
+	return mkdtempSync(join(tmpdir(), prefix));
+}
+
 function connectWs(port: number): Promise<WebSocket> {
 	return new Promise((resolve) => {
 		const ws = new WebSocket(`ws://localhost:${port}`);
@@ -28,7 +32,7 @@ function connectWs(port: number): Promise<WebSocket> {
 
 function waitForEvent(
 	ws: WebSocket,
-	predicate: (e: { type: string }) => boolean,
+	predicate: (e: { type: string; [key: string]: unknown }) => boolean,
 ) {
 	return new Promise<{ type: string; [key: string]: unknown }>((resolve) => {
 		ws.onmessage = (msg) => {
@@ -98,6 +102,13 @@ describe("Runtime server", () => {
 		const ws = await connectWs(port);
 		expect(ws.readyState).toBe(WebSocket.OPEN);
 		ws.close();
+	});
+
+	test("returns a plain HTTP response for non-websocket requests", async () => {
+		const response = await fetch(`http://127.0.0.1:${port}/`);
+
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe("misanthropic runtime");
 	});
 
 	test("forwards a prompt and receives events", async () => {
@@ -837,5 +848,103 @@ describe("Runtime server", () => {
 		expect(event.sessionId).toBe("mock-session-123");
 
 		ws.close();
+	});
+
+	test("wires the heartbeat scheduler through createRuntime", async () => {
+		const promptHomeDir = createTempDir("mis-runtime-heartbeat-");
+		const heartbeatFacade = new MockFacade();
+		const heartbeatServer = createRuntime({
+			port: 0,
+			facade: heartbeatFacade,
+			promptHomeDir,
+			heartbeat: {
+				intervalMinutes: 0.001,
+				deferMinutes: 0,
+			},
+		});
+		heartbeatServer.setHeartbeatResultHandler(async () => undefined);
+
+		try {
+			const ws = await connectWs(heartbeatServer.port);
+			const collecting = collectUntilDone(ws);
+			ws.send(JSON.stringify({ type: "prompt", prompt: "start session" }));
+			await collecting;
+
+			const heartbeatPrompt = await Promise.race([
+				waitForEvent(
+					ws,
+					(event) =>
+						event.type === "user_prompt" &&
+						event.prompt ===
+							"Read HEARTBEAT.md and follow its instructions. Only act on what the file currently says — do not repeat tasks from earlier heartbeats or infer tasks from conversation history. If the file is missing or nothing needs attention, reply HEARTBEAT_OK.",
+				),
+				new Promise<never>((_, reject) =>
+					setTimeout(
+						() => reject(new Error("Timed out waiting for heartbeat")),
+						1000,
+					),
+				),
+			]);
+
+			expect(heartbeatPrompt.type).toBe("user_prompt");
+
+			ws.close();
+		} finally {
+			await heartbeatServer.stop();
+			rmSync(promptHomeDir, { force: true, recursive: true });
+		}
+	});
+
+	test("wires the cron scheduler through createRuntime", async () => {
+		const promptHomeDir = createTempDir("mis-runtime-cron-prompt-");
+		const cronDir = createTempDir("mis-runtime-cron-dir-");
+		writeFileSync(
+			join(cronDir, "job.yaml"),
+			[
+				"name: runtime-cron",
+				'schedule: "* * * * * *"',
+				"prompt: say hello",
+			].join("\n"),
+		);
+
+		const cronFacade = new MockFacade();
+		const cronServer = createRuntime({
+			port: 0,
+			facade: cronFacade,
+			promptHomeDir,
+			cronDir,
+		});
+		cronServer.setCronResultHandler(async () => undefined);
+
+		try {
+			const ws = await connectWs(cronServer.port);
+			const cronResult = await Promise.race([
+				waitForEvent(
+					ws,
+					(event) =>
+						event.type === "cron_result" && event.jobName === "runtime-cron",
+				),
+				new Promise<never>((_, reject) =>
+					setTimeout(
+						() => reject(new Error("Timed out waiting for cron result")),
+						2000,
+					),
+				),
+			]);
+
+			expect(cronResult).toEqual({
+				type: "cron_result",
+				jobName: "runtime-cron",
+				text: "echo: say hello",
+			});
+			expect(cronFacade.lastParams?.prompt).toBe("say hello");
+			expect(cronFacade.lastParams?.model).toBe("claude-opus-4-6[1m]");
+
+			ws.close();
+		} finally {
+			await cronServer.stop();
+			rmSync(promptHomeDir, { force: true, recursive: true });
+			rmSync(cronDir, { force: true, recursive: true });
+		}
 	});
 });

@@ -76,4 +76,22 @@ describe("seedTemplates", () => {
 
 		expect(() => seedTemplates(targetFile, source)).toThrow(/ENOTDIR/);
 	});
+
+	test("copies cron yaml templates into a cron directory and skips other files", () => {
+		const cronSource = join(source, "cron");
+		writeFileSync(join(source, "placeholder.txt"), "unused");
+		Bun.write(join(cronSource, "daily.yaml"), "name: daily");
+		Bun.write(join(cronSource, "weekly.yml"), "name: weekly");
+		Bun.write(join(cronSource, "notes.txt"), "ignore me");
+
+		seedTemplates(target, source);
+
+		expect(readFileSync(join(target, "cron", "daily.yaml"), "utf-8")).toBe(
+			"name: daily",
+		);
+		expect(readFileSync(join(target, "cron", "weekly.yml"), "utf-8")).toBe(
+			"name: weekly",
+		);
+		expect(existsSync(join(target, "cron", "notes.txt"))).toBe(false);
+	});
 });

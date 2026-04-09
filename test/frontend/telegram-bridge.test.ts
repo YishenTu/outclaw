@@ -1,10 +1,87 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	describe,
+	expect,
+	test,
+} from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTelegramBridge } from "../../src/frontend/telegram/bridge.ts";
 import { createRuntime } from "../../src/runtime/transport/ws-server.ts";
 import { MockFacade } from "../helpers/mock-facade.ts";
+
+class FakeWebSocket {
+	static readonly CONNECTING = 0;
+	static readonly OPEN = 1;
+	static readonly CLOSING = 2;
+	static readonly CLOSED = 3;
+	static instances: FakeWebSocket[] = [];
+
+	readyState = FakeWebSocket.CONNECTING;
+	readonly sent: string[] = [];
+	onclose: ((event?: unknown) => void) | null = null;
+	onerror: ((event?: unknown) => void) | null = null;
+	onmessage: ((event: { data: string }) => void) | null = null;
+	private listeners = new Map<string, Set<(event?: unknown) => void>>();
+
+	constructor(readonly url: string) {
+		FakeWebSocket.instances.push(this);
+	}
+
+	static reset() {
+		FakeWebSocket.instances.length = 0;
+	}
+
+	addEventListener(type: string, handler: (event?: unknown) => void) {
+		let handlers = this.listeners.get(type);
+		if (!handlers) {
+			handlers = new Set();
+			this.listeners.set(type, handlers);
+		}
+		handlers.add(handler);
+	}
+
+	removeEventListener(type: string, handler: (event?: unknown) => void) {
+		this.listeners.get(type)?.delete(handler);
+	}
+
+	send(data: string) {
+		this.sent.push(data);
+	}
+
+	close() {
+		this.readyState = FakeWebSocket.CLOSED;
+		this.dispatch("close");
+	}
+
+	dispatch(type: "open" | "error" | "close" | "message", event?: unknown) {
+		if (type === "open") {
+			this.readyState = FakeWebSocket.OPEN;
+		}
+		if (type === "close") {
+			this.readyState = FakeWebSocket.CLOSED;
+		}
+		for (const handler of this.listeners.get(type) ?? []) {
+			handler(event);
+		}
+		if (type === "message") {
+			this.onmessage?.(event as { data: string });
+			return;
+		}
+
+		const propertyHandler =
+			type === "close" ? this.onclose : type === "error" ? this.onerror : null;
+		propertyHandler?.(event);
+	}
+}
+
+async function flushMicrotasks() {
+	await Promise.resolve();
+	await Promise.resolve();
+}
 
 function createClosingServer() {
 	const server = Bun.serve({
@@ -58,6 +135,7 @@ describe("Telegram bridge", () => {
 	let server: ReturnType<typeof createRuntime>;
 	let facade: MockFacade;
 	const imageTmp = mkdtempSync(join(tmpdir(), "mis-telegram-bridge-"));
+	const realWebSocket = globalThis.WebSocket;
 
 	function createImagePath(name: string): string {
 		const path = join(imageTmp, name);
@@ -73,6 +151,11 @@ describe("Telegram bridge", () => {
 	afterAll(() => {
 		server.stop();
 		rmSync(imageTmp, { recursive: true, force: true });
+	});
+
+	afterEach(() => {
+		globalThis.WebSocket = realWebSocket;
+		FakeWebSocket.reset();
 	});
 
 	test("sends a prompt and collects the full response", async () => {
@@ -249,5 +332,194 @@ describe("Telegram bridge", () => {
 			bridge.close();
 			statusServer.stop();
 		}
+	});
+
+	test("send() rejects with fallback messages for status and error events", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+
+		const statusPromise = bridge.send("hello");
+		const statusSocket = FakeWebSocket.instances[0] as FakeWebSocket;
+		statusSocket.dispatch("open");
+		await flushMicrotasks();
+		statusSocket.dispatch("message", {
+			data: JSON.stringify({ type: "status", message: { detail: "nope" } }),
+		});
+		await expect(statusPromise).rejects.toThrow("Unexpected status event");
+
+		const errorPromise = bridge.send("hello");
+		const errorSocket = FakeWebSocket.instances[1] as FakeWebSocket;
+		errorSocket.dispatch("open");
+		await flushMicrotasks();
+		errorSocket.dispatch("message", {
+			data: JSON.stringify({ type: "error" }),
+		});
+		await expect(errorPromise).rejects.toThrow("Unknown error");
+
+		bridge.close();
+	});
+
+	test("send() rejects on websocket error after opening", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+
+		const response = bridge.send("hello");
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		ws.dispatch("open");
+		await flushMicrotasks();
+		ws.dispatch("error");
+
+		await expect(response).rejects.toThrow("WebSocket error");
+		bridge.close();
+	});
+
+	test("sendCommandAndWait() ignores non-matching events when expectedTypes is provided", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+
+		let settled = false;
+		const response = bridge
+			.sendCommandAndWait("/model", new Set(["model_changed"]))
+			.then((event) => {
+				settled = true;
+				return event;
+			});
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		ws.dispatch("open");
+		await flushMicrotasks();
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "status", message: "ignore me" }),
+		});
+		await flushMicrotasks();
+		expect(settled).toBeFalse();
+
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "model_changed", model: "haiku" }),
+		});
+		await expect(response).resolves.toEqual({
+			type: "model_changed",
+			model: "haiku",
+		});
+
+		bridge.close();
+	});
+
+	test("sendCommandAndWait() rejects on websocket error after opening", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+
+		const response = bridge.sendCommandAndWait("/model");
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		ws.dispatch("open");
+		await flushMicrotasks();
+		ws.dispatch("error");
+
+		await expect(response).rejects.toThrow("WebSocket error");
+		bridge.close();
+	});
+
+	test("stream() drains queued text, ignores images without a callback, and closes cleanly", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+		const iterator = bridge.stream("hello")[Symbol.asyncIterator]();
+
+		const firstChunk = iterator.next();
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		ws.dispatch("open");
+		await flushMicrotasks();
+
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "text", text: "first" }),
+		});
+		expect(await firstChunk).toEqual({ value: "first", done: false });
+
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "image", path: "/tmp/ignored.png" }),
+		});
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "text", text: "second" }),
+		});
+		expect(await iterator.next()).toEqual({ value: "second", done: false });
+
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "done" }),
+		});
+		expect(await iterator.next()).toEqual({ value: undefined, done: true });
+
+		bridge.close();
+	});
+
+	test("stream() propagates callback failures and fallback runtime errors", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+
+		const imageFailure = (async () => {
+			for await (const _chunk of bridge.stream("hello", undefined, async () => {
+				throw new Error("image callback failed");
+			})) {
+				// Drain
+			}
+		})();
+		const imageSocket = FakeWebSocket.instances[0] as FakeWebSocket;
+		imageSocket.dispatch("open");
+		await flushMicrotasks();
+		imageSocket.dispatch("message", {
+			data: JSON.stringify({ type: "image", path: "/tmp/chart.png" }),
+		});
+		await expect(imageFailure).rejects.toThrow("image callback failed");
+
+		const errorFailure = (async () => {
+			for await (const _chunk of bridge.stream("hello")) {
+				// Drain
+			}
+		})();
+		const errorSocket = FakeWebSocket.instances[1] as FakeWebSocket;
+		errorSocket.dispatch("open");
+		await flushMicrotasks();
+		errorSocket.dispatch("message", {
+			data: JSON.stringify({ type: "error" }),
+		});
+		await expect(errorFailure).rejects.toThrow("Unknown error");
+
+		const statusFailure = (async () => {
+			for await (const _chunk of bridge.stream("hello")) {
+				// Drain
+			}
+		})();
+		const statusSocket = FakeWebSocket.instances[2] as FakeWebSocket;
+		statusSocket.dispatch("open");
+		await flushMicrotasks();
+		statusSocket.dispatch("message", {
+			data: JSON.stringify({ type: "status", message: { detail: "bad" } }),
+		});
+		await expect(statusFailure).rejects.toThrow("Unexpected status event");
+
+		const websocketFailure = (async () => {
+			for await (const _chunk of bridge.stream("hello")) {
+				// Drain
+			}
+		})();
+		const websocketSocket = FakeWebSocket.instances[3] as FakeWebSocket;
+		websocketSocket.dispatch("open");
+		await flushMicrotasks();
+		websocketSocket.dispatch("error");
+		await expect(websocketFailure).rejects.toThrow("WebSocket error");
+
+		bridge.close();
+	});
+
+	test("close() closes active sockets", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+
+		const response = bridge.send("hello");
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		ws.dispatch("open");
+		await flushMicrotasks();
+
+		bridge.close();
+
+		expect(ws.readyState).toBe(FakeWebSocket.CLOSED);
+		await expect(response).rejects.toThrow("WebSocket closed");
 	});
 });
