@@ -53,29 +53,71 @@ export async function handleRuntimeCommand(
 		const arg = command.split(" ").slice(1).join(" ").trim();
 
 		if (!arg) {
-			const sessionId = options.state.sessionId;
-			if (!sessionId) {
-				sendError(options.hub, options.ws, "No active session");
+			const sessions = (options.store?.list(20, "chat") ?? []).map(
+				(session) => ({
+					sdkSessionId: session.sdkSessionId,
+					title: session.title,
+					model: session.model,
+					lastActive: session.lastActive,
+				}),
+			);
+			options.hub.send(options.ws, {
+				type: "session_menu",
+				activeSessionId: options.state.sessionId,
+				sessions,
+			});
+			return;
+		}
+
+		if (arg === "delete" || arg.startsWith("delete ")) {
+			const deleteId = arg.split(" ").slice(1).join(" ").trim();
+			if (!deleteId) {
+				sendError(options.hub, options.ws, "Usage: /session delete <id>");
 				return;
 			}
+			const deletingActiveSession = options.state.sessionId === deleteId;
+			options.store?.delete(deleteId);
+			options.hub.broadcast({
+				type: "session_deleted",
+				sdkSessionId: deleteId,
+			});
+			if (deletingActiveSession) {
+				options.state.clearSession();
+				options.hub.broadcast({ type: "session_cleared" });
+			}
+			return;
+		}
 
-			const row = options.store?.get(sessionId);
-			options.hub.send(options.ws, {
-				type: "session_info",
-				sdkSessionId: sessionId,
-				title: row?.title ?? options.state.sessionTitle ?? "Untitled",
-				model: row?.model ?? options.state.model,
+		if (arg === "rename" || arg.startsWith("rename ")) {
+			const parts = arg.split(" ").slice(1);
+			const renameId = parts[0]?.trim();
+			const newTitle = parts.slice(1).join(" ").trim();
+			if (!renameId || !newTitle) {
+				sendError(
+					options.hub,
+					options.ws,
+					"Usage: /session rename <id> <title>",
+				);
+				return;
+			}
+			options.store?.rename(renameId, newTitle);
+			options.hub.broadcast({
+				type: "session_renamed",
+				sdkSessionId: renameId,
+				title: newTitle,
 			});
 			return;
 		}
 
 		if (arg === "list") {
-			const sessions = (options.store?.list() ?? []).map((session) => ({
-				sdkSessionId: session.sdkSessionId,
-				title: session.title,
-				model: session.model,
-				lastActive: session.lastActive,
-			}));
+			const sessions = (options.store?.list(20, "chat") ?? []).map(
+				(session) => ({
+					sdkSessionId: session.sdkSessionId,
+					title: session.title,
+					model: session.model,
+					lastActive: session.lastActive,
+				}),
+			);
 			options.hub.send(options.ws, { type: "session_list", sessions });
 			return;
 		}

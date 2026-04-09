@@ -126,6 +126,28 @@ export interface SessionListEvent {
 	}>;
 }
 
+export interface SessionMenuEvent {
+	type: "session_menu";
+	activeSessionId?: string;
+	sessions: Array<{
+		sdkSessionId: string;
+		title: string;
+		model: string;
+		lastActive: number;
+	}>;
+}
+
+export interface SessionRenamedEvent {
+	type: "session_renamed";
+	sdkSessionId: string;
+	title: string;
+}
+
+export interface SessionDeletedEvent {
+	type: "session_deleted";
+	sdkSessionId: string;
+}
+
 export interface SessionSwitchedEvent {
 	type: "session_switched";
 	sdkSessionId: string;
@@ -169,6 +191,9 @@ export type ServerEvent =
 	| EffortChangedEvent
 	| SessionInfoEvent
 	| SessionListEvent
+	| SessionMenuEvent
+	| SessionRenamedEvent
+	| SessionDeletedEvent
 	| SessionSwitchedEvent
 	| RuntimeStatusEvent
 	| HistoryReplayEvent

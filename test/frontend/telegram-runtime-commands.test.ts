@@ -8,21 +8,18 @@ import {
 } from "../../src/frontend/telegram/runtime-commands.ts";
 
 describe("Telegram runtime commands", () => {
-	test("advertised commands mirror runtime command metadata", () => {
+	test("advertised commands cover all runtime commands", () => {
+		const advertised = new Set(TELEGRAM_COMMANDS.map((c) => c.command));
+		for (const rc of RUNTIME_COMMANDS) {
+			expect(advertised.has(rc.command)).toBe(true);
+		}
+	});
+
+	test("session is handled separately from auto-registered commands", () => {
+		expect(TELEGRAM_RUNTIME_COMMAND_NAMES).not.toContain("session");
 		expect(
-			TELEGRAM_COMMANDS.map(({ command, description }) => ({
-				command,
-				description,
-			})),
-		).toEqual(
-			RUNTIME_COMMANDS.map(({ command, description }) => ({
-				command,
-				description,
-			})),
-		);
-		expect(TELEGRAM_RUNTIME_COMMAND_NAMES).toEqual(
-			RUNTIME_COMMANDS.map((command) => command.command),
-		);
+			TELEGRAM_COMMANDS.find((c) => c.command === "session"),
+		).toBeDefined();
 	});
 
 	test("/new formats the session cleared reply", async () => {
@@ -87,68 +84,6 @@ describe("Telegram runtime commands", () => {
 
 		expect(calls).toEqual(["/thinking"]);
 		expect(reply).toBe("Thinking effort: high");
-	});
-
-	test("/session formats the active session info", async () => {
-		const reply = await executeTelegramRuntimeCommand("session", {
-			sendCommandAndWait: async () => ({
-				type: "session_info",
-				sdkSessionId: "sdk-session-123",
-				title: "Current chat",
-				model: "opus",
-			}),
-		});
-
-		expect(reply).toBe(
-			"Session: sdk-session-123\nTitle: Current chat\nModel: opus",
-		);
-	});
-
-	test("/session formats session lists and empty lists", async () => {
-		const listed = await executeTelegramRuntimeCommand(
-			"session",
-			{
-				sendCommandAndWait: async () => ({
-					type: "session_list",
-					sessions: [
-						{ sdkSessionId: "abcdef123456", title: "First session" },
-						{ sdkSessionId: "9876543210fedcba", title: "Second session" },
-					],
-				}),
-			},
-			"list",
-		);
-		const empty = await executeTelegramRuntimeCommand("session", {
-			sendCommandAndWait: async () => ({
-				type: "session_list",
-				sessions: [],
-			}),
-		});
-
-		expect(listed).toBe("abcdef12  First session\n98765432  Second session");
-		expect(empty).toBe("No sessions");
-	});
-
-	test("/session formats session switches", async () => {
-		const reply = await executeTelegramRuntimeCommand("session", {
-			sendCommandAndWait: async () => ({
-				type: "session_switched",
-				title: "Recovered chat",
-			}),
-		});
-
-		expect(reply).toBe("Switched to: Recovered chat");
-	});
-
-	test("/session formats runtime errors", async () => {
-		const reply = await executeTelegramRuntimeCommand("session", {
-			sendCommandAndWait: async () => ({
-				type: "error",
-				message: "unknown session",
-			}),
-		});
-
-		expect(reply).toBe("[error] unknown session");
 	});
 
 	test("/status formats usage when present and falls back to n/a", async () => {

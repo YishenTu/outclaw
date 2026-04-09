@@ -162,6 +162,60 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("list filters by tag", async () => {
+		const store = createTestStore();
+
+		store.upsert({ sdkSessionId: "chat-1", title: "Chat", model: "opus" });
+		await new Promise((r) => setTimeout(r, 10));
+		store.upsert({
+			sdkSessionId: "cron-1",
+			title: "daily-summary",
+			model: "haiku",
+			tag: "cron",
+		});
+
+		const chatOnly = store.list(20, "chat");
+		expect(chatOnly.length).toBe(1);
+		expect(chatOnly[0]?.sdkSessionId).toBe("chat-1");
+
+		const all = store.list();
+		expect(all.length).toBe(2);
+
+		store.close();
+	});
+
+	test("delete removes a session", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			sdkSessionId: "sdk-del",
+			title: "To delete",
+			model: "opus",
+		});
+		expect(store.get("sdk-del")).toBeDefined();
+
+		store.delete("sdk-del");
+		expect(store.get("sdk-del")).toBeUndefined();
+		expect(store.list().length).toBe(0);
+
+		store.close();
+	});
+
+	test("rename updates session title", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			sdkSessionId: "sdk-ren",
+			title: "Old title",
+			model: "opus",
+		});
+
+		store.rename("sdk-ren", "New title");
+		expect(store.get("sdk-ren")?.title).toBe("New title");
+
+		store.close();
+	});
+
 	test("getActiveSessionId / setActiveSessionId", () => {
 		const store = createTestStore();
 

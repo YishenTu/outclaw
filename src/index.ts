@@ -12,7 +12,7 @@ import { createRuntime } from "./runtime/transport/ws-server.ts";
 
 const HOME_DIR = join(homedir(), ".misanthropic");
 mkdirSync(HOME_DIR, { recursive: true });
-seedTemplates(HOME_DIR, join(import.meta.dir, "..", "templates"));
+seedTemplates(HOME_DIR, join(import.meta.dir, "templates"));
 
 const config = loadConfig(HOME_DIR);
 

@@ -28,9 +28,10 @@ type TelegramRuntimeCommandName =
 	| "new"
 	| "model"
 	| "thinking"
-	| "session"
 	| "status"
 	| "stop";
+
+type TelegramCommandName = TelegramRuntimeCommandName | "session";
 
 interface TelegramRuntimeCommandDefinition {
 	buildCommand(match?: string): string;
@@ -42,7 +43,7 @@ const COMMAND_DESCRIPTIONS = new Map(
 	RUNTIME_COMMANDS.map((command) => [command.command, command.description]),
 );
 
-function getCommandDescription(command: TelegramRuntimeCommandName): string {
+function getCommandDescription(command: TelegramCommandName): string {
 	const description = COMMAND_DESCRIPTIONS.get(command);
 	if (!description) {
 		throw new Error(`Missing description for Telegram command: ${command}`);
@@ -83,36 +84,6 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 			event.type === "effort_changed"
 				? `Thinking effort: ${String(event.effort)}`
 				: formatError(event),
-	},
-	session: {
-		buildCommand: (match) => (match ? `/session ${match}` : "/session"),
-		expectedTypes: new Set([
-			"session_info",
-			"session_list",
-			"session_switched",
-		]),
-		formatReply: (event) => {
-			if (event.type === "session_info") {
-				return `Session: ${String(event.sdkSessionId)}\nTitle: ${String(event.title)}\nModel: ${String(event.model)}`;
-			}
-			if (event.type === "session_list") {
-				const sessions = event.sessions as Array<{
-					sdkSessionId: string;
-					title: string;
-				}>;
-				const list = sessions
-					.map(
-						(session) =>
-							`${session.sdkSessionId.slice(0, 8)}  ${session.title}`,
-					)
-					.join("\n");
-				return list || "No sessions";
-			}
-			if (event.type === "session_switched") {
-				return `Switched to: ${String(event.title)}`;
-			}
-			return formatError(event);
-		},
 	},
 	status: {
 		buildCommand: () => "/status",
@@ -173,9 +144,10 @@ export function registerTelegramRuntimeCommands(
 	}
 }
 
-export const TELEGRAM_COMMANDS = TELEGRAM_RUNTIME_COMMAND_NAMES.map(
-	(command) => ({
+export const TELEGRAM_COMMANDS = [
+	...TELEGRAM_RUNTIME_COMMAND_NAMES.map((command) => ({
 		command,
 		description: getCommandDescription(command),
-	}),
-);
+	})),
+	{ command: "session", description: getCommandDescription("session") },
+];

@@ -45,7 +45,7 @@ cp .env.example .env   # add TELEGRAM_BOT_TOKEN to enable Telegram
 ma start     # start daemon (background)
 ma restart   # stop + start
 ma status    # check if running
-ma tui       # connect TUI
+ma tui       # connect TUI (--watch for auto-reload)
 ma stop      # stop daemon
 ma dev       # foreground with hot reload
 ```
@@ -60,9 +60,11 @@ Available from the TUI and Telegram:
 - `/opus`, `/sonnet`, `/haiku` — shorthand model switches
 - `/thinking` — show the current effort
 - `/thinking low|medium|high|max` — switch effort
-- `/session` — show the active session
-- `/session list` — list recent sessions from SQLite
+- `/session` — open session picker (TUI: interactive menu, Telegram: inline keyboard)
+- `/session list` — list recent chat sessions
 - `/session <id-prefix>` — switch to a stored session
+- `/session delete <id>` — delete a session
+- `/session rename <id> <title>` — rename a session
 - `/status` — show model, effort, active session, and context usage
 - `/stop` — cancel the current agent run
 

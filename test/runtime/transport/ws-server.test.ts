@@ -631,9 +631,13 @@ describe("Runtime server", () => {
 			ws.send(JSON.stringify({ type: "command", command: "/session" }));
 		});
 
-		expect(event.type).toBe("session_info");
-		expect(event.sdkSessionId).toBe("mock-session-123");
-		expect(event.title).toBe("Hello world");
+		expect(event.type).toBe("session_menu");
+		const sessions = event.sessions as Array<{
+			sdkSessionId: string;
+			title: string;
+		}>;
+		expect(sessions[0]?.sdkSessionId).toBe("mock-session-123");
+		expect(sessions[0]?.title).toBe("Hello world");
 
 		ws.close();
 		sessServer.stop();

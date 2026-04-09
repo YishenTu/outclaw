@@ -346,27 +346,33 @@ describe("RuntimeController", () => {
 		});
 
 		test("sets session title from first prompt", async () => {
-			const { controller, facade } = createController();
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const { controller, facade } = createController({ store });
 			const ws = mockWs();
 			controller.handleOpen(ws);
 
 			controller.handleMessage(ws, prompt("What is the meaning of life?"));
 			await drain(controller, facade);
 
-			// Check via /session command
+			// Check via /session command — now returns session_menu
 			controller.handleMessage(ws, command("/session"));
 			await new Promise((r) => setTimeout(r, 10));
 
 			const events = ws.events();
-			const info = events.find((e) => e.type === "session_info") as
-				| { title: string }
+			const menu = events.find((e) => e.type === "session_menu") as
+				| { sessions: Array<{ title: string }> }
 				| undefined;
-			expect(info).toBeDefined();
-			expect(info?.title).toBe("What is the meaning of life?");
+			expect(menu).toBeDefined();
+			expect(menu?.sessions[0]?.title).toBe("What is the meaning of life?");
+			store.close();
+			cleanupStore(TEST_DB);
 		});
 
 		test("sets session title for an image-only prompt", async () => {
-			const { controller, facade } = createController();
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const { controller, facade } = createController({ store });
 			const ws = mockWs();
 			controller.handleOpen(ws);
 
@@ -381,10 +387,12 @@ describe("RuntimeController", () => {
 			controller.handleMessage(ws, command("/session"));
 			await new Promise((r) => setTimeout(r, 10));
 
-			const info = ws.events().find((e) => e.type === "session_info") as
-				| { title: string }
+			const menu = ws.events().find((e) => e.type === "session_menu") as
+				| { sessions: Array<{ title: string }> }
 				| undefined;
-			expect(info?.title).toBe("Image");
+			expect(menu?.sessions[0]?.title).toBe("Image");
+			store.close();
+			cleanupStore(TEST_DB);
 		});
 
 		test("accepts image-only prompts and forwards images to the facade", async () => {

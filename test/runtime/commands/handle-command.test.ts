@@ -121,17 +121,18 @@ describe("handleRuntimeCommand", () => {
 	});
 
 	describe("/session", () => {
-		test("sends error when no active session", async () => {
+		test("sends session_menu with empty list when no store", async () => {
 			const { ws, run } = setup();
 			await run("/session");
-			const event = ws.events().find((e) => e.type === "error");
+			const event = ws.events().find((e) => e.type === "session_menu");
 			expect(event).toBeDefined();
-			expect((event as { message: string }).message).toContain(
-				"No active session",
-			);
+			expect((event as { sessions: unknown[] }).sessions).toEqual([]);
+			expect(
+				(event as { activeSessionId?: string }).activeSessionId,
+			).toBeUndefined();
 		});
 
-		test("shows session info when session is active", async () => {
+		test("sends session_menu with active session id", async () => {
 			const { ws, state, run } = setup();
 			state.preparePrompt("test chat");
 			state.completeRun({
@@ -141,9 +142,11 @@ describe("handleRuntimeCommand", () => {
 			});
 
 			await run("/session");
-			const event = ws.events().find((e) => e.type === "session_info");
+			const event = ws.events().find((e) => e.type === "session_menu");
 			expect(event).toBeDefined();
-			expect((event as { sdkSessionId: string }).sdkSessionId).toBe("sdk-123");
+			expect((event as { activeSessionId?: string }).activeSessionId).toBe(
+				"sdk-123",
+			);
 		});
 
 		test("/session list sends session_list event (no store)", async () => {
@@ -152,6 +155,44 @@ describe("handleRuntimeCommand", () => {
 			const event = ws.events().find((e) => e.type === "session_list");
 			expect(event).toBeDefined();
 			expect((event as { sessions: unknown[] }).sessions).toEqual([]);
+		});
+
+		test("/session delete sends session_deleted", async () => {
+			const { ws, run } = setup();
+			await run("/session delete sdk-123");
+			const event = ws.events().find((e) => e.type === "session_deleted");
+			expect(event).toBeDefined();
+			expect((event as { sdkSessionId: string }).sdkSessionId).toBe("sdk-123");
+		});
+
+		test("/session rename sends session_renamed", async () => {
+			const { ws, run } = setup();
+			await run("/session rename sdk-123 New title");
+			const event = ws.events().find((e) => e.type === "session_renamed");
+			expect(event).toBeDefined();
+			expect((event as { sdkSessionId: string }).sdkSessionId).toBe("sdk-123");
+			expect((event as { title: string }).title).toBe("New title");
+		});
+
+		test("/session rename without args sends error", async () => {
+			const { ws, run } = setup();
+			await run("/session rename");
+			const err = ws.events().find((e) => e.type === "error");
+			expect(err).toBeDefined();
+		});
+
+		test("/session rename without title sends error", async () => {
+			const { ws, run } = setup();
+			await run("/session rename sdk-123");
+			const err = ws.events().find((e) => e.type === "error");
+			expect(err).toBeDefined();
+		});
+
+		test("/session delete without id sends error", async () => {
+			const { ws, run } = setup();
+			await run("/session delete");
+			const err = ws.events().find((e) => e.type === "error");
+			expect(err).toBeDefined();
 		});
 
 		test("/session with unknown prefix sends error", async () => {
@@ -186,6 +227,84 @@ describe("handleRuntimeCommand", () => {
 				.events()
 				.find((e) => e.type === "model_changed");
 			expect(observerEvent).toBeDefined();
+		});
+
+		test("/session delete broadcasts deletion and active clear to all connected clients", async () => {
+			const hub = new ClientHub();
+			const sender = mockWs();
+			const observer = mockWs();
+			const state = new RuntimeState();
+			hub.add(sender);
+			hub.add(observer);
+			state.preparePrompt("Current chat");
+			state.completeRun({
+				type: "done",
+				sessionId: "sdk-active",
+				durationMs: 1,
+			});
+
+			await handleRuntimeCommand({
+				command: "/session delete sdk-active",
+				hub,
+				replayHistoryToAll: async () => {},
+				state,
+				ws: sender,
+			});
+
+			expect(sender.events().find((e) => e.type === "session_deleted")).toEqual(
+				{
+					type: "session_deleted",
+					sdkSessionId: "sdk-active",
+				},
+			);
+			expect(
+				observer.events().find((e) => e.type === "session_deleted"),
+			).toEqual({
+				type: "session_deleted",
+				sdkSessionId: "sdk-active",
+			});
+			expect(sender.events().find((e) => e.type === "session_cleared")).toEqual(
+				{
+					type: "session_cleared",
+				},
+			);
+			expect(
+				observer.events().find((e) => e.type === "session_cleared"),
+			).toEqual({
+				type: "session_cleared",
+			});
+		});
+
+		test("/session rename broadcasts to all connected clients", async () => {
+			const hub = new ClientHub();
+			const sender = mockWs();
+			const observer = mockWs();
+			const state = new RuntimeState();
+			hub.add(sender);
+			hub.add(observer);
+
+			await handleRuntimeCommand({
+				command: "/session rename sdk-123 Renamed",
+				hub,
+				replayHistoryToAll: async () => {},
+				state,
+				ws: sender,
+			});
+
+			expect(sender.events().find((e) => e.type === "session_renamed")).toEqual(
+				{
+					type: "session_renamed",
+					sdkSessionId: "sdk-123",
+					title: "Renamed",
+				},
+			);
+			expect(
+				observer.events().find((e) => e.type === "session_renamed"),
+			).toEqual({
+				type: "session_renamed",
+				sdkSessionId: "sdk-123",
+				title: "Renamed",
+			});
 		});
 	});
 });

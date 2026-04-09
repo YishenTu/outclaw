@@ -1,6 +1,6 @@
 import { autoRetry } from "@grammyjs/auto-retry";
 import { type StreamFlavor, stream } from "@grammyjs/stream";
-import { Bot, type Context, InputFile } from "grammy";
+import { Bot, type Context, InlineKeyboard, InputFile } from "grammy";
 import { MODEL_ALIAS_LIST } from "../../common/models.ts";
 import type { ImageRef } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
@@ -9,6 +9,11 @@ import { TELEGRAM_COMMANDS } from "./commands.ts";
 import { sendTelegramHeartbeatResult } from "./heartbeat-result.ts";
 import { handleTelegramPhotoMessage } from "./photo-message.ts";
 import { registerTelegramRuntimeCommands } from "./runtime-commands.ts";
+import {
+	buildSessionCommandRequest,
+	formatSessionCommandReply,
+} from "./session-command.ts";
+import { buildSessionButtons, parseSessionCallback } from "./session-menu.ts";
 import { handleTelegramTextMessage } from "./text-message.ts";
 
 type MyContext = StreamFlavor<Context>;
@@ -53,6 +58,76 @@ export function startTelegramBot({
 
 	void bot.api.setMyCommands(TELEGRAM_COMMANDS).catch((err) => {
 		console.error(`Failed to register Telegram commands: ${extractError(err)}`);
+	});
+
+	// /session — inline keyboard (registered before generic commands to take precedence)
+	function buildKeyboard(
+		sessions: Array<{
+			sdkSessionId: string;
+			title: string;
+			lastActive: number;
+		}>,
+		activeSessionId?: string,
+	): InlineKeyboard {
+		const keyboard = new InlineKeyboard();
+		for (const row of buildSessionButtons(sessions, activeSessionId)) {
+			keyboard.text(row.label, row.switchData).row();
+		}
+		return keyboard;
+	}
+
+	bot.command("session", async (ctx) => {
+		const request = buildSessionCommandRequest(ctx.match);
+		const event = await bridge.sendCommandAndWait(
+			request.command,
+			request.expectedTypes,
+		);
+		if (!request.showMenu) {
+			const reply = formatSessionCommandReply(event);
+			if (reply) {
+				await ctx.reply(reply);
+			}
+			return;
+		}
+		if (event.type !== "session_menu") {
+			const reply = formatSessionCommandReply(event);
+			if (reply) {
+				await ctx.reply(reply);
+			}
+			return;
+		}
+		const sessions = event.sessions as Array<{
+			sdkSessionId: string;
+			title: string;
+			lastActive: number;
+		}>;
+		if (sessions.length === 0) {
+			await ctx.reply("No sessions");
+			return;
+		}
+		const keyboard = buildKeyboard(
+			sessions,
+			event.activeSessionId as string | undefined,
+		);
+		await ctx.reply("Sessions:", { reply_markup: keyboard });
+	});
+
+	bot.callbackQuery(/^ss:/, async (ctx) => {
+		const action = parseSessionCallback(ctx.callbackQuery.data);
+		if (!action || action.type !== "switch") return;
+		const request = buildSessionCommandRequest(action.sdkSessionId);
+		const event = await bridge.sendCommandAndWait(
+			request.command,
+			request.expectedTypes,
+		);
+		if (event.type === "session_switched") {
+			await ctx.answerCallbackQuery(`Switched to: ${String(event.title)}`);
+			await ctx.editMessageText(`Switched to: ${String(event.title)}`);
+		} else {
+			await ctx.answerCallbackQuery(
+				formatSessionCommandReply(event) ?? String(event.message ?? "Error"),
+			);
+		}
 	});
 
 	registerTelegramRuntimeCommands(bot, bridge);

@@ -104,12 +104,14 @@ export class SessionStore {
 		};
 	}
 
-	list(limit = 20): SessionRow[] {
+	list(limit = 20, tag?: SessionTag): SessionRow[] {
 		const rows = this.db
 			.query(
-				"SELECT sdk_session_id, title, model, source, tag, created_at, last_active FROM sessions ORDER BY last_active DESC LIMIT $limit",
+				tag
+					? "SELECT sdk_session_id, title, model, source, tag, created_at, last_active FROM sessions WHERE tag = $tag ORDER BY last_active DESC LIMIT $limit"
+					: "SELECT sdk_session_id, title, model, source, tag, created_at, last_active FROM sessions ORDER BY last_active DESC LIMIT $limit",
 			)
-			.all({ $limit: limit }) as Array<{
+			.all(tag ? { $limit: limit, $tag: tag } : { $limit: limit }) as Array<{
 			sdk_session_id: string;
 			title: string;
 			model: string;
@@ -128,6 +130,18 @@ export class SessionStore {
 			createdAt: row.created_at,
 			lastActive: row.last_active,
 		}));
+	}
+
+	delete(sdkSessionId: string) {
+		this.db
+			.query("DELETE FROM sessions WHERE sdk_session_id = $id")
+			.run({ $id: sdkSessionId });
+	}
+
+	rename(sdkSessionId: string, title: string) {
+		this.db
+			.query("UPDATE sessions SET title = $title WHERE sdk_session_id = $id")
+			.run({ $id: sdkSessionId, $title: title });
 	}
 
 	getActiveSessionId(): string | undefined {

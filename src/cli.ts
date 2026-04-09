@@ -121,8 +121,9 @@ function tui() {
 		process.exit(1);
 	}
 
-	// Run TUI in foreground
-	Bun.spawnSync(["bun", TUI_ENTRY], {
+	const watch = process.argv.includes("--watch");
+	const args = watch ? ["bun", "--watch", TUI_ENTRY] : ["bun", TUI_ENTRY];
+	Bun.spawnSync(args, {
 		stdio: ["inherit", "inherit", "inherit"],
 		env: { ...process.env },
 	});

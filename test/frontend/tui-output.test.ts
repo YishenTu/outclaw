@@ -187,6 +187,61 @@ describe("TUI event output", () => {
 		});
 	});
 
+	test("returns session_menu payload for session_menu event", () => {
+		const update = getTuiEventUpdate({
+			type: "session_menu",
+			activeSessionId: "sdk-abc",
+			sessions: [
+				{
+					sdkSessionId: "sdk-abc",
+					title: "Chat A",
+					model: "opus",
+					lastActive: 1000,
+				},
+				{
+					sdkSessionId: "sdk-def",
+					title: "Chat B",
+					model: "sonnet",
+					lastActive: 900,
+				},
+			],
+		});
+
+		expect(update).toEqual({
+			sessionMenu: {
+				activeSessionId: "sdk-abc",
+				sessions: [
+					{
+						sdkSessionId: "sdk-abc",
+						title: "Chat A",
+						model: "opus",
+						lastActive: 1000,
+					},
+					{
+						sdkSessionId: "sdk-def",
+						title: "Chat B",
+						model: "sonnet",
+						lastActive: 900,
+					},
+				],
+			},
+		});
+	});
+
+	test("returns session_menu with no active session", () => {
+		const update = getTuiEventUpdate({
+			type: "session_menu",
+			sessions: [],
+		});
+
+		expect(update).toEqual({
+			sessionMenu: {
+				activeSessionId: undefined,
+				sessions: [],
+			},
+		});
+	});
+
 	test("renders image-only live prompts as image lines", () => {
 		const update = getTuiEventUpdate({
 			type: "user_prompt",

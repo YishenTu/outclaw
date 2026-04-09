@@ -4,10 +4,21 @@ import type {
 	ServerEvent,
 } from "../../common/protocol.ts";
 
+export interface SessionMenuData {
+	activeSessionId?: string;
+	sessions: Array<{
+		sdkSessionId: string;
+		title: string;
+		model: string;
+		lastActive: number;
+	}>;
+}
+
 export interface TuiEventUpdate {
 	append?: string;
 	replace?: string;
 	running?: boolean;
+	sessionMenu?: SessionMenuData;
 }
 
 function formatContext(
@@ -30,9 +41,19 @@ export function getTuiEventUpdate(
 	event: ServerEvent,
 ): TuiEventUpdate | undefined {
 	switch (event.type) {
+		case "session_menu":
+			return {
+				sessionMenu: {
+					activeSessionId: event.activeSessionId,
+					sessions: event.sessions,
+				},
+			};
 		case "session_cleared":
 		case "session_switched":
 			return { replace: "" };
+		case "session_renamed":
+		case "session_deleted":
+			return {};
 		case "history_replay":
 			return {
 				replace: event.messages.map(formatReplayMessage).join("\n"),
