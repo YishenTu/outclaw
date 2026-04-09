@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { startTui } from "./frontend/tui.tsx";
+import { startTui } from "./frontend/tui/index.tsx";
 import { loadConfig } from "./runtime/config.ts";
 
 const config = loadConfig(join(homedir(), ".outclaw"));

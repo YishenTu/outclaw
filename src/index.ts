@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { startTelegramBot } from "./frontend/telegram/index.ts";
-import { copyTelegramMedia } from "./frontend/telegram/media.ts";
+import { copyTelegramMedia } from "./frontend/telegram/media/storage.ts";
 import { loadConfig } from "./runtime/config.ts";
 import { SessionStore } from "./runtime/persistence/session-store.ts";
 import { TelegramMediaRefStore } from "./runtime/persistence/telegram-media-ref-store.ts";
