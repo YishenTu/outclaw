@@ -353,4 +353,99 @@ describe("ClaudeAdapter", () => {
 			rmSync(tmp, { recursive: true, force: true });
 		}
 	});
+
+	test("getSkills probes once, maps descriptions, and caches the result", async () => {
+		const supportedCommands = mock(async () => [
+			{ name: "commit", description: "Create a git commit" },
+			{ name: "review", description: "Review changes" },
+		]);
+		const query = mock(() => ({
+			supportedCommands,
+			async *[Symbol.asyncIterator]() {
+				yield {
+					type: "system",
+					subtype: "init",
+					session_id: "skill-probe-1",
+					skills: ["commit"],
+				};
+			},
+		}));
+		const unlinkSync = mock(() => {});
+		const realSetTimeout = globalThis.setTimeout;
+
+		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+		mock.module("node:fs", () => ({ unlinkSync }));
+		globalThis.setTimeout = ((handler: (...args: never[]) => void) => {
+			if (typeof handler === "function") {
+				handler();
+			}
+			return 0 as unknown as ReturnType<typeof setTimeout>;
+		}) as unknown as typeof setTimeout;
+
+		try {
+			const { ClaudeAdapter } = await import(
+				"../../../src/backend/adapters/claude.ts"
+			);
+			const adapter = new ClaudeAdapter();
+
+			await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
+				{ name: "commit", description: "Create a git commit" },
+			]);
+			await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
+				{ name: "commit", description: "Create a git commit" },
+			]);
+
+			expect(query).toHaveBeenCalledTimes(1);
+			expect(supportedCommands).toHaveBeenCalledTimes(1);
+			expect(unlinkSync).toHaveBeenCalledTimes(1);
+		} finally {
+			globalThis.setTimeout = realSetTimeout;
+		}
+	});
+
+	test("getSkills falls back to empty descriptions when supportedCommands fails", async () => {
+		const supportedCommands = mock(async () => {
+			throw new Error("commands unavailable");
+		});
+		const query = mock(() => ({
+			supportedCommands,
+			async *[Symbol.asyncIterator]() {
+				yield {
+					type: "system",
+					subtype: "init",
+					session_id: "skill-probe-2",
+					skills: ["commit", "review"],
+				};
+			},
+		}));
+		const unlinkSync = mock(() => {});
+		const realSetTimeout = globalThis.setTimeout;
+
+		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+		mock.module("node:fs", () => ({ unlinkSync }));
+		globalThis.setTimeout = ((handler: (...args: never[]) => void) => {
+			if (typeof handler === "function") {
+				handler();
+			}
+			return 0 as unknown as ReturnType<typeof setTimeout>;
+		}) as unknown as typeof setTimeout;
+
+		try {
+			const { ClaudeAdapter } = await import(
+				"../../../src/backend/adapters/claude.ts"
+			);
+			const adapter = new ClaudeAdapter();
+
+			await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
+				{ name: "commit", description: "" },
+				{ name: "review", description: "" },
+			]);
+
+			expect(query).toHaveBeenCalledTimes(1);
+			expect(supportedCommands).toHaveBeenCalledTimes(1);
+			expect(unlinkSync).toHaveBeenCalledTimes(1);
+		} finally {
+			globalThis.setTimeout = realSetTimeout;
+		}
+	});
 });

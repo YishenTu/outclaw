@@ -81,6 +81,10 @@ function command(cmd: string) {
 	return JSON.stringify({ type: "command", command: cmd });
 }
 
+function requestSkills() {
+	return JSON.stringify({ type: "request_skills" });
+}
+
 // Drain the internal message queue by sending a sentinel prompt and waiting for it
 async function drain(
 	controller: RuntimeController,
@@ -217,6 +221,46 @@ describe("RuntimeController", () => {
 			const events = ws.events().filter((e) => e.type !== "runtime_status");
 			expect(events).toHaveLength(1);
 			expect(events[0]?.type).toBe("error");
+		});
+
+		test("request_skills sends skills_update when facade supports it", async () => {
+			const facade = {
+				run: async function* () {},
+				getSkills: async (cwd?: string) => [
+					{ name: "commit", description: `cwd=${cwd ?? "none"}` },
+				],
+			};
+			const controller = new RuntimeController({
+				facade,
+				cwd: "/tmp/outclaw",
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, requestSkills());
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const update = ws
+				.events()
+				.find((event) => event.type === "skills_update");
+			expect(update).toEqual({
+				type: "skills_update",
+				skills: [{ name: "commit", description: "cwd=/tmp/outclaw" }],
+			});
+		});
+
+		test("request_skills is ignored when facade does not expose skills", async () => {
+			const { controller } = createController();
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, requestSkills());
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const updates = ws
+				.events()
+				.filter((event) => event.type === "skills_update");
+			expect(updates).toHaveLength(0);
 		});
 
 		test("command message routes to command handler", async () => {

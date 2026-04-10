@@ -13,6 +13,154 @@ import { handleTelegramTextMessage } from "./messages/text.ts";
 import { registerTelegramSessionHandlers } from "./sessions/register.ts";
 
 type MyContext = StreamFlavor<Context>;
+type TelegramTextHandlerContext = Parameters<
+	typeof handleTelegramTextMessage
+>[0];
+type TelegramPhotoHandlerContext = Parameters<
+	typeof handleTelegramPhotoMessage
+>[0];
+type TelegramPromptStream = Parameters<
+	typeof handleTelegramTextMessage
+>[1]["streamPrompt"];
+type TelegramImageEvent = Parameters<
+	NonNullable<Parameters<TelegramPromptStream>[2]>
+>[0];
+
+interface TelegramIncomingTextContext {
+	chat: TelegramTextHandlerContext["chat"];
+	from?: { id: number };
+	message: TelegramTextHandlerContext["message"];
+	reply: TelegramTextHandlerContext["reply"];
+	replyWithChatAction: TelegramTextHandlerContext["replyWithChatAction"];
+	replyWithPhoto: TelegramTextHandlerContext["replyWithPhoto"];
+	replyWithStream: TelegramTextHandlerContext["replyWithStream"];
+}
+
+interface TelegramIncomingPhotoContext {
+	api: {
+		getFile(fileId: string): Promise<{ file_path?: string }>;
+	};
+	chat: TelegramPhotoHandlerContext["chat"];
+	from?: { id: number };
+	message: TelegramPhotoHandlerContext["message"];
+	reply: TelegramPhotoHandlerContext["reply"];
+	replyWithChatAction: TelegramPhotoHandlerContext["replyWithChatAction"];
+	replyWithPhoto: TelegramPhotoHandlerContext["replyWithPhoto"];
+	replyWithStream: TelegramPhotoHandlerContext["replyWithStream"];
+}
+
+interface TelegramBridgeLike {
+	close(): void;
+	stream(
+		prompt: string,
+		images?: ImageRef[],
+		onImage?: (event: TelegramImageEvent) => void | Promise<void>,
+		telegramChatId?: number,
+	): AsyncIterable<string>;
+}
+
+interface TelegramBotLike {
+	readonly api: {
+		readonly config: {
+			use(middleware: unknown): unknown;
+		};
+		sendMessage(
+			chatId: number,
+			text: string,
+			options?: object,
+		): Promise<{ message_id: number }>;
+		sendPhoto(
+			chatId: number,
+			photo: unknown,
+			options?: object,
+		): Promise<{ message_id: number }>;
+		setMyCommands(commands: typeof TELEGRAM_COMMANDS): Promise<unknown>;
+	};
+	use(middleware: unknown): unknown;
+	command(
+		command: string,
+		handler: (ctx: Record<string, unknown>) => Promise<void>,
+	): unknown;
+	callbackQuery(
+		pattern: RegExp,
+		handler: (ctx: Record<string, unknown>) => Promise<void>,
+	): unknown;
+	on(
+		event: "message:text",
+		handler: (ctx: TelegramIncomingTextContext) => Promise<void>,
+	): unknown;
+	on(
+		event: "message:photo",
+		handler: (ctx: TelegramIncomingPhotoContext) => Promise<void>,
+	): unknown;
+	start(): unknown;
+	stop(): unknown;
+}
+
+interface TelegramBotDependencies {
+	createAutoRetryMiddleware(): unknown;
+	createBot(token: string): TelegramBotLike;
+	createBridge(runtimeUrl: string): TelegramBridgeLike;
+	createInputFile(path: string): unknown;
+	createStreamMiddleware(): unknown;
+	handlePhotoMessage: typeof handleTelegramPhotoMessage;
+	handleTextMessage: typeof handleTelegramTextMessage;
+	logError(message: string): void;
+	logInfo(message: string): void;
+	registerModelShortcuts(
+		registrar: TelegramBotLike,
+		bridge: TelegramBridgeLike,
+	): void;
+	registerRuntimeCommands(
+		registrar: TelegramBotLike,
+		bridge: TelegramBridgeLike,
+	): void;
+	registerSessionHandlers(
+		registrar: TelegramBotLike,
+		bridge: TelegramBridgeLike,
+	): void;
+	sendHeartbeatResult: typeof sendTelegramHeartbeatResult;
+}
+
+const DEFAULT_TELEGRAM_BOT_DEPENDENCIES: TelegramBotDependencies = {
+	createAutoRetryMiddleware: () => autoRetry(),
+	createBot: (token) => new Bot<MyContext>(token) as unknown as TelegramBotLike,
+	createBridge: (runtimeUrl) => createTelegramBridge(runtimeUrl),
+	createInputFile: (path) => new InputFile(path),
+	createStreamMiddleware: () => stream(),
+	handlePhotoMessage: (ctx, options) =>
+		handleTelegramPhotoMessage(ctx, options),
+	handleTextMessage: (ctx, options) => handleTelegramTextMessage(ctx, options),
+	logError: (message) => console.error(message),
+	logInfo: (message) => console.log(message),
+	registerModelShortcuts: (registrar, bridge) =>
+		registerTelegramModelShortcuts(
+			registrar as unknown as Parameters<
+				typeof registerTelegramModelShortcuts
+			>[0],
+			bridge as unknown as Parameters<typeof registerTelegramModelShortcuts>[1],
+		),
+	registerRuntimeCommands: (registrar, bridge) =>
+		registerTelegramRuntimeCommands(
+			registrar as unknown as Parameters<
+				typeof registerTelegramRuntimeCommands
+			>[0],
+			bridge as unknown as Parameters<
+				typeof registerTelegramRuntimeCommands
+			>[1],
+		),
+	registerSessionHandlers: (registrar, bridge) =>
+		registerTelegramSessionHandlers(
+			registrar as unknown as Parameters<
+				typeof registerTelegramSessionHandlers
+			>[0],
+			bridge as unknown as Parameters<
+				typeof registerTelegramSessionHandlers
+			>[1],
+		),
+	sendHeartbeatResult: (ctx, params) =>
+		sendTelegramHeartbeatResult(ctx, params),
+};
 
 export interface TelegramBotOptions {
 	token: string;
@@ -31,37 +179,48 @@ export interface TelegramBotOptions {
 	}) => Promise<void>;
 }
 
-export function startTelegramBot({
-	token,
-	runtimeUrl,
-	allowedUsers,
-	mediaRoot,
-	resolveMessageImage,
-	rememberMessageImage,
-}: TelegramBotOptions) {
-	const bot = new Bot<MyContext>(token);
-	bot.api.config.use(autoRetry());
-	bot.use(stream());
+export function startTelegramBot(
+	{
+		token,
+		runtimeUrl,
+		allowedUsers,
+		mediaRoot,
+		resolveMessageImage,
+		rememberMessageImage,
+	}: TelegramBotOptions,
+	overrides: Partial<TelegramBotDependencies> = {},
+) {
+	const dependencies = {
+		...DEFAULT_TELEGRAM_BOT_DEPENDENCIES,
+		...overrides,
+	};
+	const bot = dependencies.createBot(token);
+	bot.api.config.use(dependencies.createAutoRetryMiddleware());
+	bot.use(dependencies.createStreamMiddleware());
 
 	const allowed = new Set(allowedUsers);
-	bot.use(async (ctx, next) => {
-		if (ctx.from && allowed.has(ctx.from.id)) {
-			return next();
-		}
-	});
+	bot.use(
+		async (ctx: { from?: { id: number } }, next: () => Promise<unknown>) => {
+			if (ctx.from && allowed.has(ctx.from.id)) {
+				return next();
+			}
+		},
+	);
 
-	const bridge = createTelegramBridge(runtimeUrl);
+	const bridge = dependencies.createBridge(runtimeUrl);
 
 	void bot.api.setMyCommands(TELEGRAM_COMMANDS).catch((err) => {
-		console.error(`Failed to register Telegram commands: ${extractError(err)}`);
+		dependencies.logError(
+			`Failed to register Telegram commands: ${extractError(err)}`,
+		);
 	});
 
-	registerTelegramSessionHandlers(bot, bridge);
-	registerTelegramRuntimeCommands(bot, bridge);
-	registerTelegramModelShortcuts(bot, bridge);
+	dependencies.registerSessionHandlers(bot, bridge);
+	dependencies.registerRuntimeCommands(bot, bridge);
+	dependencies.registerModelShortcuts(bot, bridge);
 
 	bot.on("message:text", async (ctx) => {
-		await handleTelegramTextMessage(
+		await dependencies.handleTextMessage(
 			{
 				chat: ctx.chat,
 				message: ctx.message,
@@ -87,7 +246,7 @@ export function startTelegramBot({
 			return;
 		}
 
-		await handleTelegramPhotoMessage(
+		await dependencies.handlePhotoMessage(
 			{
 				chat: ctx.chat,
 				getFile: () => ctx.api.getFile(largestPhoto.file_id),
@@ -111,7 +270,7 @@ export function startTelegramBot({
 
 	bot.start();
 
-	console.log("Telegram bot started");
+	dependencies.logInfo("Telegram bot started");
 
 	return {
 		async sendCronResult(params: {
@@ -131,12 +290,16 @@ export function startTelegramBot({
 			text: string;
 			images: Array<{ path: string; caption?: string }>;
 		}) {
-			await sendTelegramHeartbeatResult(
+			await dependencies.sendHeartbeatResult(
 				{
 					sendMessage: (chatId, text, options) =>
 						bot.api.sendMessage(chatId, text, options),
 					sendPhoto: (chatId, path, options) =>
-						bot.api.sendPhoto(chatId, new InputFile(path), options),
+						bot.api.sendPhoto(
+							chatId,
+							dependencies.createInputFile(path),
+							options,
+						),
 				},
 				{
 					...params,
