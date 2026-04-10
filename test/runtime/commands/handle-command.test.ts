@@ -27,6 +27,7 @@ function setup() {
 	async function run(command: string) {
 		await handleRuntimeCommand({
 			command,
+			createStatusEvent: () => state.createStatusEvent(),
 			hub,
 			replayHistoryToAll: async () => {},
 			state,
@@ -217,6 +218,7 @@ describe("handleRuntimeCommand", () => {
 
 			await handleRuntimeCommand({
 				command: "/model sonnet",
+				createStatusEvent: () => state.createStatusEvent(),
 				hub,
 				replayHistoryToAll: async () => {},
 				state,
@@ -245,6 +247,7 @@ describe("handleRuntimeCommand", () => {
 
 			await handleRuntimeCommand({
 				command: "/session delete sdk-active",
+				createStatusEvent: () => state.createStatusEvent(),
 				hub,
 				replayHistoryToAll: async () => {},
 				state,
@@ -285,6 +288,7 @@ describe("handleRuntimeCommand", () => {
 
 			await handleRuntimeCommand({
 				command: "/session rename sdk-123 Renamed",
+				createStatusEvent: () => state.createStatusEvent(),
 				hub,
 				replayHistoryToAll: async () => {},
 				state,

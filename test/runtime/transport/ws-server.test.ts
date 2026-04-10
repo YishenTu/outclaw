@@ -815,6 +815,7 @@ describe("Runtime server", () => {
 
 	test("wires the heartbeat scheduler through createRuntime", async () => {
 		const promptHomeDir = createTempDir("mis-runtime-heartbeat-");
+		writeFileSync(join(promptHomeDir, "HEARTBEAT.md"), "check tasks");
 		const heartbeatFacade = new MockFacade();
 		const heartbeatServer = createRuntime({
 			port: 0,
@@ -850,6 +851,55 @@ describe("Runtime server", () => {
 			]);
 
 			expect(heartbeatPrompt.type).toBe("user_prompt");
+
+			ws.close();
+		} finally {
+			await heartbeatServer.stop();
+			rmSync(promptHomeDir, { force: true, recursive: true });
+		}
+	});
+
+	test("broadcasts heartbeatDeferred when a tick is deferred", async () => {
+		const promptHomeDir = createTempDir("mis-runtime-heartbeat-deferred-");
+		writeFileSync(join(promptHomeDir, "HEARTBEAT.md"), "check tasks");
+		const heartbeatFacade = new MockFacade();
+		const heartbeatServer = createRuntime({
+			port: 0,
+			facade: heartbeatFacade,
+			promptHomeDir,
+			heartbeat: {
+				intervalMinutes: 0.001,
+				deferMinutes: 1,
+			},
+		});
+
+		try {
+			const ws = await connectWs(heartbeatServer.port);
+			const collecting = collectUntilDone(ws);
+			ws.send(JSON.stringify({ type: "prompt", prompt: "start session" }));
+			await collecting;
+
+			const statusUpdate = await Promise.race([
+				waitForEvent(
+					ws,
+					(event) =>
+						event.type === "runtime_status" && event.heartbeatDeferred === true,
+				),
+				new Promise<never>((_, reject) =>
+					setTimeout(
+						() =>
+							reject(
+								new Error(
+									"Timed out waiting for deferred heartbeat status update",
+								),
+							),
+						500,
+					),
+				),
+			]);
+
+			expect(statusUpdate.type).toBe("runtime_status");
+			expect(statusUpdate.heartbeatDeferred).toBe(true);
 
 			ws.close();
 		} finally {

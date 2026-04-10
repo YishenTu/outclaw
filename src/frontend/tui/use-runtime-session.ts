@@ -96,6 +96,8 @@ export function useRuntimeSession(url: string) {
 						model: event.model,
 						effort: event.effort,
 						contextPercentage: event.usage?.percentage ?? 0,
+						nextHeartbeatAt: event.nextHeartbeatAt,
+						heartbeatDeferred: event.heartbeatDeferred,
 					});
 					return;
 				}

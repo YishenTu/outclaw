@@ -7,6 +7,7 @@ import {
 import type {
 	EffortChangedEvent,
 	ModelChangedEvent,
+	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
 import type { RuntimeState } from "../application/runtime-state.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
@@ -14,6 +15,7 @@ import type { ClientHub, WsClient } from "../transport/client-hub.ts";
 
 interface HandleRuntimeCommandOptions {
 	command: string;
+	createStatusEvent: () => RuntimeStatusEvent;
 	hub: ClientHub;
 	replayHistoryToAll: (sessionId: string) => Promise<void>;
 	state: RuntimeState;
@@ -39,14 +41,14 @@ export async function handleRuntimeCommand(
 	const command = options.command.trim();
 
 	if (command === "/status") {
-		options.hub.send(options.ws, options.state.createStatusEvent());
+		options.hub.send(options.ws, options.createStatusEvent());
 		return;
 	}
 
 	if (command === "/new") {
 		options.state.clearSession();
 		options.hub.broadcast({ type: "session_cleared" });
-		options.hub.broadcast(options.state.createStatusEvent());
+		options.hub.broadcast(options.createStatusEvent());
 		return;
 	}
 
@@ -137,7 +139,7 @@ export async function handleRuntimeCommand(
 			sdkSessionId: match.sdkSessionId,
 			title: match.title,
 		});
-		options.hub.broadcast(options.state.createStatusEvent());
+		options.hub.broadcast(options.createStatusEvent());
 		await options.replayHistoryToAll(match.sdkSessionId);
 		return;
 	}

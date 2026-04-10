@@ -5,6 +5,7 @@ import type {
 	HeartbeatResult,
 	HistoryReplayEvent,
 	ImageRef,
+	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
 import { extractError, parseMessage } from "../../common/protocol.ts";
 import { handleRuntimeCommand } from "../commands/handle-command.ts";
@@ -28,6 +29,10 @@ interface RuntimeControllerOptions {
 			telegramChatId: number;
 		} & HeartbeatResult,
 	) => Promise<void> | void;
+	heartbeatInfoProvider?: () => {
+		nextHeartbeatAt: number | undefined;
+		deferred: boolean;
+	};
 	promptHomeDir?: string;
 	facade: Facade;
 	historyReader?: (
@@ -71,15 +76,21 @@ interface CronExecutionResult {
 
 export class RuntimeController {
 	private activeAbort: AbortController | undefined;
+	private activeDeferMinutes = 0;
+	private deferTimer: ReturnType<typeof setTimeout> | undefined;
 	private deliverCronResult:
 		| RuntimeControllerOptions["deliverCronResult"]
 		| undefined;
 	private deliverHeartbeatResult:
 		| RuntimeControllerOptions["deliverHeartbeatResult"]
 		| undefined;
+	private fireDeferredHeartbeat: (() => Promise<void> | void) | undefined;
 	private heartbeatPending = false;
 	private hub = new ClientHub();
 	private lastUserActivityAt = Date.now();
+	private heartbeatInfoProvider:
+		| RuntimeControllerOptions["heartbeatInfoProvider"]
+		| undefined;
 	private queue = new MessageQueue();
 	private shuttingDown = false;
 	private readHistory: (
@@ -90,12 +101,52 @@ export class RuntimeController {
 	constructor(private options: RuntimeControllerOptions) {
 		this.deliverCronResult = options.deliverCronResult;
 		this.deliverHeartbeatResult = options.deliverHeartbeatResult;
+		this.heartbeatInfoProvider = options.heartbeatInfoProvider;
 		this.state = new RuntimeState(options.store);
 		this.readHistory = options.historyReader ?? readHistory;
 	}
 
 	get currentModel(): string {
 		return this.state.model;
+	}
+
+	setHeartbeatInfoProvider(
+		provider: () => { nextHeartbeatAt: number | undefined; deferred: boolean },
+	) {
+		this.heartbeatInfoProvider = provider;
+	}
+
+	setFireDeferredHeartbeat(handler: () => Promise<void> | void) {
+		this.fireDeferredHeartbeat = handler;
+	}
+
+	startDeferTimer(deferMinutes: number) {
+		this.clearDeferTimer();
+		this.activeDeferMinutes = deferMinutes;
+		const elapsed = Date.now() - this.lastUserActivityAt;
+		const delay = Math.max(deferMinutes * 60_000 - elapsed, 0);
+		this.deferTimer = setTimeout(() => {
+			this.deferTimer = undefined;
+			void this.fireDeferredHeartbeat?.();
+		}, delay);
+	}
+
+	private clearDeferTimer() {
+		if (this.deferTimer !== undefined) {
+			clearTimeout(this.deferTimer);
+			this.deferTimer = undefined;
+		}
+	}
+
+	private resetDeferTimer() {
+		if (this.deferTimer === undefined) {
+			return;
+		}
+		this.clearDeferTimer();
+		this.deferTimer = setTimeout(() => {
+			this.deferTimer = undefined;
+			void this.fireDeferredHeartbeat?.();
+		}, this.activeDeferMinutes * 60_000);
 	}
 
 	async broadcastCronResult(result: CronExecutionResult) {
@@ -178,6 +229,7 @@ export class RuntimeController {
 			}
 			void handleRuntimeCommand({
 				command: data.command,
+				createStatusEvent: () => this.createStatusEvent(),
 				hub: this.hub,
 				replayHistoryToAll: (sessionId) =>
 					this.replayHistory(this.hub.list(), sessionId),
@@ -205,16 +257,37 @@ export class RuntimeController {
 
 	handleOpen = (ws: WsClient) => {
 		this.hub.add(ws);
-		this.hub.send(ws, this.state.createStatusEvent());
+		this.hub.send(ws, this.createStatusEvent());
 		void this.replayHistory([ws]);
 	};
 
 	beginShutdown() {
 		this.shuttingDown = true;
+		this.clearDeferTimer();
 	}
 
 	drain(): Promise<void> {
 		return this.queue.drain();
+	}
+
+	broadcastRuntimeStatus() {
+		this.hub.broadcast(this.createStatusEvent());
+	}
+
+	private createStatusEvent(): RuntimeStatusEvent {
+		const event = this.state.createStatusEvent();
+		if (!event.sessionId) {
+			return event;
+		}
+
+		const info = this.heartbeatInfoProvider?.();
+		if (info?.nextHeartbeatAt !== undefined) {
+			event.nextHeartbeatAt = info.nextHeartbeatAt;
+		}
+		if (info?.deferred) {
+			event.heartbeatDeferred = true;
+		}
+		return event;
 	}
 
 	private isSessionMutation(cmd: string): boolean {
@@ -256,7 +329,7 @@ export class RuntimeController {
 		scheduledAt: number,
 		deferMinutes: number,
 	): boolean {
-		if (!this.shouldAttemptHeartbeat(scheduledAt, deferMinutes)) {
+		if (this.shouldAttemptHeartbeat(scheduledAt, deferMinutes) !== "attempt") {
 			return false;
 		}
 
@@ -276,21 +349,29 @@ export class RuntimeController {
 		return true;
 	}
 
-	shouldAttemptHeartbeat(scheduledAt: number, deferMinutes: number): boolean {
+	shouldAttemptHeartbeat(
+		scheduledAt: number,
+		deferMinutes: number,
+	): "attempt" | "skip" | "defer" {
 		if (!this.state.sessionId || this.heartbeatPending) {
-			return false;
+			return "skip";
 		}
 
 		if (deferMinutes === 0) {
-			return true;
+			return "attempt";
 		}
 
-		return scheduledAt - this.lastUserActivityAt >= deferMinutes * 60_000;
+		if (scheduledAt - this.lastUserActivityAt >= deferMinutes * 60_000) {
+			return "attempt";
+		}
+
+		return "defer";
 	}
 
 	private enqueuePrompt(task: PromptExecution) {
 		this.state.preparePrompt(task.prompt, task.images);
 		this.lastUserActivityAt = Date.now();
+		this.resetDeferTimer();
 		this.queue.enqueue(() => this.runPrompt(task));
 	}
 
@@ -353,7 +434,7 @@ export class RuntimeController {
 					this.hub.sendMany(observers, event);
 					if (event.type === "done" && this.state.generation === generation) {
 						this.state.completeRun(event, task.source, task.telegramChatId);
-						this.hub.broadcast(this.state.createStatusEvent());
+						this.broadcastRuntimeStatus();
 					}
 				};
 

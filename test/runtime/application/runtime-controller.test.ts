@@ -129,6 +129,26 @@ function createImagePath(name: string): string {
 
 describe("RuntimeController", () => {
 	describe("client lifecycle", () => {
+		test("handleOpen hides heartbeat timer when no session is active", async () => {
+			const { controller } = createController();
+			controller.setHeartbeatInfoProvider(() => ({
+				nextHeartbeatAt: 123_456,
+				deferred: false,
+			}));
+			const ws = mockWs();
+
+			controller.handleOpen(ws);
+			await new Promise((r) => setTimeout(r, 20));
+
+			const status = ws
+				.events()
+				.find((event) => event.type === "runtime_status") as
+				| { nextHeartbeatAt?: number }
+				| undefined;
+			expect(status).toBeDefined();
+			expect(status?.nextHeartbeatAt).toBeUndefined();
+		});
+
 		test("handleOpen replays history when session is active", async () => {
 			const historyReader = async (_id: string) => [
 				{ role: "user" as const, content: "past question" },
@@ -574,6 +594,34 @@ describe("RuntimeController", () => {
 	});
 
 	describe("heartbeat", () => {
+		test("broadcastRuntimeStatus pushes updated heartbeat timer to clients", async () => {
+			const { controller, facade } = createController();
+			let nextHeartbeatAt: number | undefined = 1000;
+			controller.setHeartbeatInfoProvider(() => ({
+				nextHeartbeatAt,
+				deferred: false,
+			}));
+			const ws = mockWs();
+
+			controller.handleOpen(ws);
+			controller.handleMessage(ws, prompt("setup"));
+			await drain(controller, facade);
+
+			nextHeartbeatAt = 2000;
+			controller.broadcastRuntimeStatus();
+
+			const statuses = ws
+				.events()
+				.filter((event) => event.type === "runtime_status") as Array<{
+				nextHeartbeatAt?: number;
+				sessionId?: string;
+			}>;
+			expect(statuses.at(-1)).toMatchObject({
+				sessionId: "mock-session-123",
+				nextHeartbeatAt: 2000,
+			});
+		});
+
 		test("shows heartbeat prompt and live response to tui clients", async () => {
 			const facade = new MockFacade();
 			facade.delayMs = 40;

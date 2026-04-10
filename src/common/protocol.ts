@@ -160,6 +160,8 @@ export interface RuntimeStatusEvent {
 	effort: string;
 	sessionId?: string;
 	usage?: UsageInfo;
+	nextHeartbeatAt?: number;
+	heartbeatDeferred?: boolean;
 }
 
 export interface DisplayMessage {

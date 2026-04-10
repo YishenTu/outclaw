@@ -8,7 +8,10 @@ import type {
 import { RuntimeController } from "../application/runtime-controller.ts";
 import type { Config } from "../config.ts";
 import { CronScheduler, createCronAgentRunner } from "../cron/index.ts";
-import { HeartbeatScheduler } from "../heartbeat/scheduler.ts";
+import {
+	HeartbeatScheduler,
+	hasHeartbeatContent,
+} from "../heartbeat/scheduler.ts";
 import { readHistory } from "../persistence/history-reader.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
 
@@ -47,17 +50,29 @@ export function createRuntime(options: RuntimeOptions) {
 		historyReader: options.historyReader ?? readHistory,
 		store: options.store,
 	});
+	const promptHomeDir = options.promptHomeDir;
 	const heartbeat =
-		options.promptHomeDir && options.heartbeat
+		promptHomeDir && options.heartbeat
 			? new HeartbeatScheduler({
 					config: options.heartbeat,
-					promptHomeDir: options.promptHomeDir,
+					promptHomeDir,
+					hasHeartbeatContent: () => hasHeartbeatContent(promptHomeDir),
+					onDeferred: (deferMinutes) =>
+						controller.startDeferTimer(deferMinutes),
+					onStatusChange: () => controller.broadcastRuntimeStatus(),
 					shouldAttemptHeartbeat: (scheduledAt, deferMinutes) =>
 						controller.shouldAttemptHeartbeat(scheduledAt, deferMinutes),
 					requestHeartbeat: (prompt, scheduledAt, deferMinutes) =>
 						controller.enqueueHeartbeat(prompt, scheduledAt, deferMinutes),
 				})
 			: undefined;
+	if (heartbeat) {
+		controller.setHeartbeatInfoProvider(() => ({
+			nextHeartbeatAt: heartbeat.nextHeartbeatAt,
+			deferred: heartbeat.deferred,
+		}));
+		controller.setFireDeferredHeartbeat(() => heartbeat.fireDeferred());
+	}
 
 	const cronScheduler =
 		options.cronDir && options.promptHomeDir
