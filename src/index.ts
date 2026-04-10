@@ -30,7 +30,6 @@ const runtime = createRuntime({
 	cronDir: join(HOME_DIR, "cron"),
 	heartbeat: config.heartbeat,
 	promptHomeDir: HOME_DIR,
-	permissionMode: config.permissionMode,
 	store,
 });
 console.log(`outclaw runtime listening on ws://localhost:${runtime.port}`);

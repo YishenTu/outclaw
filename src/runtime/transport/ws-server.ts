@@ -32,7 +32,6 @@ interface RuntimeOptions {
 	) => Promise<void> | void;
 	promptHomeDir?: string;
 	heartbeat?: Config["heartbeat"];
-	permissionMode?: "default" | "plan" | "bypassPermissions";
 	historyReader?: (
 		sdkSessionId: string,
 	) => Promise<HistoryReplayEvent["messages"]>;
@@ -40,7 +39,7 @@ interface RuntimeOptions {
 }
 
 export function createRuntime(options: RuntimeOptions) {
-	const facade = options.facade ?? new ClaudeAdapter(options.permissionMode);
+	const facade = options.facade ?? new ClaudeAdapter();
 	const controller = new RuntimeController({
 		cwd: options.cwd,
 		promptHomeDir: options.promptHomeDir,

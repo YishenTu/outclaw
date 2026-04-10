@@ -20,7 +20,6 @@ describe("loadConfig", () => {
 				intervalMinutes: 30,
 				deferMinutes: 0,
 			});
-			expect(config.permissionMode).toBe("bypassPermissions");
 			expect(existsSync(join(dir, "config.json"))).toBe(true);
 		} finally {
 			rmSync(dir, { recursive: true });
@@ -42,7 +41,6 @@ describe("loadConfig", () => {
 						intervalMinutes: 15,
 						deferMinutes: 3,
 					},
-					permissionMode: "default",
 				}),
 			);
 
@@ -54,7 +52,6 @@ describe("loadConfig", () => {
 				intervalMinutes: 15,
 				deferMinutes: 3,
 			});
-			expect(config.permissionMode).toBe("default");
 		} finally {
 			rmSync(dir, { recursive: true });
 		}

@@ -11,7 +11,6 @@ export interface Config {
 		botToken: string;
 		allowedUsers: number[];
 	};
-	permissionMode: "default" | "plan" | "bypassPermissions";
 }
 
 const DEFAULTS: Config = {
@@ -24,7 +23,6 @@ const DEFAULTS: Config = {
 		botToken: "",
 		allowedUsers: [],
 	},
-	permissionMode: "bypassPermissions",
 };
 
 function loadEnvFile(homeDir: string): void {
@@ -86,7 +84,6 @@ export function loadConfig(homeDir: string): Config {
 			allowedUsers:
 				raw.telegram?.allowedUsers ?? DEFAULTS.telegram.allowedUsers,
 		},
-		permissionMode: raw.permissionMode ?? DEFAULTS.permissionMode,
 	};
 
 	if (JSON.stringify(merged) !== JSON.stringify(raw)) {
