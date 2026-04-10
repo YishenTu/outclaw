@@ -44,7 +44,14 @@ export interface HeartbeatResult {
 	text: string;
 }
 
-export type ClientMessage = PromptMessage | CommandMessage;
+export interface RequestSkillsMessage {
+	type: "request_skills";
+}
+
+export type ClientMessage =
+	| PromptMessage
+	| CommandMessage
+	| RequestSkillsMessage;
 
 // --- Server → Client events ---
 
@@ -181,6 +188,16 @@ export interface CronResultEvent {
 	text: string;
 }
 
+export interface SkillInfo {
+	name: string;
+	description: string;
+}
+
+export interface SkillsUpdateEvent {
+	type: "skills_update";
+	skills: SkillInfo[];
+}
+
 export type ServerEvent =
 	| TextEvent
 	| ImageEvent
@@ -199,7 +216,8 @@ export type ServerEvent =
 	| SessionSwitchedEvent
 	| RuntimeStatusEvent
 	| HistoryReplayEvent
-	| CronResultEvent;
+	| CronResultEvent
+	| SkillsUpdateEvent;
 
 // --- Facade types (backend contract) ---
 
@@ -224,6 +242,7 @@ export interface RunParams {
 
 export interface Facade {
 	run(params: RunParams): AsyncIterable<FacadeEvent>;
+	getSkills?(cwd?: string): Promise<SkillInfo[]>;
 }
 
 // --- Helpers ---

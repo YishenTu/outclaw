@@ -8,6 +8,7 @@ import {
 	type Facade,
 	type FacadeEvent,
 	type RunParams,
+	type SkillInfo,
 	type UsageInfo,
 } from "../../common/protocol.ts";
 
@@ -57,6 +58,15 @@ function extractUsage(event: {
 }
 
 export class ClaudeAdapter implements Facade {
+	private skills: SkillInfo[] = [];
+
+	async getSkills(cwd?: string): Promise<SkillInfo[]> {
+		if (this.skills.length > 0) {
+			return this.skills;
+		}
+		return this.probeSkills(cwd);
+	}
+
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		const abortController = params.abortController ?? new AbortController();
 		let emittedAssistantText = "";
@@ -94,6 +104,14 @@ export class ClaudeAdapter implements Facade {
 			});
 
 			for await (const event of conversation) {
+				if (event.type === "system" && event.subtype === "init") {
+					this.skills = await extractSkills(
+						conversation,
+						event as { skills?: string[] },
+					);
+					continue;
+				}
+
 				if (event.type === "stream_event") {
 					const raw = event.event;
 					if (
@@ -133,6 +151,44 @@ export class ClaudeAdapter implements Facade {
 			yield { type: "error", message: extractError(err) };
 		}
 	}
+
+	private async probeSkills(cwd?: string): Promise<SkillInfo[]> {
+		const abortController = new AbortController();
+		let sessionId: string | undefined;
+
+		try {
+			const conversation = query({
+				prompt: "",
+				options: {
+					abortController,
+					cwd,
+					permissionMode: "bypassPermissions",
+					allowDangerouslySkipPermissions: true,
+				},
+			});
+
+			for await (const event of conversation) {
+				if (event.type === "system" && event.subtype === "init") {
+					sessionId = (event as Record<string, unknown>).session_id as
+						| string
+						| undefined;
+					this.skills = await extractSkills(
+						conversation,
+						event as { skills?: string[] },
+					);
+					abortController.abort();
+					break;
+				}
+			}
+		} catch {
+			// Probe is best-effort; swallow abort errors.
+		}
+
+		if (sessionId) {
+			await cleanupProbeSession(cwd, sessionId);
+		}
+		return this.skills;
+	}
 }
 
 function extractAssistantText(event: {
@@ -170,6 +226,44 @@ function normalizeAssistantText(
 
 	const remainder = text.slice(emittedText.length);
 	return remainder || undefined;
+}
+
+async function extractSkills(
+	conversation: {
+		supportedCommands(): Promise<{ name: string; description: string }[]>;
+	},
+	initEvent: { skills?: string[] },
+): Promise<SkillInfo[]> {
+	const skillNames = new Set(initEvent.skills ?? []);
+	if (skillNames.size === 0) return [];
+
+	try {
+		const commands = await conversation.supportedCommands();
+		return commands
+			.filter((c) => skillNames.has(c.name))
+			.map((c) => ({ name: c.name, description: c.description }));
+	} catch {
+		return [...skillNames].map((name) => ({ name, description: "" }));
+	}
+}
+
+async function cleanupProbeSession(
+	cwd: string | undefined,
+	sessionId: string,
+): Promise<void> {
+	const dir = cwd ?? process.cwd();
+	const encodedCwd = dir.replaceAll("/", "-");
+	const path = `${process.env.HOME}/.claude/projects/${encodedCwd}/${sessionId}.jsonl`;
+
+	// SDK writes the JSONL asynchronously after abort
+	await new Promise((r) => setTimeout(r, 500));
+
+	try {
+		const { unlinkSync } = await import("node:fs");
+		unlinkSync(path);
+	} catch {
+		// Cleanup is best-effort.
+	}
 }
 
 function createPromptInput(

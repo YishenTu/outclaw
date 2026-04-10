@@ -3,10 +3,12 @@ import {
 	extractError,
 	parseMessage,
 	type ServerEvent,
+	type SkillInfo,
 } from "../../common/protocol.ts";
 import {
 	isRuntimeSocketOpen,
 	openRuntimeSocket,
+	sendRequestSkills,
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "../runtime-client/index.ts";
@@ -22,6 +24,8 @@ export function useRuntimeSession(url: string) {
 	const [status, setStatus] = useState<ConnectionStatus>("connecting");
 	const [menuData, setMenuData] = useState<SessionMenuData | null>(null);
 	const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo>({});
+	const [skills, setSkills] = useState<SkillInfo[]>([]);
+	const skillsRequestedRef = useRef(false);
 	const wsRef = useRef<WebSocket | null>(null);
 
 	const pushLocalMessage = useCallback(
@@ -73,6 +77,7 @@ export function useRuntimeSession(url: string) {
 			});
 
 			ws.onopen = () => {
+				skillsRequestedRef.current = false;
 				setStatus("connected");
 			};
 
@@ -80,6 +85,11 @@ export function useRuntimeSession(url: string) {
 				if (cancelled) {
 					return;
 				}
+				if (wsRef.current === ws) {
+					wsRef.current = null;
+				}
+				skillsRequestedRef.current = false;
+				setSkills([]);
 				setStatus("disconnected");
 				retryTimer = setTimeout(connect, 3000);
 			};
@@ -90,6 +100,11 @@ export function useRuntimeSession(url: string) {
 
 			ws.onmessage = (message) => {
 				const event = parseMessage(message.data as string) as ServerEvent;
+
+				if (event.type === "skills_update") {
+					setSkills(event.skills);
+					return;
+				}
 
 				if (event.type === "runtime_status") {
 					setRuntimeInfo({
@@ -164,6 +179,25 @@ export function useRuntimeSession(url: string) {
 		[withOpenSocket],
 	);
 
+	const requestSkills = useCallback(() => {
+		if (skillsRequestedRef.current) {
+			return false;
+		}
+
+		const ws = wsRef.current;
+		if (!isRuntimeSocketOpen(ws)) {
+			return false;
+		}
+
+		try {
+			sendRequestSkills(ws);
+			skillsRequestedRef.current = true;
+			return true;
+		} catch {
+			return false;
+		}
+	}, []);
+
 	const dismissSessionMenu = useCallback(() => {
 		setMenuData(null);
 	}, []);
@@ -171,9 +205,11 @@ export function useRuntimeSession(url: string) {
 	return {
 		dismissSessionMenu,
 		menuData,
+		requestSkills,
 		runCommand,
 		runPrompt,
 		runtimeInfo,
+		skills,
 		status,
 		tuiState,
 	};

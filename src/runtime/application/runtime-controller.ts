@@ -218,6 +218,11 @@ export class RuntimeController {
 			return;
 		}
 
+		if (data.type === "request_skills") {
+			this.handleRequestSkills(ws);
+			return;
+		}
+
 		if (data.type === "command" && data.command) {
 			const cmd = data.command.trim();
 			if (cmd === "/stop") {
@@ -294,6 +299,16 @@ export class RuntimeController {
 		if (!cmd.startsWith("/session ")) return false;
 		const arg = cmd.slice("/session ".length).trim();
 		return arg !== "" && arg !== "list";
+	}
+
+	private handleRequestSkills(ws: WsClient) {
+		if (!this.options.facade.getSkills) {
+			return;
+		}
+
+		void this.options.facade.getSkills(this.options.cwd).then((skills) => {
+			this.hub.send(ws, { type: "skills_update", skills });
+		});
 	}
 
 	private handleStop(ws: WsClient) {

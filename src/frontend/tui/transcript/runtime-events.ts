@@ -81,6 +81,7 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 		case "session_deleted":
 		case "session_info":
 		case "session_list":
+		case "skills_update":
 			return [{ type: "noop" }];
 	}
 }
