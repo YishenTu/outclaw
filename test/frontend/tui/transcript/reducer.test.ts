@@ -1,56 +1,51 @@
 import { describe, expect, test } from "bun:test";
 import { applyAction } from "../../../../src/frontend/tui/transcript/reducer.ts";
-import { mapEventToAction } from "../../../../src/frontend/tui/transcript/runtime-events.ts";
+import { mapEventToActions } from "../../../../src/frontend/tui/transcript/runtime-events.ts";
 import { initialTuiState } from "../../../../src/frontend/tui/transcript/state.ts";
 
-describe("mapEventToAction", () => {
+describe("mapEventToActions", () => {
 	test("text event → append_streaming", () => {
-		expect(mapEventToAction({ type: "text", text: "hello" })).toEqual({
-			type: "append_streaming",
-			text: "hello",
-		});
+		expect(mapEventToActions({ type: "text", text: "hello" })).toEqual([
+			{ type: "append_streaming", text: "hello" },
+		]);
 	});
 
 	test("done event → commit_streaming", () => {
 		expect(
-			mapEventToAction({
+			mapEventToActions({
 				type: "done",
 				sessionId: "s1",
 				durationMs: 100,
 			}),
-		).toEqual({ type: "commit_streaming" });
+		).toEqual([{ type: "commit_streaming" }]);
 	});
 
 	test("error event → push_and_stop with error role", () => {
 		expect(
-			mapEventToAction({ type: "error", message: "agent failed" }),
-		).toEqual({
-			type: "push_and_stop",
-			role: "error",
-			text: "agent failed",
-		});
+			mapEventToActions({ type: "error", message: "agent failed" }),
+		).toEqual([{ type: "push_and_stop", role: "error", text: "agent failed" }]);
 	});
 
 	test("status event → push info", () => {
 		expect(
-			mapEventToAction({ type: "status", message: "Nothing to stop" }),
-		).toEqual({ type: "push", role: "info", text: "Nothing to stop" });
+			mapEventToActions({ type: "status", message: "Nothing to stop" }),
+		).toEqual([{ type: "push", role: "info", text: "Nothing to stop" }]);
 	});
 
 	test("model_changed → push info", () => {
-		expect(mapEventToAction({ type: "model_changed", model: "haiku" })).toEqual(
-			{ type: "push", role: "info", text: "model → haiku" },
-		);
+		expect(
+			mapEventToActions({ type: "model_changed", model: "haiku" }),
+		).toEqual([{ type: "push", role: "info", text: "model → haiku" }]);
 	});
 
 	test("effort_changed → push info", () => {
-		expect(mapEventToAction({ type: "effort_changed", effort: "max" })).toEqual(
-			{ type: "push", role: "info", text: "effort → max" },
-		);
+		expect(
+			mapEventToActions({ type: "effort_changed", effort: "max" }),
+		).toEqual([{ type: "push", role: "info", text: "effort → max" }]);
 	});
 
 	test("runtime_status → push info with formatted context", () => {
-		const action = mapEventToAction({
+		const actions = mapEventToActions({
 			type: "runtime_status",
 			model: "opus",
 			effort: "high",
@@ -66,122 +61,123 @@ describe("mapEventToAction", () => {
 				percentage: 1,
 			},
 		});
-		expect(action).toEqual({
-			type: "push",
-			role: "info",
-			text: "model=opus effort=high session=session-123 context=1,234/200,000 tokens (1%)",
-		});
+		expect(actions).toEqual([
+			{
+				type: "push",
+				role: "info",
+				text: "model=opus effort=high session=session-123 context=1,234/200,000 tokens (1%)",
+			},
+		]);
 	});
 
 	test("runtime_status without usage shows n/a", () => {
-		const action = mapEventToAction({
+		const actions = mapEventToActions({
 			type: "runtime_status",
 			model: "haiku",
 			effort: "low",
 		});
-		expect(action).toEqual({
-			type: "push",
-			role: "info",
-			text: "model=haiku effort=low session=none context=n/a",
-		});
+		expect(actions).toEqual([
+			{
+				type: "push",
+				role: "info",
+				text: "model=haiku effort=low session=none context=n/a",
+			},
+		]);
 	});
 
 	test("user_prompt from tui → noop (locally added)", () => {
 		expect(
-			mapEventToAction({
+			mapEventToActions({
 				type: "user_prompt",
 				prompt: "hello",
 				source: "tui",
 			}),
-		).toEqual({ type: "noop" });
+		).toEqual([{ type: "noop" }]);
 	});
 
 	test("user_prompt from telegram → push user", () => {
-		const action = mapEventToAction({
+		const actions = mapEventToActions({
 			type: "user_prompt",
 			prompt: "hello",
 			source: "telegram",
 		});
-		expect(action).toEqual({
-			type: "push",
-			role: "user",
-			text: "[telegram] hello",
-		});
+		expect(actions).toEqual([
+			{ type: "push", role: "user", text: "[telegram] hello" },
+		]);
 	});
 
 	test("user_prompt from telegram with images", () => {
-		const action = mapEventToAction({
+		const actions = mapEventToActions({
 			type: "user_prompt",
 			prompt: "what is this?",
 			images: [{ path: "/tmp/cat.png", mediaType: "image/png" }],
 			source: "telegram",
 		});
-		expect(action).toEqual({
-			type: "push",
-			role: "user",
-			text: "[telegram] what is this?\n[telegram] [image: /tmp/cat.png]",
-		});
+		expect(actions).toEqual([
+			{
+				type: "push",
+				role: "user",
+				text: "[telegram] what is this?\n[telegram] [image: /tmp/cat.png]",
+			},
+		]);
 	});
 
 	test("image event → push info", () => {
-		expect(mapEventToAction({ type: "image", path: "/tmp/chart.png" })).toEqual(
-			{
-				type: "push",
-				role: "info",
-				text: "image: /tmp/chart.png",
-			},
-		);
+		expect(
+			mapEventToActions({ type: "image", path: "/tmp/chart.png" }),
+		).toEqual([{ type: "push", role: "info", text: "image: /tmp/chart.png" }]);
 	});
 
-	test("cron_result → push info", () => {
+	test("cron_result → info header + assistant body", () => {
 		expect(
-			mapEventToAction({
+			mapEventToActions({
 				type: "cron_result",
 				jobName: "daily-summary",
 				text: "All clear",
 			}),
-		).toEqual({
-			type: "push",
-			role: "info",
-			text: "[cron] daily-summary\nAll clear",
-		});
+		).toEqual([
+			{ type: "push", role: "info", text: "[cron] daily-summary" },
+			{ type: "push", role: "assistant", text: "All clear" },
+		]);
 	});
 
 	test("session_cleared → clear", () => {
-		expect(mapEventToAction({ type: "session_cleared" })).toEqual({
-			type: "clear",
-		});
+		expect(mapEventToActions({ type: "session_cleared" })).toEqual([
+			{ type: "clear" },
+		]);
 	});
 
 	test("session_switched → clear", () => {
 		expect(
-			mapEventToAction({
+			mapEventToActions({
 				type: "session_switched",
 				sdkSessionId: "s1",
 				title: "Chat",
 			}),
-		).toEqual({ type: "clear" });
+		).toEqual([{ type: "clear" }]);
 	});
 
 	test("history_replay → replay with converted messages", () => {
-		const action = mapEventToAction({
+		const actions = mapEventToActions({
 			type: "history_replay",
 			messages: [
 				{ role: "assistant", content: "Hello" },
 				{ role: "user", content: "Question" },
 			],
 		});
-		expect(action).toEqual({
-			type: "replay",
-			messages: [
-				{ id: 1, role: "assistant", text: "Hello" },
-				{ id: 2, role: "user", text: "Question" },
-			],
-		});
+		expect(actions).toEqual([
+			{
+				type: "replay",
+				messages: [
+					{ id: 1, role: "assistant", text: "Hello" },
+					{ id: 2, role: "user", text: "Question" },
+				],
+			},
+		]);
 	});
 
 	test("history_replay with user images", () => {
-		const action = mapEventToAction({
+		const actions = mapEventToActions({
 			type: "history_replay",
 			messages: [
 				{
@@ -191,14 +187,13 @@ describe("mapEventToAction", () => {
 				},
 			],
 		});
-		expect(action).toEqual({
-			type: "replay",
-			messages: [{ id: 1, role: "user", text: "[image]" }],
-		});
+		expect(actions).toEqual([
+			{ type: "replay", messages: [{ id: 1, role: "user", text: "[image]" }] },
+		]);
 	});
 
 	test("session_menu → session_menu action", () => {
-		const action = mapEventToAction({
+		const actions = mapEventToActions({
 			type: "session_menu",
 			activeSessionId: "sdk-abc",
 			sessions: [
@@ -210,39 +205,41 @@ describe("mapEventToAction", () => {
 				},
 			],
 		});
-		expect(action).toEqual({
-			type: "session_menu",
-			data: {
-				activeSessionId: "sdk-abc",
-				sessions: [
-					{
-						sdkSessionId: "sdk-abc",
-						title: "Chat A",
-						model: "opus",
-						lastActive: 1000,
-					},
-				],
+		expect(actions).toEqual([
+			{
+				type: "session_menu",
+				data: {
+					activeSessionId: "sdk-abc",
+					sessions: [
+						{
+							sdkSessionId: "sdk-abc",
+							title: "Chat A",
+							model: "opus",
+							lastActive: 1000,
+						},
+					],
+				},
 			},
-		});
+		]);
 	});
 
 	test("session_renamed → noop", () => {
 		expect(
-			mapEventToAction({
+			mapEventToActions({
 				type: "session_renamed",
 				sdkSessionId: "s1",
 				title: "New title",
 			}),
-		).toEqual({ type: "noop" });
+		).toEqual([{ type: "noop" }]);
 	});
 
 	test("session_deleted → noop", () => {
 		expect(
-			mapEventToAction({
+			mapEventToActions({
 				type: "session_deleted",
 				sdkSessionId: "s1",
 			}),
-		).toEqual({ type: "noop" });
+		).toEqual([{ type: "noop" }]);
 	});
 });
 

@@ -2,8 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { createPasteAwareDraft } from "../../../src/frontend/tui/composer/paste-draft.ts";
 import { startTui } from "../../../src/frontend/tui/index.tsx";
 import { formatSessionMenuItem } from "../../../src/frontend/tui/sessions/format.ts";
-import { applyAction } from "../../../src/frontend/tui/transcript/reducer.ts";
-import { mapEventToAction } from "../../../src/frontend/tui/transcript/runtime-events.ts";
+import {
+	applyAction,
+	type TuiAction,
+} from "../../../src/frontend/tui/transcript/reducer.ts";
+import { mapEventToActions } from "../../../src/frontend/tui/transcript/runtime-events.ts";
 import { initialTuiState } from "../../../src/frontend/tui/transcript/state.ts";
 
 describe("TUI architecture", () => {
@@ -21,9 +24,10 @@ describe("TUI architecture", () => {
 	});
 
 	test("keeps runtime-event mapping separate from transcript reduction", () => {
-		const action = mapEventToAction({ type: "text", text: "hello" });
-		expect(action).toEqual({ type: "append_streaming", text: "hello" });
-		expect(applyAction(initialTuiState(), action)).toEqual({
+		const actions = mapEventToActions({ type: "text", text: "hello" });
+		expect(actions).toHaveLength(1);
+		expect(actions).toEqual([{ type: "append_streaming", text: "hello" }]);
+		expect(applyAction(initialTuiState(), actions[0] as TuiAction)).toEqual({
 			messages: [],
 			streaming: "hello",
 			running: true,

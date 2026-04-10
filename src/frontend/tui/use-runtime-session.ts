@@ -14,7 +14,7 @@ import type { ConnectionStatus, RuntimeInfo } from "./chrome/status-bar.tsx";
 import { applySessionEventToMenuData } from "./sessions/state.ts";
 import type { SessionMenuData } from "./sessions/types.ts";
 import { applyAction } from "./transcript/reducer.ts";
-import { mapEventToAction } from "./transcript/runtime-events.ts";
+import { mapEventToActions } from "./transcript/runtime-events.ts";
 import { initialTuiState } from "./transcript/state.ts";
 
 export function useRuntimeSession(url: string) {
@@ -95,7 +95,7 @@ export function useRuntimeSession(url: string) {
 					setRuntimeInfo({
 						model: event.model,
 						effort: event.effort,
-						contextPercentage: event.usage?.percentage,
+						contextPercentage: event.usage?.percentage ?? 0,
 					});
 					return;
 				}
@@ -105,14 +105,18 @@ export function useRuntimeSession(url: string) {
 					setRuntimeInfo((previous) => ({ ...previous, effort: event.effort }));
 				}
 
-				const action = mapEventToAction(event);
-				if (action.type === "session_menu") {
-					setMenuData(action.data);
-					return;
-				}
+				const actions = mapEventToActions(event);
+				for (const action of actions) {
+					if (action.type === "session_menu") {
+						setMenuData(action.data);
+						return;
+					}
 
-				setMenuData((previous) => applySessionEventToMenuData(previous, event));
-				setTuiState((previous) => applyAction(previous, action));
+					setMenuData((previous) =>
+						applySessionEventToMenuData(previous, event),
+					);
+					setTuiState((previous) => applyAction(previous, action));
+				}
 			};
 		}
 
