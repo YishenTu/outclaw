@@ -448,4 +448,128 @@ describe("ClaudeAdapter", () => {
 			globalThis.setTimeout = realSetTimeout;
 		}
 	});
+
+	test("inserts line break between assistant turns (streaming)", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				// Turn 1: text + tool use
+				yield {
+					type: "stream_event",
+					event: {
+						type: "content_block_delta",
+						delta: { type: "text_delta", text: "Searching" },
+					},
+				};
+				yield {
+					type: "assistant",
+					message: {
+						content: [
+							{ type: "text", text: "Searching" },
+							{ type: "tool_use", id: "t1", name: "Grep", input: {} },
+						],
+					},
+				};
+				// Turn 2: more text
+				yield {
+					type: "stream_event",
+					event: {
+						type: "content_block_delta",
+						delta: { type: "text_delta", text: "Found it" },
+					},
+				};
+				yield {
+					type: "assistant",
+					message: {
+						content: [{ type: "text", text: "Found it" }],
+					},
+				};
+				yield {
+					type: "result",
+					session_id: "sdk-mt",
+					duration_ms: 50,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
+		);
+		const adapter = new ClaudeAdapter();
+		const events = [];
+
+		for await (const event of adapter.run({ prompt: "find it" })) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{ type: "text", text: "Searching" },
+			{ type: "text", text: "\n\n" },
+			{ type: "text", text: "Found it" },
+			{
+				type: "done",
+				sessionId: "sdk-mt",
+				durationMs: 50,
+				costUsd: 0,
+				usage: undefined,
+			},
+		]);
+	});
+
+	test("inserts line break between assistant turns (non-streaming)", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "assistant",
+					message: {
+						content: [
+							{ type: "text", text: "Searching" },
+							{ type: "tool_use", id: "t1", name: "Grep", input: {} },
+						],
+					},
+				};
+				yield {
+					type: "assistant",
+					message: {
+						content: [{ type: "text", text: "Found it" }],
+					},
+				};
+				yield {
+					type: "result",
+					session_id: "sdk-mt2",
+					duration_ms: 30,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
+		);
+		const adapter = new ClaudeAdapter();
+		const events = [];
+
+		for await (const event of adapter.run({
+			prompt: "find it",
+			stream: false,
+		})) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{ type: "text", text: "Searching" },
+			{ type: "text", text: "\n\nFound it" },
+			{
+				type: "done",
+				sessionId: "sdk-mt2",
+				durationMs: 30,
+				costUsd: 0,
+				usage: undefined,
+			},
+		]);
+	});
 });

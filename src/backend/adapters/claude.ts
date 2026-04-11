@@ -70,6 +70,7 @@ export class ClaudeAdapter implements Facade {
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		const abortController = params.abortController ?? new AbortController();
 		let emittedAssistantText = "";
+		let needsSeparator = false;
 
 		try {
 			const conversation = query({
@@ -118,6 +119,11 @@ export class ClaudeAdapter implements Facade {
 						raw.type === "content_block_delta" &&
 						raw.delta.type === "text_delta"
 					) {
+						if (needsSeparator) {
+							emittedAssistantText += "\n\n";
+							yield { type: "text", text: "\n\n" };
+							needsSeparator = false;
+						}
 						emittedAssistantText += raw.delta.text;
 						yield { type: "text", text: raw.delta.text };
 					}
@@ -132,8 +138,13 @@ export class ClaudeAdapter implements Facade {
 						params.stream,
 					);
 					if (text) {
-						emittedAssistantText += text;
-						yield { type: "text", text };
+						const separator = needsSeparator ? "\n\n" : "";
+						emittedAssistantText += separator + text;
+						yield { type: "text", text: separator + text };
+						needsSeparator = false;
+					}
+					if (emittedAssistantText) {
+						needsSeparator = true;
 					}
 				}
 

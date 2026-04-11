@@ -25,6 +25,6 @@ export function renderMarkdown(text: string, width?: number): string {
 	return rendered
 		.replace(/\n+$/, "") // strip trailing newlines
 		.replace(/^( *)\* /gm, "$1• ") // dot bullets
-		.replace(/^( *• .+)$/gm, (_, line) => applyInlineStyles(line)) // fix bold/code in list items
+		.replace(/^( *(?:•|\d+\.) .+)$/gm, (_, line) => applyInlineStyles(line)) // fix bold/code in list items
 		.replaceAll(HR_PLACEHOLDER, "─".repeat(hrWidth));
 }
