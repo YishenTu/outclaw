@@ -106,9 +106,14 @@ export function HeaderBar() {
 					)}
 				</Box>
 				{info.git?.dirty &&
-					info.git.files.map((file) => (
+					info.git.files.map((file, i) => (
 						<Box key={file}>
-							<Text dimColor>{"  ⎿  "}</Text>
+							<Text dimColor>
+								{"  "}
+								{i === (info.git?.files.length ?? 0) - 1
+									? "\u2514\u2500\u2500 "
+									: "\u251C\u2500\u2500 "}
+							</Text>
 							<Text color="yellow">{file}</Text>
 						</Box>
 					))}
