@@ -80,4 +80,23 @@ describe("sendTelegramHeartbeatResult", () => {
 		});
 		expect(sendMessage).not.toHaveBeenCalled();
 	});
+
+	test("skips backtick-wrapped HEARTBEAT_OK", async () => {
+		const sendMessage = mock(async () => ({}));
+		const sendPhoto = mock(async () => ({ message_id: 1 }));
+
+		await sendTelegramHeartbeatResult(
+			{
+				sendMessage,
+				sendPhoto,
+			},
+			{
+				telegramChatId: 123,
+				text: "`HEARTBEAT_OK`",
+				images: [],
+			},
+		);
+
+		expect(sendMessage).not.toHaveBeenCalled();
+	});
 });

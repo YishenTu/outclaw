@@ -35,8 +35,8 @@ interface TelegramHeartbeatResultParams {
 }
 
 function shouldSendHeartbeatText(text: string): boolean {
-	const trimmed = text.trim();
-	return trimmed !== "" && trimmed !== "HEARTBEAT_OK";
+	const normalized = text.trim().replace(/`/g, "");
+	return normalized !== "" && normalized !== "HEARTBEAT_OK";
 }
 
 export async function sendTelegramHeartbeatResult(

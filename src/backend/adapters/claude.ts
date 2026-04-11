@@ -228,6 +228,16 @@ function normalizeAssistantText(
 	return remainder || undefined;
 }
 
+const HIDDEN_SKILLS = new Set([
+	"batch",
+	"claude-api",
+	"debug",
+	"loop",
+	"schedule",
+	"simplify",
+	"update-config",
+]);
+
 async function extractSkills(
 	conversation: {
 		supportedCommands(): Promise<{ name: string; description: string }[]>;
@@ -240,7 +250,7 @@ async function extractSkills(
 	try {
 		const commands = await conversation.supportedCommands();
 		return commands
-			.filter((c) => skillNames.has(c.name))
+			.filter((c) => skillNames.has(c.name) && !HIDDEN_SKILLS.has(c.name))
 			.map((c) => ({ name: c.name, description: c.description }));
 	} catch {
 		return [...skillNames].map((name) => ({ name, description: "" }));

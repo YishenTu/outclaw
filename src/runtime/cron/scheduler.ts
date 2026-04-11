@@ -204,5 +204,5 @@ function normalizeRunResult(
 }
 
 function isSuppressedCronResult(text: string): boolean {
-	return text.trim().toUpperCase() === "NO_REPLY";
+	return text.trim().replace(/`/g, "").toUpperCase() === "NO_REPLY";
 }

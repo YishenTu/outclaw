@@ -22,4 +22,4 @@ prompt: |
 
   Remove outdated info from MEMORY.md that's no longer relevant.
   If nothing qualifies, don't edit MEMORY.md.
-  Reply with a summary of changes, or reply only NO_REPLY if none, no explanation.
+  Reply with a summary of changes, or reply only `NO_REPLY` if none, no explanation.

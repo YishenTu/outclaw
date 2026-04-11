@@ -243,6 +243,22 @@ prompt: do something
 		expect(results).toEqual([]);
 	});
 
+	test("suppresses backtick-wrapped NO_REPLY results", async () => {
+		const cronDir = makeCronDir();
+		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
+
+		const results: ScheduledCronResult[] = [];
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async () => "`NO_REPLY`",
+			onResult: (event) => results.push(event),
+		});
+		scheduler.start();
+
+		await scheduler.triggerJob("test-job");
+
+		expect(results).toEqual([]);
+	});
+
 	test("delivers error results when agent fails", async () => {
 		const cronDir = makeCronDir();
 		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
