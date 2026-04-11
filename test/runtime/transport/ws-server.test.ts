@@ -395,7 +395,7 @@ describe("Runtime server", () => {
 		queueServer.stop();
 	});
 
-	test("stop() waits for queued work to finish before closing client streams", async () => {
+	test("stop() aborts the active work and drops queued prompts before closing client streams", async () => {
 		const stopFacade = new MockFacade();
 		stopFacade.delayMs = 40;
 		const stopServer = createRuntime({ port: 0, facade: stopFacade });
@@ -416,8 +416,10 @@ describe("Runtime server", () => {
 		await stopServer.stop();
 		await new Promise((r) => setTimeout(r, 10));
 
-		expect(stopFacade.callOrder).toEqual(["first", "second"]);
-		expect(doneCount).toBe(2);
+		const firstCall = stopFacade.allParams.find((p) => p.prompt === "first");
+		expect(firstCall?.abortController?.signal.aborted).toBe(true);
+		expect(stopFacade.callOrder).toEqual(["first"]);
+		expect(doneCount).toBe(1);
 
 		ws.close();
 	});

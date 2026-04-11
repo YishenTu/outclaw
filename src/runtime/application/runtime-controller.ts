@@ -19,6 +19,7 @@ import { RuntimeState } from "./runtime-state.ts";
 
 interface RuntimeControllerOptions {
 	cwd?: string;
+	restart?: () => void;
 	deliverCronResult?: (params: {
 		jobName: string;
 		telegramChatId: number;
@@ -96,12 +97,14 @@ export class RuntimeController {
 	private readHistory: (
 		sdkSessionId: string,
 	) => Promise<HistoryReplayEvent["messages"]>;
+	private restart: (() => void) | undefined;
 	private state: RuntimeState;
 
 	constructor(private options: RuntimeControllerOptions) {
 		this.deliverCronResult = options.deliverCronResult;
 		this.deliverHeartbeatResult = options.deliverHeartbeatResult;
 		this.heartbeatInfoProvider = options.heartbeatInfoProvider;
+		this.restart = options.restart;
 		this.state = new RuntimeState(options.store);
 		this.readHistory = options.historyReader ?? readHistory;
 	}
@@ -229,6 +232,10 @@ export class RuntimeController {
 				this.handleStop(ws);
 				return;
 			}
+			if (cmd === "/restart") {
+				this.handleRestart(ws);
+				return;
+			}
 			if (cmd === "/new" || this.isSessionMutation(cmd)) {
 				this.activeAbort?.abort();
 			}
@@ -267,8 +274,14 @@ export class RuntimeController {
 	};
 
 	beginShutdown() {
+		if (this.shuttingDown) {
+			return;
+		}
 		this.shuttingDown = true;
 		this.clearDeferTimer();
+		this.activeAbort?.abort();
+		this.heartbeatPending = false;
+		this.queue.close(true);
 	}
 
 	drain(): Promise<void> {
@@ -311,6 +324,26 @@ export class RuntimeController {
 		});
 	}
 
+	private handleRestart(ws: WsClient) {
+		if (!this.restart) {
+			this.hub.send(ws, {
+				type: "error",
+				message: "Restart handler not configured",
+			});
+			return;
+		}
+		this.activeAbort?.abort();
+		this.hub.broadcast({ type: "status", message: "Restarting daemon..." });
+		try {
+			this.restart();
+		} catch (err) {
+			this.hub.broadcast({
+				type: "error",
+				message: `Restart failed: ${extractError(err)}`,
+			});
+		}
+	}
+
 	private handleStop(ws: WsClient) {
 		if (this.activeAbort) {
 			this.activeAbort.abort();
@@ -344,6 +377,9 @@ export class RuntimeController {
 		scheduledAt: number,
 		deferMinutes: number,
 	): boolean {
+		if (this.shuttingDown) {
+			return false;
+		}
 		if (this.shouldAttemptHeartbeat(scheduledAt, deferMinutes) !== "attempt") {
 			return false;
 		}
@@ -354,14 +390,17 @@ export class RuntimeController {
 		}
 
 		this.heartbeatPending = true;
-		this.queue.enqueue(() =>
+		const queued = this.queue.enqueue(() =>
 			this.runHeartbeat({
 				prompt,
 				scheduledAt,
 				sessionId,
 			}),
 		);
-		return true;
+		if (!queued) {
+			this.heartbeatPending = false;
+		}
+		return queued;
 	}
 
 	shouldAttemptHeartbeat(
@@ -384,6 +423,9 @@ export class RuntimeController {
 	}
 
 	private enqueuePrompt(task: PromptExecution) {
+		if (this.shuttingDown) {
+			return;
+		}
 		this.state.preparePrompt(task.prompt, task.images);
 		this.lastUserActivityAt = Date.now();
 		this.resetDeferTimer();

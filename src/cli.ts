@@ -2,6 +2,7 @@
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { stopDaemon } from "./runtime/process/daemon-stop.ts";
 import { PidManager } from "./runtime/process/pid-manager.ts";
 
 const HOME_DIR = join(homedir(), ".outclaw");
@@ -18,10 +19,10 @@ switch (command) {
 		start();
 		break;
 	case "stop":
-		stop();
+		await stop();
 		break;
 	case "restart":
-		stop();
+		await stop();
 		start();
 		break;
 	case "status":
@@ -75,17 +76,20 @@ function start() {
 	}, 500);
 }
 
-function stop() {
-	const runningPid = pid.read();
-	if (!runningPid || !pid.isRunning()) {
+async function stop() {
+	const result = await stopDaemon(pid);
+
+	if (result.status === "not_running") {
 		console.log("Daemon is not running");
-		pid.remove();
 		return;
 	}
 
-	process.kill(runningPid, "SIGTERM");
-	pid.remove();
-	console.log(`Daemon stopped (pid ${runningPid})`);
+	if (result.status === "timeout") {
+		console.error(`Warning: daemon (pid ${result.pid}) did not exit within 5s`);
+		process.exit(1);
+	}
+
+	console.log(`Daemon stopped (pid ${result.pid})`);
 }
 
 function status() {

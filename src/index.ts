@@ -7,6 +7,7 @@ import { loadConfig } from "./runtime/config.ts";
 import { SessionStore } from "./runtime/persistence/session-store.ts";
 import { TelegramMediaRefStore } from "./runtime/persistence/telegram-media-ref-store.ts";
 import { PidManager } from "./runtime/process/pid-manager.ts";
+import { spawnDaemonRestart } from "./runtime/process/restart-daemon.ts";
 import { seedTemplates } from "./runtime/prompt/seed-templates.ts";
 import { createRuntime } from "./runtime/transport/ws-server.ts";
 
@@ -24,12 +25,17 @@ const mediaRoot = join(HOME_DIR, "media");
 const store = new SessionStore(dbPath);
 const telegramMediaRefStore = new TelegramMediaRefStore(dbPath);
 
+const CLI_ENTRY = join(import.meta.dir, "cli.ts");
+
 const runtime = createRuntime({
 	port: config.port,
 	cwd: HOME_DIR,
 	cronDir: join(HOME_DIR, "cron"),
 	heartbeat: config.heartbeat,
 	promptHomeDir: HOME_DIR,
+	restart: () => {
+		spawnDaemonRestart(CLI_ENTRY);
+	},
 	store,
 });
 console.log(`outclaw runtime listening on ws://localhost:${runtime.port}`);

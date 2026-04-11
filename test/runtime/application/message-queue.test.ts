@@ -66,4 +66,31 @@ describe("MessageQueue", () => {
 		const queue = new MessageQueue();
 		await queue.drain();
 	});
+
+	test("close(true) drops pending tasks but lets the active task finish", async () => {
+		const queue = new MessageQueue();
+		const order: number[] = [];
+
+		queue.enqueue(async () => {
+			await new Promise((r) => setTimeout(r, 20));
+			order.push(1);
+		});
+		queue.enqueue(async () => {
+			order.push(2);
+		});
+
+		queue.close(true);
+		await queue.drain();
+
+		expect(order).toEqual([1]);
+	});
+
+	test("enqueue returns false after close()", async () => {
+		const queue = new MessageQueue();
+
+		queue.close();
+
+		expect(queue.enqueue(async () => undefined)).toBe(false);
+		await queue.drain();
+	});
 });

@@ -21,6 +21,7 @@ export const RUNTIME_COMMANDS = [
 	{ command: "session", description: "Show/list/switch sessions" },
 	{ command: "status", description: "Show model, effort, and context usage" },
 	{ command: "stop", description: "Cancel the current agent run" },
+	{ command: "restart", description: "Restart the daemon" },
 ] as const;
 
 export function isEffortLevel(value: string): value is EffortLevel {
@@ -36,6 +37,7 @@ export function isRuntimeCommand(input: string): boolean {
 	return (
 		trimmed === "/new" ||
 		trimmed === "/stop" ||
+		trimmed === "/restart" ||
 		trimmed === "/status" ||
 		trimmed === "/model" ||
 		trimmed.startsWith("/model ") ||

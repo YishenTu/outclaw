@@ -26,6 +26,7 @@ describe("isRuntimeCommand", () => {
 	test("recognises bare commands", () => {
 		expect(isRuntimeCommand("/new")).toBe(true);
 		expect(isRuntimeCommand("/stop")).toBe(true);
+		expect(isRuntimeCommand("/restart")).toBe(true);
 		expect(isRuntimeCommand("/status")).toBe(true);
 		expect(isRuntimeCommand("/model")).toBe(true);
 		expect(isRuntimeCommand("/thinking")).toBe(true);

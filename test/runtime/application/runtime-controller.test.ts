@@ -991,7 +991,112 @@ describe("RuntimeController", () => {
 		});
 	});
 
+	describe("restart", () => {
+		test("/restart sends status message and calls restart handler", async () => {
+			let restartCalled = false;
+			const facade = new MockFacade();
+			const controller = new RuntimeController({
+				facade,
+				restart: () => {
+					restartCalled = true;
+				},
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, command("/restart"));
+			await new Promise((r) => setTimeout(r, 10));
+
+			expect(ws.events()).toContainEqual({
+				type: "status",
+				message: "Restarting daemon...",
+			});
+			expect(restartCalled).toBe(true);
+		});
+
+		test("/restart aborts active run before restarting", async () => {
+			let restartCalled = false;
+			const facade = new MockFacade();
+			facade.delayMs = 200;
+			const controller = new RuntimeController({
+				facade,
+				restart: () => {
+					restartCalled = true;
+				},
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("slow task"));
+			await new Promise((r) => setTimeout(r, 30));
+
+			controller.handleMessage(ws, command("/restart"));
+			await new Promise((r) => setTimeout(r, 50));
+
+			const slowCall = facade.allParams.find((p) => p.prompt === "slow task");
+			expect(slowCall?.abortController?.signal.aborted).toBe(true);
+			expect(restartCalled).toBe(true);
+		});
+
+		test("/restart without handler sends error", async () => {
+			const { controller } = createController();
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, command("/restart"));
+			await new Promise((r) => setTimeout(r, 10));
+
+			expect(ws.events()).toContainEqual({
+				type: "error",
+				message: "Restart handler not configured",
+			});
+		});
+
+		test("/restart broadcasts error when handler throws", async () => {
+			const facade = new MockFacade();
+			const controller = new RuntimeController({
+				facade,
+				restart: () => {
+					throw new Error("spawn failed");
+				},
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, command("/restart"));
+			await new Promise((r) => setTimeout(r, 10));
+
+			expect(ws.events()).toContainEqual({
+				type: "status",
+				message: "Restarting daemon...",
+			});
+			expect(ws.events()).toContainEqual({
+				type: "error",
+				message: "Restart failed: spawn failed",
+			});
+		});
+	});
+
 	describe("abort", () => {
+		test("beginShutdown aborts the active run and drops queued prompts", async () => {
+			const facade = new MockFacade();
+			facade.delayMs = 200;
+			const { controller } = createController({ facade });
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("first"));
+			controller.handleMessage(ws, prompt("second"));
+			await new Promise((r) => setTimeout(r, 30));
+
+			controller.beginShutdown();
+			await controller.drain();
+
+			const firstCall = facade.allParams.find((p) => p.prompt === "first");
+			expect(firstCall?.abortController?.signal.aborted).toBe(true);
+			expect(facade.callOrder).toEqual(["first"]);
+		});
+
 		test("/stop aborts a running prompt", async () => {
 			const facade = new MockFacade();
 			facade.delayMs = 200;

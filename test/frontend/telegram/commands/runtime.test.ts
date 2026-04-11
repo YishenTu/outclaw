@@ -130,6 +130,19 @@ describe("Telegram runtime commands", () => {
 		expect(reply).toBe("Stopping current run");
 	});
 
+	test("/restart formats the status reply", async () => {
+		const calls: string[] = [];
+		const reply = await executeTelegramRuntimeCommand("restart", {
+			sendCommandAndWait: async (command) => {
+				calls.push(command);
+				return { type: "status", message: "Restarting daemon..." };
+			},
+		});
+
+		expect(calls).toEqual(["/restart"]);
+		expect(reply).toBe("Restarting daemon...");
+	});
+
 	test("unexpected non-error events return no reply text", async () => {
 		const reply = await executeTelegramRuntimeCommand("stop", {
 			sendCommandAndWait: async () => ({ type: "done" }),

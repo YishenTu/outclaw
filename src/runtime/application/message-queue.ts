@@ -3,11 +3,26 @@ type Task = () => Promise<void>;
 export class MessageQueue {
 	private queue: Task[] = [];
 	private processing = false;
+	private closed = false;
 	private drainResolvers: Array<() => void> = [];
 
-	enqueue(task: Task) {
+	enqueue(task: Task): boolean {
+		if (this.closed) {
+			return false;
+		}
 		this.queue.push(task);
 		this.process();
+		return true;
+	}
+
+	close(discardPending = false) {
+		this.closed = true;
+		if (discardPending) {
+			this.queue = [];
+		}
+		if (!this.processing && this.queue.length === 0) {
+			this.resolveDrainers();
+		}
 	}
 
 	drain(): Promise<void> {
@@ -34,7 +49,10 @@ export class MessageQueue {
 		}
 
 		this.processing = false;
+		this.resolveDrainers();
+	}
 
+	private resolveDrainers() {
 		for (const resolve of this.drainResolvers) {
 			resolve();
 		}

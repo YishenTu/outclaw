@@ -19,6 +19,7 @@ interface RuntimeOptions {
 	port: number;
 	facade?: Facade;
 	cwd?: string;
+	restart?: () => void;
 	cronDir?: string;
 	deliverCronResult?: (params: {
 		jobName: string;
@@ -44,6 +45,7 @@ export function createRuntime(options: RuntimeOptions) {
 		cwd: options.cwd,
 		promptHomeDir: options.promptHomeDir,
 		facade,
+		restart: options.restart,
 		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
 		historyReader: options.historyReader ?? readHistory,

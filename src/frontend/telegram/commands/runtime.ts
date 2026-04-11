@@ -31,7 +31,8 @@ type TelegramRuntimeCommandName =
 	| "model"
 	| "thinking"
 	| "status"
-	| "stop";
+	| "stop"
+	| "restart";
 
 type TelegramCommandName = TelegramRuntimeCommandName | "session";
 
@@ -99,6 +100,12 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	},
 	stop: {
 		buildCommand: () => "/stop",
+		expectedTypes: new Set(["status"]),
+		formatReply: (event) =>
+			event.type === "status" ? String(event.message) : formatError(event),
+	},
+	restart: {
+		buildCommand: () => "/restart",
 		expectedTypes: new Set(["status"]),
 		formatReply: (event) =>
 			event.type === "status" ? String(event.message) : formatError(event),
