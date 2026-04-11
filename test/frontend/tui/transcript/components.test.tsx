@@ -124,6 +124,29 @@ describe("transcript components", () => {
 		}
 	});
 
+	test("MessageList renders markdown in streaming text", async () => {
+		const { app, getOutput } = renderToOutput(
+			<MessageList
+				messages={[]}
+				streaming="**bold** and `code`"
+				running={true}
+				columns={40}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const output = getOutput();
+			expect(output).toContain("bold");
+			expect(output).toContain("code");
+			expect(output).not.toContain("**bold**");
+			expect(output).not.toContain("`code`");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("MessageList renders the spinner when running without streaming", async () => {
 		const now = new Date("2026-04-11T00:00:00Z");
 		setSystemTime(now);

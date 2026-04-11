@@ -1,4 +1,5 @@
 import { Box, Text } from "ink";
+import { renderMarkdown } from "./markdown.ts";
 import { MessageItem } from "./message-item.tsx";
 import { Spinner } from "./spinner.tsx";
 import type { TuiMessage } from "./state.ts";
@@ -23,7 +24,7 @@ export function MessageList({
 			))}
 			{streaming ? (
 				<Box marginTop={1} paddingLeft={3} paddingRight={1}>
-					<Text>{streaming}</Text>
+					<Text>{renderMarkdown(streaming, columns - 4)}</Text>
 				</Box>
 			) : null}
 			{running && !streaming ? (

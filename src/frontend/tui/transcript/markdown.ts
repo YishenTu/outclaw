@@ -4,6 +4,17 @@ import { markedTerminal } from "marked-terminal";
 
 const HR_PLACEHOLDER = "\x00HR\x00";
 
+const ESC = "\x1b";
+const BEL = "\x07";
+/** ANSI CSI sequences, OSC sequences, other two-char escapes. */
+const ANSI_RE = new RegExp(
+	`${ESC}\\[[0-9;]*[A-Za-z]|${ESC}\\][^${BEL}]*${BEL}|${ESC}[^\\[\\]]`,
+	"g",
+);
+/** C0 control chars except \t (09), \n (0A), \r (0D). Also strips DEL (7F). */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: intentionally matches control chars
+const CTRL_RE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
+
 const marked = new Marked(
 	markedTerminal({
 		tab: 2,
@@ -19,7 +30,8 @@ function applyInlineStyles(text: string): string {
 }
 
 export function renderMarkdown(text: string, width?: number): string {
-	const rendered = marked.parse(text);
+	const sanitized = text.replace(ANSI_RE, "").replace(CTRL_RE, "");
+	const rendered = marked.parse(sanitized);
 	if (typeof rendered !== "string") return text;
 	const hrWidth = Math.max(width ?? (process.stdout.columns || 80), 0);
 	return rendered

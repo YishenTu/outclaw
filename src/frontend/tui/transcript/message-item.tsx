@@ -1,4 +1,5 @@
 import { Box, Text } from "ink";
+import { memo } from "react";
 import { theme } from "../chrome/theme.ts";
 import { renderMarkdown } from "./markdown.ts";
 import type { TuiMessage } from "./state.ts";
@@ -37,7 +38,10 @@ function wrapUserMessage(text: string, columns: number): string {
 		.join("\n");
 }
 
-export function MessageItem({ message, columns }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({
+	message,
+	columns,
+}: MessageItemProps) {
 	switch (message.role) {
 		case "user":
 			return (
@@ -95,4 +99,4 @@ export function MessageItem({ message, columns }: MessageItemProps) {
 				</Box>
 			);
 	}
-}
+});
