@@ -7,6 +7,8 @@ import {
 	type WsClient,
 } from "../../../src/runtime/transport/client-hub.ts";
 
+const PROVIDER_ID = "mock";
+
 function mockWs(): WsClient & { events: () => ServerEvent[] } {
 	const sent: string[] = [];
 	const ws = {
@@ -21,7 +23,7 @@ function mockWs(): WsClient & { events: () => ServerEvent[] } {
 function setup() {
 	const hub = new ClientHub();
 	const ws = mockWs();
-	const state = new RuntimeState();
+	const state = new RuntimeState(PROVIDER_ID);
 	hub.add(ws);
 
 	async function run(command: string) {
@@ -227,7 +229,7 @@ describe("handleRuntimeCommand", () => {
 			const hub = new ClientHub();
 			const sender = mockWs();
 			const observer = mockWs();
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			hub.add(sender);
 			hub.add(observer);
 
@@ -250,7 +252,7 @@ describe("handleRuntimeCommand", () => {
 			const hub = new ClientHub();
 			const sender = mockWs();
 			const observer = mockWs();
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			hub.add(sender);
 			hub.add(observer);
 			state.preparePrompt("Current chat");
@@ -297,7 +299,7 @@ describe("handleRuntimeCommand", () => {
 			const hub = new ClientHub();
 			const sender = mockWs();
 			const observer = mockWs();
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			hub.add(sender);
 			hub.add(observer);
 

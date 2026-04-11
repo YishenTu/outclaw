@@ -59,14 +59,14 @@ export async function handleRuntimeCommand(
 		const arg = command.split(" ").slice(1).join(" ").trim();
 
 		if (!arg) {
-			const sessions = (options.store?.list(20, "chat") ?? []).map(
-				(session) => ({
-					sdkSessionId: session.sdkSessionId,
-					title: session.title,
-					model: session.model,
-					lastActive: session.lastActive,
-				}),
-			);
+			const sessions = (
+				options.store?.list(20, "chat", options.state.providerId) ?? []
+			).map((session) => ({
+				sdkSessionId: session.sdkSessionId,
+				title: session.title,
+				model: session.model,
+				lastActive: session.lastActive,
+			}));
 			options.hub.send(options.ws, {
 				type: "session_menu",
 				activeSessionId: options.state.sessionId,
@@ -82,7 +82,7 @@ export async function handleRuntimeCommand(
 				return;
 			}
 			const deletingActiveSession = options.state.sessionId === deleteId;
-			options.store?.delete(deleteId);
+			options.store?.delete(options.state.providerId, deleteId);
 			options.hub.broadcast({
 				type: "session_deleted",
 				sdkSessionId: deleteId,
@@ -116,21 +116,21 @@ export async function handleRuntimeCommand(
 		}
 
 		if (arg === "list") {
-			const sessions = (options.store?.list(20, "chat") ?? []).map(
-				(session) => ({
-					sdkSessionId: session.sdkSessionId,
-					title: session.title,
-					model: session.model,
-					lastActive: session.lastActive,
-				}),
-			);
+			const sessions = (
+				options.store?.list(20, "chat", options.state.providerId) ?? []
+			).map((session) => ({
+				sdkSessionId: session.sdkSessionId,
+				title: session.title,
+				model: session.model,
+				lastActive: session.lastActive,
+			}));
 			options.hub.send(options.ws, { type: "session_list", sessions });
 			return;
 		}
 
-		const match = (options.store?.list() ?? []).find((session) =>
-			session.sdkSessionId.startsWith(arg),
-		);
+		const match = (
+			options.store?.list(20, undefined, options.state.providerId) ?? []
+		).find((session) => session.sdkSessionId.startsWith(arg));
 		if (!match) {
 			sendError(options.hub, options.ws, `No session matching: ${arg}`);
 			return;

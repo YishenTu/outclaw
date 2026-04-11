@@ -1,8 +1,6 @@
-import { ClaudeAdapter } from "../../backend/adapters/claude.ts";
 import type {
 	Facade,
 	HeartbeatResult,
-	HistoryReplayEvent,
 	RuntimeClientType,
 } from "../../common/protocol.ts";
 import { RuntimeController } from "../application/runtime-controller.ts";
@@ -12,12 +10,11 @@ import {
 	HeartbeatScheduler,
 	hasHeartbeatContent,
 } from "../heartbeat/scheduler.ts";
-import { readHistory } from "../persistence/history-reader.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
 
 interface RuntimeOptions {
 	port: number;
-	facade?: Facade;
+	facade: Facade;
 	cwd?: string;
 	restart?: () => void;
 	cronDir?: string;
@@ -33,14 +30,11 @@ interface RuntimeOptions {
 	) => Promise<void> | void;
 	promptHomeDir?: string;
 	heartbeat?: Config["heartbeat"];
-	historyReader?: (
-		sdkSessionId: string,
-	) => Promise<HistoryReplayEvent["messages"]>;
 	store?: SessionStore;
 }
 
 export function createRuntime(options: RuntimeOptions) {
-	const facade = options.facade ?? new ClaudeAdapter();
+	const facade = options.facade;
 	const controller = new RuntimeController({
 		cwd: options.cwd,
 		promptHomeDir: options.promptHomeDir,
@@ -48,7 +42,6 @@ export function createRuntime(options: RuntimeOptions) {
 		restart: options.restart,
 		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
-		historyReader: options.historyReader ?? readHistory,
 		store: options.store,
 	});
 	const promptHomeDir = options.promptHomeDir;

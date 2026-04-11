@@ -6,10 +6,13 @@ export class SessionManager {
 	private currentSource: RuntimeClientType = "tui";
 	private currentTitle: string | undefined;
 
-	constructor(private store?: SessionStore) {
-		this.activeSessionId = store?.getActiveSessionId();
+	constructor(
+		private providerId: string,
+		private store?: SessionStore,
+	) {
+		this.activeSessionId = store?.getActiveSessionId(providerId);
 		if (this.activeSessionId) {
-			const row = store?.get(this.activeSessionId);
+			const row = store?.get(providerId, this.activeSessionId);
 			this.currentTitle = row?.title;
 			this.currentSource = row?.source === "telegram" ? "telegram" : "tui";
 		}
@@ -33,7 +36,7 @@ export class SessionManager {
 		source?: RuntimeClientType,
 		tag?: SessionTag,
 	) {
-		const storedSession = this.store?.get(sessionId);
+		const storedSession = this.store?.get(this.providerId, sessionId);
 		const storedTitle = storedSession?.title;
 		const title =
 			sessionId === this.activeSessionId
@@ -51,8 +54,9 @@ export class SessionManager {
 		this.activeSessionId = sessionId;
 		this.currentTitle = title;
 		this.currentSource = nextSource;
-		this.store?.setActiveSessionId(sessionId);
+		this.store?.setActiveSessionId(this.providerId, sessionId);
 		this.store?.upsert({
+			providerId: this.providerId,
 			sdkSessionId: sessionId,
 			title: title ?? "Untitled",
 			model,
@@ -69,6 +73,6 @@ export class SessionManager {
 		this.activeSessionId = undefined;
 		this.currentSource = "tui";
 		this.currentTitle = undefined;
-		this.store?.setActiveSessionId(undefined);
+		this.store?.setActiveSessionId(this.providerId, undefined);
 	}
 }

@@ -27,12 +27,15 @@ export class RuntimeState {
 	private _generation = 0;
 	private store?: SessionStore;
 
-	constructor(store?: SessionStore) {
+	constructor(
+		private readonly currentProviderId: string,
+		store?: SessionStore,
+	) {
 		this.store = store;
-		this.session = new SessionManager(store);
+		this.session = new SessionManager(currentProviderId, store);
 		this.lastTelegramChatId = store?.getLastTelegramChatId();
 		if (this.session.id) {
-			this.lastUsage = store?.getUsage(this.session.id);
+			this.lastUsage = store?.getUsage(currentProviderId, this.session.id);
 		}
 	}
 
@@ -46,6 +49,10 @@ export class RuntimeState {
 
 	get model(): ModelAlias {
 		return this.activeModel;
+	}
+
+	get providerId(): string {
+		return this.currentProviderId;
 	}
 
 	getLastTelegramChatId(): number | undefined {
@@ -115,17 +122,26 @@ export class RuntimeState {
 		if (this.session.id === sessionId) {
 			this.session.setTitle(title);
 		}
-		this.store?.rename(sessionId, title);
+		this.store?.rename(this.currentProviderId, sessionId, title);
 	}
 
 	switchToSession(session: SessionRow) {
+		if (session.providerId !== this.currentProviderId) {
+			throw new Error(
+				`Cannot activate ${session.providerId} session in ${this.currentProviderId} runtime`,
+			);
+		}
+
 		this._generation++;
 		this.session.setTitle(session.title);
 		this.session.update(session.sdkSessionId, session.model);
 		if (isModelAlias(session.model)) {
 			this.activeModel = session.model;
 		}
-		this.lastUsage = this.store?.getUsage(session.sdkSessionId);
+		this.lastUsage = this.store?.getUsage(
+			this.currentProviderId,
+			session.sdkSessionId,
+		);
 	}
 
 	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
@@ -142,7 +158,11 @@ export class RuntimeState {
 		}
 		this.lastUsage = event.usage;
 		if (event.usage && event.sessionId) {
-			this.store?.setUsage(event.sessionId, event.usage);
+			this.store?.setUsage(
+				this.currentProviderId,
+				event.sessionId,
+				event.usage,
+			);
 		}
 	}
 }

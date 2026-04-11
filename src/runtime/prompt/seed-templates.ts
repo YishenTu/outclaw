@@ -4,7 +4,6 @@ import {
 	existsSync,
 	mkdirSync,
 	readdirSync,
-	symlinkSync,
 } from "node:fs";
 import { join } from "node:path";
 
@@ -41,20 +40,6 @@ export function seedTemplates(
 	}
 
 	seedCronTemplates(join(promptHomeDir, "cron"), join(templatesDir, "cron"));
-	seedSkillsSymlink(promptHomeDir);
-}
-
-function seedSkillsSymlink(promptHomeDir: string): void {
-	const skillsDir = join(promptHomeDir, "skills");
-	const claudeDir = join(promptHomeDir, ".claude");
-	const linkPath = join(claudeDir, "skills");
-
-	mkdirSync(skillsDir, { recursive: true });
-	mkdirSync(claudeDir, { recursive: true });
-
-	if (!existsSync(linkPath)) {
-		symlinkSync("../skills", linkPath);
-	}
 }
 
 function seedCronTemplates(cronDir: string, templateCronDir: string): void {

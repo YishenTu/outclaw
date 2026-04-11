@@ -11,6 +11,7 @@ import {
 	type SkillInfo,
 	type UsageInfo,
 } from "../../common/protocol.ts";
+import { readClaudeHistory } from "./claude-history.ts";
 
 function extractUsage(event: {
 	modelUsage?: Record<
@@ -58,6 +59,7 @@ function extractUsage(event: {
 }
 
 export class ClaudeAdapter implements Facade {
+	readonly providerId = "claude";
 	private skills: SkillInfo[] = [];
 
 	async getSkills(cwd?: string): Promise<SkillInfo[]> {
@@ -65,6 +67,10 @@ export class ClaudeAdapter implements Facade {
 			return this.skills;
 		}
 		return this.probeSkills(cwd);
+	}
+
+	readHistory(sessionId: string) {
+		return readClaudeHistory(sessionId);
 	}
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {

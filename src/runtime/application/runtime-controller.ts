@@ -3,13 +3,11 @@ import type {
 	Facade,
 	FacadeEvent,
 	HeartbeatResult,
-	HistoryReplayEvent,
 	ImageRef,
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
 import { extractError, parseMessage } from "../../common/protocol.ts";
 import { handleRuntimeCommand } from "../commands/handle-command.ts";
-import { readHistory } from "../persistence/history-reader.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
 import { assembleSystemPrompt } from "../prompt/assemble-system-prompt.ts";
 import { ClientHub, type WsClient } from "../transport/client-hub.ts";
@@ -36,9 +34,6 @@ interface RuntimeControllerOptions {
 	};
 	promptHomeDir?: string;
 	facade: Facade;
-	historyReader?: (
-		sdkSessionId: string,
-	) => Promise<HistoryReplayEvent["messages"]>;
 	store?: SessionStore;
 }
 
@@ -94,9 +89,6 @@ export class RuntimeController {
 		| undefined;
 	private queue = new MessageQueue();
 	private shuttingDown = false;
-	private readHistory: (
-		sdkSessionId: string,
-	) => Promise<HistoryReplayEvent["messages"]>;
 	private restart: (() => void) | undefined;
 	private state: RuntimeState;
 
@@ -105,8 +97,7 @@ export class RuntimeController {
 		this.deliverHeartbeatResult = options.deliverHeartbeatResult;
 		this.heartbeatInfoProvider = options.heartbeatInfoProvider;
 		this.restart = options.restart;
-		this.state = new RuntimeState(options.store);
-		this.readHistory = options.historyReader ?? readHistory;
+		this.state = new RuntimeState(options.facade.providerId, options.store);
 	}
 
 	get currentModel(): string {
@@ -155,6 +146,7 @@ export class RuntimeController {
 	async broadcastCronResult(result: CronExecutionResult) {
 		if (result.sessionId) {
 			this.options.store?.upsert({
+				providerId: this.options.facade.providerId,
 				sdkSessionId: result.sessionId,
 				title: result.jobName,
 				model: result.model,
@@ -360,9 +352,12 @@ export class RuntimeController {
 		if (!sessionId) {
 			return;
 		}
+		if (!this.options.facade.readHistory) {
+			return;
+		}
 
 		try {
-			const messages = await this.readHistory(sessionId);
+			const messages = await this.options.facade.readHistory(sessionId);
 			this.hub.sendMany(targets, {
 				type: "history_replay",
 				messages,

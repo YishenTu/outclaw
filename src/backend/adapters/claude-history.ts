@@ -14,7 +14,7 @@ interface HistoryBlock {
 	thinking?: string;
 }
 
-export async function readHistory(
+export async function readClaudeHistory(
 	sdkSessionId: string,
 ): Promise<DisplayMessage[]> {
 	const messages = await getSessionMessages(sdkSessionId);
@@ -22,15 +22,14 @@ export async function readHistory(
 	let pendingThinking = "";
 
 	for (const msg of messages) {
-		const m = msg.message as {
-			role: string;
+		const message = msg.message as {
 			content: string | HistoryBlock[];
 		};
 
 		if (
 			pendingThinking &&
 			msg.type === "user" &&
-			isDisplayableUserContent(m.content)
+			isDisplayableUserContent(message.content)
 		) {
 			result.push({
 				role: "assistant",
@@ -40,13 +39,13 @@ export async function readHistory(
 			pendingThinking = "";
 		}
 
-		if (msg.type === "user" && typeof m.content === "string") {
-			result.push({ role: "user", content: m.content });
+		if (msg.type === "user" && typeof message.content === "string") {
+			result.push({ role: "user", content: message.content });
 		}
 
-		if (msg.type === "user" && Array.isArray(m.content)) {
-			const content = extractText(m.content);
-			const images = extractImages(m.content);
+		if (msg.type === "user" && Array.isArray(message.content)) {
+			const content = extractText(message.content);
+			const images = extractImages(message.content);
 			if (content || images.length > 0) {
 				result.push({
 					role: "user",
@@ -56,12 +55,11 @@ export async function readHistory(
 			}
 		}
 
-		if (msg.type === "assistant" && Array.isArray(m.content)) {
-			const text = extractText(m.content);
-			const thinking = extractThinking(m.content);
+		if (msg.type === "assistant" && Array.isArray(message.content)) {
+			const text = extractText(message.content);
+			const thinking = extractThinking(message.content);
 
 			if (thinking && !text) {
-				// Thinking-only entry — buffer for merging with the next text entry
 				pendingThinking += thinking;
 				continue;
 			}
@@ -78,7 +76,6 @@ export async function readHistory(
 		}
 	}
 
-	// Flush any trailing thinking-only entry
 	if (pendingThinking) {
 		result.push({ role: "assistant", content: "", thinking: pendingThinking });
 	}

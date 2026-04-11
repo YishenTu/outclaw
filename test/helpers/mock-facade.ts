@@ -1,4 +1,5 @@
 import type {
+	DisplayMessage,
 	Facade,
 	FacadeEvent,
 	RunParams,
@@ -7,12 +8,23 @@ import type {
 const SESSION_ID = "mock-session-123";
 
 export class MockFacade implements Facade {
+	providerId = "mock";
 	lastParams: RunParams | undefined;
 	allParams: RunParams[] = [];
 	callCount = 0;
 	delayMs = 0;
 	callOrder: string[] = [];
 	textChunks: string[] | undefined;
+	historyMessages: DisplayMessage[] = [];
+	historyError: Error | undefined;
+
+	async readHistory(): Promise<DisplayMessage[]> {
+		if (this.historyError) {
+			throw this.historyError;
+		}
+
+		return this.historyMessages;
+	}
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		this.lastParams = params;

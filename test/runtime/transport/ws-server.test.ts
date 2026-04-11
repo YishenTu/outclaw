@@ -623,11 +623,13 @@ describe("Runtime server", () => {
 		const dbPath = `${TEST_DB}-list`;
 		const store = createTestStore(dbPath);
 		store.upsert({
+			providerId: "mock",
 			sdkSessionId: "sdk-aaa",
 			title: "First chat",
 			model: "sonnet",
 		});
 		store.upsert({
+			providerId: "mock",
 			sdkSessionId: "sdk-bbb",
 			title: "Second chat",
 			model: "opus",
@@ -656,6 +658,7 @@ describe("Runtime server", () => {
 		const dbPath = `${TEST_DB}-switch`;
 		const store = createTestStore(dbPath);
 		store.upsert({
+			providerId: "mock",
 			sdkSessionId: "sdk-target-abc",
 			title: "Target session",
 			model: "haiku",
@@ -695,6 +698,7 @@ describe("Runtime server", () => {
 		const dbPath = `${TEST_DB}-switch-broadcast`;
 		const store = createTestStore(dbPath);
 		store.upsert({
+			providerId: "mock",
 			sdkSessionId: "sdk-target-abc",
 			title: "Target session",
 			model: "haiku",
@@ -744,18 +748,20 @@ describe("Runtime server", () => {
 		const dbPath = `${TEST_DB}-switch-history`;
 		const store = createTestStore(dbPath);
 		store.upsert({
+			providerId: "mock",
 			sdkSessionId: "sdk-target-abc",
 			title: "Target session",
 			model: "haiku",
 		});
+		const facade = new MockFacade();
+		facade.historyMessages = [
+			{ role: "user", content: "history for sdk-target-abc" },
+		];
 
 		const sharedServer = createRuntime({
 			port: 0,
-			facade: new MockFacade(),
+			facade,
 			store,
-			historyReader: async (sessionId) => [
-				{ role: "user", content: `history for ${sessionId}` },
-			],
 		});
 		const sender = await connectWs(sharedServer.port);
 		const observer = await connectWs(sharedServer.port);

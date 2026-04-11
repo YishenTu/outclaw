@@ -5,9 +5,13 @@ A mini [OpenClaw](https://github.com/openclaw/openclaw) — autonomous AI agent 
 ## Architecture
 
 - **Common** — Shared protocol types, commands, model aliases, and serialization helpers
-- **Backend** — Facade interface with the Claude Agent SDK adapter
-- **Runtime** — WebSocket server, shared active session, SQLite session store, history replay, daemon lifecycle, heartbeat scheduler, cron scheduler
+- **Backend** — Facade interface with the Claude Agent SDK adapter (agent invocation, history normalization, skill discovery)
+- **Runtime** — WebSocket server, shared active session, provider-scoped SQLite session store, daemon lifecycle, heartbeat scheduler, cron scheduler
 - **Frontend** — Ink TUI and Telegram bot connected to the same runtime session
+
+The runtime is provider-neutral orchestration. Provider-specific run semantics,
+history lookup/parsing, skill discovery, and provider setup stay behind the
+backend facade. Concrete provider selection happens in `src/index.ts`.
 
 ## Runtime Layout
 
@@ -17,7 +21,7 @@ src/runtime/
 ├── commands/      # shared runtime command handling
 ├── cron/          # cron job scheduler and agent runner
 ├── heartbeat/     # periodic heartbeat scheduling
-├── persistence/   # session store, session manager, history reader
+├── persistence/   # session store, session manager
 ├── process/       # daemon PID management
 ├── prompt/        # system prompt assembly and template seeding
 └── transport/     # Bun WS server and client fan-out
@@ -78,6 +82,7 @@ Available from the TUI and Telegram:
 - `/session rename <id> <title>` — rename a session
 - `/status` — show model, effort, active session, and context usage
 - `/stop` — cancel the current agent run
+- `/restart` — restart the daemon
 
 ## Runtime State
 
@@ -87,10 +92,14 @@ The daemon stores its state in `~/.outclaw/`:
 - `.env` — optional env file for config values referenced as `$NAME`
 - `daemon.pid` — background daemon PID
 - `daemon.log` — daemon stdout/stderr from `oc start`
-- `db.sqlite` — sessions, active session pointer, Telegram media refs, and last known usage stats
+- `db.sqlite` — provider-scoped sessions, active session pointer, Telegram media refs, and last known usage stats
 - `cron/` — YAML cron job definitions (one file per job)
 - `media/` — copied Telegram media used by the runtime
 - `AGENTS.md`, `USER.md`, `SOUL.md`, `MEMORY.md`, `HEARTBEAT.md` — seeded prompt templates
+
+Conversation history is not stored in the runtime database. The runtime persists
+provider-scoped metadata and usage, while the backend provider owns the raw
+session transcript and history replay source.
 
 State-changing runtime commands are shared across connected frontends. Model changes,
 thinking effort changes, session clears, session switches, and session history replay
@@ -101,9 +110,11 @@ survives reconnects and session changes.
 
 ## TUI
 
-The TUI now renders structured messages instead of a flat output buffer:
+The TUI renders structured messages with a figlet banner header, git status
+display, and random tagline:
 
 - user prompts as highlighted blocks
+- assistant thinking as dimmed markdown above the response
 - assistant replies as terminal-rendered markdown
 - info and error events as separate message types
 - a status bar with connection state, model, effort, and context percentage

@@ -5,6 +5,7 @@ import { SessionStore } from "../../../src/runtime/persistence/session-store.ts"
 import { TelegramMediaRefStore } from "../../../src/runtime/persistence/telegram-media-ref-store.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-telegram-media-ref-test.sqlite");
+const PROVIDER_ID = "claude";
 
 function cleanupDb(path: string) {
 	if (existsSync(path)) rmSync(path);
@@ -45,6 +46,7 @@ describe("TelegramMediaRefStore", () => {
 		const mediaRefStore = new TelegramMediaRefStore(TEST_DB);
 
 		sessionStore.upsert({
+			providerId: PROVIDER_ID,
 			sdkSessionId: "sdk-123",
 			title: "Hello",
 			model: "opus",
@@ -57,7 +59,7 @@ describe("TelegramMediaRefStore", () => {
 			direction: "outbound",
 		});
 
-		expect(sessionStore.get("sdk-123")?.title).toBe("Hello");
+		expect(sessionStore.get(PROVIDER_ID, "sdk-123")?.title).toBe("Hello");
 		expect(mediaRefStore.get(1, 2)?.path).toBe("/tmp/chart.png");
 
 		sessionStore.close();

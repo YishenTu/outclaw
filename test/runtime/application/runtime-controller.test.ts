@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ImageRef, ServerEvent } from "../../../src/common/protocol.ts";
+import type {
+	Facade,
+	HistoryReplayEvent,
+	ImageRef,
+	ServerEvent,
+} from "../../../src/common/protocol.ts";
 import { RuntimeController } from "../../../src/runtime/application/runtime-controller.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
@@ -10,6 +15,7 @@ import { MockFacade } from "../../helpers/mock-facade.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-runtime-controller.sqlite");
 const IMAGE_TMP = mkdtempSync(join(tmpdir(), "mis-runtime-controller-"));
+const PROVIDER_ID = "mock";
 
 // Minimal WsClient stub — ClientHub only calls .send()
 function mockWs(
@@ -42,12 +48,17 @@ function createController(
 		}) => Promise<void> | void;
 		promptHomeDir?: string;
 		store?: SessionStore;
-		historyReader?: (
-			id: string,
-		) => Promise<Array<{ role: "user" | "assistant"; content: string }>>;
+		historyReader?: (id: string) => Promise<HistoryReplayEvent["messages"]>;
 	} = {},
 ) {
 	const facade = overrides.facade ?? new MockFacade();
+	if (overrides.historyReader) {
+		(
+			facade as Facade & {
+				readHistory: (id: string) => Promise<HistoryReplayEvent["messages"]>;
+			}
+		).readHistory = overrides.historyReader;
+	}
 	return {
 		facade,
 		controller: new RuntimeController({
@@ -55,7 +66,6 @@ function createController(
 			cwd: overrides.cwd,
 			promptHomeDir: overrides.promptHomeDir,
 			store: overrides.store,
-			historyReader: overrides.historyReader,
 			deliverCronResult: overrides.deliverCronResult,
 			deliverHeartbeatResult: overrides.deliverHeartbeatResult,
 		}),
@@ -225,6 +235,7 @@ describe("RuntimeController", () => {
 
 		test("request_skills sends skills_update when facade supports it", async () => {
 			const facade = {
+				providerId: "mock",
 				run: async function* () {},
 				getSkills: async (cwd?: string) => [
 					{ name: "commit", description: `cwd=${cwd ?? "none"}` },
@@ -923,7 +934,7 @@ describe("RuntimeController", () => {
 
 			controller.handleMessage(ws, prompt("main prompt"));
 			await waitForDone(ws);
-			expect(store.getActiveSessionId()).toBe("mock-session-123");
+			expect(store.getActiveSessionId(PROVIDER_ID)).toBe("mock-session-123");
 
 			await controller.broadcastCronResult({
 				jobName: "daily-summary",
@@ -932,13 +943,14 @@ describe("RuntimeController", () => {
 				text: "All clear",
 			});
 
-			expect(store.get("cron-session-1")).toMatchObject({
+			expect(store.get(PROVIDER_ID, "cron-session-1")).toMatchObject({
+				providerId: PROVIDER_ID,
 				sdkSessionId: "cron-session-1",
 				title: "daily-summary",
 				model: "haiku",
 				tag: "cron",
 			});
-			expect(store.getActiveSessionId()).toBe("mock-session-123");
+			expect(store.getActiveSessionId(PROVIDER_ID)).toBe("mock-session-123");
 
 			store.close();
 			cleanupStore(TEST_DB);

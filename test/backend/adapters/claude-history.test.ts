@@ -1,22 +1,13 @@
 import { describe, expect, mock, test } from "bun:test";
 
-function mockClaudeSdk(
-	overrides: {
-		query?: ReturnType<typeof mock>;
-		getSessionMessages?: ReturnType<typeof mock>;
-	} = {},
-) {
-	const query = overrides.query ?? mock(() => (async function* () {})());
-	const getSessionMessages =
-		overrides.getSessionMessages ?? mock(async () => []);
+function mockClaudeSdk(getSessionMessages: ReturnType<typeof mock>) {
 	mock.module("@anthropic-ai/claude-agent-sdk", () => ({
-		query,
+		query: mock(() => (async function* () {})()),
 		getSessionMessages,
 	}));
-	return { query, getSessionMessages };
 }
 
-describe("readHistory", () => {
+describe("ClaudeAdapter.readHistory", () => {
 	test("returns displayable user and assistant messages", async () => {
 		const getSessionMessages = mock(async (sessionId: string) => {
 			expect(sessionId).toBe("sdk-123");
@@ -48,12 +39,13 @@ describe("readHistory", () => {
 			];
 		});
 
-		mockClaudeSdk({ getSessionMessages });
+		mockClaudeSdk(getSessionMessages);
 
-		const { readHistory } = await import(
-			"../../../src/runtime/persistence/history-reader.ts"
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
 		);
-		const messages = await readHistory("sdk-123");
+		const adapter = new ClaudeAdapter();
+		const messages = await adapter.readHistory("sdk-123");
 
 		expect(messages).toEqual([
 			{ role: "user", content: "hello" },
@@ -81,12 +73,13 @@ describe("readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk({ getSessionMessages });
+		mockClaudeSdk(getSessionMessages);
 
-		const { readHistory } = await import(
-			"../../../src/runtime/persistence/history-reader.ts"
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
 		);
-		const messages = await readHistory("sdk-merge");
+		const adapter = new ClaudeAdapter();
+		const messages = await adapter.readHistory("sdk-merge");
 
 		expect(messages).toEqual([
 			{ role: "user", content: "hello" },
@@ -116,12 +109,13 @@ describe("readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk({ getSessionMessages });
+		mockClaudeSdk(getSessionMessages);
 
-		const { readHistory } = await import(
-			"../../../src/runtime/persistence/history-reader.ts"
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
 		);
-		const messages = await readHistory("sdk-consecutive");
+		const adapter = new ClaudeAdapter();
+		const messages = await adapter.readHistory("sdk-consecutive");
 
 		expect(messages).toEqual([
 			{
@@ -172,12 +166,13 @@ describe("readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk({ getSessionMessages });
+		mockClaudeSdk(getSessionMessages);
 
-		const { readHistory } = await import(
-			"../../../src/runtime/persistence/history-reader.ts"
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
 		);
-		const messages = await readHistory("sdk-multi");
+		const adapter = new ClaudeAdapter();
+		const messages = await adapter.readHistory("sdk-multi");
 
 		expect(messages).toEqual([
 			{ role: "assistant", content: "searching...", thinking: "reasoning" },
@@ -205,12 +200,13 @@ describe("readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk({ getSessionMessages });
+		mockClaudeSdk(getSessionMessages);
 
-		const { readHistory } = await import(
-			"../../../src/runtime/persistence/history-reader.ts"
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
 		);
-		const messages = await readHistory("sdk-user-boundary");
+		const adapter = new ClaudeAdapter();
+		const messages = await adapter.readHistory("sdk-user-boundary");
 
 		expect(messages).toEqual([
 			{
@@ -249,12 +245,13 @@ describe("readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk({ getSessionMessages });
+		mockClaudeSdk(getSessionMessages);
 
-		const { readHistory } = await import(
-			"../../../src/runtime/persistence/history-reader.ts"
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
 		);
-		const messages = await readHistory("sdk-456");
+		const adapter = new ClaudeAdapter();
+		const messages = await adapter.readHistory("sdk-456");
 
 		expect(messages).toEqual([
 			{

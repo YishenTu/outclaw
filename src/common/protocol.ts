@@ -251,7 +251,9 @@ export interface RunParams {
 }
 
 export interface Facade {
+	providerId: string;
 	run(params: RunParams): AsyncIterable<FacadeEvent>;
+	readHistory?(sessionId: string): Promise<DisplayMessage[]>;
 	getSkills?(cwd?: string): Promise<SkillInfo[]>;
 }
 

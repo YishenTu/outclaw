@@ -22,6 +22,7 @@ function createFacade(
 	onRun?: (params: RunParams) => void,
 ): Facade {
 	return {
+		providerId: "mock",
 		async *run(params) {
 			onRun?.(params);
 			for (const event of events) {

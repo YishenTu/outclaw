@@ -6,9 +6,20 @@ A mini OpenClaw: autonomous AI agent powered by the Claude Agent SDK.
 
 - **Common** (`src/common/`): Shared protocol types, serialization, helpers
 - **Backend** (`src/backend/`): Facade interface + provider adapters (Claude)
-- **Runtime** (`src/runtime/`): WS server, shared active session, SQLite session store, history replay, message queue, PID management, heartbeat scheduler, cron scheduler, system prompt assembly
+- **Runtime** (`src/runtime/`): WS server, shared active session, SQLite session store, message queue, PID management, heartbeat scheduler, cron scheduler, system prompt assembly
 - **Frontend** (`src/frontend/`): TUI (Ink) and Telegram bot connected to the same runtime session
 - **CLI** (`src/cli.ts`): `oc` command — start/stop/restart/status/tui/dev
+
+### Runtime neutrality
+
+`src/runtime/` is an orchestration layer and must stay provider neutral.
+
+- Runtime owns scheduling, queueing, session selection, persistence policy, WS fanout, Telegram/TUI delivery coordination, and process lifecycle.
+- Backend adapters own provider behavior: run/resume semantics, history replay, provider event translation, provider capabilities, provider-specific setup, and provider-specific storage lookup.
+- If runtime needs provider-dependent behavior, extend the backend facade with an explicit method or capability instead of branching on provider identity inside runtime code.
+- Runtime must not import provider SDKs or parse provider-native transcript/history formats directly.
+- Runtime must not create provider-specific filesystem artifacts or assume a specific provider directory layout.
+- Persist provider ownership alongside any provider session identifier. Never assume a single global provider namespace.
 
 ## Stack
 
@@ -60,6 +71,19 @@ When unsure about Claude Agent SDK behavior, write a throwaway script in `dev/`,
 - Tests go in `test/` mirroring `src/` structure (e.g. `src/runtime/agent.ts` → `test/runtime/agent.test.ts`)
 - Biome handles linting and formatting (tabs, double quotes)
 - All shared types live in `src/common/protocol.ts` — do NOT create re-export shims or barrel files. Import directly from the source module.
+- Keep provider-specific logic behind the backend facade. If a change adds a provider SDK import under `src/runtime/`, the design is probably wrong.
+
+## Provider boundaries
+
+- Add provider-specific code under `src/backend/`, not `src/runtime/`.
+- When adding new runtime features, define the provider-neutral contract first, then implement the adapter side.
+- Runtime stores provider-neutral metadata; raw provider transcript parsing and replay belong in backend adapters.
+- Composition in `src/index.ts` may choose a concrete provider for the app, but `createRuntime()` and runtime internals must not default to one.
+- Use provider-neutral names in `src/common/` and `src/runtime/`. Avoid provider-colored identifiers when a neutral term exists.
+- Do not make runtime tests depend on provider-native message shapes; test those in backend adapter tests.
+- Model catalogs, provider capabilities, and provider feature differences belong behind the backend facade, not inside runtime orchestration.
+- When migrating persistence, preserve provider ownership explicitly instead of baking in provider names inside runtime code.
+- Never resume, replay, switch, or delete a session across a provider mismatch.
 
 ## Code organization
 

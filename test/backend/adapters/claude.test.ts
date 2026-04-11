@@ -27,7 +27,9 @@ describe("ClaudeAdapter", () => {
 			"../../../src/backend/adapters/claude.ts"
 		);
 		const adapter = new ClaudeAdapter();
+		expect(adapter.providerId).toBe("claude");
 		expect(adapter.run).toBeFunction();
+		expect(adapter.readHistory).toBeFunction();
 	});
 
 	test("run() returns an async iterable", async () => {

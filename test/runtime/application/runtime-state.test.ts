@@ -5,6 +5,8 @@ import type { DoneEvent } from "../../../src/common/protocol.ts";
 import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 
+const PROVIDER_ID = "mock";
+
 function makeDoneEvent(
 	sessionId = "sdk-abc",
 	overrides?: Partial<DoneEvent>,
@@ -30,51 +32,51 @@ function makeDoneEvent(
 
 describe("RuntimeState", () => {
 	test("starts with default model and effort", () => {
-		const state = new RuntimeState();
+		const state = new RuntimeState(PROVIDER_ID);
 		expect(state.model).toBe(DEFAULT_MODEL);
 		expect(state.effort).toBe(DEFAULT_EFFORT);
 	});
 
 	test("resolvedModel returns the SDK model ID", () => {
-		const state = new RuntimeState();
+		const state = new RuntimeState(PROVIDER_ID);
 		expect(state.resolvedModel).toBe(MODEL_ALIASES[DEFAULT_MODEL]);
 	});
 
 	test("starts with no session", () => {
-		const state = new RuntimeState();
+		const state = new RuntimeState(PROVIDER_ID);
 		expect(state.sessionId).toBeUndefined();
 		expect(state.sessionTitle).toBeUndefined();
 	});
 
 	test("setModel changes model", () => {
-		const state = new RuntimeState();
+		const state = new RuntimeState(PROVIDER_ID);
 		state.setModel("haiku");
 		expect(state.model).toBe("haiku");
 		expect(state.resolvedModel).toBe(MODEL_ALIASES.haiku);
 	});
 
 	test("setEffort changes effort", () => {
-		const state = new RuntimeState();
+		const state = new RuntimeState(PROVIDER_ID);
 		state.setEffort("low");
 		expect(state.effort).toBe("low");
 	});
 
 	describe("preparePrompt", () => {
 		test("derives title from text prompt", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			state.preparePrompt("What is the meaning of life?");
 			expect(state.sessionTitle).toBe("What is the meaning of life?");
 		});
 
 		test("truncates long titles to 100 chars", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			const longPrompt = "a".repeat(200);
 			state.preparePrompt(longPrompt);
 			expect(state.sessionTitle).toBe("a".repeat(100));
 		});
 
 		test("derives title from single image prompt", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			state.preparePrompt("", [
 				{ path: "/tmp/cat.png", mediaType: "image/png" },
 			]);
@@ -82,7 +84,7 @@ describe("RuntimeState", () => {
 		});
 
 		test("derives title from multiple images prompt", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			state.preparePrompt("", [
 				{ path: "/tmp/a.png", mediaType: "image/png" },
 				{ path: "/tmp/b.jpg", mediaType: "image/jpeg" },
@@ -91,7 +93,7 @@ describe("RuntimeState", () => {
 		});
 
 		test("does not override title once session is established", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			state.preparePrompt("First prompt");
 			state.completeRun(makeDoneEvent());
 			state.preparePrompt("Second prompt");
@@ -99,7 +101,7 @@ describe("RuntimeState", () => {
 		});
 
 		test("returns undefined title for empty prompt with no images", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			state.preparePrompt("");
 			expect(state.sessionTitle).toBeUndefined();
 		});
@@ -107,7 +109,7 @@ describe("RuntimeState", () => {
 
 	describe("clearSession", () => {
 		test("clears session and increments generation", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			const gen0 = state.generation;
 			state.preparePrompt("hello");
 			state.completeRun(makeDoneEvent());
@@ -120,7 +122,7 @@ describe("RuntimeState", () => {
 
 	describe("completeRun", () => {
 		test("records session ID and usage", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			const done = makeDoneEvent("sdk-xyz");
 			state.completeRun(done);
 			expect(state.sessionId).toBe("sdk-xyz");
@@ -130,7 +132,7 @@ describe("RuntimeState", () => {
 		});
 
 		test("tracks the last telegram delivery target", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 
 			state.preparePrompt("from telegram");
 			state.completeRun(makeDoneEvent("sdk-tg"), "telegram", 123);
@@ -142,7 +144,7 @@ describe("RuntimeState", () => {
 		});
 
 		test("keeps the last user delivery target when heartbeat completes", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 
 			state.preparePrompt("from telegram");
 			state.completeRun(makeDoneEvent("sdk-tg"), "telegram", 123);
@@ -157,8 +159,9 @@ describe("RuntimeState", () => {
 
 	describe("switchToSession", () => {
 		test("switches to a stored session and updates model", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			state.switchToSession({
+				providerId: PROVIDER_ID,
 				sdkSessionId: "sdk-old",
 				title: "Old chat",
 				model: "sonnet",
@@ -174,9 +177,10 @@ describe("RuntimeState", () => {
 		});
 
 		test("increments generation", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			const gen0 = state.generation;
 			state.switchToSession({
+				providerId: PROVIDER_ID,
 				sdkSessionId: "sdk-1",
 				title: "t",
 				model: "haiku",
@@ -189,8 +193,9 @@ describe("RuntimeState", () => {
 		});
 
 		test("ignores unknown model alias in stored session", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			state.switchToSession({
+				providerId: PROVIDER_ID,
 				sdkSessionId: "sdk-1",
 				title: "t",
 				model: "unknown-model",
@@ -199,14 +204,13 @@ describe("RuntimeState", () => {
 				createdAt: 0,
 				lastActive: 0,
 			});
-			// Model stays at default since "unknown-model" is not a valid alias
 			expect(state.model).toBe(DEFAULT_MODEL);
 		});
 	});
 
 	describe("createStatusEvent", () => {
 		test("returns current state as a RuntimeStatusEvent", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			state.setModel("haiku");
 			state.setEffort("max");
 			state.completeRun(makeDoneEvent("sdk-status"));
@@ -220,7 +224,7 @@ describe("RuntimeState", () => {
 		});
 
 		test("includes sessionTitle when session has a title", () => {
-			const state = new RuntimeState();
+			const state = new RuntimeState(PROVIDER_ID);
 			state.preparePrompt("Hello world");
 			state.completeRun(makeDoneEvent("sdk-titled"));
 
@@ -238,12 +242,11 @@ describe("RuntimeState", () => {
 
 		test("restores usage from DB for the active session", () => {
 			store = new SessionStore(":memory:");
-			const first = new RuntimeState(store);
+			const first = new RuntimeState(PROVIDER_ID, store);
 			first.preparePrompt("hello");
 			first.completeRun(makeDoneEvent("sdk-persist"));
 
-			// Simulate daemon restart — new RuntimeState with same store
-			const restored = new RuntimeState(store);
+			const restored = new RuntimeState(PROVIDER_ID, store);
 			expect(restored.sessionId).toBe("sdk-persist");
 			expect(restored.createStatusEvent().usage).toEqual(makeDoneEvent().usage);
 		});

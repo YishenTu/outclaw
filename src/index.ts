@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { ClaudeAdapter } from "./backend/adapters/claude.ts";
+import { ensureClaudeSkillsSymlink } from "./backend/adapters/claude-setup.ts";
 import { startTelegramBot } from "./frontend/telegram/index.ts";
 import { copyTelegramMedia } from "./frontend/telegram/media/storage.ts";
 import { loadConfig } from "./runtime/config.ts";
@@ -14,6 +16,7 @@ import { createRuntime } from "./runtime/transport/ws-server.ts";
 const HOME_DIR = join(homedir(), ".outclaw");
 mkdirSync(HOME_DIR, { recursive: true });
 seedTemplates(HOME_DIR, join(import.meta.dir, "templates"));
+ensureClaudeSkillsSymlink(HOME_DIR);
 
 const config = loadConfig(HOME_DIR);
 
@@ -22,13 +25,14 @@ pidManager.write(process.pid);
 
 const dbPath = join(HOME_DIR, "db.sqlite");
 const mediaRoot = join(HOME_DIR, "media");
-const store = new SessionStore(dbPath);
+const store = new SessionStore(dbPath, { legacyProviderId: "claude" });
 const telegramMediaRefStore = new TelegramMediaRefStore(dbPath);
 
 const CLI_ENTRY = join(import.meta.dir, "cli.ts");
 
 const runtime = createRuntime({
 	port: config.port,
+	facade: new ClaudeAdapter(),
 	cwd: HOME_DIR,
 	cronDir: join(HOME_DIR, "cron"),
 	heartbeat: config.heartbeat,
