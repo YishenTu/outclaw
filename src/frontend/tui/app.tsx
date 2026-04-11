@@ -191,7 +191,6 @@ export function TuiApp({ url }: TuiAppProps) {
 			<Box paddingX={1}>
 				<HeaderBar />
 			</Box>
-			<Text color={theme.brand}>{"═".repeat(columns)}</Text>
 			<Box marginTop={1} marginBottom={1} flexGrow={1} flexDirection="column">
 				<MessageList
 					messages={tuiState.messages}
