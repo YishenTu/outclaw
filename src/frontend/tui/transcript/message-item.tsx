@@ -51,6 +51,14 @@ export const MessageItem = memo(function MessageItem({
 					</Text>
 				</Box>
 			);
+		case "thinking":
+			return (
+				<Box marginTop={1} paddingLeft={3} paddingRight={1}>
+					<Text>
+						{renderMarkdown(message.text, columns - 4, { dim: true })}
+					</Text>
+				</Box>
+			);
 		case "assistant":
 			return (
 				<Box marginTop={1} paddingLeft={3} paddingRight={1}>

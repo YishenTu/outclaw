@@ -70,6 +70,7 @@ export class ClaudeAdapter implements Facade {
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		const abortController = params.abortController ?? new AbortController();
 		let emittedAssistantText = "";
+		let streamedThinkingText = "";
 		let needsSeparator = false;
 
 		try {
@@ -117,6 +118,13 @@ export class ClaudeAdapter implements Facade {
 					const raw = event.event;
 					if (
 						raw.type === "content_block_delta" &&
+						raw.delta.type === "thinking_delta"
+					) {
+						streamedThinkingText += raw.delta.thinking;
+						yield { type: "thinking", text: raw.delta.thinking };
+					}
+					if (
+						raw.type === "content_block_delta" &&
 						raw.delta.type === "text_delta"
 					) {
 						if (needsSeparator) {
@@ -131,6 +139,17 @@ export class ClaudeAdapter implements Facade {
 				}
 
 				if (event.type === "assistant") {
+					const nextThinking = extractThinkingText(event);
+					const thinking = normalizeAssistantText(
+						nextThinking,
+						streamedThinkingText,
+						params.stream,
+					);
+					if (thinking) {
+						yield { type: "thinking", text: thinking };
+					}
+					streamedThinkingText = "";
+
 					const nextText = extractAssistantText(event);
 					const text = normalizeAssistantText(
 						nextText,
@@ -200,6 +219,22 @@ export class ClaudeAdapter implements Facade {
 		}
 		return this.skills;
 	}
+}
+
+function extractThinkingText(event: {
+	message?: {
+		content?: Array<{
+			type?: string;
+			thinking?: string;
+		}>;
+	};
+}): string {
+	return (
+		event.message?.content
+			?.filter((block) => block.type === "thinking")
+			.map((block) => block.thinking ?? "")
+			.join("") ?? ""
+	);
 }
 
 function extractAssistantText(event: {

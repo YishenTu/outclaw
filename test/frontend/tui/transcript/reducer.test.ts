@@ -10,6 +10,12 @@ describe("mapEventToActions", () => {
 		]);
 	});
 
+	test("thinking event → append_thinking", () => {
+		expect(mapEventToActions({ type: "thinking", text: "reasoning" })).toEqual([
+			{ type: "append_thinking", text: "reasoning" },
+		]);
+	});
+
 	test("done event → commit_streaming", () => {
 		expect(
 			mapEventToActions({
@@ -230,6 +236,28 @@ describe("mapEventToActions", () => {
 		]);
 	});
 
+	test("history_replay with thinking content", () => {
+		const actions = mapEventToActions({
+			type: "history_replay",
+			messages: [
+				{
+					role: "assistant",
+					content: "The answer",
+					thinking: "Let me reason",
+				},
+			],
+		});
+		expect(actions).toEqual([
+			{
+				type: "replay",
+				messages: [
+					{ id: 1, role: "thinking", text: "Let me reason" },
+					{ id: 2, role: "assistant", text: "The answer" },
+				],
+			},
+		]);
+	});
+
 	test("history_replay with user images", () => {
 		const actions = mapEventToActions({
 			type: "history_replay",
@@ -298,6 +326,90 @@ describe("mapEventToActions", () => {
 });
 
 describe("applyAction", () => {
+	test("append_thinking accumulates thinking text", () => {
+		const state = initialTuiState();
+		const next = applyAction(state, {
+			type: "append_thinking",
+			text: "let me think",
+		});
+		expect(next.streamingThinking).toBe("let me think");
+		expect(next.running).toBe(true);
+
+		const next2 = applyAction(next, {
+			type: "append_thinking",
+			text: " about this",
+		});
+		expect(next2.streamingThinking).toBe("let me think about this");
+	});
+
+	test("commit_streaming flushes thinking then text", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "reasoning",
+		});
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: "answer",
+		});
+		state = applyAction(state, { type: "commit_streaming" });
+
+		expect(state.messages).toEqual([
+			{ id: 1, role: "thinking", text: "reasoning" },
+			{ id: 2, role: "assistant", text: "answer" },
+		]);
+		expect(state.streaming).toBe("");
+		expect(state.streamingThinking).toBe("");
+		expect(state.running).toBe(false);
+	});
+
+	test("commit_streaming with only thinking content", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "just thinking",
+		});
+		state = applyAction(state, { type: "commit_streaming" });
+
+		expect(state.messages).toEqual([
+			{ id: 1, role: "thinking", text: "just thinking" },
+		]);
+		expect(state.streamingThinking).toBe("");
+	});
+
+	test("push_and_stop commits thinking before error", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "reasoning",
+		});
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: "partial",
+		});
+		state = applyAction(state, {
+			type: "push_and_stop",
+			role: "error",
+			text: "failed",
+		});
+		expect(state.messages).toEqual([
+			{ id: 1, role: "thinking", text: "reasoning" },
+			{ id: 2, role: "assistant", text: "partial" },
+			{ id: 3, role: "error", text: "failed" },
+		]);
+		expect(state.streamingThinking).toBe("");
+	});
+
+	test("clear resets streamingThinking", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "thinking",
+		});
+		state = applyAction(state, { type: "clear" });
+		expect(state.streamingThinking).toBe("");
+	});
+
 	test("append_streaming accumulates text", () => {
 		const state = initialTuiState();
 		const next = applyAction(state, {

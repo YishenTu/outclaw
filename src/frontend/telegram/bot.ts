@@ -2,7 +2,7 @@ import { autoRetry } from "@grammyjs/auto-retry";
 import { Bot, type Context, InputFile } from "grammy";
 import type { ImageRef } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
-import { createTelegramBridge } from "./bridge/client.ts";
+import { createTelegramBridge, type StreamChunk } from "./bridge/client.ts";
 import { TELEGRAM_COMMANDS } from "./commands/catalog.ts";
 import { registerTelegramRuntimeCommands } from "./commands/runtime.ts";
 import { registerTelegramModelShortcuts } from "./commands/shortcuts.ts";
@@ -68,7 +68,7 @@ interface TelegramBridgeLike {
 		images?: ImageRef[],
 		onImage?: (event: TelegramImageEvent) => void | Promise<void>,
 		telegramChatId?: number,
-	): AsyncIterable<string>;
+	): AsyncIterable<StreamChunk>;
 }
 
 interface TelegramBotLike {

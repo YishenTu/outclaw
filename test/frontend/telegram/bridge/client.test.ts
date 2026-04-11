@@ -197,12 +197,12 @@ describe("Telegram bridge", () => {
 	test("stream() yields text deltas", async () => {
 		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
 
-		const chunks: string[] = [];
+		const texts: string[] = [];
 		for await (const chunk of bridge.stream("hello")) {
-			chunks.push(chunk);
+			texts.push(chunk.text);
 		}
 
-		expect(chunks.join("")).toBe("echo: hello");
+		expect(texts.join("")).toBe("echo: hello");
 
 		bridge.close();
 	});
@@ -213,16 +213,16 @@ describe("Telegram bridge", () => {
 		facade.textChunks = [`Saved chart to ${imagePath}`];
 
 		try {
-			const chunks: string[] = [];
+			const texts: string[] = [];
 			const imageEvents: Array<{ type: string; path: string }> = [];
 
 			for await (const chunk of bridge.stream("hello", undefined, (event) => {
 				imageEvents.push(event);
 			})) {
-				chunks.push(chunk);
+				texts.push(chunk.text);
 			}
 
-			expect(chunks.join("")).toBe(`Saved chart to ${imagePath}`);
+			expect(texts.join("")).toBe(`Saved chart to ${imagePath}`);
 			expect(imageEvents).toEqual([{ type: "image", path: imagePath }]);
 		} finally {
 			facade.textChunks = undefined;
@@ -233,14 +233,14 @@ describe("Telegram bridge", () => {
 	test("stream() forwards prompt images", async () => {
 		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
 
-		const chunks: string[] = [];
+		const texts: string[] = [];
 		for await (const chunk of bridge.stream("", [
 			{ path: "/tmp/cat.png", mediaType: "image/png" },
 		])) {
-			chunks.push(chunk);
+			texts.push(chunk.text);
 		}
 
-		expect(chunks.join("")).toBe("echo: ");
+		expect(texts.join("")).toBe("echo: ");
 		expect(facade.lastParams?.images).toEqual([
 			{ path: "/tmp/cat.png", mediaType: "image/png" },
 		]);
@@ -503,7 +503,10 @@ describe("Telegram bridge", () => {
 		ws.dispatch("message", {
 			data: JSON.stringify({ type: "text", text: "first" }),
 		});
-		expect(await firstChunk).toEqual({ value: "first", done: false });
+		expect(await firstChunk).toEqual({
+			value: { type: "text", text: "first" },
+			done: false,
+		});
 
 		ws.dispatch("message", {
 			data: JSON.stringify({ type: "image", path: "/tmp/ignored.png" }),
@@ -511,7 +514,44 @@ describe("Telegram bridge", () => {
 		ws.dispatch("message", {
 			data: JSON.stringify({ type: "text", text: "second" }),
 		});
-		expect(await iterator.next()).toEqual({ value: "second", done: false });
+		expect(await iterator.next()).toEqual({
+			value: { type: "text", text: "second" },
+			done: false,
+		});
+
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "done" }),
+		});
+		expect(await iterator.next()).toEqual({ value: undefined, done: true });
+
+		bridge.close();
+	});
+
+	test("stream() yields thinking and text chunks distinctly", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+		const iterator = bridge.stream("hello")[Symbol.asyncIterator]();
+		const firstChunk = iterator.next();
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+
+		ws.dispatch("open");
+		await flushMicrotasks();
+
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "thinking", text: "let me think" }),
+		});
+		expect(await firstChunk).toEqual({
+			value: { type: "thinking", text: "let me think" },
+			done: false,
+		});
+
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "text", text: "answer" }),
+		});
+		expect(await iterator.next()).toEqual({
+			value: { type: "text", text: "answer" },
+			done: false,
+		});
 
 		ws.dispatch("message", {
 			data: JSON.stringify({ type: "done" }),

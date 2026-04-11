@@ -10,6 +10,11 @@ import {
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
 
+export interface StreamChunk {
+	type: "thinking" | "text";
+	text: string;
+}
+
 export function createTelegramBridge(url: string) {
 	const sockets = new Set<WebSocket>();
 
@@ -162,15 +167,25 @@ export function createTelegramBridge(url: string) {
 			images?: ImageRef[],
 			onImage?: (event: ImageEvent) => void | Promise<void>,
 			telegramChatId?: number,
-		): AsyncIterable<string> {
+		): AsyncIterable<StreamChunk> {
 			const { ws, ready } = createSocket();
 			await ready;
 
-			let resolve: ((value: IteratorResult<string>) => void) | null = null;
+			let resolve: ((value: IteratorResult<StreamChunk>) => void) | null = null;
 			let done = false;
 			let error: Error | null = null;
 			let pendingImageWork = Promise.resolve();
-			const pending: string[] = [];
+			const pending: StreamChunk[] = [];
+
+			const enqueue = (chunk: StreamChunk) => {
+				if (resolve) {
+					const r = resolve;
+					resolve = null;
+					r({ value: chunk, done: false });
+				} else {
+					pending.push(chunk);
+				}
+			};
 
 			const finishWithError = (err: Error) => {
 				error = err;
@@ -179,7 +194,10 @@ export function createTelegramBridge(url: string) {
 				if (resolve) {
 					const r = resolve;
 					resolve = null;
-					r({ value: undefined as unknown as string, done: true });
+					r({
+						value: undefined as unknown as StreamChunk,
+						done: true,
+					});
 				}
 			};
 
@@ -191,14 +209,10 @@ export function createTelegramBridge(url: string) {
 					path?: string;
 					caption?: string;
 				};
-				if (event.type === "text" && event.text) {
-					if (resolve) {
-						const r = resolve;
-						resolve = null;
-						r({ value: event.text, done: false });
-					} else {
-						pending.push(event.text);
-					}
+				if (event.type === "thinking" && event.text) {
+					enqueue({ type: "thinking", text: event.text });
+				} else if (event.type === "text" && event.text) {
+					enqueue({ type: "text", text: event.text });
 				} else if (event.type === "image" && event.path) {
 					if (!onImage) {
 						return;
@@ -233,7 +247,10 @@ export function createTelegramBridge(url: string) {
 					if (resolve) {
 						const r = resolve;
 						resolve = null;
-						r({ value: undefined as unknown as string, done: true });
+						r({
+							value: undefined as unknown as StreamChunk,
+							done: true,
+						});
 					}
 				}
 			};
@@ -249,11 +266,11 @@ export function createTelegramBridge(url: string) {
 
 			while (true) {
 				if (pending.length > 0) {
-					yield pending.shift() as string;
+					yield pending.shift() as StreamChunk;
 					continue;
 				}
 				if (done) break;
-				const result = await new Promise<IteratorResult<string>>((r) => {
+				const result = await new Promise<IteratorResult<StreamChunk>>((r) => {
 					resolve = r;
 				});
 				if (result.done) break;

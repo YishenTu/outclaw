@@ -41,7 +41,7 @@ describe("handleTelegramTextMessage", () => {
 				_onImage?: (event: { type: "image"; path: string }) => void,
 			) =>
 				(async function* () {
-					yield "done";
+					yield { type: "text" as const, text: "done" };
 				})(),
 		);
 
@@ -84,7 +84,7 @@ describe("handleTelegramTextMessage", () => {
 						type: "image",
 						path: "/tmp/chart.png",
 					});
-					yield "done";
+					yield { type: "text" as const, text: "done" };
 				})(),
 		});
 

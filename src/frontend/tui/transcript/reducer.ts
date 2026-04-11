@@ -3,6 +3,7 @@ import type { TuiMessage, TuiMessageRole, TuiState } from "./state.ts";
 
 export type TuiAction =
 	| { type: "append_streaming"; text: string }
+	| { type: "append_thinking"; text: string }
 	| { type: "commit_streaming" }
 	| { type: "push"; role: TuiMessageRole; text: string }
 	| { type: "push_and_stop"; role: TuiMessageRole; text: string }
@@ -19,23 +20,41 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				streaming: state.streaming + action.text,
 				running: true,
 			};
+		case "append_thinking":
+			return {
+				...state,
+				streamingThinking: state.streamingThinking + action.text,
+				running: true,
+			};
 		case "commit_streaming": {
-			if (!state.streaming) {
+			if (!state.streaming && !state.streamingThinking) {
 				return { ...state, running: false };
+			}
+			const messages = [...state.messages];
+			let { nextId } = state;
+			if (state.streamingThinking) {
+				messages.push({
+					id: nextId,
+					role: "thinking" as const,
+					text: state.streamingThinking,
+				});
+				nextId += 1;
+			}
+			if (state.streaming) {
+				messages.push({
+					id: nextId,
+					role: "assistant" as const,
+					text: state.streaming,
+				});
+				nextId += 1;
 			}
 			return {
 				...state,
-				messages: [
-					...state.messages,
-					{
-						id: state.nextId,
-						role: "assistant" as const,
-						text: state.streaming,
-					},
-				],
+				messages,
 				streaming: "",
+				streamingThinking: "",
 				running: false,
-				nextId: state.nextId + 1,
+				nextId,
 			};
 		}
 		case "push":
@@ -50,6 +69,14 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 		case "push_and_stop": {
 			const messages = [...state.messages];
 			let { nextId } = state;
+			if (state.streamingThinking) {
+				messages.push({
+					id: nextId,
+					role: "thinking" as const,
+					text: state.streamingThinking,
+				});
+				nextId += 1;
+			}
 			if (state.streaming) {
 				messages.push({
 					id: nextId,
@@ -64,12 +91,19 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				...state,
 				messages,
 				streaming: "",
+				streamingThinking: "",
 				running: false,
 				nextId,
 			};
 		}
 		case "clear":
-			return { ...state, messages: [], streaming: "", running: false };
+			return {
+				...state,
+				messages: [],
+				streaming: "",
+				streamingThinking: "",
+				running: false,
+			};
 		case "replay": {
 			const maxId = action.messages.reduce((max, message) => {
 				return Math.max(max, message.id);

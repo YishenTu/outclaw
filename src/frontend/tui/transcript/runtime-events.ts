@@ -7,6 +7,8 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 	switch (event.type) {
 		case "text":
 			return [{ type: "append_streaming", text: event.text }];
+		case "thinking":
+			return [{ type: "append_thinking", text: event.text }];
 		case "done":
 			return [{ type: "commit_streaming" }];
 		case "error":
@@ -61,11 +63,24 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 			return [{ type: "clear" }];
 		case "history_replay": {
 			let id = 1;
-			const messages: TuiMessage[] = event.messages.map((message) => ({
-				id: id++,
-				role: message.role,
-				text: replayContent(message),
-			}));
+			const messages: TuiMessage[] = [];
+			for (const message of event.messages) {
+				if (message.role === "assistant" && message.thinking) {
+					messages.push({
+						id: id++,
+						role: "thinking",
+						text: message.thinking,
+					});
+				}
+				const text = replayContent(message);
+				if (text) {
+					messages.push({
+						id: id++,
+						role: message.role,
+						text,
+					});
+				}
+			}
 			return [{ type: "replay", messages }];
 		}
 		case "session_menu":

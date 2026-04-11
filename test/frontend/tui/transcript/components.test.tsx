@@ -103,11 +103,33 @@ describe("transcript components", () => {
 		}
 	});
 
+	test("MessageItem renders markdown in thinking messages", async () => {
+		const { app, getOutput } = renderToOutput(
+			<MessageItem
+				message={{ id: 1, role: "thinking", text: "**bold** and `code`" }}
+				columns={40}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const output = getOutput();
+			expect(output).toContain("bold");
+			expect(output).toContain("code");
+			expect(output).not.toContain("**bold**");
+			expect(output).not.toContain("`code`");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("MessageList shows streaming text before the spinner", async () => {
 		const { app, getOutput } = renderToOutput(
 			<MessageList
 				messages={[{ id: 1, role: "assistant", text: "done" }]}
 				streaming="partial response"
+				streamingThinking=""
 				running={true}
 				columns={40}
 			/>,
@@ -129,6 +151,31 @@ describe("transcript components", () => {
 			<MessageList
 				messages={[]}
 				streaming="**bold** and `code`"
+				streamingThinking=""
+				running={true}
+				columns={40}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const output = getOutput();
+			expect(output).toContain("bold");
+			expect(output).toContain("code");
+			expect(output).not.toContain("**bold**");
+			expect(output).not.toContain("`code`");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("MessageList renders markdown in streaming thinking", async () => {
+		const { app, getOutput } = renderToOutput(
+			<MessageList
+				messages={[]}
+				streaming=""
+				streamingThinking="**bold** and `code`"
 				running={true}
 				columns={40}
 			/>,
@@ -153,7 +200,13 @@ describe("transcript components", () => {
 		vi.useFakeTimers({ now });
 
 		const { app, getOutput } = renderToOutput(
-			<MessageList messages={[]} streaming="" running={true} columns={40} />,
+			<MessageList
+				messages={[]}
+				streaming=""
+				streamingThinking=""
+				running={true}
+				columns={40}
+			/>,
 		);
 
 		try {

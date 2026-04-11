@@ -71,6 +71,11 @@ export interface StatusEvent {
 	message: string;
 }
 
+export interface ThinkingEvent {
+	type: "thinking";
+	text: string;
+}
+
 export interface ErrorEvent {
 	type: "error";
 	message: string;
@@ -176,6 +181,7 @@ export interface RuntimeStatusEvent {
 export interface DisplayMessage {
 	role: "user" | "assistant";
 	content: string;
+	thinking?: string;
 	images?: DisplayImage[];
 }
 
@@ -202,6 +208,7 @@ export interface SkillsUpdateEvent {
 
 export type ServerEvent =
 	| TextEvent
+	| ThinkingEvent
 	| ImageEvent
 	| StatusEvent
 	| ErrorEvent
@@ -225,6 +232,7 @@ export type ServerEvent =
 
 export type FacadeEvent =
 	| TextEvent
+	| ThinkingEvent
 	| ImageEvent
 	| StatusEvent
 	| ErrorEvent

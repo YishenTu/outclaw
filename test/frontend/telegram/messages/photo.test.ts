@@ -59,7 +59,7 @@ describe("handleTelegramPhotoMessage", () => {
 				_onImage?: (event: { type: "image"; path: string }) => void,
 			) =>
 				(async function* () {
-					yield "done";
+					yield { type: "text" as const, text: "done" };
 				})(),
 		);
 
@@ -99,7 +99,7 @@ describe("handleTelegramPhotoMessage", () => {
 				_onImage?: (event: { type: "image"; path: string }) => void,
 			) =>
 				(async function* () {
-					yield "done";
+					yield { type: "text" as const, text: "done" };
 				})(),
 		);
 
@@ -153,7 +153,7 @@ describe("handleTelegramPhotoMessage", () => {
 			},
 			streamPrompt: () =>
 				(async function* () {
-					yield "";
+					yield { type: "text" as const, text: "" };
 				})(),
 		});
 
@@ -202,7 +202,7 @@ describe("handleTelegramPhotoMessage", () => {
 						path: "/tmp/outbound.png",
 						caption: "result",
 					});
-					yield "done";
+					yield { type: "text" as const, text: "done" };
 				})(),
 		});
 
@@ -246,7 +246,7 @@ describe("handleTelegramPhotoMessage", () => {
 			token: "TOKEN",
 			streamPrompt: () =>
 				(async function* () {
-					yield "";
+					yield { type: "text" as const, text: "" };
 				})(),
 		});
 
@@ -271,7 +271,7 @@ describe("handleTelegramPhotoMessage", () => {
 			},
 			streamPrompt: () =>
 				(async function* () {
-					yield "";
+					yield { type: "text" as const, text: "" };
 				})(),
 		});
 

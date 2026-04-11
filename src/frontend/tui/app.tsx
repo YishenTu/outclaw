@@ -195,6 +195,7 @@ export function TuiApp({ url }: TuiAppProps) {
 				<MessageList
 					messages={tuiState.messages}
 					streaming={tuiState.streaming}
+					streamingThinking={tuiState.streamingThinking}
 					running={tuiState.running}
 					columns={columns}
 				/>

@@ -7,6 +7,7 @@ import type { TuiMessage } from "./state.ts";
 interface MessageListProps {
 	messages: TuiMessage[];
 	streaming: string;
+	streamingThinking: string;
 	running: boolean;
 	columns: number;
 }
@@ -14,6 +15,7 @@ interface MessageListProps {
 export function MessageList({
 	messages,
 	streaming,
+	streamingThinking,
 	running,
 	columns,
 }: MessageListProps) {
@@ -22,12 +24,19 @@ export function MessageList({
 			{messages.map((msg) => (
 				<MessageItem key={msg.id} message={msg} columns={columns} />
 			))}
+			{streamingThinking ? (
+				<Box marginTop={1} paddingLeft={3} paddingRight={1}>
+					<Text>
+						{renderMarkdown(streamingThinking, columns - 4, { dim: true })}
+					</Text>
+				</Box>
+			) : null}
 			{streaming ? (
 				<Box marginTop={1} paddingLeft={3} paddingRight={1}>
 					<Text>{renderMarkdown(streaming, columns - 4)}</Text>
 				</Box>
 			) : null}
-			{running && !streaming ? (
+			{running && !streaming && !streamingThinking ? (
 				<Box marginTop={1} paddingLeft={1} paddingRight={1}>
 					<Spinner label="Thinking..." />
 				</Box>

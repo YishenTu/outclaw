@@ -1,4 +1,10 @@
-export type TuiMessageRole = "user" | "assistant" | "info" | "error" | "status";
+export type TuiMessageRole =
+	| "user"
+	| "assistant"
+	| "thinking"
+	| "info"
+	| "error"
+	| "status";
 
 export interface TuiMessage {
 	readonly id: number;
@@ -9,10 +15,17 @@ export interface TuiMessage {
 export interface TuiState {
 	messages: TuiMessage[];
 	streaming: string;
+	streamingThinking: string;
 	running: boolean;
 	nextId: number;
 }
 
 export function initialTuiState(): TuiState {
-	return { messages: [], streaming: "", running: false, nextId: 1 };
+	return {
+		messages: [],
+		streaming: "",
+		streamingThinking: "",
+		running: false,
+		nextId: 1,
+	};
 }

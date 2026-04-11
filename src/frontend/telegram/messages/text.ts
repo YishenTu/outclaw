@@ -4,6 +4,7 @@ import {
 	type ImageEvent,
 	type ImageRef,
 } from "../../../common/protocol.ts";
+import type { StreamChunk } from "../bridge/client.ts";
 import {
 	rememberOutboundImage,
 	resolveReplyImages,
@@ -43,7 +44,7 @@ interface TelegramTextMessageOptions extends TelegramMessageImageOptions {
 		prompt: string,
 		images?: ImageRef[],
 		onImage?: (event: ImageEvent) => void | Promise<void>,
-	): AsyncIterable<string>;
+	): AsyncIterable<StreamChunk>;
 }
 
 export async function handleTelegramTextMessage(

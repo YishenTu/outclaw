@@ -34,7 +34,7 @@ describe("runTelegramPrompt", () => {
 			prompt: "hello",
 			streamPrompt: () =>
 				(async function* () {
-					yield "**bold** reply";
+					yield { type: "text" as const, text: "**bold** reply" };
 				})(),
 		});
 
@@ -54,12 +54,12 @@ describe("runTelegramPrompt", () => {
 			prompt: "plot",
 			streamPrompt: (_prompt, _images, onImage) =>
 				(async function* () {
-					yield "Here is ";
+					yield { type: "text" as const, text: "Here is " };
 					await onImage?.({
 						type: "image",
 						path: "/tmp/chart.png",
 					});
-					yield "your chart.";
+					yield { type: "text" as const, text: "your chart." };
 				})(),
 		});
 
@@ -75,6 +75,25 @@ describe("runTelegramPrompt", () => {
 		expect(ctx.replyWithPhoto.mock.calls[0]?.[1]).toEqual({
 			disable_notification: true,
 		});
+	});
+
+	test("sends thinking chunks in a separate expandable blockquote", async () => {
+		const ctx = createContext();
+
+		await runTelegramPrompt(ctx, {
+			prompt: "hello",
+			streamPrompt: () =>
+				(async function* () {
+					yield { type: "thinking" as const, text: "**plan**" };
+					yield { type: "text" as const, text: "answer" };
+				})(),
+		});
+
+		expect(ctx.sendMessage).toHaveBeenCalledTimes(2);
+		expect(ctx.sendMessage.mock.calls[0]?.[0]).toBe(
+			"<blockquote expandable><b>plan</b></blockquote>",
+		);
+		expect(ctx.sendMessage.mock.calls[1]?.[0]).toBe("answer");
 	});
 
 	test("does not send a message for image-only replies", async () => {
@@ -122,7 +141,7 @@ describe("runTelegramPrompt", () => {
 				(async function* () {
 					intervalCallbacks[0]?.();
 					await Promise.resolve();
-					yield "done";
+					yield { type: "text" as const, text: "done" };
 				})(),
 		});
 
@@ -167,9 +186,9 @@ describe("runTelegramPrompt", () => {
 			prompt: "hello",
 			streamPrompt: () =>
 				(async function* () {
-					yield "first ";
+					yield { type: "text" as const, text: "first " };
 					// Even if chunks arrive fast, final edit happens
-					yield "second";
+					yield { type: "text" as const, text: "second" };
 				})(),
 		});
 
@@ -187,7 +206,7 @@ describe("runTelegramPrompt", () => {
 			prompt: "hello",
 			streamPrompt: () =>
 				(async function* () {
-					yield "one chunk";
+					yield { type: "text" as const, text: "one chunk" };
 				})(),
 		});
 
@@ -217,9 +236,9 @@ describe("runTelegramPrompt", () => {
 			prompt: "hello",
 			streamPrompt: () =>
 				(async function* () {
-					yield "first";
+					yield { type: "text" as const, text: "first" };
 					await new Promise((r) => setTimeout(r, 1100));
-					yield " second";
+					yield { type: "text" as const, text: " second" };
 				})(),
 		});
 

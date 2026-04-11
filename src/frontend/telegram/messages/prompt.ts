@@ -1,5 +1,6 @@
 import { InputFile } from "grammy";
 import type { ImageEvent, ImageRef } from "../../../common/protocol.ts";
+import type { StreamChunk } from "../bridge/client.ts";
 import {
 	markdownToTelegramHtml,
 	splitTelegramHtml,
@@ -40,19 +41,80 @@ interface RunTelegramPromptOptions {
 		prompt: string,
 		images?: ImageRef[],
 		onImage?: (event: ImageEvent) => void | Promise<void>,
-	): AsyncIterable<string>;
+	): AsyncIterable<StreamChunk>;
 }
 
-async function sendHtmlChunks(
+interface DraftState {
+	accumulated: string;
+	messageId: number | undefined;
+	lastSentHtml: string;
+}
+
+function createDraft(): DraftState {
+	return { accumulated: "", messageId: undefined, lastSentHtml: "" };
+}
+
+function wrapThinking(html: string): string {
+	return html ? `<blockquote expandable>${html}</blockquote>` : "";
+}
+
+async function sendOrEdit(
 	ctx: TelegramPromptContext,
+	draft: DraftState,
 	html: string,
-): Promise<void> {
-	const chunks = splitTelegramHtml(html, TELEGRAM_MESSAGE_LIMIT);
-	for (const chunk of chunks) {
-		await ctx.sendMessage(chunk, {
+): Promise<boolean> {
+	const preview = splitTelegramHtml(html, TELEGRAM_MESSAGE_LIMIT)[0];
+	if (!preview || preview === draft.lastSentHtml) return false;
+
+	if (draft.messageId === undefined) {
+		const sent = await ctx.sendMessage(preview, {
 			parse_mode: "HTML",
 			disable_notification: true,
 		});
+		draft.messageId = sent.message_id;
+		draft.lastSentHtml = preview;
+	} else {
+		const ok = await ctx
+			.editMessageText(draft.messageId, preview, { parse_mode: "HTML" })
+			.then(() => true)
+			.catch(() => false);
+		if (ok) draft.lastSentHtml = preview;
+	}
+	return true;
+}
+
+async function finalizeDraft(
+	ctx: TelegramPromptContext,
+	draft: DraftState,
+	html: string,
+): Promise<void> {
+	const chunks = splitTelegramHtml(html, TELEGRAM_MESSAGE_LIMIT);
+	if (chunks.length === 0) return;
+
+	const first = chunks[0] as string;
+
+	if (draft.messageId === undefined) {
+		for (const chunk of chunks) {
+			await ctx.sendMessage(chunk, {
+				parse_mode: "HTML",
+				disable_notification: true,
+			});
+		}
+	} else {
+		let startIndex = 1;
+		if (first !== draft.lastSentHtml) {
+			const editOk = await ctx
+				.editMessageText(draft.messageId, first, { parse_mode: "HTML" })
+				.then(() => true)
+				.catch(() => false);
+			if (!editOk) startIndex = 0;
+		}
+		for (let i = startIndex; i < chunks.length; i++) {
+			await ctx.sendMessage(chunks[i] as string, {
+				parse_mode: "HTML",
+				disable_notification: true,
+			});
+		}
 	}
 }
 
@@ -72,76 +134,41 @@ export async function runTelegramPrompt(
 			(event) => sendImage(ctx, event, options.rememberSentImage),
 		);
 
-		let accumulated = "";
-		let messageId: number | undefined;
+		const thinking = createDraft();
+		const response = createDraft();
 		let lastEditTime = 0;
-		let lastSentHtml = "";
 
 		for await (const chunk of stream) {
-			accumulated += chunk;
+			const isThinking = chunk.type === "thinking";
+			const draft = isThinking ? thinking : response;
+			draft.accumulated += chunk.text;
 
 			const now = Date.now();
 			if (now - lastEditTime < EDIT_THROTTLE_MS) continue;
 
-			const html = markdownToTelegramHtml(accumulated);
-			if (!html || html === lastSentHtml) continue;
+			const html = isThinking
+				? wrapThinking(markdownToTelegramHtml(draft.accumulated))
+				: markdownToTelegramHtml(draft.accumulated);
+			if (!html) continue;
 
-			// Mid-stream: only use the first chunk for the preview message.
-			// Full chunking happens at the end.
-			const preview = splitTelegramHtml(html, TELEGRAM_MESSAGE_LIMIT)[0];
-			if (!preview || preview === lastSentHtml) continue;
-
-			if (messageId === undefined) {
-				const sent = await ctx.sendMessage(preview, {
-					parse_mode: "HTML",
-					disable_notification: true,
-				});
-				messageId = sent.message_id;
-				lastSentHtml = preview;
-			} else {
-				const ok = await ctx
-					.editMessageText(messageId, preview, {
-						parse_mode: "HTML",
-					})
-					.then(() => true)
-					.catch(() => false);
-				if (ok) lastSentHtml = preview;
+			if (await sendOrEdit(ctx, draft, html)) {
+				lastEditTime = Date.now();
 			}
-			lastEditTime = Date.now();
 		}
 
-		if (!accumulated) return;
-
-		const html = markdownToTelegramHtml(accumulated);
-		if (!html) return;
-
-		const chunks = splitTelegramHtml(html, TELEGRAM_MESSAGE_LIMIT);
-		if (chunks.length === 0) return;
-
-		// Final delivery: edit existing message with first chunk, send rest as new.
-		const first = chunks[0] as string;
-
-		if (messageId === undefined) {
-			await sendHtmlChunks(ctx, html);
-		} else {
-			let startIndex = 1;
-			if (first !== lastSentHtml) {
-				const editOk = await ctx
-					.editMessageText(messageId, first, {
-						parse_mode: "HTML",
-					})
-					.then(() => true)
-					.catch(() => false);
-				if (!editOk) {
-					// Edit failed — send all chunks as new messages.
-					startIndex = 0;
-				}
+		// Finalize thinking bubble
+		if (thinking.accumulated) {
+			const html = wrapThinking(markdownToTelegramHtml(thinking.accumulated));
+			if (html) {
+				await finalizeDraft(ctx, thinking, html);
 			}
-			for (let i = startIndex; i < chunks.length; i++) {
-				await ctx.sendMessage(chunks[i] as string, {
-					parse_mode: "HTML",
-					disable_notification: true,
-				});
+		}
+
+		// Finalize response bubble
+		if (response.accumulated) {
+			const html = markdownToTelegramHtml(response.accumulated);
+			if (html) {
+				await finalizeDraft(ctx, response, html);
 			}
 		}
 	} finally {

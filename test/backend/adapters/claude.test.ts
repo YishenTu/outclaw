@@ -3,11 +3,25 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+function mockClaudeSdk(
+	overrides: {
+		query?: ReturnType<typeof mock>;
+		getSessionMessages?: ReturnType<typeof mock>;
+	} = {},
+) {
+	const query = overrides.query ?? mock(() => (async function* () {})());
+	const getSessionMessages =
+		overrides.getSessionMessages ?? mock(async () => []);
+	mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+		query,
+		getSessionMessages,
+	}));
+	return { query, getSessionMessages };
+}
+
 describe("ClaudeAdapter", () => {
 	test("implements Facade interface", async () => {
-		mock.module("@anthropic-ai/claude-agent-sdk", () => ({
-			query: mock(() => (async function* () {})()),
-		}));
+		mockClaudeSdk();
 
 		const { ClaudeAdapter } = await import(
 			"../../../src/backend/adapters/claude.ts"
@@ -17,9 +31,7 @@ describe("ClaudeAdapter", () => {
 	});
 
 	test("run() returns an async iterable", async () => {
-		mock.module("@anthropic-ai/claude-agent-sdk", () => ({
-			query: mock(() => (async function* () {})()),
-		}));
+		mockClaudeSdk();
 
 		const { ClaudeAdapter } = await import(
 			"../../../src/backend/adapters/claude.ts"
@@ -67,7 +79,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+		mockClaudeSdk({ query });
 
 		const { ClaudeAdapter } = await import(
 			"../../../src/backend/adapters/claude.ts"
@@ -134,6 +146,168 @@ describe("ClaudeAdapter", () => {
 		]);
 	});
 
+	test("streams thinking_delta events as thinking facade events", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "stream_event",
+					event: {
+						type: "content_block_delta",
+						delta: { type: "thinking_delta", thinking: "let me " },
+					},
+				};
+				yield {
+					type: "stream_event",
+					event: {
+						type: "content_block_delta",
+						delta: { type: "thinking_delta", thinking: "reason" },
+					},
+				};
+				yield {
+					type: "stream_event",
+					event: {
+						type: "content_block_delta",
+						delta: { type: "text_delta", text: "answer" },
+					},
+				};
+				yield {
+					type: "result",
+					session_id: "sdk-think",
+					duration_ms: 100,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		mockClaudeSdk({ query });
+
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
+		);
+		const adapter = new ClaudeAdapter();
+		const events = [];
+
+		for await (const event of adapter.run({ prompt: "think" })) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{ type: "thinking", text: "let me " },
+			{ type: "thinking", text: "reason" },
+			{ type: "text", text: "answer" },
+			{
+				type: "done",
+				sessionId: "sdk-think",
+				durationMs: 100,
+				costUsd: 0,
+				usage: undefined,
+			},
+		]);
+	});
+
+	test("completes streamed thinking from the final assistant message without duplication", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "stream_event",
+					event: {
+						type: "content_block_delta",
+						delta: { type: "thinking_delta", thinking: "let me" },
+					},
+				};
+				yield {
+					type: "assistant",
+					message: {
+						content: [
+							{ type: "thinking", thinking: "let me think" },
+							{ type: "text", text: "done" },
+						],
+					},
+				};
+				yield {
+					type: "result",
+					session_id: "sdk-think-complete",
+					duration_ms: 40,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		mockClaudeSdk({ query });
+
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
+		);
+		const adapter = new ClaudeAdapter();
+		const events = [];
+
+		for await (const event of adapter.run({ prompt: "think" })) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{ type: "thinking", text: "let me" },
+			{ type: "thinking", text: " think" },
+			{ type: "text", text: "done" },
+			{
+				type: "done",
+				sessionId: "sdk-think-complete",
+				durationMs: 40,
+				costUsd: 0,
+				usage: undefined,
+			},
+		]);
+	});
+
+	test("extracts thinking blocks from assistant messages", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "assistant",
+					message: {
+						content: [
+							{ type: "thinking", thinking: "deep thought" },
+							{ type: "text", text: "the answer" },
+						],
+					},
+				};
+				yield {
+					type: "result",
+					session_id: "sdk-think2",
+					duration_ms: 50,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		mockClaudeSdk({ query });
+
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
+		);
+		const adapter = new ClaudeAdapter();
+		const events = [];
+
+		for await (const event of adapter.run({
+			prompt: "think",
+			stream: false,
+		})) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{ type: "thinking", text: "deep thought" },
+			{ type: "text", text: "the answer" },
+			{
+				type: "done",
+				sessionId: "sdk-think2",
+				durationMs: 50,
+				costUsd: 0,
+				usage: undefined,
+			},
+		]);
+	});
+
 	test("yields an error event when the SDK run fails", async () => {
 		const query = mock(() =>
 			(async function* () {
@@ -148,7 +322,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+		mockClaudeSdk({ query });
 
 		const { ClaudeAdapter } = await import(
 			"../../../src/backend/adapters/claude.ts"
@@ -191,7 +365,7 @@ describe("ClaudeAdapter", () => {
 				})(),
 			);
 
-			mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+			mockClaudeSdk({ query });
 
 			const { ClaudeAdapter } = await import(
 				"../../../src/backend/adapters/claude.ts"
@@ -244,7 +418,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+		mockClaudeSdk({ query });
 
 		const { ClaudeAdapter } = await import(
 			"../../../src/backend/adapters/claude.ts"
@@ -293,7 +467,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+		mockClaudeSdk({ query });
 
 		const tmp = mkdtempSync(join(tmpdir(), "mis-images-"));
 		try {
@@ -373,7 +547,7 @@ describe("ClaudeAdapter", () => {
 		const unlinkSync = mock(() => {});
 		const realSetTimeout = globalThis.setTimeout;
 
-		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+		mockClaudeSdk({ query });
 		mock.module("node:fs", () => ({ unlinkSync }));
 		globalThis.setTimeout = ((handler: (...args: never[]) => void) => {
 			if (typeof handler === "function") {
@@ -421,7 +595,7 @@ describe("ClaudeAdapter", () => {
 		const unlinkSync = mock(() => {});
 		const realSetTimeout = globalThis.setTimeout;
 
-		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+		mockClaudeSdk({ query });
 		mock.module("node:fs", () => ({ unlinkSync }));
 		globalThis.setTimeout = ((handler: (...args: never[]) => void) => {
 			if (typeof handler === "function") {
@@ -492,7 +666,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+		mockClaudeSdk({ query });
 
 		const { ClaudeAdapter } = await import(
 			"../../../src/backend/adapters/claude.ts"
@@ -545,7 +719,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query }));
+		mockClaudeSdk({ query });
 
 		const { ClaudeAdapter } = await import(
 			"../../../src/backend/adapters/claude.ts"

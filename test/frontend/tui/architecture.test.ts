@@ -18,6 +18,7 @@ describe("TUI architecture", () => {
 		expect(initialTuiState()).toEqual({
 			messages: [],
 			streaming: "",
+			streamingThinking: "",
 			running: false,
 			nextId: 1,
 		});
@@ -30,6 +31,7 @@ describe("TUI architecture", () => {
 		expect(applyAction(initialTuiState(), actions[0] as TuiAction)).toEqual({
 			messages: [],
 			streaming: "hello",
+			streamingThinking: "",
 			running: true,
 			nextId: 1,
 		});
