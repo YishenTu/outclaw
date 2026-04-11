@@ -77,6 +77,28 @@ describe("StatusBar", () => {
 		}
 	});
 
+	test("hides context for a fresh session with no usage yet", async () => {
+		const { app, getOutput } = renderStatusBar({
+			status: "connected",
+			info: {
+				model: "opus",
+				effort: "high",
+			},
+		});
+
+		try {
+			await flushUpdates();
+			expect(getOutput()).toContain("connected");
+			expect(getOutput()).toContain("opus");
+			expect(getOutput()).toContain("high");
+			expect(getOutput()).not.toContain("n/a");
+			expect(getOutput()).not.toContain("/");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("updates the heartbeat countdown over time", async () => {
 		const now = new Date("2026-04-11T00:00:00Z");
 		setSystemTime(now);
