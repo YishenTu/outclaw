@@ -31,6 +31,9 @@ export class RuntimeState {
 		this.store = store;
 		this.session = new SessionManager(store);
 		this.lastTelegramChatId = store?.getLastTelegramChatId();
+		if (this.session.id) {
+			this.lastUsage = store?.getUsage(this.session.id);
+		}
 	}
 
 	get generation(): number {
@@ -80,6 +83,7 @@ export class RuntimeState {
 			model: this.activeModel,
 			effort: this.activeEffort,
 			sessionId: this.session.id,
+			sessionTitle: this.session.title,
 			usage: this.lastUsage,
 		};
 	}
@@ -105,6 +109,13 @@ export class RuntimeState {
 
 	setEffort(effort: EffortLevel) {
 		this.activeEffort = effort;
+	}
+
+	renameSession(sessionId: string, title: string) {
+		if (this.session.id === sessionId) {
+			this.session.setTitle(title);
+		}
+		this.store?.rename(sessionId, title);
 	}
 
 	switchToSession(session: SessionRow) {

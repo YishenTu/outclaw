@@ -40,12 +40,13 @@ function setup() {
 
 describe("handleRuntimeCommand", () => {
 	describe("/status", () => {
-		test("sends runtime_status event", async () => {
+		test("sends runtime_status event with requested flag", async () => {
 			const { ws, run } = setup();
 			await run("/status");
 			const events = ws.events();
 			expect(events).toHaveLength(1);
 			expect(events[0]?.type).toBe("runtime_status");
+			expect((events[0] as { requested?: boolean }).requested).toBe(true);
 		});
 	});
 
@@ -173,6 +174,20 @@ describe("handleRuntimeCommand", () => {
 			expect(event).toBeDefined();
 			expect((event as { sdkSessionId: string }).sdkSessionId).toBe("sdk-123");
 			expect((event as { title: string }).title).toBe("New title");
+		});
+
+		test("/session rename updates the active session title used by /status", async () => {
+			const { state, run } = setup();
+			state.preparePrompt("Old title");
+			state.completeRun({
+				type: "done",
+				sessionId: "sdk-123",
+				durationMs: 10,
+			});
+
+			await run("/session rename sdk-123 New title");
+
+			expect(state.createStatusEvent().sessionTitle).toBe("New title");
 		});
 
 		test("/session rename without args sends error", async () => {

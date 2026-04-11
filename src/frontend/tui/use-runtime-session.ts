@@ -110,11 +110,11 @@ export function useRuntimeSession(url: string) {
 					setRuntimeInfo({
 						model: event.model,
 						effort: event.effort,
-						contextPercentage: event.usage?.percentage ?? 0,
+						contextTokens: event.usage?.contextTokens,
+						contextWindow: event.usage?.contextWindow,
 						nextHeartbeatAt: event.nextHeartbeatAt,
 						heartbeatDeferred: event.heartbeatDeferred,
 					});
-					return;
 				}
 				if (event.type === "model_changed") {
 					setRuntimeInfo((previous) => ({ ...previous, model: event.model }));

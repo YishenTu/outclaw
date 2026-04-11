@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
-import { getHeartbeatCountdownLabel } from "./heartbeat-countdown.ts";
+import { formatCompact, getHeartbeatLabel } from "../../../common/status.ts";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
@@ -13,7 +13,8 @@ const statusColor: Record<ConnectionStatus, string> = {
 export interface RuntimeInfo {
 	model?: string;
 	effort?: string;
-	contextPercentage?: number;
+	contextTokens?: number;
+	contextWindow?: number;
 	nextHeartbeatAt?: number;
 	heartbeatDeferred?: boolean;
 }
@@ -39,7 +40,7 @@ function useHeartbeatCountdown(
 		return () => clearInterval(timer);
 	}, [nextHeartbeatAt]);
 
-	return getHeartbeatCountdownLabel(nextHeartbeatAt, now, deferred);
+	return getHeartbeatLabel(nextHeartbeatAt, now, deferred);
 }
 
 export function StatusBar({ status, info }: StatusBarProps) {
@@ -50,10 +51,16 @@ export function StatusBar({ status, info }: StatusBarProps) {
 	const parts: string[] = [];
 	if (info.model) parts.push(info.model);
 	if (info.effort) parts.push(info.effort);
-	if (info.contextPercentage !== undefined) {
-		parts.push(`${info.contextPercentage}% context`);
+	if (info.contextTokens !== undefined && info.contextWindow !== undefined) {
+		const pct =
+			info.contextWindow > 0
+				? Math.round((info.contextTokens / info.contextWindow) * 100)
+				: 0;
+		parts.push(
+			`${formatCompact(info.contextTokens)}/${formatCompact(info.contextWindow)} (${pct}%)`,
+		);
 	}
-	if (heartbeat) parts.push(heartbeat);
+	if (heartbeat) parts.push(`♥ ${heartbeat}`);
 
 	return (
 		<Box>

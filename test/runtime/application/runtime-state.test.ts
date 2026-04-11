@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "../../../src/common/commands.ts";
 import { MODEL_ALIASES } from "../../../src/common/models.ts";
 import type { DoneEvent } from "../../../src/common/protocol.ts";
 import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 
 function makeDoneEvent(
 	sessionId = "sdk-abc",
@@ -216,6 +217,35 @@ describe("RuntimeState", () => {
 			expect(event.effort).toBe("max");
 			expect(event.sessionId).toBe("sdk-status");
 			expect(event.usage).toBeDefined();
+		});
+
+		test("includes sessionTitle when session has a title", () => {
+			const state = new RuntimeState();
+			state.preparePrompt("Hello world");
+			state.completeRun(makeDoneEvent("sdk-titled"));
+
+			const event = state.createStatusEvent();
+			expect(event.sessionTitle).toBe("Hello world");
+		});
+	});
+
+	describe("constructor with store", () => {
+		let store: SessionStore;
+
+		afterEach(() => {
+			store?.close();
+		});
+
+		test("restores usage from DB for the active session", () => {
+			store = new SessionStore(":memory:");
+			const first = new RuntimeState(store);
+			first.preparePrompt("hello");
+			first.completeRun(makeDoneEvent("sdk-persist"));
+
+			// Simulate daemon restart — new RuntimeState with same store
+			const restored = new RuntimeState(store);
+			expect(restored.sessionId).toBe("sdk-persist");
+			expect(restored.createStatusEvent().usage).toEqual(makeDoneEvent().usage);
 		});
 	});
 });

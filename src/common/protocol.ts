@@ -166,9 +166,11 @@ export interface RuntimeStatusEvent {
 	model: string;
 	effort: string;
 	sessionId?: string;
+	sessionTitle?: string;
 	usage?: UsageInfo;
 	nextHeartbeatAt?: number;
 	heartbeatDeferred?: boolean;
+	requested?: boolean;
 }
 
 export interface DisplayMessage {

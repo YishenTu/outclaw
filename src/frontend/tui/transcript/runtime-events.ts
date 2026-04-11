@@ -1,5 +1,5 @@
 import type { ServerEvent } from "../../../common/protocol.ts";
-import { formatContext, formatLivePrompt } from "./format.ts";
+import { formatLivePrompt, formatStatus } from "./format.ts";
 import type { TuiAction } from "./reducer.ts";
 import type { TuiMessage } from "./state.ts";
 
@@ -18,11 +18,12 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 		case "effort_changed":
 			return [{ type: "push", role: "info", text: `effort → ${event.effort}` }];
 		case "runtime_status":
+			if (!event.requested) return [{ type: "noop" }];
 			return [
 				{
 					type: "push",
-					role: "info",
-					text: `model=${event.model} effort=${event.effort} session=${event.sessionId ?? "none"} context=${formatContext(event.usage)}`,
+					role: "status",
+					text: formatStatus(event),
 				},
 			];
 		case "user_prompt":

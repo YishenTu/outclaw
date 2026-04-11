@@ -44,12 +44,24 @@ describe("mapEventToActions", () => {
 		).toEqual([{ type: "push", role: "info", text: "effort → max" }]);
 	});
 
-	test("runtime_status → push info with formatted context", () => {
+	test("runtime_status without requested flag → noop", () => {
 		const actions = mapEventToActions({
 			type: "runtime_status",
 			model: "opus",
 			effort: "high",
 			sessionId: "session-123",
+		});
+		expect(actions).toEqual([{ type: "noop" }]);
+	});
+
+	test("runtime_status with requested → push info with vertically aligned status", () => {
+		const actions = mapEventToActions({
+			type: "runtime_status",
+			model: "opus",
+			effort: "high",
+			sessionId: "session-123",
+			sessionTitle: "My chat",
+			requested: true,
 			usage: {
 				inputTokens: 0,
 				outputTokens: 0,
@@ -64,25 +76,67 @@ describe("mapEventToActions", () => {
 		expect(actions).toEqual([
 			{
 				type: "push",
-				role: "info",
-				text: "model=opus effort=high session=session-123 context=1,234/200,000 tokens (1%)",
+				role: "status",
+				text: [
+					"Status",
+					"session  My chat",
+					"model    opus",
+					"effort   high",
+					"context  1k/200k (1%)",
+				].join("\n"),
 			},
 		]);
 	});
 
-	test("runtime_status without usage shows n/a", () => {
+	test("runtime_status with requested but without usage shows n/a", () => {
 		const actions = mapEventToActions({
 			type: "runtime_status",
 			model: "haiku",
 			effort: "low",
+			requested: true,
 		});
 		expect(actions).toEqual([
 			{
 				type: "push",
-				role: "info",
-				text: "model=haiku effort=low session=none context=n/a",
+				role: "status",
+				text: [
+					"Status",
+					"session  none",
+					"model    haiku",
+					"effort   low",
+					"context  n/a",
+				].join("\n"),
 			},
 		]);
+	});
+
+	test("runtime_status includes heartbeat countdown", () => {
+		const now = 1000;
+		const actions = mapEventToActions({
+			type: "runtime_status",
+			model: "opus",
+			effort: "high",
+			sessionTitle: "My chat",
+			nextHeartbeatAt: now + 30 * 60_000,
+			requested: true,
+		});
+		const text = (actions[0] as { text: string }).text;
+		const lines = text.split("\n");
+		expect(lines).toContainEqual(expect.stringContaining("heartbeat"));
+	});
+
+	test("runtime_status truncates long session title", () => {
+		const longTitle = "A".repeat(50);
+		const actions = mapEventToActions({
+			type: "runtime_status",
+			model: "opus",
+			effort: "high",
+			sessionTitle: longTitle,
+			requested: true,
+		});
+		const text = (actions[0] as { text: string }).text;
+		const sessionLine = text.split("\n").find((l) => l.startsWith("session"));
+		expect(sessionLine).toBe(`session  ${"A".repeat(37)}...`);
 	});
 
 	test("user_prompt from tui → noop (locally added)", () => {

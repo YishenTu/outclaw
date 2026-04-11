@@ -437,6 +437,45 @@ describe("Telegram bridge", () => {
 		bridge.close();
 	});
 
+	test("sendCommandAndWait() accepts requested runtime_status for /status", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+
+		const response = bridge.sendCommandAndWait(
+			"/status",
+			new Set(["runtime_status"]),
+		);
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		ws.dispatch("open");
+		await flushMicrotasks();
+
+		// Initial unsolicited status (no requested flag) should be ignored.
+		ws.dispatch("message", {
+			data: JSON.stringify({
+				type: "runtime_status",
+				model: "opus",
+				effort: "high",
+			}),
+		});
+		await flushMicrotasks();
+
+		// Requested status should resolve.
+		ws.dispatch("message", {
+			data: JSON.stringify({
+				type: "runtime_status",
+				model: "opus",
+				effort: "high",
+				requested: true,
+			}),
+		});
+		await expect(response).resolves.toMatchObject({
+			type: "runtime_status",
+			requested: true,
+		});
+
+		bridge.close();
+	});
+
 	test("sendCommandAndWait() rejects on websocket error after opening", async () => {
 		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 		const bridge = createTelegramBridge("ws://fake");

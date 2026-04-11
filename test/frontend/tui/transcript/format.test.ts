@@ -7,14 +7,34 @@ import {
 } from "../../../../src/frontend/tui/transcript/format.ts";
 
 describe("formatContext", () => {
-	test("formats usage with tokens and percentage", () => {
+	test("formats usage with compact numbers", () => {
 		expect(
 			formatContext({
 				contextTokens: 1234,
 				contextWindow: 200000,
 				percentage: 1,
 			}),
-		).toBe("1,234/200,000 tokens (1%)");
+		).toBe("1k/200k (1%)");
+	});
+
+	test("formats millions", () => {
+		expect(
+			formatContext({
+				contextTokens: 54321,
+				contextWindow: 1000000,
+				percentage: 5,
+			}),
+		).toBe("54k/1.0M (5%)");
+	});
+
+	test("formats small numbers without suffix", () => {
+		expect(
+			formatContext({
+				contextTokens: 500,
+				contextWindow: 200000,
+				percentage: 0,
+			}),
+		).toBe("500/200k (0%)");
 	});
 
 	test("returns n/a when usage is undefined", () => {

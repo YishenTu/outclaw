@@ -57,7 +57,12 @@ describe("StatusBar", () => {
 	test("renders connection and runtime info", async () => {
 		const { app, getOutput } = renderStatusBar({
 			status: "connected",
-			info: { model: "opus", effort: "high", contextPercentage: 6 },
+			info: {
+				model: "opus",
+				effort: "high",
+				contextTokens: 12_000,
+				contextWindow: 200_000,
+			},
 		});
 
 		try {
@@ -65,7 +70,7 @@ describe("StatusBar", () => {
 			expect(getOutput()).toContain("connected");
 			expect(getOutput()).toContain("opus");
 			expect(getOutput()).toContain("high");
-			expect(getOutput()).toContain("6% context");
+			expect(getOutput()).toContain("12k/200k (6%)");
 		} finally {
 			app.unmount();
 			app.cleanup();

@@ -53,6 +53,30 @@ export function MessageItem({ message, columns }: MessageItemProps) {
 					<Text>{renderMarkdown(message.text, columns - 4)}</Text>
 				</Box>
 			);
+		case "status": {
+			const w = columns - 4;
+			const [title, ...body] = message.text.split("\n");
+			// Labels are padded to equal width; the real separator "  " starts
+			// at the longest label's length — which equals the max indexOf("  ").
+			const sep = Math.max(...body.map((l) => l.indexOf("  ")));
+			const valStart = sep + 2;
+			return (
+				<Box marginTop={1} paddingLeft={3} paddingRight={1}>
+					<Text backgroundColor={theme.statusBg}>
+						<Text bold color={theme.accent}>
+							{` ${title}`.padEnd(w)}
+						</Text>
+						{body.map((line) => (
+							<>
+								{"\n"}
+								<Text bold>{` ${line.slice(0, valStart)}`}</Text>
+								{line.slice(valStart).padEnd(w - valStart - 1)}
+							</>
+						))}
+					</Text>
+				</Box>
+			);
+		}
 		case "info":
 			return (
 				<Box paddingX={1}>

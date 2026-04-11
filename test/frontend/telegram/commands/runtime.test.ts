@@ -93,6 +93,7 @@ describe("Telegram runtime commands", () => {
 				model: "opus",
 				effort: "high",
 				sessionId: "sdk-session-123",
+				sessionTitle: "My chat",
 				usage: {
 					contextTokens: 12345,
 					contextWindow: 200000,
@@ -109,10 +110,10 @@ describe("Telegram runtime commands", () => {
 		});
 
 		expect(withUsage).toBe(
-			"Model: opus\nEffort: high\nSession: sdk-session-123\nContext: 12,345/200,000 (6%)",
+			"Status\nsession: My chat\nmodel: opus\neffort: high\ncontext: 12k/200k (6%)",
 		);
 		expect(withoutUsage).toBe(
-			"Model: haiku\nEffort: low\nSession: none\nContext: n/a",
+			"Status\nsession: none\nmodel: haiku\neffort: low\ncontext: n/a",
 		);
 	});
 

@@ -1,4 +1,6 @@
 import { RUNTIME_COMMANDS } from "../../../common/commands.ts";
+import type { RuntimeStatusEvent } from "../../../common/protocol.ts";
+import { formatStatusCompact } from "../../../common/status.ts";
 
 interface TelegramCommandEvent {
 	type: string;
@@ -92,13 +94,7 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 			if (event.type !== "runtime_status") {
 				return formatError(event);
 			}
-			const usage = event.usage as
-				| { contextTokens: number; contextWindow: number; percentage: number }
-				| undefined;
-			const contextInfo = usage
-				? `${usage.contextTokens.toLocaleString()}/${usage.contextWindow.toLocaleString()} (${usage.percentage}%)`
-				: "n/a";
-			return `Model: ${String(event.model)}\nEffort: ${String(event.effort)}\nSession: ${String(event.sessionId ?? "none")}\nContext: ${contextInfo}`;
+			return formatStatusCompact(event as unknown as RuntimeStatusEvent);
 		},
 	},
 	stop: {

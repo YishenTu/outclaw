@@ -1,13 +1,6 @@
 import type { DisplayImage, DisplayMessage } from "../../../common/protocol.ts";
 
-export function formatContext(
-	usage:
-		| { contextTokens: number; contextWindow: number; percentage: number }
-		| undefined,
-): string {
-	if (!usage) return "n/a";
-	return `${usage.contextTokens.toLocaleString()}/${usage.contextWindow.toLocaleString()} tokens (${usage.percentage}%)`;
-}
+export { formatContext, formatStatus } from "../../../common/status.ts";
 
 export function formatImage(image: DisplayImage): string {
 	return image.path ? `[image: ${image.path}]` : "[image]";

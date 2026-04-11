@@ -5,4 +5,5 @@ export const theme = {
 	error: "red",
 	userMsgBg: "#3b3b3b",
 	userMsgFg: "white",
+	statusBg: "#2a2a3a",
 } as const;

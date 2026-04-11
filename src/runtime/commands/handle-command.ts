@@ -41,7 +41,10 @@ export async function handleRuntimeCommand(
 	const command = options.command.trim();
 
 	if (command === "/status") {
-		options.hub.send(options.ws, options.createStatusEvent());
+		options.hub.send(options.ws, {
+			...options.createStatusEvent(),
+			requested: true,
+		});
 		return;
 	}
 
@@ -103,7 +106,7 @@ export async function handleRuntimeCommand(
 				);
 				return;
 			}
-			options.store?.rename(renameId, newTitle);
+			options.state.renameSession(renameId, newTitle);
 			options.hub.broadcast({
 				type: "session_renamed",
 				sdkSessionId: renameId,

@@ -1,4 +1,4 @@
-export type TuiMessageRole = "user" | "assistant" | "info" | "error";
+export type TuiMessageRole = "user" | "assistant" | "info" | "error" | "status";
 
 export interface TuiMessage {
 	readonly id: number;
