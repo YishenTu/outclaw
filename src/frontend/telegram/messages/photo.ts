@@ -31,12 +31,14 @@ interface TelegramPhotoContext {
 			disable_notification: boolean;
 		},
 	): Promise<{ message_id: number }>;
-	replyWithStream(
-		iterable: AsyncIterable<string>,
-		placeholder: undefined,
-		options: {
-			disable_notification: boolean;
-		},
+	sendMessage(
+		text: string,
+		options: { parse_mode?: string; disable_notification?: boolean },
+	): Promise<{ message_id: number }>;
+	editMessageText(
+		messageId: number,
+		text: string,
+		options: { parse_mode?: string },
 	): Promise<unknown>;
 }
 
@@ -106,11 +108,13 @@ export async function handleTelegramPhotoMessage(
 
 		await runTelegramPrompt(
 			{
+				chatId: ctx.chat.id,
 				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
 				replyWithPhoto: (photo, promptOptions) =>
 					ctx.replyWithPhoto(photo, promptOptions),
-				replyWithStream: (iterable, placeholder, promptOptions) =>
-					ctx.replyWithStream(iterable, placeholder, promptOptions),
+				sendMessage: (text, sendOptions) => ctx.sendMessage(text, sendOptions),
+				editMessageText: (messageId, text, editOptions) =>
+					ctx.editMessageText(messageId, text, editOptions),
 			},
 			{
 				prompt: ctx.message.caption ?? "",

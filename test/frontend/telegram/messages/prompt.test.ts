@@ -11,93 +11,89 @@ describe("runTelegramPrompt", () => {
 		globalThis.clearInterval = realClearInterval;
 	});
 
-	test("streams text replies and sends outbound images", async () => {
-		const replyWithChatAction = mock(async (_action: string) => {});
-		const replyWithPhoto = mock(async (_photo: unknown, _options: unknown) => ({
-			message_id: 1,
-		}));
-		const replyWithStream = mock(
-			async (
-				iterable: AsyncIterable<string>,
-				_placeholder: undefined,
-				_options: { disable_notification: boolean },
-			) => {
-				for await (const _chunk of iterable) {
-					// Drain
-				}
-			},
-		);
+	function createContext() {
+		return {
+			chatId: 42,
+			replyWithChatAction: mock(async (_action: string) => {}),
+			replyWithPhoto: mock(async (_photo: unknown, _options: unknown) => ({
+				message_id: 1,
+			})),
+			sendMessage: mock(async (_text: string, _options: object) => ({
+				message_id: 10,
+			})),
+			editMessageText: mock(
+				async (_messageId: number, _text: string, _options: object) => {},
+			),
+		};
+	}
 
-		await runTelegramPrompt(
-			{
-				replyWithChatAction,
-				replyWithPhoto,
-				replyWithStream,
-			},
-			{
-				prompt: "plot",
-				streamPrompt: (_prompt, _images, onImage) =>
-					(async function* () {
-						yield "Here is ";
-						await onImage?.({
-							type: "image",
-							path: "/tmp/chart.png",
-						});
-						yield "your chart.";
-					})(),
-			},
-		);
+	test("sends streamed text as HTML via sendMessage", async () => {
+		const ctx = createContext();
 
-		expect(replyWithChatAction).toHaveBeenCalled();
-		expect(replyWithStream).toHaveBeenCalledTimes(1);
-		expect(replyWithPhoto).toHaveBeenCalledTimes(1);
-		expect(replyWithPhoto.mock.calls[0]?.[0]).toBeInstanceOf(InputFile);
-		expect(
-			(
-				replyWithPhoto.mock.calls[0]?.[0] as unknown as {
-					fileData: string;
-				}
-			).fileData,
-		).toBe("/tmp/chart.png");
-		expect(replyWithPhoto.mock.calls[0]?.[1]).toEqual({
+		await runTelegramPrompt(ctx, {
+			prompt: "hello",
+			streamPrompt: () =>
+				(async function* () {
+					yield "**bold** reply";
+				})(),
+		});
+
+		expect(ctx.replyWithChatAction).toHaveBeenCalled();
+		expect(ctx.sendMessage).toHaveBeenCalledTimes(1);
+		expect(ctx.sendMessage.mock.calls[0]?.[0]).toBe("<b>bold</b> reply");
+		expect(ctx.sendMessage.mock.calls[0]?.[1]).toEqual({
+			parse_mode: "HTML",
 			disable_notification: true,
 		});
 	});
 
-	test("sends outbound images without opening a text stream for image-only replies", async () => {
-		const replyWithChatAction = mock(async (_action: string) => {});
-		const replyWithPhoto = mock(async (_photo: unknown, _options: unknown) => ({
-			message_id: 2,
-		}));
-		const replyWithStream = mock(
-			async (
-				_iterable: AsyncIterable<string>,
-				_placeholder: undefined,
-				_options: { disable_notification: boolean },
-			) => undefined,
-		);
+	test("sends outbound images", async () => {
+		const ctx = createContext();
 
-		await runTelegramPrompt(
-			{
-				replyWithChatAction,
-				replyWithPhoto,
-				replyWithStream,
-			},
-			{
-				prompt: "plot",
-				streamPrompt: (_prompt, _images, onImage) =>
-					(async function* () {
-						await onImage?.({
-							type: "image",
-							path: "/tmp/chart.png",
-						});
-						yield* [];
-					})(),
-			},
-		);
+		await runTelegramPrompt(ctx, {
+			prompt: "plot",
+			streamPrompt: (_prompt, _images, onImage) =>
+				(async function* () {
+					yield "Here is ";
+					await onImage?.({
+						type: "image",
+						path: "/tmp/chart.png",
+					});
+					yield "your chart.";
+				})(),
+		});
 
-		expect(replyWithPhoto).toHaveBeenCalledTimes(1);
-		expect(replyWithStream).not.toHaveBeenCalled();
+		expect(ctx.replyWithPhoto).toHaveBeenCalledTimes(1);
+		expect(ctx.replyWithPhoto.mock.calls[0]?.[0]).toBeInstanceOf(InputFile);
+		expect(
+			(
+				ctx.replyWithPhoto.mock.calls[0]?.[0] as unknown as {
+					fileData: string;
+				}
+			).fileData,
+		).toBe("/tmp/chart.png");
+		expect(ctx.replyWithPhoto.mock.calls[0]?.[1]).toEqual({
+			disable_notification: true,
+		});
+	});
+
+	test("does not send a message for image-only replies", async () => {
+		const ctx = createContext();
+
+		await runTelegramPrompt(ctx, {
+			prompt: "plot",
+			streamPrompt: (_prompt, _images, onImage) =>
+				(async function* () {
+					await onImage?.({
+						type: "image",
+						path: "/tmp/chart.png",
+					});
+					yield* [];
+				})(),
+		});
+
+		expect(ctx.replyWithPhoto).toHaveBeenCalledTimes(1);
+		expect(ctx.sendMessage).not.toHaveBeenCalled();
 	});
 
 	test("re-sends typing updates on the interval and swallows interval failures", async () => {
@@ -110,78 +106,127 @@ describe("runTelegramPrompt", () => {
 		globalThis.clearInterval = clearInterval as typeof clearInterval;
 
 		let typingCalls = 0;
-		const replyWithChatAction = mock(async (_action: string) => {
-			typingCalls++;
-			if (typingCalls === 2) {
-				throw new Error("Telegram typing failed");
-			}
+		const ctx = {
+			...createContext(),
+			replyWithChatAction: mock(async (_action: string) => {
+				typingCalls++;
+				if (typingCalls === 2) {
+					throw new Error("Telegram typing failed");
+				}
+			}),
+		};
+
+		await runTelegramPrompt(ctx, {
+			prompt: "hello",
+			streamPrompt: () =>
+				(async function* () {
+					intervalCallbacks[0]?.();
+					await Promise.resolve();
+					yield "done";
+				})(),
 		});
 
-		await runTelegramPrompt(
-			{
-				replyWithChatAction,
-				replyWithPhoto: async (_photo: unknown, _options: unknown) => ({
-					message_id: 1,
-				}),
-				replyWithStream: async (
-					iterable: AsyncIterable<string>,
-					_placeholder: undefined,
-					_options: { disable_notification: boolean },
-				) => {
-					for await (const _chunk of iterable) {
-						// Drain
-					}
-				},
-			},
-			{
-				prompt: "hello",
-				streamPrompt: () =>
-					(async function* () {
-						intervalCallbacks[0]?.();
-						await Promise.resolve();
-						yield "done";
-					})(),
-			},
-		);
-
-		expect(replyWithChatAction).toHaveBeenCalledTimes(2);
+		expect(ctx.replyWithChatAction).toHaveBeenCalledTimes(2);
 		expect(clearInterval).toHaveBeenCalledTimes(1);
 	});
 
 	test("remembers sent images after uploading them", async () => {
 		const rememberSentImage = mock(async () => {});
+		const ctx = {
+			...createContext(),
+			replyWithPhoto: mock(async (_photo: unknown, _options: unknown) => ({
+				message_id: 42,
+			})),
+		};
 
-		await runTelegramPrompt(
-			{
-				replyWithChatAction: async (_action: string) => undefined,
-				replyWithPhoto: async (_photo: unknown, _options: unknown) => ({
-					message_id: 42,
-				}),
-				replyWithStream: async (
-					_iterable: AsyncIterable<string>,
-					_placeholder: undefined,
-					_options: { disable_notification: boolean },
-				) => undefined,
-			},
-			{
-				prompt: "plot",
-				rememberSentImage,
-				streamPrompt: (_prompt, _images, onImage) =>
-					(async function* () {
-						await onImage?.({
-							type: "image",
-							path: "/tmp/chart.png",
-							caption: "chart",
-						});
-						yield* [];
-					})(),
-			},
-		);
+		await runTelegramPrompt(ctx, {
+			prompt: "plot",
+			rememberSentImage,
+			streamPrompt: (_prompt, _images, onImage) =>
+				(async function* () {
+					await onImage?.({
+						type: "image",
+						path: "/tmp/chart.png",
+						caption: "chart",
+					});
+					yield* [];
+				})(),
+		});
 
 		expect(rememberSentImage).toHaveBeenCalledWith(42, {
 			type: "image",
 			path: "/tmp/chart.png",
 			caption: "chart",
 		});
+	});
+
+	test("edits message on subsequent chunks after throttle", async () => {
+		const ctx = createContext();
+
+		await runTelegramPrompt(ctx, {
+			prompt: "hello",
+			streamPrompt: () =>
+				(async function* () {
+					yield "first ";
+					// Even if chunks arrive fast, final edit happens
+					yield "second";
+				})(),
+		});
+
+		// Final accumulated text is sent/edited
+		const lastSendText = ctx.sendMessage.mock.calls.at(-1)?.[0];
+		const lastEditText = ctx.editMessageText.mock.calls.at(-1)?.[1];
+		const finalText = lastEditText ?? lastSendText;
+		expect(finalText).toBe("first second");
+	});
+
+	test("skips redundant final edit when content unchanged", async () => {
+		const ctx = createContext();
+
+		await runTelegramPrompt(ctx, {
+			prompt: "hello",
+			streamPrompt: () =>
+				(async function* () {
+					yield "one chunk";
+				})(),
+		});
+
+		// Single chunk: sendMessage once, no editMessageText needed
+		expect(ctx.sendMessage).toHaveBeenCalledTimes(1);
+		expect(ctx.editMessageText).not.toHaveBeenCalled();
+	});
+
+	test("swallows editMessageText errors and retries on final flush", async () => {
+		const editCalls: string[] = [];
+		const ctx = {
+			...createContext(),
+			sendMessage: mock(async (_text: string, _options: object) => ({
+				message_id: 10,
+			})),
+			editMessageText: mock(
+				async (_messageId: number, text: string, _options: object) => {
+					editCalls.push(text);
+					if (editCalls.length === 1) {
+						throw new Error("Telegram edit failed");
+					}
+				},
+			),
+		};
+
+		await runTelegramPrompt(ctx, {
+			prompt: "hello",
+			streamPrompt: () =>
+				(async function* () {
+					yield "first";
+					await new Promise((r) => setTimeout(r, 1100));
+					yield " second";
+				})(),
+		});
+
+		expect(ctx.sendMessage).toHaveBeenCalledTimes(1);
+		// First edit failed, but final flush retried because lastSentHtml
+		// was NOT advanced on failure.
+		expect(editCalls.length).toBeGreaterThanOrEqual(2);
+		expect(editCalls.at(-1)).toBe("first second");
 	});
 });

@@ -1,22 +1,31 @@
 import { describe, expect, mock, test } from "bun:test";
 import { handleTelegramTextMessage } from "../../../../src/frontend/telegram/messages/text.ts";
 
+function createTextContext(overrides: Partial<Record<string, unknown>> = {}) {
+	return {
+		chat: { id: 123 },
+		message: {
+			text: "hello",
+			message_id: 100,
+			...(overrides.message as object),
+		},
+		reply: mock(async (_text: string) => undefined),
+		replyWithChatAction: mock(async (_action: string) => undefined),
+		replyWithPhoto: mock(async (_photo: unknown, _options: unknown) => ({
+			message_id: 77,
+		})),
+		sendMessage: mock(async (_text: string, _options: object) => ({
+			message_id: 10,
+		})),
+		editMessageText: mock(
+			async (_messageId: number, _text: string, _options: object) => {},
+		),
+		...overrides,
+	};
+}
+
 describe("handleTelegramTextMessage", () => {
 	test("reattaches the replied-to image for a text prompt", async () => {
-		const replyWithPhoto = mock(async (_photo: unknown, _options: unknown) => ({
-			message_id: 77,
-		}));
-		const replyWithStream = mock(
-			async (
-				iterable: AsyncIterable<string>,
-				_placeholder: unknown,
-				_options: unknown,
-			) => {
-				for await (const _chunk of iterable) {
-					// Drain
-				}
-			},
-		);
 		const resolveMessageImage = mock(
 			async (chatId: number, messageId: number) => {
 				expect(chatId).toBe(123);
@@ -36,25 +45,19 @@ describe("handleTelegramTextMessage", () => {
 				})(),
 		);
 
-		await handleTelegramTextMessage(
-			{
-				chat: { id: 123 },
-				message: {
-					text: "use that image again",
-					message_id: 100,
-					reply_to_message: { message_id: 99 },
-				},
-				reply: async (_text: string) => undefined,
-				replyWithChatAction: async (_action: string) => undefined,
-				replyWithPhoto,
-				replyWithStream,
+		const ctx = createTextContext({
+			message: {
+				text: "use that image again",
+				message_id: 100,
+				reply_to_message: { message_id: 99 },
 			},
-			{
-				resolveMessageImage,
-				rememberMessageImage,
-				streamPrompt,
-			},
-		);
+		});
+
+		await handleTelegramTextMessage(ctx, {
+			resolveMessageImage,
+			rememberMessageImage,
+			streamPrompt,
+		});
 
 		expect(streamPrompt).toHaveBeenCalledWith(
 			"use that image again",
@@ -64,43 +67,26 @@ describe("handleTelegramTextMessage", () => {
 	});
 
 	test("stores outbound image refs using the sent telegram message id", async () => {
-		const replyWithPhoto = mock(async (_photo: unknown, _options: unknown) => ({
-			message_id: 88,
-		}));
 		const rememberMessageImage = mock(async () => {});
+		const ctx = createTextContext({
+			chat: { id: 321 },
+			message: { text: "plot", message_id: 10 },
+			replyWithPhoto: mock(async (_photo: unknown, _options: unknown) => ({
+				message_id: 88,
+			})),
+		});
 
-		await handleTelegramTextMessage(
-			{
-				chat: { id: 321 },
-				message: {
-					text: "plot",
-					message_id: 10,
-				},
-				reply: async (_text: string) => undefined,
-				replyWithChatAction: async (_action: string) => undefined,
-				replyWithPhoto,
-				replyWithStream: async (
-					iterable: AsyncIterable<string>,
-					_placeholder: unknown,
-					_options: unknown,
-				) => {
-					for await (const _chunk of iterable) {
-						// Drain
-					}
-				},
-			},
-			{
-				rememberMessageImage,
-				streamPrompt: (_prompt, _images, onImage) =>
-					(async function* () {
-						await onImage?.({
-							type: "image",
-							path: "/tmp/chart.png",
-						});
-						yield "done";
-					})(),
-			},
-		);
+		await handleTelegramTextMessage(ctx, {
+			rememberMessageImage,
+			streamPrompt: (_prompt, _images, onImage) =>
+				(async function* () {
+					await onImage?.({
+						type: "image",
+						path: "/tmp/chart.png",
+					});
+					yield "done";
+				})(),
+		});
 
 		expect(rememberMessageImage).toHaveBeenCalledWith({
 			chatId: 321,
@@ -111,33 +97,17 @@ describe("handleTelegramTextMessage", () => {
 	});
 
 	test("reports an error when prompt execution fails", async () => {
-		const reply = mock(async (_text: string) => undefined);
+		const ctx = createTextContext({
+			chat: { id: 321 },
+			message: { text: "plot", message_id: 10 },
+		});
 
-		await handleTelegramTextMessage(
-			{
-				chat: { id: 321 },
-				message: {
-					text: "plot",
-					message_id: 10,
-				},
-				reply,
-				replyWithChatAction: async (_action: string) => undefined,
-				replyWithPhoto: async (_photo: unknown, _options: unknown) => ({
-					message_id: 88,
-				}),
-				replyWithStream: async (
-					_iterable: AsyncIterable<string>,
-					_placeholder: unknown,
-					_options: unknown,
-				) => undefined,
+		await handleTelegramTextMessage(ctx, {
+			streamPrompt: () => {
+				throw new Error("bridge exploded");
 			},
-			{
-				streamPrompt: () => {
-					throw new Error("bridge exploded");
-				},
-			},
-		);
+		});
 
-		expect(reply).toHaveBeenCalledWith("[error] bridge exploded");
+		expect(ctx.reply).toHaveBeenCalledWith("[error] bridge exploded");
 	});
 });

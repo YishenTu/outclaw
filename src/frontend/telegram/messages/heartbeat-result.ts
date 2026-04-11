@@ -1,4 +1,9 @@
 import type { ImageRef } from "../../../common/protocol.ts";
+import {
+	markdownToTelegramHtml,
+	splitTelegramHtml,
+	TELEGRAM_MESSAGE_LIMIT,
+} from "../format.ts";
 import { getImageInfo } from "../media/image-info.ts";
 
 interface TelegramHeartbeatResultContext {
@@ -6,6 +11,7 @@ interface TelegramHeartbeatResultContext {
 		chatId: number,
 		text: string,
 		options: {
+			parse_mode?: string;
 			disable_notification: boolean;
 		},
 	): Promise<unknown>;
@@ -63,7 +69,12 @@ export async function sendTelegramHeartbeatResult(
 		return;
 	}
 
-	await ctx.sendMessage(params.telegramChatId, params.text, {
-		disable_notification: true,
-	});
+	const html = markdownToTelegramHtml(params.text);
+	const chunks = splitTelegramHtml(html || params.text, TELEGRAM_MESSAGE_LIMIT);
+	for (const chunk of chunks) {
+		await ctx.sendMessage(params.telegramChatId, chunk, {
+			parse_mode: "HTML",
+			disable_notification: true,
+		});
+	}
 }

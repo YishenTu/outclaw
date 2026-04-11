@@ -34,6 +34,7 @@ describe("sendTelegramHeartbeatResult", () => {
 			direction: "outbound",
 		});
 		expect(sendMessage).toHaveBeenCalledWith(123, "heartbeat summary", {
+			parse_mode: "HTML",
 			disable_notification: true,
 		});
 	});
@@ -79,6 +80,53 @@ describe("sendTelegramHeartbeatResult", () => {
 			disable_notification: true,
 		});
 		expect(sendMessage).not.toHaveBeenCalled();
+	});
+
+	test("converts markdown to HTML in text messages", async () => {
+		const sendMessage = mock(async () => ({}));
+		const sendPhoto = mock(async () => ({ message_id: 1 }));
+
+		await sendTelegramHeartbeatResult(
+			{
+				sendMessage,
+				sendPhoto,
+			},
+			{
+				telegramChatId: 123,
+				text: "**bold** result",
+				images: [],
+			},
+		);
+
+		expect(sendMessage).toHaveBeenCalledWith(123, "<b>bold</b> result", {
+			parse_mode: "HTML",
+			disable_notification: true,
+		});
+	});
+
+	test("splits long text into multiple messages", async () => {
+		const sendMessage = mock(async () => ({}));
+		const sendPhoto = mock(async () => ({ message_id: 1 }));
+
+		const longText = `${"word ".repeat(900)}end`;
+
+		await sendTelegramHeartbeatResult(
+			{
+				sendMessage,
+				sendPhoto,
+			},
+			{
+				telegramChatId: 123,
+				text: longText,
+				images: [],
+			},
+		);
+
+		expect(sendMessage.mock.calls.length).toBeGreaterThan(1);
+		for (const call of sendMessage.mock.calls) {
+			const text = (call as unknown as [number, string, object])[1];
+			expect(text.length).toBeLessThanOrEqual(4096);
+		}
 	});
 
 	test("skips backtick-wrapped HEARTBEAT_OK", async () => {

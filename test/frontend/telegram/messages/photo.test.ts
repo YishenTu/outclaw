@@ -4,6 +4,30 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleTelegramPhotoMessage } from "../../../../src/frontend/telegram/messages/photo.ts";
 
+function createPhotoContext(overrides: Record<string, unknown> = {}) {
+	return {
+		chat: { id: 123 },
+		getFile: async () => ({ file_path: "photos/cat.jpg" }),
+		message: {
+			caption: "describe this",
+			message_id: 10,
+			photo: [{ file_id: "small" }, { file_id: "large" }],
+		},
+		reply: mock(async (_text: string) => undefined),
+		replyWithChatAction: mock(async (_action: string) => undefined),
+		replyWithPhoto: mock(async (_photo: unknown, _options: unknown) => ({
+			message_id: 50,
+		})),
+		sendMessage: mock(async (_text: string, _options: object) => ({
+			message_id: 10,
+		})),
+		editMessageText: mock(
+			async (_messageId: number, _text: string, _options: object) => {},
+		),
+		...overrides,
+	};
+}
+
 describe("handleTelegramPhotoMessage", () => {
 	const mediaRoots: string[] = [];
 	const originalFetch = globalThis.fetch;
@@ -17,22 +41,7 @@ describe("handleTelegramPhotoMessage", () => {
 	});
 
 	test("saves the Telegram file, records it, and forwards it as an image prompt", async () => {
-		const replyWithChatAction = mock(async (_action: string) => {});
-		const replyWithPhoto = mock(async (_photo: unknown, _options: unknown) => ({
-			message_id: 50,
-		}));
 		const rememberMessageImage = mock(async () => {});
-		const replyWithStream = mock(
-			async (
-				iterable: AsyncIterable<string>,
-				_placeholder: unknown,
-				_options: unknown,
-			) => {
-				for await (const _chunk of iterable) {
-					// Drain
-				}
-			},
-		);
 		const saveMedia = mock(
 			async (url: string, ext: string, mediaType: string) => {
 				expect(url).toBe(
@@ -54,29 +63,16 @@ describe("handleTelegramPhotoMessage", () => {
 				})(),
 		);
 
-		await handleTelegramPhotoMessage(
-			{
-				chat: { id: 123 },
-				getFile: async () => ({ file_path: "photos/cat.jpg" }),
-				message: {
-					caption: "describe this",
-					message_id: 10,
-					photo: [{ file_id: "small" }, { file_id: "large" }],
-				},
-				reply: async (_text: string) => undefined,
-				replyWithChatAction,
-				replyWithPhoto,
-				replyWithStream,
-			},
-			{
-				rememberMessageImage,
-				token: "TOKEN",
-				saveMedia,
-				streamPrompt,
-			},
-		);
+		const ctx = createPhotoContext();
 
-		expect(replyWithChatAction).toHaveBeenCalled();
+		await handleTelegramPhotoMessage(ctx, {
+			rememberMessageImage,
+			token: "TOKEN",
+			saveMedia,
+			streamPrompt,
+		});
+
+		expect(ctx.replyWithChatAction).toHaveBeenCalled();
 		expect(streamPrompt).toHaveBeenCalledWith(
 			"describe this",
 			[{ path: "/tmp/cat.jpg", mediaType: "image/jpeg" }],
@@ -88,7 +84,7 @@ describe("handleTelegramPhotoMessage", () => {
 			image: { path: "/tmp/cat.jpg", mediaType: "image/jpeg" },
 			direction: "inbound",
 		});
-		expect(replyWithStream).toHaveBeenCalled();
+		expect(ctx.sendMessage).toHaveBeenCalled();
 	});
 
 	test("reattaches the replied-to image before the new upload", async () => {
@@ -107,42 +103,26 @@ describe("handleTelegramPhotoMessage", () => {
 				})(),
 		);
 
-		await handleTelegramPhotoMessage(
-			{
-				chat: { id: 123 },
-				getFile: async () => ({ file_path: "photos/cat.jpg" }),
-				message: {
-					caption: "compare them",
-					message_id: 10,
-					reply_to_message: { message_id: 9 },
-					photo: [{ file_id: "small" }, { file_id: "large" }],
-				},
-				reply: async (_text: string) => undefined,
-				replyWithChatAction: async (_action: string) => undefined,
-				replyWithPhoto: async (_photo: unknown, _options: unknown) => ({
-					message_id: 50,
-				}),
-				replyWithStream: async (
-					iterable: AsyncIterable<string>,
-					_placeholder: unknown,
-					_options: unknown,
-				) => {
-					for await (const _chunk of iterable) {
-						// Drain
-					}
-				},
+		const ctx = createPhotoContext({
+			message: {
+				caption: "compare them",
+				message_id: 10,
+				reply_to_message: { message_id: 9 },
+				photo: [{ file_id: "small" }, { file_id: "large" }],
 			},
-			{
-				resolveMessageImage,
-				rememberMessageImage: async () => undefined,
-				token: "TOKEN",
-				saveMedia: async () => ({
-					path: "/tmp/current.jpg",
-					mediaType: "image/jpeg",
-				}),
-				streamPrompt,
-			},
-		);
+			getFile: async () => ({ file_path: "photos/cat.jpg" }),
+		});
+
+		await handleTelegramPhotoMessage(ctx, {
+			resolveMessageImage,
+			rememberMessageImage: async () => undefined,
+			token: "TOKEN",
+			saveMedia: async () => ({
+				path: "/tmp/current.jpg",
+				mediaType: "image/jpeg",
+			}),
+			streamPrompt,
+		});
 
 		expect(resolveMessageImage).toHaveBeenCalledWith(123, 9);
 		expect(streamPrompt).toHaveBeenCalledWith(
@@ -156,42 +136,30 @@ describe("handleTelegramPhotoMessage", () => {
 	});
 
 	test("reports an error when Telegram does not return a file path", async () => {
-		const reply = mock(async (_text: string) => {});
+		const ctx = createPhotoContext({
+			getFile: async () => ({ file_path: undefined }),
+			message: {
+				caption: undefined,
+				message_id: 10,
+				photo: [{ file_id: "photo" }],
+			},
+		});
 
-		await handleTelegramPhotoMessage(
-			{
-				chat: { id: 123 },
-				getFile: async () => ({ file_path: undefined }),
-				message: {
-					caption: undefined,
-					message_id: 10,
-					photo: [{ file_id: "photo" }],
-				},
-				reply,
-				replyWithChatAction: async (_action: string) => undefined,
-				replyWithPhoto: async (_photo: unknown, _options: unknown) => ({
-					message_id: 1,
-				}),
-				replyWithStream: async (
-					_iterable: AsyncIterable<string>,
-					_placeholder: unknown,
-					_options: unknown,
-				) => undefined,
+		await handleTelegramPhotoMessage(ctx, {
+			rememberMessageImage: async () => undefined,
+			token: "TOKEN",
+			saveMedia: async () => {
+				throw new Error("should not be called");
 			},
-			{
-				rememberMessageImage: async () => undefined,
-				token: "TOKEN",
-				saveMedia: async () => {
-					throw new Error("should not be called");
-				},
-				streamPrompt: () =>
-					(async function* () {
-						yield "";
-					})(),
-			},
+			streamPrompt: () =>
+				(async function* () {
+					yield "";
+				})(),
+		});
+
+		expect(ctx.reply).toHaveBeenCalledWith(
+			"[error] Telegram file path is missing",
 		);
-
-		expect(reply).toHaveBeenCalledWith("[error] Telegram file path is missing");
 	});
 
 	test("uses the default media saver and stores outbound image refs", async () => {
@@ -205,52 +173,38 @@ describe("handleTelegramPhotoMessage", () => {
 		}) as unknown as typeof fetch;
 
 		const rememberMessageImage = mock(async () => {});
-		const replyWithPhoto = mock(async (_photo: unknown, _options: unknown) => ({
-			message_id: 77,
-		}));
+		const ctx = createPhotoContext({
+			getFile: async () => ({ file_path: "photos/cat.png" }),
+			message: {
+				caption: "describe this",
+				message_id: 10,
+				photo: [{ file_id: "small" }],
+			},
+			replyWithPhoto: mock(async (_photo: unknown, _options: unknown) => ({
+				message_id: 77,
+			})),
+		});
+
 		let receivedImages: Array<{ path: string; mediaType: string }> | undefined;
 
-		await handleTelegramPhotoMessage(
-			{
-				chat: { id: 123 },
-				getFile: async () => ({ file_path: "photos/cat.png" }),
-				message: {
-					caption: "describe this",
-					message_id: 10,
-					photo: [{ file_id: "small" }],
-				},
-				reply: async (_text: string) => undefined,
-				replyWithChatAction: async (_action: string) => undefined,
-				replyWithPhoto,
-				replyWithStream: async (
-					iterable: AsyncIterable<string>,
-					_placeholder: unknown,
-					_options: unknown,
-				) => {
-					for await (const _chunk of iterable) {
-						// Drain
-					}
-				},
-			},
-			{
-				rememberMessageImage,
-				token: "TOKEN",
-				mediaRoot,
-				streamPrompt: (_prompt, images, onImage) =>
-					(async function* () {
-						receivedImages = images as Array<{
-							path: string;
-							mediaType: string;
-						}>;
-						await onImage?.({
-							type: "image",
-							path: "/tmp/outbound.png",
-							caption: "result",
-						});
-						yield "done";
-					})(),
-			},
-		);
+		await handleTelegramPhotoMessage(ctx, {
+			rememberMessageImage,
+			token: "TOKEN",
+			mediaRoot,
+			streamPrompt: (_prompt, images, onImage) =>
+				(async function* () {
+					receivedImages = images as Array<{
+						path: string;
+						mediaType: string;
+					}>;
+					await onImage?.({
+						type: "image",
+						path: "/tmp/outbound.png",
+						caption: "result",
+					});
+					yield "done";
+				})(),
+		});
 
 		expect(receivedImages?.length).toBe(1);
 		const savedImage = receivedImages?.[0];
@@ -279,78 +233,49 @@ describe("handleTelegramPhotoMessage", () => {
 	});
 
 	test("reports an error when the default media saver has no mediaRoot", async () => {
-		const reply = mock(async (_text: string) => {});
-
-		await handleTelegramPhotoMessage(
-			{
-				chat: { id: 123 },
-				getFile: async () => ({ file_path: "photos/cat.jpg" }),
-				message: {
-					caption: "describe this",
-					message_id: 10,
-					photo: [{ file_id: "photo" }],
-				},
-				reply,
-				replyWithChatAction: async (_action: string) => undefined,
-				replyWithPhoto: async (_photo: unknown, _options: unknown) => ({
-					message_id: 1,
-				}),
-				replyWithStream: async (
-					_iterable: AsyncIterable<string>,
-					_placeholder: unknown,
-					_options: unknown,
-				) => undefined,
+		const ctx = createPhotoContext({
+			getFile: async () => ({ file_path: "photos/cat.jpg" }),
+			message: {
+				caption: "describe this",
+				message_id: 10,
+				photo: [{ file_id: "photo" }],
 			},
-			{
-				token: "TOKEN",
-				streamPrompt: () =>
-					(async function* () {
-						yield "";
-					})(),
-			},
-		);
+		});
 
-		expect(reply).toHaveBeenCalledWith(
+		await handleTelegramPhotoMessage(ctx, {
+			token: "TOKEN",
+			streamPrompt: () =>
+				(async function* () {
+					yield "";
+				})(),
+		});
+
+		expect(ctx.reply).toHaveBeenCalledWith(
 			"[error] Telegram media root is not configured",
 		);
 	});
 
 	test("reports an error when the message has no photo sizes", async () => {
-		const reply = mock(async (_text: string) => {});
-
-		await handleTelegramPhotoMessage(
-			{
-				chat: { id: 123 },
-				getFile: async () => ({ file_path: "photos/cat.jpg" }),
-				message: {
-					caption: "describe this",
-					message_id: 10,
-					photo: [],
-				},
-				reply,
-				replyWithChatAction: async (_action: string) => undefined,
-				replyWithPhoto: async (_photo: unknown, _options: unknown) => ({
-					message_id: 1,
-				}),
-				replyWithStream: async (
-					_iterable: AsyncIterable<string>,
-					_placeholder: unknown,
-					_options: unknown,
-				) => undefined,
+		const ctx = createPhotoContext({
+			message: {
+				caption: "describe this",
+				message_id: 10,
+				photo: [],
 			},
-			{
-				token: "TOKEN",
-				saveMedia: async () => {
-					throw new Error("should not be called");
-				},
-				streamPrompt: () =>
-					(async function* () {
-						yield "";
-					})(),
-			},
-		);
+		});
 
-		expect(reply).toHaveBeenCalledWith(
+		await handleTelegramPhotoMessage(ctx, {
+			token: "TOKEN",
+			saveMedia: async () => {
+				throw new Error("should not be called");
+			},
+			streamPrompt: () =>
+				(async function* () {
+					yield "";
+				})(),
+		});
+
+		expect(ctx.reply).toHaveBeenCalledWith(
 			"[error] Telegram photo message is missing photo sizes",
 		);
 	});

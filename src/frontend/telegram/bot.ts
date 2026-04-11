@@ -1,5 +1,4 @@
 import { autoRetry } from "@grammyjs/auto-retry";
-import { type StreamFlavor, stream } from "@grammyjs/stream";
 import { Bot, type Context, InputFile } from "grammy";
 import type { ImageRef } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
@@ -7,12 +6,17 @@ import { createTelegramBridge } from "./bridge/client.ts";
 import { TELEGRAM_COMMANDS } from "./commands/catalog.ts";
 import { registerTelegramRuntimeCommands } from "./commands/runtime.ts";
 import { registerTelegramModelShortcuts } from "./commands/shortcuts.ts";
+import {
+	markdownToTelegramHtml,
+	splitTelegramHtml,
+	TELEGRAM_MESSAGE_LIMIT,
+} from "./format.ts";
 import { sendTelegramHeartbeatResult } from "./messages/heartbeat-result.ts";
 import { handleTelegramPhotoMessage } from "./messages/photo.ts";
 import { handleTelegramTextMessage } from "./messages/text.ts";
 import { registerTelegramSessionHandlers } from "./sessions/register.ts";
 
-type MyContext = StreamFlavor<Context>;
+type MyContext = Context;
 type TelegramTextHandlerContext = Parameters<
 	typeof handleTelegramTextMessage
 >[0];
@@ -33,12 +37,19 @@ interface TelegramIncomingTextContext {
 	reply: TelegramTextHandlerContext["reply"];
 	replyWithChatAction: TelegramTextHandlerContext["replyWithChatAction"];
 	replyWithPhoto: TelegramTextHandlerContext["replyWithPhoto"];
-	replyWithStream: TelegramTextHandlerContext["replyWithStream"];
+	sendMessage: TelegramTextHandlerContext["sendMessage"];
+	editMessageText: TelegramTextHandlerContext["editMessageText"];
 }
 
 interface TelegramIncomingPhotoContext {
 	api: {
 		getFile(fileId: string): Promise<{ file_path?: string }>;
+		editMessageText(
+			chatId: number,
+			messageId: number,
+			text: string,
+			options?: object,
+		): Promise<unknown>;
 	};
 	chat: TelegramPhotoHandlerContext["chat"];
 	from?: { id: number };
@@ -46,7 +57,8 @@ interface TelegramIncomingPhotoContext {
 	reply: TelegramPhotoHandlerContext["reply"];
 	replyWithChatAction: TelegramPhotoHandlerContext["replyWithChatAction"];
 	replyWithPhoto: TelegramPhotoHandlerContext["replyWithPhoto"];
-	replyWithStream: TelegramPhotoHandlerContext["replyWithStream"];
+	sendMessage: TelegramPhotoHandlerContext["sendMessage"];
+	editMessageText: TelegramPhotoHandlerContext["editMessageText"];
 }
 
 interface TelegramBridgeLike {
@@ -69,6 +81,12 @@ interface TelegramBotLike {
 			text: string,
 			options?: object,
 		): Promise<{ message_id: number }>;
+		editMessageText(
+			chatId: number,
+			messageId: number,
+			text: string,
+			options?: object,
+		): Promise<unknown>;
 		sendPhoto(
 			chatId: number,
 			photo: unknown,
@@ -102,7 +120,6 @@ interface TelegramBotDependencies {
 	createBot(token: string): TelegramBotLike;
 	createBridge(runtimeUrl: string): TelegramBridgeLike;
 	createInputFile(path: string): unknown;
-	createStreamMiddleware(): unknown;
 	handlePhotoMessage: typeof handleTelegramPhotoMessage;
 	handleTextMessage: typeof handleTelegramTextMessage;
 	logError(message: string): void;
@@ -127,7 +144,6 @@ const DEFAULT_TELEGRAM_BOT_DEPENDENCIES: TelegramBotDependencies = {
 	createBot: (token) => new Bot<MyContext>(token) as unknown as TelegramBotLike,
 	createBridge: (runtimeUrl) => createTelegramBridge(runtimeUrl),
 	createInputFile: (path) => new InputFile(path),
-	createStreamMiddleware: () => stream(),
 	handlePhotoMessage: (ctx, options) =>
 		handleTelegramPhotoMessage(ctx, options),
 	handleTextMessage: (ctx, options) => handleTelegramTextMessage(ctx, options),
@@ -196,7 +212,6 @@ export function startTelegramBot(
 	};
 	const bot = dependencies.createBot(token);
 	bot.api.config.use(dependencies.createAutoRetryMiddleware());
-	bot.use(dependencies.createStreamMiddleware());
 
 	const allowed = new Set(allowedUsers);
 	bot.use(
@@ -227,8 +242,10 @@ export function startTelegramBot(
 				reply: (text) => ctx.reply(text),
 				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
 				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
-				replyWithStream: (iterable, placeholder, options) =>
-					ctx.replyWithStream(iterable, placeholder, options),
+				sendMessage: (text, options) =>
+					bot.api.sendMessage(ctx.chat.id, text, options),
+				editMessageText: (messageId, text, options) =>
+					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
 			},
 			{
 				resolveMessageImage,
@@ -254,8 +271,10 @@ export function startTelegramBot(
 				reply: (text) => ctx.reply(text),
 				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
 				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
-				replyWithStream: (iterable, placeholder, options) =>
-					ctx.replyWithStream(iterable, placeholder, options),
+				sendMessage: (text, options) =>
+					bot.api.sendMessage(ctx.chat.id, text, options),
+				editMessageText: (messageId, text, options) =>
+					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
 			},
 			{
 				resolveMessageImage,
@@ -278,12 +297,17 @@ export function startTelegramBot(
 			telegramChatId: number;
 			text: string;
 		}) {
-			const message = params.text.trim()
+			const raw = params.text.trim()
 				? `[cron] ${params.jobName}\n${params.text}`
 				: `[cron] ${params.jobName}`;
-			await bot.api.sendMessage(params.telegramChatId, message, {
-				disable_notification: true,
-			});
+			const html = markdownToTelegramHtml(raw);
+			const chunks = splitTelegramHtml(html || raw, TELEGRAM_MESSAGE_LIMIT);
+			for (const chunk of chunks) {
+				await bot.api.sendMessage(params.telegramChatId, chunk, {
+					parse_mode: "HTML",
+					disable_notification: true,
+				});
+			}
 		},
 		async sendHeartbeatResult(params: {
 			telegramChatId: number;

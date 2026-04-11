@@ -3,7 +3,6 @@ import { startTelegramBot } from "../../../src/frontend/telegram/bot.ts";
 import { TELEGRAM_COMMANDS } from "../../../src/frontend/telegram/commands/catalog.ts";
 
 const autoRetryMiddleware = Symbol("autoRetry");
-const streamMiddleware = Symbol("stream");
 
 function createEmptyTextStream() {
 	return (async function* () {})();
@@ -63,6 +62,14 @@ class FakeBot {
 			async (_chatId: number, _message: string, _options?: object) => ({
 				message_id: 1,
 			}),
+		),
+		editMessageText: mock(
+			async (
+				_chatId: number,
+				_messageId: number,
+				_text: string,
+				_options?: object,
+			) => ({}),
 		),
 		sendPhoto: mock(
 			async (_chatId: number, _photo: unknown, _options?: object) => ({
@@ -150,7 +157,6 @@ function createTestDependencies(params: {
 		createBridge: (...args: Parameters<typeof createTelegramBridge>) =>
 			createTelegramBridge(...args) as never,
 		createInputFile: (path: string) => new FakeInputFile(path),
-		createStreamMiddleware: () => streamMiddleware,
 		handlePhotoMessage: (
 			...args: Parameters<typeof handleTelegramPhotoMessage>
 		) => handleTelegramPhotoMessage(...args),
@@ -196,7 +202,6 @@ describe("startTelegramBot", () => {
 		const bot = FakeBot.lastInstance as FakeBot;
 		expect(bot.token).toBe("telegram-token");
 		expect(bot.api.config.use).toHaveBeenCalledWith(autoRetryMiddleware);
-		expect(bot.middleware[0]).toBe(streamMiddleware);
 		expect(createTelegramBridge).toHaveBeenCalledWith("ws://runtime");
 		expect(bot.api.setMyCommands).toHaveBeenCalledWith(TELEGRAM_COMMANDS);
 		expect(registerTelegramSessionHandlers).toHaveBeenCalledWith(bot, bridge);
@@ -205,7 +210,7 @@ describe("startTelegramBot", () => {
 		expect(bot.start).toHaveBeenCalledTimes(1);
 		expect(log).toHaveBeenCalledWith("Telegram bot started");
 
-		const authMiddleware = bot.middleware[1] as (
+		const authMiddleware = bot.middleware[0] as (
 			ctx: { from?: { id: number } },
 			next: () => Promise<unknown>,
 		) => Promise<unknown>;
@@ -227,7 +232,6 @@ describe("startTelegramBot", () => {
 			reply: mock(async () => undefined),
 			replyWithChatAction: mock(async () => undefined),
 			replyWithPhoto: mock(async () => undefined),
-			replyWithStream: mock(async () => undefined),
 		};
 		await bot.handlers.get("message:text")?.(textCtx);
 		expect(handleTelegramTextMessage).toHaveBeenCalledTimes(1);
@@ -263,7 +267,6 @@ describe("startTelegramBot", () => {
 			reply: mock(async () => undefined),
 			replyWithChatAction: mock(async () => undefined),
 			replyWithPhoto: mock(async () => undefined),
-			replyWithStream: mock(async () => undefined),
 		};
 		await bot.handlers.get("message:photo")?.(photoCtx);
 		expect(handleTelegramPhotoMessage).toHaveBeenCalledTimes(1);
@@ -292,6 +295,7 @@ describe("startTelegramBot", () => {
 			9,
 			"[cron] nightly\ndone",
 			{
+				parse_mode: "HTML",
 				disable_notification: true,
 			},
 		);

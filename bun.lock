@@ -7,7 +7,6 @@
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.2.92",
         "@grammyjs/auto-retry": "^2.0.2",
-        "@grammyjs/stream": "^1.0.1",
         "chalk": "^5.6.2",
         "croner": "^10.0.1",
         "figlet": "^1.11.0",
@@ -61,8 +60,6 @@
     "@colors/colors": ["@colors/colors@1.5.0", "", {}, "sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ=="],
 
     "@grammyjs/auto-retry": ["@grammyjs/auto-retry@2.0.2", "", { "dependencies": { "debug": "^4.3.4" }, "peerDependencies": { "grammy": "^1.10.0" } }, "sha512-b4A4p5jlYDiQtW0c0FXYe11WMkYoiW+5rvOaDMCOk1h7Pu2SDl7B7gmFF8cthWCx2+M2nWLOsBxAgbBG4kKWYg=="],
-
-    "@grammyjs/stream": ["@grammyjs/stream@1.0.1", "", { "dependencies": { "abort-controller": "^3.0.0" }, "peerDependencies": { "grammy": "^1.39.0" } }, "sha512-L1hKvKdI1odWa2mRzfcEP8TdZPjgzHaATE2t2SFpSyikXCViVIEzKjZcM6tDRZFce4uzqckkN5tRM8WPW/1BUg=="],
 
     "@grammyjs/types": ["@grammyjs/types@3.26.0", "", {}, "sha512-jlnyfxfev/2o68HlvAGRocAXgdPPX5QabG7jZlbqC2r9DZyWBfzTlg+nu3O3Fy4EhgLWu28hZ/8wr7DsNamP9A=="],
 

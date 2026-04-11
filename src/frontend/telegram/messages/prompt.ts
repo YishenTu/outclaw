@@ -1,7 +1,15 @@
 import { InputFile } from "grammy";
 import type { ImageEvent, ImageRef } from "../../../common/protocol.ts";
+import {
+	markdownToTelegramHtml,
+	splitTelegramHtml,
+	TELEGRAM_MESSAGE_LIMIT,
+} from "../format.ts";
+
+const EDIT_THROTTLE_MS = 1_000;
 
 interface TelegramPromptContext {
+	chatId: number;
 	replyWithChatAction(action: "typing"): Promise<unknown>;
 	replyWithPhoto(
 		photo: InputFile,
@@ -10,12 +18,14 @@ interface TelegramPromptContext {
 			disable_notification: boolean;
 		},
 	): Promise<{ message_id: number }>;
-	replyWithStream(
-		iterable: AsyncIterable<string>,
-		placeholder: undefined,
-		options: {
-			disable_notification: boolean;
-		},
+	sendMessage(
+		text: string,
+		options: { parse_mode?: string; disable_notification?: boolean },
+	): Promise<{ message_id: number }>;
+	editMessageText(
+		messageId: number,
+		text: string,
+		options: { parse_mode?: string },
 	): Promise<unknown>;
 }
 
@@ -33,6 +43,19 @@ interface RunTelegramPromptOptions {
 	): AsyncIterable<string>;
 }
 
+async function sendHtmlChunks(
+	ctx: TelegramPromptContext,
+	html: string,
+): Promise<void> {
+	const chunks = splitTelegramHtml(html, TELEGRAM_MESSAGE_LIMIT);
+	for (const chunk of chunks) {
+		await ctx.sendMessage(chunk, {
+			parse_mode: "HTML",
+			disable_notification: true,
+		});
+	}
+}
+
 export async function runTelegramPrompt(
 	ctx: TelegramPromptContext,
 	options: RunTelegramPromptOptions,
@@ -48,17 +71,78 @@ export async function runTelegramPrompt(
 			options.images,
 			(event) => sendImage(ctx, event, options.rememberSentImage),
 		);
-		const iterator = stream[Symbol.asyncIterator]();
-		const firstChunk = await iterator.next();
 
-		if (!firstChunk.done) {
-			await ctx.replyWithStream(
-				prependChunk(firstChunk.value, iterator),
-				undefined,
-				{
+		let accumulated = "";
+		let messageId: number | undefined;
+		let lastEditTime = 0;
+		let lastSentHtml = "";
+
+		for await (const chunk of stream) {
+			accumulated += chunk;
+
+			const now = Date.now();
+			if (now - lastEditTime < EDIT_THROTTLE_MS) continue;
+
+			const html = markdownToTelegramHtml(accumulated);
+			if (!html || html === lastSentHtml) continue;
+
+			// Mid-stream: only use the first chunk for the preview message.
+			// Full chunking happens at the end.
+			const preview = splitTelegramHtml(html, TELEGRAM_MESSAGE_LIMIT)[0];
+			if (!preview || preview === lastSentHtml) continue;
+
+			if (messageId === undefined) {
+				const sent = await ctx.sendMessage(preview, {
+					parse_mode: "HTML",
 					disable_notification: true,
-				},
-			);
+				});
+				messageId = sent.message_id;
+				lastSentHtml = preview;
+			} else {
+				const ok = await ctx
+					.editMessageText(messageId, preview, {
+						parse_mode: "HTML",
+					})
+					.then(() => true)
+					.catch(() => false);
+				if (ok) lastSentHtml = preview;
+			}
+			lastEditTime = Date.now();
+		}
+
+		if (!accumulated) return;
+
+		const html = markdownToTelegramHtml(accumulated);
+		if (!html) return;
+
+		const chunks = splitTelegramHtml(html, TELEGRAM_MESSAGE_LIMIT);
+		if (chunks.length === 0) return;
+
+		// Final delivery: edit existing message with first chunk, send rest as new.
+		const first = chunks[0] as string;
+
+		if (messageId === undefined) {
+			await sendHtmlChunks(ctx, html);
+		} else {
+			let startIndex = 1;
+			if (first !== lastSentHtml) {
+				const editOk = await ctx
+					.editMessageText(messageId, first, {
+						parse_mode: "HTML",
+					})
+					.then(() => true)
+					.catch(() => false);
+				if (!editOk) {
+					// Edit failed — send all chunks as new messages.
+					startIndex = 0;
+				}
+			}
+			for (let i = startIndex; i < chunks.length; i++) {
+				await ctx.sendMessage(chunks[i] as string, {
+					parse_mode: "HTML",
+					disable_notification: true,
+				});
+			}
 		}
 	} finally {
 		clearInterval(typingInterval);
@@ -77,19 +161,4 @@ async function sendImage(
 		disable_notification: true,
 	});
 	await rememberSentImage?.(message.message_id, event);
-}
-
-async function* prependChunk(
-	firstChunk: string,
-	iterator: AsyncIterator<string>,
-): AsyncIterable<string> {
-	yield firstChunk;
-
-	while (true) {
-		const nextChunk = await iterator.next();
-		if (nextChunk.done) {
-			return;
-		}
-		yield nextChunk.value;
-	}
 }
