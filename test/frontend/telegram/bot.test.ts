@@ -240,11 +240,16 @@ describe("startTelegramBot", () => {
 				prompt: string,
 				images: unknown[],
 				onImage: () => void,
+				replyContext?: { text: string },
 			) => Promise<unknown>;
 		};
 		const onTextImage = () => undefined;
-		await textDeps.streamPrompt("hello", [], onTextImage);
-		expect(bridge.stream).toHaveBeenCalledWith("hello", [], onTextImage, 42);
+		await textDeps.streamPrompt("hello", [], onTextImage, {
+			text: "previous message",
+		});
+		expect(bridge.stream).toHaveBeenCalledWith("hello", [], onTextImage, 42, {
+			text: "previous message",
+		});
 
 		const missingPhotoCtx = {
 			chat: { id: 7 },
@@ -280,11 +285,16 @@ describe("startTelegramBot", () => {
 				prompt: string,
 				images: unknown[],
 				onImage: () => void,
+				replyContext?: { text: string },
 			) => Promise<unknown>;
 		};
 		const onPhotoImage = () => undefined;
-		await photoDeps.streamPrompt("plot", [], onPhotoImage);
-		expect(bridge.stream).toHaveBeenCalledWith("plot", [], onPhotoImage, 7);
+		await photoDeps.streamPrompt("plot", [], onPhotoImage, {
+			text: "previous photo",
+		});
+		expect(bridge.stream).toHaveBeenCalledWith("plot", [], onPhotoImage, 7, {
+			text: "previous photo",
+		});
 
 		await service.sendCronResult({
 			jobName: "nightly",

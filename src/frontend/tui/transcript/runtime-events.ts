@@ -1,5 +1,5 @@
 import type { ServerEvent } from "../../../common/protocol.ts";
-import { formatLivePrompt, formatStatus } from "./format.ts";
+import { formatLivePrompt, formatReplyText, formatStatus } from "./format.ts";
 import type { TuiAction } from "./reducer.ts";
 import type { TuiMessage } from "./state.ts";
 
@@ -41,6 +41,9 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 						event.prompt,
 						event.images,
 					).trimEnd(),
+					replyText: event.replyContext
+						? formatReplyText(event.replyContext)
+						: undefined,
 				},
 			];
 		case "image":
@@ -78,6 +81,10 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 						id: id++,
 						role: message.role,
 						text,
+						replyText:
+							message.role === "user" && message.replyContext
+								? formatReplyText(message.replyContext)
+								: undefined,
 					});
 				}
 			}

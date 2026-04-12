@@ -77,6 +77,7 @@ function prompt(
 	source?: string,
 	images?: ImageRef[],
 	telegramChatId?: number,
+	replyContext?: { text: string },
 ) {
 	return JSON.stringify({
 		type: "prompt",
@@ -84,6 +85,7 @@ function prompt(
 		source,
 		images,
 		telegramChatId,
+		replyContext,
 	});
 }
 
@@ -528,6 +530,47 @@ describe("RuntimeController", () => {
 				| { images?: ImageRef[] }
 				| undefined;
 			expect(userPrompt?.images).toEqual(images);
+		});
+
+		test("broadcasts telegram reply context without mutating the prompt", async () => {
+			const { controller, facade } = createController();
+			const tui = mockWs();
+			const tg = mockWs("telegram");
+
+			controller.handleOpen(tui);
+			controller.handleOpen(tg);
+
+			controller.handleMessage(
+				tg,
+				prompt("what do you mean?", "telegram", undefined, 123, {
+					text: 'the "cron" output',
+				}),
+			);
+			await drain(controller, facade);
+
+			expect(facade.allParams[0]).toMatchObject({
+				prompt: "what do you mean?",
+				replyContext: { text: 'the "cron" output' },
+			});
+
+			const userPrompt = tui
+				.events()
+				.find((event) => event.type === "user_prompt") as
+				| {
+						type: "user_prompt";
+						prompt: string;
+						source: string;
+						images?: ImageRef[];
+						replyContext?: { text: string };
+				  }
+				| undefined;
+			expect(userPrompt).toEqual({
+				type: "user_prompt",
+				prompt: "what do you mean?",
+				source: "telegram",
+				replyContext: { text: 'the "cron" output' },
+				images: undefined,
+			});
 		});
 
 		test("broadcasts image events to observers", async () => {

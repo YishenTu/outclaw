@@ -63,6 +63,7 @@ describe("handleTelegramTextMessage", () => {
 			"use that image again",
 			[{ path: "/tmp/replied.png", mediaType: "image/png" }],
 			expect.any(Function),
+			undefined,
 		);
 	});
 
@@ -94,6 +95,97 @@ describe("handleTelegramTextMessage", () => {
 			image: { path: "/tmp/chart.png", mediaType: "image/png" },
 			direction: "outbound",
 		});
+	});
+
+	test("appends replied-to text context to prompt", async () => {
+		const streamPrompt = mock(
+			(
+				_prompt: string,
+				_images?: Array<{ path: string; mediaType: string }>,
+				_onImage?: (event: { type: "image"; path: string }) => void,
+			) =>
+				(async function* () {
+					yield { type: "text" as const, text: "done" };
+				})(),
+		);
+
+		const ctx = createTextContext({
+			message: {
+				text: "what do you mean?",
+				message_id: 100,
+				reply_to_message: { message_id: 99, text: "the cron output" },
+			},
+		});
+
+		await handleTelegramTextMessage(ctx, { streamPrompt });
+
+		expect(streamPrompt).toHaveBeenCalledWith(
+			"what do you mean?",
+			[],
+			expect.any(Function),
+			{ text: "the cron output" },
+		);
+	});
+
+	test("passes reply context separately without mutating the prompt text", async () => {
+		const streamPrompt = mock(
+			(
+				_prompt: string,
+				_images?: Array<{ path: string; mediaType: string }>,
+				_onImage?: (event: { type: "image"; path: string }) => void,
+				_replyContext?: { text: string },
+			) =>
+				(async function* () {
+					yield { type: "text" as const, text: "done" };
+				})(),
+		);
+
+		const ctx = createTextContext({
+			message: {
+				text: "why?",
+				message_id: 100,
+				reply_to_message: { message_id: 99, text: 'the "cron" output' },
+			},
+		});
+
+		await handleTelegramTextMessage(ctx, { streamPrompt });
+
+		expect(streamPrompt).toHaveBeenCalledWith(
+			"why?",
+			[],
+			expect.any(Function),
+			{ text: 'the "cron" output' },
+		);
+	});
+
+	test("passes original prompt when reply has no text", async () => {
+		const streamPrompt = mock(
+			(
+				_prompt: string,
+				_images?: Array<{ path: string; mediaType: string }>,
+				_onImage?: (event: { type: "image"; path: string }) => void,
+			) =>
+				(async function* () {
+					yield { type: "text" as const, text: "done" };
+				})(),
+		);
+
+		const ctx = createTextContext({
+			message: {
+				text: "hello",
+				message_id: 100,
+				reply_to_message: { message_id: 99 },
+			},
+		});
+
+		await handleTelegramTextMessage(ctx, { streamPrompt });
+
+		expect(streamPrompt).toHaveBeenCalledWith(
+			"hello",
+			[],
+			expect.any(Function),
+			undefined,
+		);
 	});
 
 	test("reports an error when prompt execution fails", async () => {

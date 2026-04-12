@@ -11,6 +11,7 @@ import {
 	type SkillInfo,
 	type UsageInfo,
 } from "../../common/protocol.ts";
+import { buildPromptWithReplyContext } from "../../common/reply-context.ts";
 import { readClaudeHistory } from "./claude-history.ts";
 
 function extractUsage(event: {
@@ -331,8 +332,13 @@ async function cleanupProbeSession(
 function createPromptInput(
 	params: RunParams,
 ): string | AsyncIterable<SDKUserMessage> {
+	const prompt = buildPromptWithReplyContext(
+		params.prompt,
+		params.replyContext,
+	);
+
 	if (!params.images || params.images.length === 0) {
-		return params.prompt;
+		return prompt;
 	}
 
 	return (async function* (): AsyncIterable<SDKUserMessage> {
@@ -352,8 +358,8 @@ function createPromptInput(
 			});
 		}
 
-		if (params.prompt) {
-			content.push({ type: "text", text: params.prompt });
+		if (prompt) {
+			content.push({ type: "text", text: prompt });
 		}
 
 		const message: MessageParam = {

@@ -5,8 +5,18 @@ export type TuiAction =
 	| { type: "append_streaming"; text: string }
 	| { type: "append_thinking"; text: string }
 	| { type: "commit_streaming" }
-	| { type: "push"; role: TuiMessageRole; text: string }
-	| { type: "push_and_stop"; role: TuiMessageRole; text: string }
+	| {
+			type: "push";
+			role: TuiMessageRole;
+			text: string;
+			replyText?: string;
+	  }
+	| {
+			type: "push_and_stop";
+			role: TuiMessageRole;
+			text: string;
+			replyText?: string;
+	  }
 	| { type: "clear" }
 	| { type: "replay"; messages: TuiMessage[] }
 	| { type: "session_menu"; data: SessionMenuData }
@@ -62,7 +72,12 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				...state,
 				messages: [
 					...state.messages,
-					{ id: state.nextId, role: action.role, text: action.text },
+					{
+						id: state.nextId,
+						role: action.role,
+						text: action.text,
+						replyText: action.replyText,
+					},
 				],
 				nextId: state.nextId + 1,
 			};
@@ -85,7 +100,12 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				});
 				nextId += 1;
 			}
-			messages.push({ id: nextId, role: action.role, text: action.text });
+			messages.push({
+				id: nextId,
+				role: action.role,
+				text: action.text,
+				replyText: action.replyText,
+			});
 			nextId += 1;
 			return {
 				...state,

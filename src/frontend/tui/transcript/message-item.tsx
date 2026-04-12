@@ -9,13 +9,9 @@ interface MessageItemProps {
 	columns: number;
 }
 
-function wrapUserMessage(text: string, columns: number): string {
-	const prefix = " ❯ ";
-	const indent = "   "; // same width as prefix
-	const contentWidth = columns - prefix.length;
-	if (contentWidth <= 0) return `${prefix}${text}`.padEnd(columns);
-
-	const words = text.split(" ");
+function wrapParagraph(paragraph: string, contentWidth: number): string[] {
+	if (!paragraph) return [""];
+	const words = paragraph.split(" ");
 	const lines: string[] = [];
 	let current = "";
 
@@ -29,8 +25,20 @@ function wrapUserMessage(text: string, columns: number): string {
 		}
 	}
 	if (current) lines.push(current);
+	return lines;
+}
 
-	return lines
+function wrapBubble(text: string, columns: number, prefix: string): string {
+	const indent = " ".repeat(prefix.length);
+	const contentWidth = columns - prefix.length;
+	if (contentWidth <= 0) return `${prefix}${text}`.padEnd(columns);
+
+	const allLines: string[] = [];
+	for (const paragraph of text.split("\n")) {
+		allLines.push(...wrapParagraph(paragraph, contentWidth));
+	}
+
+	return allLines
 		.map((line, i) => {
 			const leader = i === 0 ? prefix : indent;
 			return `${leader}${line}`.padEnd(columns);
@@ -45,9 +53,23 @@ export const MessageItem = memo(function MessageItem({
 	switch (message.role) {
 		case "user":
 			return (
-				<Box marginTop={1}>
+				<Box marginTop={1} flexDirection="column">
+					{message.replyText ? (
+						<>
+							<Text
+								backgroundColor={theme.replyMsgBg}
+								color={theme.replyMsgFg}
+								bold
+							>
+								{wrapBubble("Reply", columns, "   ")}
+							</Text>
+							<Text backgroundColor={theme.replyMsgBg} color={theme.replyMsgFg}>
+								{wrapBubble(message.replyText, columns, "   ")}
+							</Text>
+						</>
+					) : null}
 					<Text backgroundColor={theme.userMsgBg} color={theme.userMsgFg} bold>
-						{wrapUserMessage(message.text, columns)}
+						{wrapBubble(message.text, columns, " ❯ ")}
 					</Text>
 				</Box>
 			);

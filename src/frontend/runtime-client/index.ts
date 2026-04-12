@@ -1,5 +1,6 @@
 import {
 	type ImageRef,
+	type ReplyContext,
 	type RuntimeClientType,
 	serialize,
 } from "../../common/protocol.ts";
@@ -92,9 +93,17 @@ export function sendRuntimePrompt(
 	source?: "telegram",
 	images?: ImageRef[],
 	telegramChatId?: number,
+	replyContext?: ReplyContext,
 ) {
 	assertRuntimeSocketOpen(ws);
 	ws.send(
-		serialize({ type: "prompt", prompt, source, images, telegramChatId }),
+		serialize({
+			type: "prompt",
+			prompt,
+			source,
+			images,
+			telegramChatId,
+			replyContext,
+		}),
 	);
 }

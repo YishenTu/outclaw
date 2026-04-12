@@ -74,6 +74,35 @@ describe("transcript components", () => {
 		}
 	});
 
+	test("MessageItem renders reply context before the user message", async () => {
+		const { app, getOutput } = renderToOutput(
+			<MessageItem
+				message={{
+					id: 1,
+					role: "user",
+					replyText: "earlier message",
+					text: "[telegram] what do you mean?",
+				}}
+				columns={50}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const output = getOutput();
+			expect(output).toContain("Reply");
+			expect(output).toContain("   earlier message");
+			expect(output).toContain("[telegram] what do you mean?");
+			expect(output.indexOf("Reply")).toBeLessThan(
+				output.indexOf("[telegram] what do you mean?"),
+			);
+			expect(output).not.toContain("---");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("MessageItem renders assistant, info, and error variants", async () => {
 		const { app, getOutput } = renderToOutput(
 			<>

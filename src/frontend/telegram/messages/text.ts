@@ -11,13 +11,14 @@ import {
 	type TelegramMessageImageOptions,
 } from "../media/message-image-ref.ts";
 import { runTelegramPrompt } from "./prompt.ts";
+import { extractReplyContext } from "./reply-context.ts";
 
 interface TelegramTextContext {
 	chat: { id: number };
 	message: {
 		text: string;
 		message_id: number;
-		reply_to_message?: { message_id: number };
+		reply_to_message?: { message_id: number; text?: string; caption?: string };
 	};
 	reply(text: string): Promise<unknown>;
 	replyWithChatAction(action: "typing"): Promise<unknown>;
@@ -44,6 +45,7 @@ interface TelegramTextMessageOptions extends TelegramMessageImageOptions {
 		prompt: string,
 		images?: ImageRef[],
 		onImage?: (event: ImageEvent) => void | Promise<void>,
+		replyContext?: { text: string },
 	): AsyncIterable<StreamChunk>;
 }
 
@@ -71,6 +73,7 @@ export async function handleTelegramTextMessage(
 			{
 				prompt: ctx.message.text,
 				images,
+				replyContext: extractReplyContext(ctx.message.reply_to_message),
 				rememberSentImage: async (messageId, event) => {
 					await rememberOutboundImage(
 						ctx.chat.id,
@@ -79,8 +82,8 @@ export async function handleTelegramTextMessage(
 						options.rememberMessageImage,
 					);
 				},
-				streamPrompt: (prompt, promptImages, onImage) =>
-					options.streamPrompt(prompt, promptImages, onImage),
+				streamPrompt: (prompt, promptImages, onImage, replyContext) =>
+					options.streamPrompt(prompt, promptImages, onImage, replyContext),
 			},
 		);
 	} catch (err) {

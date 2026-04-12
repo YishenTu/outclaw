@@ -10,6 +10,7 @@ export interface TuiMessage {
 	readonly id: number;
 	readonly role: TuiMessageRole;
 	readonly text: string;
+	readonly replyText?: string;
 }
 
 export interface TuiState {

@@ -93,9 +93,14 @@ describe("runtime client", () => {
 		const send = mock((_data: string) => {});
 		const ws = { send, readyState: WebSocket.OPEN } as unknown as WebSocket;
 
-		sendRuntimePrompt(ws, "", "telegram", [
-			{ path: "/tmp/cat.png", mediaType: "image/png" },
-		]);
+		sendRuntimePrompt(
+			ws,
+			"",
+			"telegram",
+			[{ path: "/tmp/cat.png", mediaType: "image/png" }],
+			undefined,
+			{ text: 'earlier "note"' },
+		);
 
 		expect(send).toHaveBeenCalledTimes(1);
 		expect(JSON.parse(send.mock.calls[0]?.[0] as string)).toEqual({
@@ -103,6 +108,7 @@ describe("runtime client", () => {
 			prompt: "",
 			source: "telegram",
 			images: [{ path: "/tmp/cat.png", mediaType: "image/png" }],
+			replyContext: { text: 'earlier "note"' },
 		});
 	});
 

@@ -262,4 +262,39 @@ describe("ClaudeAdapter.readHistory", () => {
 			{ role: "assistant", content: "It is a cat." },
 		]);
 	});
+
+	test("strips reply-context envelopes from replayed user prompts", async () => {
+		const getSessionMessages = mock(async () => [
+			{
+				type: "user",
+				message: {
+					content:
+						"what do you mean?\n\n<reply-context>the &quot;cron&quot; output &lt;ok&gt;</reply-context>",
+				},
+			},
+			{
+				type: "assistant",
+				message: {
+					content: [{ type: "text", text: "I mean the nightly summary." }],
+				},
+			},
+		]);
+
+		mockClaudeSdk(getSessionMessages);
+
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
+		);
+		const adapter = new ClaudeAdapter();
+		const messages = await adapter.readHistory("sdk-reply-history");
+
+		expect(messages).toEqual([
+			{
+				role: "user",
+				content: "what do you mean?",
+				replyContext: { text: 'the "cron" output <ok>' },
+			},
+			{ role: "assistant", content: "I mean the nightly summary." },
+		]);
+	});
 });

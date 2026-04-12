@@ -1,6 +1,6 @@
 import { autoRetry } from "@grammyjs/auto-retry";
 import { Bot, type Context, InputFile } from "grammy";
-import type { ImageRef } from "../../common/protocol.ts";
+import type { ImageRef, ReplyContext } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import { createTelegramBridge, type StreamChunk } from "./bridge/client.ts";
 import { TELEGRAM_COMMANDS } from "./commands/catalog.ts";
@@ -68,6 +68,7 @@ interface TelegramBridgeLike {
 		images?: ImageRef[],
 		onImage?: (event: TelegramImageEvent) => void | Promise<void>,
 		telegramChatId?: number,
+		replyContext?: ReplyContext,
 	): AsyncIterable<StreamChunk>;
 }
 
@@ -250,8 +251,8 @@ export function startTelegramBot(
 			{
 				resolveMessageImage,
 				rememberMessageImage,
-				streamPrompt: (prompt, images, onImage) =>
-					bridge.stream(prompt, images, onImage, ctx.chat.id),
+				streamPrompt: (prompt, images, onImage, replyContext) =>
+					bridge.stream(prompt, images, onImage, ctx.chat.id, replyContext),
 			},
 		);
 	});
@@ -281,8 +282,8 @@ export function startTelegramBot(
 				rememberMessageImage,
 				token,
 				mediaRoot,
-				streamPrompt: (prompt, images, onImage) =>
-					bridge.stream(prompt, images, onImage, ctx.chat.id),
+				streamPrompt: (prompt, images, onImage, replyContext) =>
+					bridge.stream(prompt, images, onImage, ctx.chat.id, replyContext),
 			},
 		);
 	});

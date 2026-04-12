@@ -1,5 +1,9 @@
 import { InputFile } from "grammy";
-import type { ImageEvent, ImageRef } from "../../../common/protocol.ts";
+import type {
+	ImageEvent,
+	ImageRef,
+	ReplyContext,
+} from "../../../common/protocol.ts";
 import type { StreamChunk } from "../bridge/client.ts";
 import {
 	markdownToTelegramHtml,
@@ -33,6 +37,7 @@ interface TelegramPromptContext {
 interface RunTelegramPromptOptions {
 	prompt: string;
 	images?: ImageRef[];
+	replyContext?: ReplyContext;
 	rememberSentImage?(
 		messageId: number,
 		event: ImageEvent,
@@ -41,6 +46,7 @@ interface RunTelegramPromptOptions {
 		prompt: string,
 		images?: ImageRef[],
 		onImage?: (event: ImageEvent) => void | Promise<void>,
+		replyContext?: ReplyContext,
 	): AsyncIterable<StreamChunk>;
 }
 
@@ -132,6 +138,7 @@ export async function runTelegramPrompt(
 			options.prompt,
 			options.images,
 			(event) => sendImage(ctx, event, options.rememberSentImage),
+			options.replyContext,
 		);
 
 		const thinking = createDraft();

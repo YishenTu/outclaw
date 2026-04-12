@@ -4,6 +4,7 @@ import type {
 	DisplayMessage,
 	ImageMediaType,
 } from "../../common/protocol.ts";
+import { parsePromptWithReplyContext } from "../../common/reply-context.ts";
 
 interface HistoryBlock {
 	type: string;
@@ -40,17 +41,23 @@ export async function readClaudeHistory(
 		}
 
 		if (msg.type === "user" && typeof message.content === "string") {
-			result.push({ role: "user", content: message.content });
+			const content = parsePromptWithReplyContext(message.content);
+			result.push({
+				role: "user",
+				content: content.prompt,
+				replyContext: content.replyContext,
+			});
 		}
 
 		if (msg.type === "user" && Array.isArray(message.content)) {
-			const content = extractText(message.content);
+			const content = parsePromptWithReplyContext(extractText(message.content));
 			const images = extractImages(message.content);
-			if (content || images.length > 0) {
+			if (content.prompt || content.replyContext || images.length > 0) {
 				result.push({
 					role: "user",
-					content,
+					content: content.prompt,
 					images: images.length > 0 ? images : undefined,
+					replyContext: content.replyContext,
 				});
 			}
 		}
@@ -67,11 +74,14 @@ export async function readClaudeHistory(
 			if (text) {
 				const merged = [pendingThinking, thinking].join("") || undefined;
 				pendingThinking = "";
-				result.push({
+				const entry: DisplayMessage = {
 					role: "assistant",
 					content: text,
-					thinking: merged,
-				});
+				};
+				if (merged) {
+					entry.thinking = merged;
+				}
+				result.push(entry);
 			}
 		}
 	}

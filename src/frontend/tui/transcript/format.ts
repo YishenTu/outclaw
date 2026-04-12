@@ -1,4 +1,8 @@
-import type { DisplayImage, DisplayMessage } from "../../../common/protocol.ts";
+import type {
+	DisplayImage,
+	DisplayMessage,
+	ReplyContext,
+} from "../../../common/protocol.ts";
 
 export { formatContext, formatStatus } from "../../../common/status.ts";
 
@@ -40,4 +44,8 @@ export function formatReplayMessage(message: DisplayMessage): string {
 	}
 
 	return lines.length > 0 ? `${lines.join("\n")}\n` : "";
+}
+
+export function formatReplyText(replyContext: ReplyContext): string {
+	return replyContext.text;
 }

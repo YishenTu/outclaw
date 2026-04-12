@@ -248,6 +248,29 @@ describe("Telegram bridge", () => {
 		bridge.close();
 	});
 
+	test("stream() forwards reply context separately", async () => {
+		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
+
+		const texts: string[] = [];
+		for await (const chunk of bridge.stream(
+			"what do you mean?",
+			undefined,
+			undefined,
+			undefined,
+			{ text: 'the "cron" output' },
+		)) {
+			texts.push(chunk.text);
+		}
+
+		expect(texts.join("")).toBe("echo: what do you mean?");
+		expect(facade.lastParams?.prompt).toBe("what do you mean?");
+		expect(facade.lastParams?.replyContext).toEqual({
+			text: 'the "cron" output',
+		});
+
+		bridge.close();
+	});
+
 	test("sendCommandAndWait() returns command responses", async () => {
 		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
 		const event = await bridge.sendCommandAndWait("/model");

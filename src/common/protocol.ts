@@ -16,10 +16,15 @@ export interface DisplayImage {
 	mediaType?: ImageMediaType;
 }
 
+export interface ReplyContext {
+	text: string;
+}
+
 export interface PromptMessage {
 	type: "prompt";
 	prompt: string;
 	images?: ImageRef[];
+	replyContext?: ReplyContext;
 	source?: "telegram";
 	telegramChatId?: number;
 }
@@ -104,6 +109,7 @@ export interface UserPromptEvent {
 	type: "user_prompt";
 	prompt: string;
 	images?: DisplayImage[];
+	replyContext?: ReplyContext;
 	source: string;
 }
 
@@ -183,6 +189,7 @@ export interface DisplayMessage {
 	content: string;
 	thinking?: string;
 	images?: DisplayImage[];
+	replyContext?: ReplyContext;
 }
 
 export interface HistoryReplayEvent {
@@ -241,6 +248,7 @@ export type FacadeEvent =
 export interface RunParams {
 	prompt: string;
 	images?: ImageRef[];
+	replyContext?: ReplyContext;
 	systemPrompt?: string;
 	abortController?: AbortController;
 	resume?: string;

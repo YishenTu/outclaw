@@ -10,16 +10,25 @@ A mini OpenClaw: autonomous AI agent powered by the Claude Agent SDK.
 - **Frontend** (`src/frontend/`): TUI (Ink) and Telegram bot connected to the same runtime session
 - **CLI** (`src/cli.ts`): `oc` command — start/stop/restart/status/tui/dev
 
-### Runtime neutrality
+### Runtime / Provider Boundary
 
-`src/runtime/` is an orchestration layer and must stay provider neutral.
+`src/runtime/` is provider-neutral orchestration. `src/backend/` owns provider behavior.
 
-- Runtime owns scheduling, queueing, session selection, persistence policy, WS fanout, Telegram/TUI delivery coordination, and process lifecycle.
-- Backend adapters own provider behavior: run/resume semantics, history replay, provider event translation, provider capabilities, provider-specific setup, and provider-specific storage lookup.
-- If runtime needs provider-dependent behavior, extend the backend facade with an explicit method or capability instead of branching on provider identity inside runtime code.
-- Runtime must not import provider SDKs or parse provider-native transcript/history formats directly.
-- Runtime must not create provider-specific filesystem artifacts or assume a specific provider directory layout.
-- Persist provider ownership alongside any provider session identifier. Never assume a single global provider namespace.
+- Runtime owns scheduling, queueing, session selection, persistence policy, WS fanout, frontend delivery coordination, and process lifecycle.
+- Backend adapters own run/resume semantics, history replay and parsing, provider event translation, capabilities, provider-specific setup, and provider-specific storage lookup.
+- If runtime needs provider-dependent behavior, extend the backend facade with an explicit method or capability. Do not branch on provider identity inside runtime code.
+- Runtime must not import provider SDKs, parse provider-native transcript formats, or create provider-specific filesystem layout.
+- Persist provider ownership alongside provider session identifiers. Never assume a single global provider namespace, and never resume, replay, switch, or delete across a provider mismatch.
+- Composition may choose a concrete provider in `src/index.ts`, but `createRuntime()` and runtime internals must not default to one.
+- Use provider-neutral names in `src/common/` and `src/runtime/`, and keep runtime tests on facade contracts rather than provider-native message shapes.
+- Respect this import direction:
+
+```
+common/  ← backend/  ← runtime/  ← frontend/
+                                  ← index.ts / cli.ts
+```
+
+`common/` imports nothing. `backend/` imports `common/`. `runtime/` imports `common/` and `backend/`. `frontend/` imports `common/` only. `frontend/` and `backend/` NEVER import from each other.
 
 ## Stack
 
@@ -73,30 +82,10 @@ When unsure about Claude Agent SDK behavior, write a throwaway script in `dev/`,
 - All shared types live in `src/common/protocol.ts` — do NOT create re-export shims or barrel files. Import directly from the source module.
 - Keep provider-specific logic behind the backend facade. If a change adds a provider SDK import under `src/runtime/`, the design is probably wrong.
 
-## Provider boundaries
-
-- Add provider-specific code under `src/backend/`, not `src/runtime/`.
-- When adding new runtime features, define the provider-neutral contract first, then implement the adapter side.
-- Runtime stores provider-neutral metadata; raw provider transcript parsing and replay belong in backend adapters.
-- Composition in `src/index.ts` may choose a concrete provider for the app, but `createRuntime()` and runtime internals must not default to one.
-- Use provider-neutral names in `src/common/` and `src/runtime/`. Avoid provider-colored identifiers when a neutral term exists.
-- Do not make runtime tests depend on provider-native message shapes; test those in backend adapter tests.
-- Model catalogs, provider capabilities, and provider feature differences belong behind the backend facade, not inside runtime orchestration.
-- When migrating persistence, preserve provider ownership explicitly instead of baking in provider names inside runtime code.
-- Never resume, replay, switch, or delete a session across a provider mismatch.
-
 ## Code organization
 
 **Keep files small and focused.** One responsibility per file. When adding a new feature:
 
-- If it's a new concept (e.g. cron scheduler, memory store), create a new file — don't append to an existing one.
+- If it's a new concept, create a new file — don't append to an existing one.
 - If a file grows past ~100 lines, look for extraction opportunities.
 - Group related files in a directory with `index.ts` as the entry point (e.g. `src/frontend/telegram/`).
-- Follow this import direction (arrows = "can import from"):
-
-```
-common/  ← backend/  ← runtime/  ← frontend/
-                                  ← index.ts / cli.ts
-```
-
-`common/` imports nothing. `backend/` imports `common/`. `runtime/` imports `common/` and `backend/`. `frontend/` imports `common/` only. `frontend/` and `backend/` NEVER import from each other.

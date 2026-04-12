@@ -43,6 +43,38 @@ describe("ClaudeAdapter", () => {
 		expect(result[Symbol.asyncIterator]).toBeFunction();
 	});
 
+	test("encodes reply context only at the provider boundary", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "result",
+					session_id: "sdk-reply",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		mockClaudeSdk({ query });
+
+		const { ClaudeAdapter } = await import(
+			"../../../src/backend/adapters/claude.ts"
+		);
+		const adapter = new ClaudeAdapter();
+
+		for await (const _event of adapter.run({
+			prompt: "what do you mean?",
+			replyContext: { text: 'the "cron" output <ok>' },
+		})) {
+			// Drain
+		}
+
+		const args = query.mock.calls[0]?.[0] as { prompt: string };
+		expect(args.prompt).toBe(
+			"what do you mean?\n\n<reply-context>the &quot;cron&quot; output &lt;ok&gt;</reply-context>",
+		);
+	});
+
 	test("streams text deltas and maps usage info from SDK events", async () => {
 		const query = mock((_params: unknown) =>
 			(async function* () {

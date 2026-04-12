@@ -182,6 +182,23 @@ describe("mapEventToActions", () => {
 		]);
 	});
 
+	test("user_prompt from telegram with reply context", () => {
+		const actions = mapEventToActions({
+			type: "user_prompt",
+			prompt: "what do you mean?",
+			replyContext: { text: "the cron output" },
+			source: "telegram",
+		});
+		expect(actions).toEqual([
+			{
+				type: "push",
+				role: "user",
+				text: "[telegram] what do you mean?",
+				replyText: "the cron output",
+			},
+		]);
+	});
+
 	test("image event → push info", () => {
 		expect(
 			mapEventToActions({ type: "image", path: "/tmp/chart.png" }),
@@ -271,6 +288,32 @@ describe("mapEventToActions", () => {
 		});
 		expect(actions).toEqual([
 			{ type: "replay", messages: [{ id: 1, role: "user", text: "[image]" }] },
+		]);
+	});
+
+	test("history_replay with user reply context", () => {
+		const actions = mapEventToActions({
+			type: "history_replay",
+			messages: [
+				{
+					role: "user",
+					content: "Question",
+					replyContext: { text: "Earlier answer" },
+				},
+			],
+		});
+		expect(actions).toEqual([
+			{
+				type: "replay",
+				messages: [
+					{
+						id: 1,
+						role: "user",
+						text: "Question",
+						replyText: "Earlier answer",
+					},
+				],
+			},
 		]);
 	});
 
@@ -459,6 +502,24 @@ describe("applyAction", () => {
 			{ id: 1, role: "info", text: "status update" },
 		]);
 		expect(next.nextId).toBe(2);
+	});
+
+	test("push preserves user reply text", () => {
+		const state = initialTuiState();
+		const next = applyAction(state, {
+			type: "push",
+			role: "user",
+			text: "Question",
+			replyText: "Earlier answer",
+		});
+		expect(next.messages).toEqual([
+			{
+				id: 1,
+				role: "user",
+				text: "Question",
+				replyText: "Earlier answer",
+			},
+		]);
 	});
 
 	test("push_and_stop adds message and stops running", () => {

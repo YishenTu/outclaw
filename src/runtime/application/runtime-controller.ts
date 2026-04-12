@@ -4,6 +4,7 @@ import type {
 	FacadeEvent,
 	HeartbeatResult,
 	ImageRef,
+	ReplyContext,
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
 import { extractError, parseMessage } from "../../common/protocol.ts";
@@ -41,6 +42,7 @@ interface IncomingMessage {
 	command?: string;
 	images?: ImageRef[];
 	prompt?: string;
+	replyContext?: ReplyContext;
 	source?: string;
 	telegramChatId?: number;
 	type?: string;
@@ -57,6 +59,7 @@ interface HeartbeatTask {
 interface PromptExecution {
 	images?: ImageRef[];
 	prompt: string;
+	replyContext?: ReplyContext;
 	sender?: WsClient;
 	source: PromptSource;
 	stream?: boolean;
@@ -252,6 +255,7 @@ export class RuntimeController {
 			this.enqueuePrompt({
 				sender: ws,
 				prompt,
+				replyContext: data.replyContext,
 				source: data.source === "telegram" ? "telegram" : "tui",
 				images: data.images,
 				telegramChatId: data.telegramChatId,
@@ -472,6 +476,7 @@ export class RuntimeController {
 						type: "user_prompt",
 						prompt: task.prompt,
 						images: task.images,
+						replyContext: task.replyContext,
 						source: task.source,
 					});
 				}
@@ -551,6 +556,7 @@ export class RuntimeController {
 		yield* this.options.facade.run({
 			prompt: task.prompt,
 			images: task.images,
+			replyContext: task.replyContext,
 			systemPrompt,
 			abortController,
 			resume: this.state.sessionId,

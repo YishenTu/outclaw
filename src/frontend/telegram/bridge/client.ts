@@ -2,6 +2,7 @@ import {
 	type ImageEvent,
 	type ImageRef,
 	parseMessage,
+	type ReplyContext,
 } from "../../../common/protocol.ts";
 import {
 	closeRuntimeSocket,
@@ -39,6 +40,7 @@ export function createTelegramBridge(url: string) {
 			onText?: (accumulated: string) => void,
 			images?: ImageRef[],
 			telegramChatId?: number,
+			replyContext?: ReplyContext,
 		): Promise<string> {
 			const { ws, ready } = createSocket();
 			await ready;
@@ -95,7 +97,14 @@ export function createTelegramBridge(url: string) {
 					reject(new Error("WebSocket closed"));
 				};
 
-				sendRuntimePrompt(ws, prompt, "telegram", images, telegramChatId);
+				sendRuntimePrompt(
+					ws,
+					prompt,
+					"telegram",
+					images,
+					telegramChatId,
+					replyContext,
+				);
 			});
 		},
 
@@ -167,6 +176,7 @@ export function createTelegramBridge(url: string) {
 			images?: ImageRef[],
 			onImage?: (event: ImageEvent) => void | Promise<void>,
 			telegramChatId?: number,
+			replyContext?: ReplyContext,
 		): AsyncIterable<StreamChunk> {
 			const { ws, ready } = createSocket();
 			await ready;
@@ -262,7 +272,14 @@ export function createTelegramBridge(url: string) {
 				finishWithError(new Error("WebSocket closed"));
 			};
 
-			sendRuntimePrompt(ws, prompt, "telegram", images, telegramChatId);
+			sendRuntimePrompt(
+				ws,
+				prompt,
+				"telegram",
+				images,
+				telegramChatId,
+				replyContext,
+			);
 
 			while (true) {
 				if (pending.length > 0) {

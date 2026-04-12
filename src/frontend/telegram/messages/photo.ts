@@ -13,6 +13,7 @@ import {
 } from "../media/message-image-ref.ts";
 import { saveTelegramMedia } from "../media/storage.ts";
 import { runTelegramPrompt } from "./prompt.ts";
+import { extractReplyContext } from "./reply-context.ts";
 
 interface TelegramPhotoContext {
 	chat: { id: number };
@@ -21,7 +22,7 @@ interface TelegramPhotoContext {
 		caption?: string;
 		message_id: number;
 		photo: Array<{ file_id: string }>;
-		reply_to_message?: { message_id: number };
+		reply_to_message?: { message_id: number; text?: string; caption?: string };
 	};
 	reply(text: string): Promise<unknown>;
 	replyWithChatAction(action: "typing"): Promise<unknown>;
@@ -55,6 +56,7 @@ interface TelegramPhotoMessageOptions extends TelegramMessageImageOptions {
 		prompt: string,
 		images?: ImageRef[],
 		onImage?: (event: ImageEvent) => void | Promise<void>,
+		replyContext?: { text: string },
 	): AsyncIterable<StreamChunk>;
 }
 
@@ -120,6 +122,7 @@ export async function handleTelegramPhotoMessage(
 			{
 				prompt: ctx.message.caption ?? "",
 				images: [...replyImages, image],
+				replyContext: extractReplyContext(ctx.message.reply_to_message),
 				rememberSentImage: async (messageId, event) => {
 					await rememberOutboundImage(
 						ctx.chat.id,
@@ -128,8 +131,8 @@ export async function handleTelegramPhotoMessage(
 						options.rememberMessageImage,
 					);
 				},
-				streamPrompt: (prompt, images, onImage) =>
-					options.streamPrompt(prompt, images, onImage),
+				streamPrompt: (prompt, images, onImage, replyContext) =>
+					options.streamPrompt(prompt, images, onImage, replyContext),
 			},
 		);
 	} catch (err) {

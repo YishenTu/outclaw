@@ -77,6 +77,7 @@ describe("handleTelegramPhotoMessage", () => {
 			"describe this",
 			[{ path: "/tmp/cat.jpg", mediaType: "image/jpeg" }],
 			expect.any(Function),
+			undefined,
 		);
 		expect(rememberMessageImage).toHaveBeenCalledWith({
 			chatId: 123,
@@ -132,6 +133,47 @@ describe("handleTelegramPhotoMessage", () => {
 				{ path: "/tmp/current.jpg", mediaType: "image/jpeg" },
 			],
 			expect.any(Function),
+			undefined,
+		);
+	});
+
+	test("appends replied-to text context to prompt", async () => {
+		const streamPrompt = mock(
+			(
+				_prompt: string,
+				_images?: Array<{ path: string; mediaType: string }>,
+				_onImage?: (event: { type: "image"; path: string }) => void,
+			) =>
+				(async function* () {
+					yield { type: "text" as const, text: "done" };
+				})(),
+		);
+
+		const ctx = createPhotoContext({
+			message: {
+				caption: "what is this?",
+				message_id: 10,
+				reply_to_message: { message_id: 9, text: "previous message" },
+				photo: [{ file_id: "large" }],
+			},
+			getFile: async () => ({ file_path: "photos/cat.jpg" }),
+		});
+
+		await handleTelegramPhotoMessage(ctx, {
+			rememberMessageImage: async () => undefined,
+			token: "TOKEN",
+			saveMedia: async () => ({
+				path: "/tmp/current.jpg",
+				mediaType: "image/jpeg" as const,
+			}),
+			streamPrompt,
+		});
+
+		expect(streamPrompt).toHaveBeenCalledWith(
+			"what is this?",
+			[{ path: "/tmp/current.jpg", mediaType: "image/jpeg" }],
+			expect.any(Function),
+			{ text: "previous message" },
 		);
 	});
 

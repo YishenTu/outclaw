@@ -4,6 +4,7 @@ import {
 	formatImage,
 	formatLivePrompt,
 	formatReplayMessage,
+	formatReplyText,
 } from "../../../../src/frontend/tui/transcript/format.ts";
 
 describe("formatContext", () => {
@@ -80,6 +81,14 @@ describe("formatLivePrompt", () => {
 	});
 });
 
+describe("formatReplyText", () => {
+	test("returns raw reply content for the dedicated reply block", () => {
+		expect(formatReplyText({ text: "the cron output" })).toBe(
+			"the cron output",
+		);
+	});
+});
+
 describe("formatReplayMessage", () => {
 	test("formats assistant message", () => {
 		expect(
@@ -101,6 +110,16 @@ describe("formatReplayMessage", () => {
 				images: [{ path: "/tmp/cat.png", mediaType: "image/png" }],
 			}),
 		).toBe("> Question\n> [image: /tmp/cat.png]\n");
+	});
+
+	test("formats user message with reply context in the main message text", () => {
+		expect(
+			formatReplayMessage({
+				role: "user",
+				content: "Question",
+				replyContext: { text: "Earlier answer" },
+			}),
+		).toBe("> Question\n");
 	});
 
 	test("formats user message with image only (no text)", () => {
