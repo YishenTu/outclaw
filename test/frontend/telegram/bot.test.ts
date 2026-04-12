@@ -26,6 +26,7 @@ let registerTelegramModelShortcuts = mock(() => {});
 let lastHeartbeatArgs: unknown[] = [];
 let lastTextMessageArgs: unknown[] = [];
 let lastPhotoMessageArgs: unknown[] = [];
+let lastDocumentMessageArgs: unknown[] = [];
 let sendTelegramHeartbeatResult = mock(async (...args: unknown[]) => {
 	lastHeartbeatArgs = args;
 	return undefined;
@@ -36,6 +37,10 @@ let handleTelegramTextMessage = mock(async (...args: unknown[]) => {
 });
 let handleTelegramPhotoMessage = mock(async (...args: unknown[]) => {
 	lastPhotoMessageArgs = args;
+	return undefined;
+});
+let handleTelegramDocumentMessage = mock(async (...args: unknown[]) => {
+	lastDocumentMessageArgs = args;
 	return undefined;
 });
 let setMyCommandsImpl: (commands: unknown) => Promise<unknown> = async (
@@ -131,6 +136,7 @@ function resetFakes() {
 	lastHeartbeatArgs = [];
 	lastTextMessageArgs = [];
 	lastPhotoMessageArgs = [];
+	lastDocumentMessageArgs = [];
 	sendTelegramHeartbeatResult = mock(async (...args: unknown[]) => {
 		lastHeartbeatArgs = args;
 		return undefined;
@@ -141,6 +147,10 @@ function resetFakes() {
 	});
 	handleTelegramPhotoMessage = mock(async (...args: unknown[]) => {
 		lastPhotoMessageArgs = args;
+		return undefined;
+	});
+	handleTelegramDocumentMessage = mock(async (...args: unknown[]) => {
+		lastDocumentMessageArgs = args;
 		return undefined;
 	});
 	setMyCommandsImpl = async (_commands: unknown) => undefined;
@@ -157,6 +167,9 @@ function createTestDependencies(params: {
 		createBridge: (...args: Parameters<typeof createTelegramBridge>) =>
 			createTelegramBridge(...args) as never,
 		createInputFile: (path: string) => new FakeInputFile(path),
+		handleDocumentMessage: (
+			...args: Parameters<typeof handleTelegramDocumentMessage>
+		) => handleTelegramDocumentMessage(...args),
 		handlePhotoMessage: (
 			...args: Parameters<typeof handleTelegramPhotoMessage>
 		) => handleTelegramPhotoMessage(...args),
@@ -187,14 +200,14 @@ describe("startTelegramBot", () => {
 
 	test("wires startup, middleware, handlers, and service methods", async () => {
 		const log = mock(() => undefined);
-		const rememberMessageImage = mock(async () => undefined);
+		const rememberMessageFile = mock(async () => undefined);
 		const service = startTelegramBot(
 			{
 				token: "telegram-token",
 				runtimeUrl: "ws://runtime",
 				allowedUsers: [1],
-				mediaRoot: "/tmp/media",
-				rememberMessageImage,
+				filesRoot: "/tmp/files",
+				rememberMessageFile,
 			},
 			createTestDependencies({ logInfo: log }),
 		);
@@ -296,6 +309,48 @@ describe("startTelegramBot", () => {
 			text: "previous photo",
 		});
 
+		const docCtx = {
+			api: {
+				getFile: mock(async (_fileId: string) => ({
+					file_path: "documents/report.pdf",
+				})),
+			},
+			chat: { id: 8 },
+			message: {
+				caption: "analyse this",
+				document: { file_id: "doc-1", file_name: "report.pdf" },
+			},
+			reply: mock(async () => undefined),
+			replyWithChatAction: mock(async () => undefined),
+			replyWithPhoto: mock(async () => undefined),
+		};
+		await bot.handlers.get("message:document")?.(docCtx);
+		expect(handleTelegramDocumentMessage).toHaveBeenCalledTimes(1);
+		const docHandlerCtx = lastDocumentMessageArgs[0] as {
+			getFile: () => Promise<unknown>;
+		};
+		await docHandlerCtx.getFile();
+		expect(docCtx.api.getFile).toHaveBeenCalledWith("doc-1");
+		const docDeps = lastDocumentMessageArgs[1] as {
+			streamPrompt: (
+				prompt: string,
+				images: unknown[],
+				onImage: () => void,
+				replyContext?: { text: string },
+			) => Promise<unknown>;
+		};
+		const onDocImage = () => undefined;
+		await docDeps.streamPrompt("analyse this", [], onDocImage, {
+			text: "previous doc",
+		});
+		expect(bridge.stream).toHaveBeenCalledWith(
+			"analyse this",
+			[],
+			onDocImage,
+			8,
+			{ text: "previous doc" },
+		);
+
 		await service.sendCronResult({
 			jobName: "nightly",
 			telegramChatId: 9,
@@ -329,9 +384,9 @@ describe("startTelegramBot", () => {
 			) => Promise<unknown>;
 		};
 		const heartbeatParams = lastHeartbeatArgs[1] as {
-			rememberMessageImage?: unknown;
+			rememberMessageFile?: unknown;
 		};
-		expect(heartbeatParams.rememberMessageImage).toBe(rememberMessageImage);
+		expect(heartbeatParams.rememberMessageFile).toBe(rememberMessageFile);
 		await heartbeatTransport.sendMessage(5, "ping", {
 			disable_notification: true,
 		});
@@ -361,7 +416,7 @@ describe("startTelegramBot", () => {
 				token: "telegram-token",
 				runtimeUrl: "ws://runtime",
 				allowedUsers: [],
-				mediaRoot: "/tmp/media",
+				filesRoot: "/tmp/files",
 			},
 			createTestDependencies({ logError: error }),
 		);

@@ -5,7 +5,7 @@ describe("sendTelegramHeartbeatResult", () => {
 	test("sends buffered heartbeat images and text to telegram", async () => {
 		const sendMessage = mock(async () => ({}));
 		const sendPhoto = mock(async () => ({ message_id: 77 }));
-		const rememberMessageImage = mock(async () => {});
+		const rememberMessageFile = mock(async () => {});
 
 		await sendTelegramHeartbeatResult(
 			{
@@ -16,7 +16,7 @@ describe("sendTelegramHeartbeatResult", () => {
 				telegramChatId: 123,
 				text: "heartbeat summary",
 				images: [{ path: "/tmp/chart.png", caption: "chart" }],
-				rememberMessageImage,
+				rememberMessageFile,
 			},
 		);
 
@@ -24,12 +24,15 @@ describe("sendTelegramHeartbeatResult", () => {
 			caption: "chart",
 			disable_notification: true,
 		});
-		expect(rememberMessageImage).toHaveBeenCalledWith({
+		expect(rememberMessageFile).toHaveBeenCalledWith({
 			chatId: 123,
 			messageId: 77,
-			image: {
-				path: "/tmp/chart.png",
-				mediaType: "image/png",
+			file: {
+				kind: "image",
+				image: {
+					path: "/tmp/chart.png",
+					mediaType: "image/png",
+				},
 			},
 			direction: "outbound",
 		});

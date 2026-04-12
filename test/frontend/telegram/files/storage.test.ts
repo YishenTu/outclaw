@@ -9,12 +9,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	copyTelegramMedia,
-	saveTelegramMedia,
-} from "../../../../src/frontend/telegram/media/storage.ts";
+	copyTelegramFile,
+	saveTelegramFile,
+} from "../../../../src/frontend/telegram/files/storage.ts";
 
-describe("saveTelegramMedia", () => {
-	const mediaRoot = mkdtempSync(join(tmpdir(), "mis-media-"));
+describe("saveTelegramFile", () => {
+	const filesRoot = mkdtempSync(join(tmpdir(), "mis-media-"));
 	const server = Bun.serve({
 		port: 0,
 		fetch() {
@@ -24,20 +24,18 @@ describe("saveTelegramMedia", () => {
 
 	afterAll(() => {
 		server.stop();
-		rmSync(mediaRoot, { recursive: true, force: true });
+		rmSync(filesRoot, { recursive: true, force: true });
 	});
 
-	test("downloads media into a date-based path", async () => {
-		const saved = await saveTelegramMedia(
-			mediaRoot,
+	test("downloads file into a date-based path", async () => {
+		const saved = await saveTelegramFile(
+			filesRoot,
 			`http://127.0.0.1:${server.port}/cat.png`,
 			".png",
-			"image/png",
 		);
 
-		expect(saved.path.startsWith(mediaRoot)).toBe(true);
+		expect(saved.path.startsWith(filesRoot)).toBe(true);
 		expect(saved.path.endsWith(".png")).toBe(true);
-		expect(saved.mediaType).toBe("image/png");
 		expect(readFileSync(saved.path, "utf8")).toBe("png-bytes");
 	});
 
@@ -46,9 +44,9 @@ describe("saveTelegramMedia", () => {
 		writeFileSync(sourcePath, "chart-bytes");
 
 		try {
-			const saved = await copyTelegramMedia(mediaRoot, sourcePath, "image/png");
+			const saved = await copyTelegramFile(filesRoot, sourcePath);
 
-			expect(saved.path.startsWith(mediaRoot)).toBe(true);
+			expect(saved.path.startsWith(filesRoot)).toBe(true);
 			expect(saved.path).not.toBe(sourcePath);
 			expect(readFileSync(saved.path, "utf8")).toBe("chart-bytes");
 		} finally {
@@ -57,16 +55,15 @@ describe("saveTelegramMedia", () => {
 	});
 
 	test("returns managed media paths without copying them again", async () => {
-		const managedDir = join(mediaRoot, "nested");
+		const managedDir = join(filesRoot, "nested");
 		mkdirSync(managedDir, { recursive: true });
 		writeFileSync(join(managedDir, "managed.png"), "managed-bytes");
 		const sourcePath = join(managedDir, "managed.png");
 
-		const saved = await copyTelegramMedia(mediaRoot, sourcePath, "image/png");
+		const saved = await copyTelegramFile(filesRoot, sourcePath);
 
 		expect(saved).toEqual({
 			path: sourcePath,
-			mediaType: "image/png",
 		});
 		expect(readFileSync(sourcePath, "utf8")).toBe("managed-bytes");
 	});
@@ -81,15 +78,25 @@ describe("saveTelegramMedia", () => {
 
 		try {
 			await expect(
-				saveTelegramMedia(
-					mediaRoot,
+				saveTelegramFile(
+					filesRoot,
 					`http://127.0.0.1:${failingServer.port}/cat.png`,
 					".png",
-					"image/png",
 				),
-			).rejects.toThrow("Failed to download Telegram media: 404");
+			).rejects.toThrow("Failed to download Telegram file: 404");
 		} finally {
 			failingServer.stop();
 		}
+	});
+
+	test("does not append a trailing dot for extensionless files", async () => {
+		const saved = await saveTelegramFile(
+			filesRoot,
+			`http://127.0.0.1:${server.port}/README`,
+			"",
+		);
+
+		expect(saved.path.startsWith(filesRoot)).toBe(true);
+		expect(saved.path.endsWith(".")).toBe(false);
 	});
 });

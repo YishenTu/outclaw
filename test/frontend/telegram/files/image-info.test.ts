@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getImageInfo } from "../../../../src/frontend/telegram/media/image-info.ts";
+import { getImageInfo } from "../../../../src/frontend/telegram/files/image-info.ts";
 
 describe("getImageInfo", () => {
 	test("maps .png to image/png", () => {

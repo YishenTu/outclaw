@@ -26,14 +26,20 @@ function createTextContext(overrides: Partial<Record<string, unknown>> = {}) {
 
 describe("handleTelegramTextMessage", () => {
 	test("reattaches the replied-to image for a text prompt", async () => {
-		const resolveMessageImage = mock(
+		const resolveMessageFile = mock(
 			async (chatId: number, messageId: number) => {
 				expect(chatId).toBe(123);
 				expect(messageId).toBe(99);
-				return { path: "/tmp/replied.png", mediaType: "image/png" as const };
+				return {
+					kind: "image" as const,
+					image: {
+						path: "/tmp/replied.png",
+						mediaType: "image/png" as const,
+					},
+				};
 			},
 		);
-		const rememberMessageImage = mock(async () => {});
+		const rememberMessageFile = mock(async () => {});
 		const streamPrompt = mock(
 			(
 				_prompt: string,
@@ -54,8 +60,8 @@ describe("handleTelegramTextMessage", () => {
 		});
 
 		await handleTelegramTextMessage(ctx, {
-			resolveMessageImage,
-			rememberMessageImage,
+			resolveMessageFile,
+			rememberMessageFile,
 			streamPrompt,
 		});
 
@@ -67,8 +73,54 @@ describe("handleTelegramTextMessage", () => {
 		);
 	});
 
+	test("reattaches the replied-to document reference for a text prompt", async () => {
+		const resolveMessageFile = mock(
+			async (chatId: number, messageId: number) => {
+				expect(chatId).toBe(123);
+				expect(messageId).toBe(99);
+				return {
+					kind: "document" as const,
+					document: {
+						path: "/tmp/report.pdf",
+						displayName: "report.pdf",
+					},
+				};
+			},
+		);
+		const streamPrompt = mock(
+			(
+				_prompt: string,
+				_images?: Array<{ path: string; mediaType: string }>,
+				_onImage?: (event: { type: "image"; path: string }) => void,
+			) =>
+				(async function* () {
+					yield { type: "text" as const, text: "done" };
+				})(),
+		);
+
+		const ctx = createTextContext({
+			message: {
+				text: "use page 3",
+				message_id: 100,
+				reply_to_message: { message_id: 99 },
+			},
+		});
+
+		await handleTelegramTextMessage(ctx, {
+			resolveMessageFile,
+			streamPrompt,
+		});
+
+		expect(streamPrompt).toHaveBeenCalledWith(
+			"use page 3\n\n[file: report.pdf -> /tmp/report.pdf]",
+			[],
+			expect.any(Function),
+			undefined,
+		);
+	});
+
 	test("stores outbound image refs using the sent telegram message id", async () => {
-		const rememberMessageImage = mock(async () => {});
+		const rememberMessageFile = mock(async () => {});
 		const ctx = createTextContext({
 			chat: { id: 321 },
 			message: { text: "plot", message_id: 10 },
@@ -78,7 +130,7 @@ describe("handleTelegramTextMessage", () => {
 		});
 
 		await handleTelegramTextMessage(ctx, {
-			rememberMessageImage,
+			rememberMessageFile,
 			streamPrompt: (_prompt, _images, onImage) =>
 				(async function* () {
 					await onImage?.({
@@ -89,10 +141,13 @@ describe("handleTelegramTextMessage", () => {
 				})(),
 		});
 
-		expect(rememberMessageImage).toHaveBeenCalledWith({
+		expect(rememberMessageFile).toHaveBeenCalledWith({
 			chatId: 321,
 			messageId: 88,
-			image: { path: "/tmp/chart.png", mediaType: "image/png" },
+			file: {
+				kind: "image",
+				image: { path: "/tmp/chart.png", mediaType: "image/png" },
+			},
 			direction: "outbound",
 		});
 	});

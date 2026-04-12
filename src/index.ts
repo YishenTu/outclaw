@@ -1,13 +1,14 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude.ts";
 import { ensureClaudeSkillsSymlink } from "./backend/adapters/claude-setup.ts";
+import { copyTelegramFile } from "./frontend/telegram/files/storage.ts";
 import { startTelegramBot } from "./frontend/telegram/index.ts";
-import { copyTelegramMedia } from "./frontend/telegram/media/storage.ts";
 import { loadConfig } from "./runtime/config.ts";
+import { migrateLegacyTelegramFilesRoot } from "./runtime/persistence/migrate-telegram-files-root.ts";
 import { SessionStore } from "./runtime/persistence/session-store.ts";
-import { TelegramMediaRefStore } from "./runtime/persistence/telegram-media-ref-store.ts";
+import { TelegramFileRefStore } from "./runtime/persistence/telegram-file-ref-store.ts";
 import { PidManager } from "./runtime/process/pid-manager.ts";
 import { spawnDaemonRestart } from "./runtime/process/restart-daemon.ts";
 import { seedTemplates } from "./runtime/prompt/seed-templates.ts";
@@ -24,9 +25,17 @@ const pidManager = new PidManager(join(HOME_DIR, "daemon.pid"));
 pidManager.write(process.pid);
 
 const dbPath = join(HOME_DIR, "db.sqlite");
-const mediaRoot = join(HOME_DIR, "media");
+const legacyMediaRoot = join(HOME_DIR, "media");
+const filesRoot = join(HOME_DIR, "files");
 const store = new SessionStore(dbPath, { legacyProviderId: "claude" });
-const telegramMediaRefStore = new TelegramMediaRefStore(dbPath);
+const telegramFileRefStore = new TelegramFileRefStore(dbPath);
+const migrateTelegramFilesRoot = () =>
+	migrateLegacyTelegramFilesRoot({
+		legacyRoot: legacyMediaRoot,
+		filesRoot,
+		store: telegramFileRefStore,
+	});
+migrateTelegramFilesRoot();
 
 const CLI_ENTRY = join(import.meta.dir, "cli.ts");
 
@@ -59,25 +68,57 @@ if (config.telegram.botToken) {
 			token: config.telegram.botToken,
 			runtimeUrl: `ws://localhost:${runtime.port}`,
 			allowedUsers: config.telegram.allowedUsers,
-			mediaRoot,
-			resolveMessageImage: async (chatId, messageId) => {
-				const record = telegramMediaRefStore.get(chatId, messageId);
+			filesRoot,
+			resolveMessageFile: async (chatId, messageId) => {
+				const record = telegramFileRefStore.get(chatId, messageId);
 				if (!record || !existsSync(record.path)) return undefined;
-				return {
-					path: record.path,
-					mediaType: record.mediaType,
-				};
+				if (record.kind === "image" && record.mediaType) {
+					return {
+						kind: "image",
+						image: {
+							path: record.path,
+							mediaType: record.mediaType,
+						},
+					};
+				}
+				if (record.kind === "document") {
+					return {
+						kind: "document",
+						document: {
+							path: record.path,
+							displayName: record.displayName ?? basename(record.path),
+						},
+					};
+				}
+				return undefined;
 			},
-			rememberMessageImage: async ({ chatId, messageId, image, direction }) => {
-				const storedImage =
-					direction === "outbound"
-						? await copyTelegramMedia(mediaRoot, image.path, image.mediaType)
-						: image;
-				telegramMediaRefStore.upsert({
+			rememberMessageFile: async ({ chatId, messageId, file, direction }) => {
+				const storedPath =
+					direction === "outbound" && file.kind === "image"
+						? (await copyTelegramFile(filesRoot, file.image.path)).path
+						: file.kind === "image"
+							? file.image.path
+							: file.document.path;
+				telegramFileRefStore.upsert({
 					chatId,
 					messageId,
-					path: storedImage.path,
-					mediaType: storedImage.mediaType,
+					path: storedPath,
+					file:
+						file.kind === "image"
+							? {
+									kind: "image",
+									image: {
+										path: storedPath,
+										mediaType: file.image.mediaType,
+									},
+								}
+							: {
+									kind: "document",
+									document: {
+										path: storedPath,
+										displayName: file.document.displayName,
+									},
+								},
 					direction,
 				});
 			},
@@ -102,7 +143,7 @@ async function shutdown() {
 	await runtime.stop();
 	telegram?.stop();
 	store.close();
-	telegramMediaRefStore.close();
+	telegramFileRefStore.close();
 	pidManager.remove();
 	process.exit(0);
 }

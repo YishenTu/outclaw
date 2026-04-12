@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { createTelegramBridge } from "../../../src/frontend/telegram/bridge/client.ts";
 import { TELEGRAM_COMMANDS } from "../../../src/frontend/telegram/commands/catalog.ts";
 import { executeTelegramRuntimeCommand } from "../../../src/frontend/telegram/commands/runtime.ts";
+import { saveTelegramFile } from "../../../src/frontend/telegram/files/storage.ts";
 import { startTelegramBot } from "../../../src/frontend/telegram/index.ts";
-import { saveTelegramMedia } from "../../../src/frontend/telegram/media/storage.ts";
+import { handleTelegramDocumentMessage } from "../../../src/frontend/telegram/messages/document.ts";
 import { handleTelegramTextMessage } from "../../../src/frontend/telegram/messages/text.ts";
 import { buildSessionButtons } from "../../../src/frontend/telegram/sessions/menu.ts";
 
@@ -23,12 +24,13 @@ describe("Telegram architecture", () => {
 		).toBe(true);
 	});
 
-	test("keeps media persistence in the media boundary", () => {
-		expect(typeof saveTelegramMedia).toBe("function");
+	test("keeps file persistence in the files boundary", () => {
+		expect(typeof saveTelegramFile).toBe("function");
 	});
 
 	test("keeps inbound prompt handling in the messages boundary", () => {
 		expect(typeof handleTelegramTextMessage).toBe("function");
+		expect(typeof handleTelegramDocumentMessage).toBe("function");
 	});
 
 	test("keeps the session keyboard in the sessions boundary", () => {

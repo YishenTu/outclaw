@@ -5,13 +5,14 @@ import {
 	type ImageRef,
 } from "../../../common/protocol.ts";
 import type { StreamChunk } from "../bridge/client.ts";
-import { getImageInfo } from "../media/image-info.ts";
+import { getImageInfo } from "../files/image-info.ts";
 import {
+	appendPromptSegments,
 	rememberOutboundImage,
-	resolveReplyImages,
-	type TelegramMessageImageOptions,
-} from "../media/message-image-ref.ts";
-import { saveTelegramMedia } from "../media/storage.ts";
+	resolveReplyAttachments,
+	type TelegramMessageFileOptions,
+} from "../files/message-file-ref.ts";
+import { saveTelegramFile } from "../files/storage.ts";
 import { runTelegramPrompt } from "./prompt.ts";
 import { extractReplyContext } from "./reply-context.ts";
 
@@ -44,9 +45,9 @@ interface TelegramPhotoContext {
 	): Promise<unknown>;
 }
 
-interface TelegramPhotoMessageOptions extends TelegramMessageImageOptions {
+interface TelegramPhotoMessageOptions extends TelegramMessageFileOptions {
 	token: string;
-	mediaRoot?: string;
+	filesRoot?: string;
 	saveMedia?: (
 		url: string,
 		ext: string,
@@ -77,36 +78,35 @@ export async function handleTelegramPhotoMessage(
 		const { ext, mediaType } = getImageInfo(file.file_path);
 		const saveMedia =
 			options.saveMedia ??
-			((
+			(async (
 				url: string,
 				extension: string,
 				imageMediaType: ImageRef["mediaType"],
-			) => {
-				if (!options.mediaRoot) {
-					throw new Error("Telegram media root is not configured");
+			): Promise<ImageRef> => {
+				if (!options.filesRoot) {
+					throw new Error("Telegram files root is not configured");
 				}
-				return saveTelegramMedia(
-					options.mediaRoot,
-					url,
-					extension,
-					imageMediaType,
-				);
+				const saved = await saveTelegramFile(options.filesRoot, url, extension);
+				return { path: saved.path, mediaType: imageMediaType };
 			});
 		const image = await saveMedia(
 			buildTelegramFileUrl(options.token, file.file_path),
 			ext,
 			mediaType,
 		);
-		await options.rememberMessageImage?.({
+		await options.rememberMessageFile?.({
 			chatId: ctx.chat.id,
 			messageId: ctx.message.message_id,
-			image,
+			file: {
+				kind: "image",
+				image,
+			},
 			direction: "inbound",
 		});
-		const replyImages = await resolveReplyImages(
+		const replyAttachments = await resolveReplyAttachments(
 			ctx.chat.id,
 			ctx.message.reply_to_message,
-			options.resolveMessageImage,
+			options.resolveMessageFile,
 		);
 
 		await runTelegramPrompt(
@@ -120,15 +120,18 @@ export async function handleTelegramPhotoMessage(
 					ctx.editMessageText(messageId, text, editOptions),
 			},
 			{
-				prompt: ctx.message.caption ?? "",
-				images: [...replyImages, image],
+				prompt: appendPromptSegments(
+					ctx.message.caption ?? "",
+					replyAttachments.promptSegments,
+				),
+				images: [...replyAttachments.images, image],
 				replyContext: extractReplyContext(ctx.message.reply_to_message),
 				rememberSentImage: async (messageId, event) => {
 					await rememberOutboundImage(
 						ctx.chat.id,
 						messageId,
 						event,
-						options.rememberMessageImage,
+						options.rememberMessageFile,
 					);
 				},
 				streamPrompt: (prompt, images, onImage, replyContext) =>

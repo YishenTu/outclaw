@@ -6,11 +6,16 @@ import { createTelegramBridge, type StreamChunk } from "./bridge/client.ts";
 import { TELEGRAM_COMMANDS } from "./commands/catalog.ts";
 import { registerTelegramRuntimeCommands } from "./commands/runtime.ts";
 import { registerTelegramModelShortcuts } from "./commands/shortcuts.ts";
+import type {
+	TelegramMessageFile,
+	TelegramMessageFileRecord,
+} from "./files/message-file-ref.ts";
 import {
 	markdownToTelegramHtml,
 	splitTelegramHtml,
 	TELEGRAM_MESSAGE_LIMIT,
 } from "./format.ts";
+import { handleTelegramDocumentMessage } from "./messages/document.ts";
 import { sendTelegramHeartbeatResult } from "./messages/heartbeat-result.ts";
 import { handleTelegramPhotoMessage } from "./messages/photo.ts";
 import { handleTelegramTextMessage } from "./messages/text.ts";
@@ -22,6 +27,9 @@ type TelegramTextHandlerContext = Parameters<
 >[0];
 type TelegramPhotoHandlerContext = Parameters<
 	typeof handleTelegramPhotoMessage
+>[0];
+type TelegramDocumentHandlerContext = Parameters<
+	typeof handleTelegramDocumentMessage
 >[0];
 type TelegramPromptStream = Parameters<
 	typeof handleTelegramTextMessage
@@ -59,6 +67,20 @@ interface TelegramIncomingPhotoContext {
 	replyWithPhoto: TelegramPhotoHandlerContext["replyWithPhoto"];
 	sendMessage: TelegramPhotoHandlerContext["sendMessage"];
 	editMessageText: TelegramPhotoHandlerContext["editMessageText"];
+}
+
+interface TelegramIncomingDocumentContext {
+	api: {
+		getFile(fileId: string): Promise<{ file_path?: string }>;
+	};
+	chat: TelegramDocumentHandlerContext["chat"];
+	from?: { id: number };
+	message: TelegramDocumentHandlerContext["message"];
+	reply: TelegramDocumentHandlerContext["reply"];
+	replyWithChatAction: TelegramDocumentHandlerContext["replyWithChatAction"];
+	replyWithPhoto: TelegramDocumentHandlerContext["replyWithPhoto"];
+	sendMessage: TelegramDocumentHandlerContext["sendMessage"];
+	editMessageText: TelegramDocumentHandlerContext["editMessageText"];
 }
 
 interface TelegramBridgeLike {
@@ -112,6 +134,10 @@ interface TelegramBotLike {
 		event: "message:photo",
 		handler: (ctx: TelegramIncomingPhotoContext) => Promise<void>,
 	): unknown;
+	on(
+		event: "message:document",
+		handler: (ctx: TelegramIncomingDocumentContext) => Promise<void>,
+	): unknown;
 	start(): unknown;
 	stop(): unknown;
 }
@@ -121,6 +147,7 @@ interface TelegramBotDependencies {
 	createBot(token: string): TelegramBotLike;
 	createBridge(runtimeUrl: string): TelegramBridgeLike;
 	createInputFile(path: string): unknown;
+	handleDocumentMessage: typeof handleTelegramDocumentMessage;
 	handlePhotoMessage: typeof handleTelegramPhotoMessage;
 	handleTextMessage: typeof handleTelegramTextMessage;
 	logError(message: string): void;
@@ -145,6 +172,8 @@ const DEFAULT_TELEGRAM_BOT_DEPENDENCIES: TelegramBotDependencies = {
 	createBot: (token) => new Bot<MyContext>(token) as unknown as TelegramBotLike,
 	createBridge: (runtimeUrl) => createTelegramBridge(runtimeUrl),
 	createInputFile: (path) => new InputFile(path),
+	handleDocumentMessage: (ctx, options) =>
+		handleTelegramDocumentMessage(ctx, options),
 	handlePhotoMessage: (ctx, options) =>
 		handleTelegramPhotoMessage(ctx, options),
 	handleTextMessage: (ctx, options) => handleTelegramTextMessage(ctx, options),
@@ -183,17 +212,12 @@ export interface TelegramBotOptions {
 	token: string;
 	runtimeUrl: string;
 	allowedUsers: number[];
-	mediaRoot: string;
-	resolveMessageImage?: (
+	filesRoot: string;
+	resolveMessageFile?: (
 		chatId: number,
 		messageId: number,
-	) => Promise<ImageRef | undefined>;
-	rememberMessageImage?: (params: {
-		chatId: number;
-		messageId: number;
-		image: ImageRef;
-		direction: "inbound" | "outbound";
-	}) => Promise<void>;
+	) => Promise<TelegramMessageFile | undefined>;
+	rememberMessageFile?: (params: TelegramMessageFileRecord) => Promise<void>;
 }
 
 export function startTelegramBot(
@@ -201,9 +225,9 @@ export function startTelegramBot(
 		token,
 		runtimeUrl,
 		allowedUsers,
-		mediaRoot,
-		resolveMessageImage,
-		rememberMessageImage,
+		filesRoot,
+		resolveMessageFile,
+		rememberMessageFile,
 	}: TelegramBotOptions,
 	overrides: Partial<TelegramBotDependencies> = {},
 ) {
@@ -249,8 +273,8 @@ export function startTelegramBot(
 					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
 			},
 			{
-				resolveMessageImage,
-				rememberMessageImage,
+				resolveMessageFile,
+				rememberMessageFile,
 				streamPrompt: (prompt, images, onImage, replyContext) =>
 					bridge.stream(prompt, images, onImage, ctx.chat.id, replyContext),
 			},
@@ -278,10 +302,35 @@ export function startTelegramBot(
 					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
 			},
 			{
-				resolveMessageImage,
-				rememberMessageImage,
+				resolveMessageFile,
+				rememberMessageFile,
 				token,
-				mediaRoot,
+				filesRoot,
+				streamPrompt: (prompt, images, onImage, replyContext) =>
+					bridge.stream(prompt, images, onImage, ctx.chat.id, replyContext),
+			},
+		);
+	});
+
+	bot.on("message:document", async (ctx) => {
+		await dependencies.handleDocumentMessage(
+			{
+				chat: ctx.chat,
+				getFile: () => ctx.api.getFile(ctx.message.document.file_id),
+				message: ctx.message,
+				reply: (text) => ctx.reply(text),
+				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
+				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
+				sendMessage: (text, options) =>
+					bot.api.sendMessage(ctx.chat.id, text, options),
+				editMessageText: (messageId, text, options) =>
+					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
+			},
+			{
+				resolveMessageFile,
+				rememberMessageFile,
+				token,
+				filesRoot,
 				streamPrompt: (prompt, images, onImage, replyContext) =>
 					bridge.stream(prompt, images, onImage, ctx.chat.id, replyContext),
 			},
@@ -328,7 +377,7 @@ export function startTelegramBot(
 				},
 				{
 					...params,
-					rememberMessageImage,
+					rememberMessageFile,
 				},
 			);
 		},

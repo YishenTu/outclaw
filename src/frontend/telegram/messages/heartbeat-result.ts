@@ -1,10 +1,10 @@
-import type { ImageRef } from "../../../common/protocol.ts";
+import { getImageInfo } from "../files/image-info.ts";
+import type { TelegramMessageFileRecord } from "../files/message-file-ref.ts";
 import {
 	markdownToTelegramHtml,
 	splitTelegramHtml,
 	TELEGRAM_MESSAGE_LIMIT,
 } from "../format.ts";
-import { getImageInfo } from "../media/image-info.ts";
 
 interface TelegramHeartbeatResultContext {
 	sendMessage(
@@ -32,12 +32,7 @@ interface TelegramHeartbeatResultParams {
 		path: string;
 		caption?: string;
 	}>;
-	rememberMessageImage?: (params: {
-		chatId: number;
-		messageId: number;
-		image: ImageRef;
-		direction: "outbound";
-	}) => Promise<void>;
+	rememberMessageFile?: (params: TelegramMessageFileRecord) => Promise<void>;
 }
 
 function shouldSendHeartbeatText(text: string): boolean {
@@ -54,12 +49,15 @@ export async function sendTelegramHeartbeatResult(
 			caption: image.caption,
 			disable_notification: true,
 		});
-		await params.rememberMessageImage?.({
+		await params.rememberMessageFile?.({
 			chatId: params.telegramChatId,
 			messageId: message.message_id,
-			image: {
-				path: image.path,
-				mediaType: getImageInfo(image.path).mediaType,
+			file: {
+				kind: "image",
+				image: {
+					path: image.path,
+					mediaType: getImageInfo(image.path).mediaType,
+				},
 			},
 			direction: "outbound",
 		});
