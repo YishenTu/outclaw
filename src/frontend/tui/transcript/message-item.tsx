@@ -88,23 +88,23 @@ export const MessageItem = memo(function MessageItem({
 				</Box>
 			);
 		case "status": {
-			const w = columns - 4;
+			const pad = "    ";
 			const [title, ...body] = message.text.split("\n");
 			// Labels are padded to equal width; the real separator "  " starts
 			// at the longest label's length — which equals the max indexOf("  ").
 			const sep = Math.max(...body.map((l) => l.indexOf("  ")));
 			const valStart = sep + 2;
 			return (
-				<Box marginTop={1} paddingLeft={3} paddingRight={1}>
+				<Box marginTop={1}>
 					<Text backgroundColor={theme.statusBg}>
 						<Text bold color={theme.accent}>
-							{` ${title}`.padEnd(w)}
+							{`${pad}${title}`.padEnd(columns)}
 						</Text>
 						{body.map((line) => (
 							<>
 								{"\n"}
-								<Text bold>{` ${line.slice(0, valStart)}`}</Text>
-								{line.slice(valStart).padEnd(w - valStart - 1)}
+								<Text bold>{`${pad}${line.slice(0, valStart)}`}</Text>
+								{line.slice(valStart).padEnd(columns - pad.length - valStart)}
 							</>
 						))}
 					</Text>
