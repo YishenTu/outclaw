@@ -1,166 +1,38 @@
-import { Database } from "bun:sqlite";
+import type { Database } from "bun:sqlite";
 import type { UsageInfo } from "../../common/protocol.ts";
-
-export type SessionTag = "chat" | "cron";
-
-export interface SessionRow {
-	providerId: string;
-	sdkSessionId: string;
-	title: string;
-	model: string;
-	source: string;
-	tag: SessionTag;
-	createdAt: number;
-	lastActive: number;
-}
+import {
+	mapSessionRow,
+	mapSessionRows,
+	mapUsageRow,
+	type SessionRow,
+	type SessionTag,
+} from "./session-store-records.ts";
+import { migrateSessionStore } from "./session-store-schema.ts";
+import {
+	closeSqliteDatabase,
+	openSqliteDatabase,
+} from "./sqlite-file-lifecycle.ts";
 
 interface SessionStoreOptions {
 	journalMode?: "WAL" | "DELETE";
 	legacyProviderId?: string;
 }
 
-interface TableColumnInfo {
-	name: string;
-	pk: number;
-}
-
-const SESSION_USAGE_COLUMNS = [
-	"input_tokens",
-	"output_tokens",
-	"cache_creation_tokens",
-	"cache_read_tokens",
-	"context_window",
-	"max_output_tokens",
-	"context_tokens",
-	"percentage",
-] as const;
-
-const SESSION_TABLE_COLUMNS = [
-	"provider_id",
-	"sdk_session_id",
-	"title",
-	"model",
-	"source",
-	"tag",
-	"created_at",
-	"last_active",
-	...SESSION_USAGE_COLUMNS,
-] as const;
+export type { SessionRow, SessionTag } from "./session-store-records.ts";
 
 const LEGACY_ACTIVE_SESSION_KEY = "active_session_id";
 
 export class SessionStore {
 	private db: Database;
+	private dbFileKey: string | undefined;
 	private legacyProviderId: string;
 
 	constructor(path: string, options: SessionStoreOptions = {}) {
-		this.db = new Database(path, { create: true });
-		this.db.exec(`PRAGMA journal_mode=${options.journalMode ?? "DELETE"}`);
+		const sqlite = openSqliteDatabase(path, options.journalMode ?? "WAL");
+		this.db = sqlite.db;
+		this.dbFileKey = sqlite.fileKey;
 		this.legacyProviderId = options.legacyProviderId ?? "legacy";
-		this.migrate();
-	}
-
-	private migrate() {
-		this.db.exec(`CREATE TABLE IF NOT EXISTS state (
-				key TEXT PRIMARY KEY,
-				value TEXT
-			)`);
-
-		const hasSessionsTable = Boolean(
-			this.db
-				.query(
-					"SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'sessions'",
-				)
-				.get(),
-		);
-
-		if (!hasSessionsTable) {
-			this.createSessionsTable();
-			return;
-		}
-
-		const columns = this.getTableColumns("sessions");
-		if (!usesProviderScopedPrimaryKey(columns)) {
-			this.rebuildSessionsTable(columns);
-			return;
-		}
-
-		this.ensureSessionColumns(columns);
-	}
-
-	private createSessionsTable() {
-		this.db.exec(`CREATE TABLE IF NOT EXISTS sessions (
-				provider_id TEXT NOT NULL,
-				sdk_session_id TEXT NOT NULL,
-				title TEXT NOT NULL,
-				model TEXT NOT NULL,
-				source TEXT NOT NULL DEFAULT 'tui',
-				tag TEXT NOT NULL DEFAULT 'chat',
-				created_at INTEGER NOT NULL,
-				last_active INTEGER NOT NULL,
-				input_tokens INTEGER,
-				output_tokens INTEGER,
-				cache_creation_tokens INTEGER,
-				cache_read_tokens INTEGER,
-				context_window INTEGER,
-				max_output_tokens INTEGER,
-				context_tokens INTEGER,
-				percentage INTEGER,
-				PRIMARY KEY (provider_id, sdk_session_id)
-			)`);
-	}
-
-	private ensureSessionColumns(columns: TableColumnInfo[]) {
-		if (!columns.some((column) => column.name === "tag")) {
-			this.db.exec(
-				"ALTER TABLE sessions ADD COLUMN tag TEXT NOT NULL DEFAULT 'chat'",
-			);
-		}
-
-		for (const columnName of SESSION_USAGE_COLUMNS) {
-			if (!columns.some((column) => column.name === columnName)) {
-				this.db.exec(`ALTER TABLE sessions ADD COLUMN ${columnName} INTEGER`);
-			}
-		}
-	}
-
-	private rebuildSessionsTable(columns: TableColumnInfo[]) {
-		this.db.exec("ALTER TABLE sessions RENAME TO sessions_legacy");
-		this.createSessionsTable();
-
-		const legacyColumns = new Set(columns.map((column) => column.name));
-		const selectExpressions = SESSION_TABLE_COLUMNS.map((columnName) => {
-			if (legacyColumns.has(columnName)) {
-				return columnName;
-			}
-
-			switch (columnName) {
-				case "provider_id":
-					return `'${escapeSqlString(this.legacyProviderId)}' AS provider_id`;
-				case "source":
-					return "'tui' AS source";
-				case "tag":
-					return "'chat' AS tag";
-				case "created_at":
-				case "last_active":
-					return `0 AS ${columnName}`;
-				default:
-					return `NULL AS ${columnName}`;
-			}
-		});
-
-		this.db.exec(
-			`INSERT INTO sessions (${SESSION_TABLE_COLUMNS.join(", ")})
-			 SELECT ${selectExpressions.join(", ")}
-			 FROM sessions_legacy`,
-		);
-		this.db.exec("DROP TABLE sessions_legacy");
-	}
-
-	private getTableColumns(tableName: string): TableColumnInfo[] {
-		return this.db
-			.query(`PRAGMA table_info(${tableName})`)
-			.all() as TableColumnInfo[];
+		migrateSessionStore(this.db, this.legacyProviderId);
 	}
 
 	upsert(params: {
@@ -191,37 +63,54 @@ export class SessionStore {
 	}
 
 	get(providerId: string, sdkSessionId: string): SessionRow | undefined {
-		const row = this.db
-			.query(
-				`SELECT provider_id, sdk_session_id, title, model, source, tag, created_at, last_active
+		return mapSessionRow(
+			this.db
+				.query(
+					`SELECT provider_id, sdk_session_id, title, model, source, tag, created_at, last_active
 				 FROM sessions
 				 WHERE provider_id = $providerId AND sdk_session_id = $id`,
-			)
-			.get({
-				$providerId: providerId,
-				$id: sdkSessionId,
-			}) as {
-			provider_id: string;
-			sdk_session_id: string;
-			title: string;
-			model: string;
-			source: string;
-			tag: SessionTag;
-			created_at: number;
-			last_active: number;
-		} | null;
+				)
+				.get({
+					$providerId: providerId,
+					$id: sdkSessionId,
+				}) as Parameters<typeof mapSessionRow>[0],
+		);
+	}
 
-		if (!row) return undefined;
-		return {
-			providerId: row.provider_id,
-			sdkSessionId: row.sdk_session_id,
-			title: row.title,
-			model: row.model,
-			source: row.source,
-			tag: row.tag,
-			createdAt: row.created_at,
-			lastActive: row.last_active,
+	findByPrefix(
+		providerId: string,
+		prefix: string,
+		tag?: SessionTag,
+	): SessionRow | undefined {
+		const exactMatch = this.get(providerId, prefix);
+		if (exactMatch && (!tag || exactMatch.tag === tag)) {
+			return exactMatch;
+		}
+
+		const conditions = [
+			"provider_id = $providerId",
+			"sdk_session_id LIKE $prefix",
+		];
+		const params: Record<string, string> = {
+			$providerId: providerId,
+			$prefix: `${prefix}%`,
 		};
+		if (tag) {
+			conditions.push("tag = $tag");
+			params.$tag = tag;
+		}
+
+		return mapSessionRow(
+			this.db
+				.query(
+					`SELECT provider_id, sdk_session_id, title, model, source, tag, created_at, last_active
+				 FROM sessions
+				 WHERE ${conditions.join(" AND ")}
+				 ORDER BY last_active DESC
+				 LIMIT 1`,
+				)
+				.get(params) as Parameters<typeof mapSessionRow>[0],
+		);
 	}
 
 	list(limit = 20, tag?: SessionTag, providerId?: string): SessionRow[] {
@@ -239,34 +128,16 @@ export class SessionStore {
 
 		const whereClause =
 			conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
-		const rows = this.db
-			.query(
-				`SELECT provider_id, sdk_session_id, title, model, source, tag, created_at, last_active
+		return mapSessionRows(
+			this.db
+				.query(
+					`SELECT provider_id, sdk_session_id, title, model, source, tag, created_at, last_active
 				 FROM sessions${whereClause}
 				 ORDER BY last_active DESC
 				 LIMIT $limit`,
-			)
-			.all(params) as Array<{
-			provider_id: string;
-			sdk_session_id: string;
-			title: string;
-			model: string;
-			source: string;
-			tag: SessionTag;
-			created_at: number;
-			last_active: number;
-		}>;
-
-		return rows.map((row) => ({
-			providerId: row.provider_id,
-			sdkSessionId: row.sdk_session_id,
-			title: row.title,
-			model: row.model,
-			source: row.source,
-			tag: row.tag,
-			createdAt: row.created_at,
-			lastActive: row.last_active,
-		}));
+				)
+				.all(params) as Parameters<typeof mapSessionRows>[0],
+		);
 	}
 
 	delete(providerId: string, sdkSessionId: string) {
@@ -390,61 +261,26 @@ export class SessionStore {
 	}
 
 	getUsage(providerId: string, sdkSessionId: string): UsageInfo | undefined {
-		const row = this.db
-			.query(
-				`SELECT input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+		return mapUsageRow(
+			this.db
+				.query(
+					`SELECT input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
 						context_window, max_output_tokens, context_tokens, percentage
 				FROM sessions
 				WHERE provider_id = $providerId AND sdk_session_id = $id`,
-			)
-			.get({
-				$providerId: providerId,
-				$id: sdkSessionId,
-			}) as {
-			input_tokens: number | null;
-			output_tokens: number | null;
-			cache_creation_tokens: number | null;
-			cache_read_tokens: number | null;
-			context_window: number | null;
-			max_output_tokens: number | null;
-			context_tokens: number | null;
-			percentage: number | null;
-		} | null;
-		if (!row || row.context_window === null) return undefined;
-		return {
-			inputTokens: row.input_tokens ?? 0,
-			outputTokens: row.output_tokens ?? 0,
-			cacheCreationTokens: row.cache_creation_tokens ?? 0,
-			cacheReadTokens: row.cache_read_tokens ?? 0,
-			contextWindow: row.context_window,
-			maxOutputTokens: row.max_output_tokens ?? 0,
-			contextTokens: row.context_tokens ?? 0,
-			percentage: row.percentage ?? 0,
-		};
+				)
+				.get({
+					$providerId: providerId,
+					$id: sdkSessionId,
+				}) as Parameters<typeof mapUsageRow>[0],
+		);
 	}
 
 	close() {
-		this.db.close();
+		closeSqliteDatabase(this.db, this.dbFileKey);
 	}
 }
 
 function activeSessionKey(providerId: string): string {
 	return `active_session_id:${providerId}`;
-}
-
-function usesProviderScopedPrimaryKey(columns: TableColumnInfo[]): boolean {
-	const primaryKey = columns
-		.filter((column) => column.pk > 0)
-		.sort((a, b) => a.pk - b.pk)
-		.map((column) => column.name);
-
-	return (
-		primaryKey.length === 2 &&
-		primaryKey[0] === "provider_id" &&
-		primaryKey[1] === "sdk_session_id"
-	);
-}
-
-function escapeSqlString(value: string): string {
-	return value.replaceAll("'", "''");
 }

@@ -13,7 +13,9 @@
 		"typecheck": "tsc --noEmit",
 		"test": "bun test",
 		"test:watch": "bun test --watch",
-		"check": "bun run lint && bun run typecheck && bun run test"
+		"test:coverage": "bun test --coverage",
+		"check:boundaries": "bun run scripts/check-boundaries.ts",
+		"check": "bun run lint && bun run typecheck && bun run check:boundaries && bun run test"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",

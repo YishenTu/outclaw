@@ -1,6 +1,10 @@
-import { Database } from "bun:sqlite";
+import type { Database } from "bun:sqlite";
 import { resolve, sep } from "node:path";
 import type { ImageMediaType } from "../../common/protocol.ts";
+import {
+	closeSqliteDatabase,
+	openSqliteDatabase,
+} from "./sqlite-file-lifecycle.ts";
 
 export type TelegramFileDirection = "inbound" | "outbound";
 
@@ -51,10 +55,12 @@ const TELEGRAM_FILE_REFS_MIGRATION_TABLE = "telegram_file_refs_migrated";
 
 export class TelegramFileRefStore {
 	private db: Database;
+	private dbFileKey: string | undefined;
 
 	constructor(path: string, options: TelegramFileRefStoreOptions = {}) {
-		this.db = new Database(path, { create: true });
-		this.db.exec(`PRAGMA journal_mode=${options.journalMode ?? "DELETE"}`);
+		const sqlite = openSqliteDatabase(path, options.journalMode ?? "WAL");
+		this.db = sqlite.db;
+		this.dbFileKey = sqlite.fileKey;
 		this.migrate();
 	}
 
@@ -252,21 +258,28 @@ export class TelegramFileRefStore {
 			WHERE chat_id = $chatId AND message_id = $messageId`,
 		);
 
-		for (const row of rows) {
-			if (!isPathWithinRoot(resolvedPreviousRoot, row.path)) {
-				continue;
-			}
+		this.db.exec("BEGIN");
+		try {
+			for (const row of rows) {
+				if (!isPathWithinRoot(resolvedPreviousRoot, row.path)) {
+					continue;
+				}
 
-			update.run({
-				$path: `${resolvedNextRoot}${row.path.slice(resolvedPreviousRoot.length)}`,
-				$chatId: row.chat_id,
-				$messageId: row.message_id,
-			});
+				update.run({
+					$path: `${resolvedNextRoot}${row.path.slice(resolvedPreviousRoot.length)}`,
+					$chatId: row.chat_id,
+					$messageId: row.message_id,
+				});
+			}
+			this.db.exec("COMMIT");
+		} catch (err) {
+			this.db.exec("ROLLBACK");
+			throw err;
 		}
 	}
 
 	close() {
-		this.db.close();
+		closeSqliteDatabase(this.db, this.dbFileKey);
 	}
 }
 

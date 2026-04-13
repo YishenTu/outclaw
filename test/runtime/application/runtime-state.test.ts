@@ -1,9 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "../../../src/common/commands.ts";
 import { MODEL_ALIASES } from "../../../src/common/models.ts";
 import type { DoneEvent } from "../../../src/common/protocol.ts";
 import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
-import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 
 const PROVIDER_ID = "mock";
 
@@ -233,22 +232,33 @@ describe("RuntimeState", () => {
 		});
 	});
 
-	describe("constructor with store", () => {
-		let store: SessionStore;
+	describe("restorePersistedState", () => {
+		test("restores the active session, usage, and heartbeat target", () => {
+			const state = new RuntimeState(PROVIDER_ID);
 
-		afterEach(() => {
-			store?.close();
-		});
+			state.restorePersistedState({
+				lastTelegramChatId: 123,
+				session: {
+					providerId: PROVIDER_ID,
+					sdkSessionId: "sdk-persist",
+					title: "Stored title",
+					model: "haiku",
+					source: "telegram",
+					tag: "chat",
+					createdAt: 0,
+					lastActive: 0,
+				},
+				usage: makeDoneEvent().usage,
+			});
 
-		test("restores usage from DB for the active session", () => {
-			store = new SessionStore(":memory:");
-			const first = new RuntimeState(PROVIDER_ID, store);
-			first.preparePrompt("hello");
-			first.completeRun(makeDoneEvent("sdk-persist"));
-
-			const restored = new RuntimeState(PROVIDER_ID, store);
-			expect(restored.sessionId).toBe("sdk-persist");
-			expect(restored.createStatusEvent().usage).toEqual(makeDoneEvent().usage);
+			expect(state.sessionId).toBe("sdk-persist");
+			expect(state.sessionTitle).toBe("Stored title");
+			expect(state.model).toBe("haiku");
+			expect(state.createStatusEvent().usage).toEqual(makeDoneEvent().usage);
+			expect(state.createHeartbeatDeliveryTarget()).toEqual({
+				clientType: "telegram",
+				telegramChatId: 123,
+			});
 		});
 	});
 });

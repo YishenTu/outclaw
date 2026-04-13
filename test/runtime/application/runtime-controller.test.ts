@@ -8,7 +8,10 @@ import type {
 	ImageRef,
 	ServerEvent,
 } from "../../../src/common/protocol.ts";
-import { RuntimeController } from "../../../src/runtime/application/runtime-controller.ts";
+import { createRuntimeController } from "../../../src/runtime/application/create-runtime-controller.ts";
+import type { RuntimeController } from "../../../src/runtime/application/runtime-controller.ts";
+import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
+import { SessionService } from "../../../src/runtime/application/session-service.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
@@ -52,6 +55,8 @@ function createController(
 	} = {},
 ) {
 	const facade = overrides.facade ?? new MockFacade();
+	const state = new RuntimeState(facade.providerId);
+	const sessions = new SessionService(state, overrides.store);
 	if (overrides.historyReader) {
 		(
 			facade as Facade & {
@@ -61,13 +66,14 @@ function createController(
 	}
 	return {
 		facade,
-		controller: new RuntimeController({
+		controller: createRuntimeController({
 			facade,
 			cwd: overrides.cwd,
 			promptHomeDir: overrides.promptHomeDir,
-			store: overrides.store,
 			deliverCronResult: overrides.deliverCronResult,
 			deliverHeartbeatResult: overrides.deliverHeartbeatResult,
+			sessions,
+			state,
 		}),
 	};
 }
@@ -243,9 +249,13 @@ describe("RuntimeController", () => {
 					{ name: "commit", description: `cwd=${cwd ?? "none"}` },
 				],
 			};
-			const controller = new RuntimeController({
+			const state = new RuntimeState(facade.providerId);
+			const sessions = new SessionService(state);
+			const controller = createRuntimeController({
 				facade,
 				cwd: "/tmp/outclaw",
+				sessions,
+				state,
 			});
 			const ws = mockWs();
 			controller.handleOpen(ws);
@@ -274,6 +284,33 @@ describe("RuntimeController", () => {
 				.events()
 				.filter((event) => event.type === "skills_update");
 			expect(updates).toHaveLength(0);
+		});
+
+		test("request_skills reports backend failures to the requester", async () => {
+			const facade = {
+				providerId: "mock",
+				run: async function* () {},
+				getSkills: async () => {
+					throw new Error("skills lookup failed");
+				},
+			};
+			const state = new RuntimeState(facade.providerId);
+			const sessions = new SessionService(state);
+			const controller = createRuntimeController({
+				facade,
+				sessions,
+				state,
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, requestSkills());
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(ws.events()).toContainEqual({
+				type: "error",
+				message: "skills lookup failed",
+			});
 		});
 
 		test("command message routes to command handler", async () => {
@@ -638,6 +675,42 @@ describe("RuntimeController", () => {
 			const errorEvent = events.find((e) => e.type === "error");
 			expect(errorEvent).toBeDefined();
 			expect((errorEvent as { message: string }).message).toBe("SDK exploded");
+		});
+
+		test("facade.run() throwing for a tui prompt does not attempt heartbeat delivery", async () => {
+			const delivered: Array<{
+				images: Array<{ path: string; caption?: string }>;
+				telegramChatId: number;
+				text: string;
+			}> = [];
+			const facade = new MockFacade();
+			facade.run = () => ({
+				[Symbol.asyncIterator]() {
+					return {
+						async next() {
+							throw new Error("SDK exploded");
+						},
+					};
+				},
+			});
+
+			const { controller } = createController({
+				deliverHeartbeatResult: (params) => {
+					delivered.push(params);
+				},
+				facade,
+			});
+			const ws = mockWs("tui");
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("boom"));
+			await new Promise((resolve) => setTimeout(resolve, 50));
+
+			expect(delivered).toEqual([]);
+			expect(ws.events()).toContainEqual({
+				type: "error",
+				message: "SDK exploded",
+			});
 		});
 
 		test("history replay failure is silently swallowed", async () => {
@@ -1050,11 +1123,15 @@ describe("RuntimeController", () => {
 		test("/restart sends status message and calls restart handler", async () => {
 			let restartCalled = false;
 			const facade = new MockFacade();
-			const controller = new RuntimeController({
+			const state = new RuntimeState(facade.providerId);
+			const sessions = new SessionService(state);
+			const controller = createRuntimeController({
 				facade,
 				restart: () => {
 					restartCalled = true;
 				},
+				sessions,
+				state,
 			});
 			const ws = mockWs();
 			controller.handleOpen(ws);
@@ -1073,11 +1150,15 @@ describe("RuntimeController", () => {
 			let restartCalled = false;
 			const facade = new MockFacade();
 			facade.delayMs = 200;
-			const controller = new RuntimeController({
+			const state = new RuntimeState(facade.providerId);
+			const sessions = new SessionService(state);
+			const controller = createRuntimeController({
 				facade,
 				restart: () => {
 					restartCalled = true;
 				},
+				sessions,
+				state,
 			});
 			const ws = mockWs();
 			controller.handleOpen(ws);
@@ -1109,11 +1190,15 @@ describe("RuntimeController", () => {
 
 		test("/restart broadcasts error when handler throws", async () => {
 			const facade = new MockFacade();
-			const controller = new RuntimeController({
+			const state = new RuntimeState(facade.providerId);
+			const sessions = new SessionService(state);
+			const controller = createRuntimeController({
 				facade,
 				restart: () => {
 					throw new Error("spawn failed");
 				},
+				sessions,
+				state,
 			});
 			const ws = mockWs();
 			controller.handleOpen(ws);

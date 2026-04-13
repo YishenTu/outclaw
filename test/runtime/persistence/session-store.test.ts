@@ -223,6 +223,32 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("findByPrefix can filter matches by tag", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "chat-1",
+			title: "Chat",
+			model: "opus",
+			tag: "chat",
+		});
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "cron-1",
+			title: "Daily summary",
+			model: "haiku",
+			tag: "cron",
+		});
+
+		expect(
+			store.findByPrefix(CLAUDE_PROVIDER, "chat", "chat")?.sdkSessionId,
+		).toBe("chat-1");
+		expect(store.findByPrefix(CLAUDE_PROVIDER, "cron", "chat")).toBeUndefined();
+
+		store.close();
+	});
+
 	test("list scopes sessions by provider", () => {
 		const store = createTestStore();
 
@@ -388,7 +414,7 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
-	test("default journal mode avoids sqlite sidecar files", () => {
+	test("uses WAL during operation and cleans up on close", () => {
 		const store = createTestStore();
 
 		store.upsert({
@@ -397,7 +423,40 @@ describe("SessionStore", () => {
 			title: "Hello world",
 			model: "sonnet",
 		});
+
+		expect(existsSync(`${TEST_DB}-wal`)).toBe(true);
+		expect(existsSync(`${TEST_DB}-shm`)).toBe(true);
+
 		store.close();
+
+		expect(existsSync(`${TEST_DB}-wal`)).toBe(false);
+		expect(existsSync(`${TEST_DB}-shm`)).toBe(false);
+	});
+
+	test("closing one session store keeps sibling connection usable", () => {
+		const primary = createTestStore();
+		const sibling = createTestStore();
+
+		primary.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-123",
+			title: "Hello world",
+			model: "sonnet",
+		});
+
+		primary.close();
+
+		expect(sibling.get(CLAUDE_PROVIDER, "sdk-123")?.title).toBe("Hello world");
+
+		sibling.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-456",
+			title: "Still alive",
+			model: "opus",
+		});
+		expect(sibling.get(CLAUDE_PROVIDER, "sdk-456")?.title).toBe("Still alive");
+
+		sibling.close();
 
 		expect(existsSync(`${TEST_DB}-wal`)).toBe(false);
 		expect(existsSync(`${TEST_DB}-shm`)).toBe(false);

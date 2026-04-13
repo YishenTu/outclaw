@@ -136,7 +136,7 @@ describe("TelegramFileRefStore", () => {
 		store.close();
 	});
 
-	test("default journal mode avoids sqlite sidecar files", () => {
+	test("uses WAL during operation and cleans up on close", () => {
 		const store = new TelegramFileRefStore(TEST_DB);
 
 		store.upsert({
@@ -152,7 +152,60 @@ describe("TelegramFileRefStore", () => {
 			},
 			direction: "outbound",
 		});
+
+		expect(existsSync(`${TEST_DB}-wal`)).toBe(true);
+		expect(existsSync(`${TEST_DB}-shm`)).toBe(true);
+
 		store.close();
+
+		expect(existsSync(`${TEST_DB}-wal`)).toBe(false);
+		expect(existsSync(`${TEST_DB}-shm`)).toBe(false);
+	});
+
+	test("closing SessionStore does not break TelegramFileRefStore on shared db", () => {
+		const sessionStore = new SessionStore(TEST_DB);
+		const fileRefStore = new TelegramFileRefStore(TEST_DB);
+
+		sessionStore.upsert({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "sdk-123",
+			title: "Hello",
+			model: "opus",
+		});
+		fileRefStore.upsert({
+			chatId: 1,
+			messageId: 2,
+			path: "/tmp/chart.png",
+			file: {
+				kind: "image",
+				image: {
+					path: "/tmp/chart.png",
+					mediaType: "image/png",
+				},
+			},
+			direction: "outbound",
+		});
+
+		sessionStore.close();
+
+		expect(fileRefStore.get(1, 2)?.path).toBe("/tmp/chart.png");
+
+		fileRefStore.upsert({
+			chatId: 1,
+			messageId: 3,
+			path: "/tmp/report.pdf",
+			file: {
+				kind: "document",
+				document: {
+					path: "/tmp/report.pdf",
+					displayName: "report.pdf",
+				},
+			},
+			direction: "outbound",
+		});
+		expect(fileRefStore.get(1, 3)?.displayName).toBe("report.pdf");
+
+		fileRefStore.close();
 
 		expect(existsSync(`${TEST_DB}-wal`)).toBe(false);
 		expect(existsSync(`${TEST_DB}-shm`)).toBe(false);

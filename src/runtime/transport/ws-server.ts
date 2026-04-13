@@ -3,7 +3,9 @@ import type {
 	HeartbeatResult,
 	RuntimeClientType,
 } from "../../common/protocol.ts";
-import { RuntimeController } from "../application/runtime-controller.ts";
+import { createRuntimeController } from "../application/create-runtime-controller.ts";
+import { RuntimeState } from "../application/runtime-state.ts";
+import { SessionService } from "../application/session-service.ts";
 import type { Config } from "../config.ts";
 import { CronScheduler, createCronAgentRunner } from "../cron/index.ts";
 import {
@@ -35,14 +37,17 @@ interface RuntimeOptions {
 
 export function createRuntime(options: RuntimeOptions) {
 	const facade = options.facade;
-	const controller = new RuntimeController({
+	const state = new RuntimeState(facade.providerId);
+	const sessions = new SessionService(state, options.store);
+	const controller = createRuntimeController({
 		cwd: options.cwd,
 		promptHomeDir: options.promptHomeDir,
 		facade,
 		restart: options.restart,
 		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
-		store: options.store,
+		sessions,
+		state,
 	});
 	const promptHomeDir = options.promptHomeDir;
 	const heartbeat =

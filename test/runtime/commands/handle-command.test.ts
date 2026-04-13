@@ -1,13 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { ServerEvent } from "../../../src/common/protocol.ts";
 import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
+import { SessionService } from "../../../src/runtime/application/session-service.ts";
 import { handleRuntimeCommand } from "../../../src/runtime/commands/handle-command.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 import {
 	ClientHub,
 	type WsClient,
 } from "../../../src/runtime/transport/client-hub.ts";
 
 const PROVIDER_ID = "mock";
+const stores: SessionStore[] = [];
 
 function mockWs(): WsClient & { events: () => ServerEvent[] } {
 	const sent: string[] = [];
@@ -24,6 +27,7 @@ function setup() {
 	const hub = new ClientHub();
 	const ws = mockWs();
 	const state = new RuntimeState(PROVIDER_ID);
+	const sessions = new SessionService(state);
 	hub.add(ws);
 
 	async function run(command: string) {
@@ -32,15 +36,22 @@ function setup() {
 			createStatusEvent: () => state.createStatusEvent(),
 			hub,
 			replayHistoryToAll: async () => {},
+			sessions,
 			state,
 			ws,
 		});
 	}
 
-	return { hub, ws, state, run };
+	return { hub, sessions, ws, state, run };
 }
 
 describe("handleRuntimeCommand", () => {
+	afterEach(() => {
+		for (const store of stores.splice(0)) {
+			store.close();
+		}
+	});
+
 	describe("/status", () => {
 		test("sends runtime_status event with requested flag", async () => {
 			const { ws, run } = setup();
@@ -61,6 +72,37 @@ describe("handleRuntimeCommand", () => {
 
 			const cleared = ws.events().find((e) => e.type === "session_cleared");
 			expect(cleared).toBeDefined();
+		});
+
+		test("clears the persisted active session id", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state, store);
+			hub.add(ws);
+
+			state.preparePrompt("hello");
+			sessions.completeRun({
+				type: "done",
+				sessionId: "sdk-123",
+				durationMs: 10,
+			});
+			expect(store.getActiveSessionId(PROVIDER_ID)).toBe("sdk-123");
+
+			await handleRuntimeCommand({
+				command: "/new",
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async () => {},
+				sessions,
+				state,
+				ws,
+			});
+
+			expect(state.sessionId).toBeUndefined();
+			expect(store.getActiveSessionId(PROVIDER_ID)).toBeUndefined();
 		});
 	});
 
@@ -222,6 +264,83 @@ describe("handleRuntimeCommand", () => {
 				"No session matching",
 			);
 		});
+
+		test("does not switch to cron sessions by prefix", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state, store);
+			hub.add(ws);
+
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "cron-session-1",
+				title: "Daily summary",
+				model: "haiku",
+				tag: "cron",
+			});
+
+			await handleRuntimeCommand({
+				command: "/session cron-session-1",
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async () => {},
+				sessions,
+				state,
+				ws,
+			});
+
+			expect(state.sessionId).toBeUndefined();
+			expect(ws.events().find((event) => event.type === "error")).toEqual({
+				type: "error",
+				message: "No session matching: cron-session-1",
+			});
+		});
+
+		test("switches to a matching session beyond the recent session menu limit", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state, store);
+			hub.add(ws);
+
+			for (let index = 0; index < 21; index++) {
+				store.upsert({
+					providerId: PROVIDER_ID,
+					sdkSessionId: `sdk-${index.toString().padStart(2, "0")}`,
+					title: `Session ${index}`,
+					model: "sonnet",
+				});
+				await new Promise((resolve) => setTimeout(resolve, 2));
+			}
+
+			let replayedSessionId: string | undefined;
+			await handleRuntimeCommand({
+				command: "/session sdk-00",
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async (sessionId) => {
+					replayedSessionId = sessionId;
+				},
+				sessions,
+				state,
+				ws,
+			});
+
+			expect(state.sessionId).toBe("sdk-00");
+			expect(replayedSessionId).toBe("sdk-00");
+			expect(
+				ws.events().find((event) => event.type === "session_switched"),
+			).toEqual({
+				type: "session_switched",
+				sdkSessionId: "sdk-00",
+				title: "Session 0",
+			});
+		});
 	});
 
 	describe("broadcasting", () => {
@@ -238,6 +357,7 @@ describe("handleRuntimeCommand", () => {
 				createStatusEvent: () => state.createStatusEvent(),
 				hub,
 				replayHistoryToAll: async () => {},
+				sessions: new SessionService(state),
 				state,
 				ws: sender,
 			});
@@ -253,6 +373,7 @@ describe("handleRuntimeCommand", () => {
 			const sender = mockWs();
 			const observer = mockWs();
 			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state);
 			hub.add(sender);
 			hub.add(observer);
 			state.preparePrompt("Current chat");
@@ -267,6 +388,7 @@ describe("handleRuntimeCommand", () => {
 				createStatusEvent: () => state.createStatusEvent(),
 				hub,
 				replayHistoryToAll: async () => {},
+				sessions,
 				state,
 				ws: sender,
 			});
@@ -300,6 +422,7 @@ describe("handleRuntimeCommand", () => {
 			const sender = mockWs();
 			const observer = mockWs();
 			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state);
 			hub.add(sender);
 			hub.add(observer);
 
@@ -308,6 +431,7 @@ describe("handleRuntimeCommand", () => {
 				createStatusEvent: () => state.createStatusEvent(),
 				hub,
 				replayHistoryToAll: async () => {},
+				sessions,
 				state,
 				ws: sender,
 			});

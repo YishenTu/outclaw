@@ -1,54 +1,32 @@
-import {
-	DEFAULT_EFFORT,
-	DEFAULT_MODEL,
-	type EffortLevel,
-} from "../../common/commands.ts";
-import {
-	isModelAlias,
-	type ModelAlias,
-	resolveModelAlias,
-} from "../../common/models.ts";
+import type { EffortLevel } from "../../common/commands.ts";
+import { isModelAlias, type ModelAlias } from "../../common/models.ts";
 import type {
 	DoneEvent,
-	HeartbeatDeliveryTarget,
 	ImageRef,
+	RuntimeClientType,
 	RuntimeStatusEvent,
 	UsageInfo,
 } from "../../common/protocol.ts";
-import { SessionManager } from "../persistence/session-manager.ts";
-import type { SessionRow, SessionStore } from "../persistence/session-store.ts";
+import type { SessionRow } from "../persistence/session-store.ts";
+import { RuntimeSessionState } from "./runtime-session-state.ts";
+import { RuntimeSettingsState } from "./runtime-settings-state.ts";
 
 export class RuntimeState {
-	private activeModel: ModelAlias = DEFAULT_MODEL;
-	private activeEffort: EffortLevel = DEFAULT_EFFORT;
-	private lastUsage: UsageInfo | undefined;
-	private lastTelegramChatId: number | undefined;
-	private session: SessionManager;
-	private _generation = 0;
-	private store?: SessionStore;
+	private readonly sessions = new RuntimeSessionState();
+	private readonly settings = new RuntimeSettingsState();
 
-	constructor(
-		private readonly currentProviderId: string,
-		store?: SessionStore,
-	) {
-		this.store = store;
-		this.session = new SessionManager(currentProviderId, store);
-		this.lastTelegramChatId = store?.getLastTelegramChatId();
-		if (this.session.id) {
-			this.lastUsage = store?.getUsage(currentProviderId, this.session.id);
-		}
-	}
+	constructor(private readonly currentProviderId: string) {}
 
 	get generation(): number {
-		return this._generation;
+		return this.sessions.generation;
 	}
 
 	get effort(): EffortLevel {
-		return this.activeEffort;
+		return this.settings.effort;
 	}
 
 	get model(): ModelAlias {
-		return this.activeModel;
+		return this.settings.model;
 	}
 
 	get providerId(): string {
@@ -56,133 +34,85 @@ export class RuntimeState {
 	}
 
 	getLastTelegramChatId(): number | undefined {
-		return this.lastTelegramChatId;
+		return this.sessions.getLastTelegramChatId();
 	}
 
 	get resolvedModel(): string {
-		return resolveModelAlias(this.activeModel);
+		return this.settings.resolvedModel;
 	}
 
 	get sessionId(): string | undefined {
-		return this.session.id;
+		return this.sessions.sessionId;
+	}
+
+	get sessionSource(): RuntimeClientType {
+		return this.sessions.sessionSource;
 	}
 
 	get sessionTitle(): string | undefined {
-		return this.session.title;
-	}
-
-	createHeartbeatDeliveryTarget(): HeartbeatDeliveryTarget {
-		if (this.session.source === "telegram") {
-			return {
-				clientType: "telegram",
-				telegramChatId: this.lastTelegramChatId,
-			};
-		}
-
-		return {
-			clientType: "tui",
-		};
+		return this.sessions.sessionTitle;
 	}
 
 	createStatusEvent(): RuntimeStatusEvent {
 		return {
 			type: "runtime_status",
-			model: this.activeModel,
-			effort: this.activeEffort,
-			sessionId: this.session.id,
-			sessionTitle: this.session.title,
-			usage: this.lastUsage,
+			model: this.settings.model,
+			effort: this.settings.effort,
+			sessionId: this.sessions.sessionId,
+			sessionTitle: this.sessions.sessionTitle,
+			usage: this.sessions.usage,
 		};
 	}
 
+	createHeartbeatDeliveryTarget() {
+		return this.sessions.createHeartbeatDeliveryTarget();
+	}
+
 	preparePrompt(prompt: string, images?: ImageRef[]) {
-		if (!this.session.id && !this.session.title) {
-			const title = deriveSessionTitle(prompt, images);
-			if (title) {
-				this.session.setTitle(title);
-			}
-		}
+		this.sessions.preparePrompt(prompt, images);
 	}
 
 	clearSession() {
-		this._generation++;
-		this.session.clear();
-		this.lastUsage = undefined;
+		this.sessions.clearSession();
 	}
 
 	setModel(model: ModelAlias) {
-		this.activeModel = model;
+		this.settings.setModel(model);
 	}
 
 	setEffort(effort: EffortLevel) {
-		this.activeEffort = effort;
+		this.settings.setEffort(effort);
+	}
+
+	restorePersistedState(params: {
+		lastTelegramChatId?: number;
+		session?: SessionRow;
+		usage?: UsageInfo;
+	}) {
+		if (params.session && isModelAlias(params.session.model)) {
+			this.settings.setModel(params.session.model);
+		}
+		this.sessions.restorePersistedState(params);
 	}
 
 	renameSession(sessionId: string, title: string) {
-		if (this.session.id === sessionId) {
-			this.session.setTitle(title);
-		}
-		this.store?.rename(this.currentProviderId, sessionId, title);
+		this.sessions.renameSession(sessionId, title);
 	}
 
-	switchToSession(session: SessionRow) {
+	switchToSession(session: SessionRow, usage?: UsageInfo) {
 		if (session.providerId !== this.currentProviderId) {
 			throw new Error(
 				`Cannot activate ${session.providerId} session in ${this.currentProviderId} runtime`,
 			);
 		}
 
-		this._generation++;
-		this.session.setTitle(session.title);
-		this.session.update(session.sdkSessionId, session.model);
 		if (isModelAlias(session.model)) {
-			this.activeModel = session.model;
+			this.settings.setModel(session.model);
 		}
-		this.lastUsage = this.store?.getUsage(
-			this.currentProviderId,
-			session.sdkSessionId,
-		);
+		this.sessions.switchToSession(session, usage);
 	}
 
 	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
-		if (source === "telegram") {
-			this.session.update(event.sessionId, this.activeModel, "telegram");
-			if (telegramChatId !== undefined) {
-				this.lastTelegramChatId = telegramChatId;
-				this.store?.setLastTelegramChatId(telegramChatId);
-			}
-		} else if (source === "heartbeat") {
-			this.session.update(event.sessionId, this.activeModel);
-		} else {
-			this.session.update(event.sessionId, this.activeModel, "tui");
-		}
-		this.lastUsage = event.usage;
-		if (event.usage && event.sessionId) {
-			this.store?.setUsage(
-				this.currentProviderId,
-				event.sessionId,
-				event.usage,
-			);
-		}
+		this.sessions.completeRun(event, source, telegramChatId);
 	}
-}
-
-function deriveSessionTitle(
-	prompt: string,
-	images?: ImageRef[],
-): string | undefined {
-	const trimmedPrompt = prompt.trim();
-	if (trimmedPrompt) {
-		return trimmedPrompt.slice(0, 100);
-	}
-
-	const imageCount = images?.length ?? 0;
-	if (imageCount === 1) {
-		return "Image";
-	}
-	if (imageCount > 1) {
-		return `${imageCount} images`;
-	}
-
-	return undefined;
 }
