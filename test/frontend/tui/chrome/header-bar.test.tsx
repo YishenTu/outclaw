@@ -66,7 +66,6 @@ async function renderHeaderBar(options: {
 	});
 
 	const app = render(<HeaderBar />, {
-		debug: true,
 		exitOnCtrlC: false,
 		patchConsole: false,
 		stderr,
