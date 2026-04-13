@@ -35,6 +35,7 @@ function renderStatusBar(props: Parameters<typeof StatusBar>[0]) {
 	});
 
 	const app = render(<StatusBar {...props} />, {
+		debug: true,
 		exitOnCtrlC: false,
 		patchConsole: false,
 		stderr,
@@ -48,9 +49,7 @@ function renderStatusBar(props: Parameters<typeof StatusBar>[0]) {
 	};
 }
 
-const isCI = !!process.env.CI;
-
-describe.skipIf(isCI)("StatusBar", () => {
+describe("StatusBar", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 		setSystemTime();

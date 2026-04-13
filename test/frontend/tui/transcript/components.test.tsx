@@ -37,6 +37,7 @@ function renderToOutput(element: ReactElement) {
 	});
 
 	const app = render(element, {
+		debug: true,
 		exitOnCtrlC: false,
 		patchConsole: false,
 		stderr,
@@ -50,9 +51,7 @@ function renderToOutput(element: ReactElement) {
 	};
 }
 
-const isCI = !!process.env.CI;
-
-describe.skipIf(isCI)("transcript components", () => {
+describe("transcript components", () => {
 	test("MessageItem renders wrapped user messages", async () => {
 		const { app, getOutput } = renderToOutput(
 			<MessageItem

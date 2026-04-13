@@ -27,47 +27,43 @@ async function flushUpdates() {
 	}
 }
 
-const isCI = !!process.env.CI;
-
 describe("useTerminalSize", () => {
-	test.skipIf(isCI)(
-		"tracks the current terminal size and reacts to resize events",
-		async () => {
-			const stdout = createOutputStream(80, 24);
-			const stderr = createOutputStream(80, 24);
-			const stdin = new PassThrough() as unknown as NodeJS.ReadStream & {
-				isTTY: boolean;
-			};
-			stdin.isTTY = false;
-			let output = "";
-			stdout.on("data", (chunk) => {
-				output += chunk.toString();
-			});
+	test("tracks the current terminal size and reacts to resize events", async () => {
+		const stdout = createOutputStream(80, 24);
+		const stderr = createOutputStream(80, 24);
+		const stdin = new PassThrough() as unknown as NodeJS.ReadStream & {
+			isTTY: boolean;
+		};
+		stdin.isTTY = false;
+		let output = "";
+		stdout.on("data", (chunk) => {
+			output += chunk.toString();
+		});
 
-			const app = render(<TerminalSizeObserver />, {
-				exitOnCtrlC: false,
-				maxFps: 1000,
-				patchConsole: false,
-				stderr,
-				stdin,
-				stdout,
-			});
+		const app = render(<TerminalSizeObserver />, {
+			debug: true,
+			exitOnCtrlC: false,
+			maxFps: 1000,
+			patchConsole: false,
+			stderr,
+			stdin,
+			stdout,
+		});
 
-			try {
-				await flushUpdates();
-				expect(output).toContain("80x24");
+		try {
+			await flushUpdates();
+			expect(output).toContain("80x24");
 
-				stdout.columns = 120;
-				stdout.rows = 40;
-				stdout.emit("resize");
-				await flushUpdates();
-				await new Promise((resolve) => setTimeout(resolve, 50));
+			stdout.columns = 120;
+			stdout.rows = 40;
+			stdout.emit("resize");
+			await flushUpdates();
+			await new Promise((resolve) => setTimeout(resolve, 50));
 
-				expect(output).toContain("120x40");
-			} finally {
-				app.unmount();
-				app.cleanup();
-			}
-		},
-	);
+			expect(output).toContain("120x40");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
 });
