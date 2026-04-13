@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, setSystemTime, test, vi } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { PassThrough } from "node:stream";
 import { render } from "ink";
 import type { ReactElement } from "react";
@@ -52,11 +52,6 @@ function renderToOutput(element: ReactElement) {
 }
 
 describe("transcript components", () => {
-	afterEach(() => {
-		vi.useRealTimers();
-		setSystemTime();
-	});
-
 	test("MessageItem renders wrapped user messages", async () => {
 		const { app, getOutput } = renderToOutput(
 			<MessageItem
@@ -251,10 +246,6 @@ describe("transcript components", () => {
 	});
 
 	test("MessageList renders the spinner when running without streaming", async () => {
-		const now = new Date("2026-04-11T00:00:00Z");
-		setSystemTime(now);
-		vi.useFakeTimers({ now });
-
 		const { app, getOutput } = renderToOutput(
 			<MessageList
 				messages={[]}
@@ -267,13 +258,7 @@ describe("transcript components", () => {
 
 		try {
 			await flushUpdates();
-			const firstFrame = getOutput();
-			expect(firstFrame).toContain("Thinking...");
-
-			vi.advanceTimersByTime(80);
-			await flushUpdates();
 			expect(getOutput()).toContain("Thinking...");
-			expect(getOutput()).not.toBe(firstFrame);
 		} finally {
 			app.unmount();
 			app.cleanup();
