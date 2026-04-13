@@ -19,7 +19,9 @@ prompt: |
   - Routine task logs or one-off operations
   - Project details that have their own source of truth
   - Anything already captured in MEMORY.md
+  - Infrastructure details (repo URLs, sync schedules, config paths) — these live in the infra itself
+  - Anything that can be re-derived by reading a file or running a command
 
   Remove outdated info from MEMORY.md that's no longer relevant.
-  If nothing qualifies, don't edit MEMORY.md.
+  The bar for MEMORY.md is high — only facts that genuinely have no other source of truth AND matter across many sessions.
   Reply with a summary of changes, or reply only `NO_REPLY` if none, no explanation.

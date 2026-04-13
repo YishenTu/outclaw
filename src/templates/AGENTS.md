@@ -56,29 +56,7 @@ Three tiers:
 
 ## Skills
 
-Skills are reusable, structured procedures that extend your capabilities. Each skill lives in `./skills/<skill-name>/SKILL.md`.
-
-**Structure:**
-
-```
-./skills/<skill-name>/
-├── SKILL.md           # Entry point — YAML frontmatter + instructions
-├── templates/         # Optional supporting files
-├── scripts/           # Optional scripts
-└── anything else that are related to this skill
-```
-
-`SKILL.md` has two parts: YAML frontmatter (configuration) and markdown content (instructions).
-
-```yaml
----
-name: skill-name
-description: When to use this skill — Agent uses this to decide auto-invocation
----
-
-Instructions agents follows when the skill is invoked.
-Use $ARGUMENTS for user-provided input.
-```
+Skills are specialized knowledge and workflows bundled as portable packages. Each skill lives in `./skills/<skill-name>/SKILL.md`. Use the `/skill-creator` skill to create or update skills — it knows the full specification and best practices.
 
 **When to create a skill:**
 - The task involves multiple steps or interactions with the user
