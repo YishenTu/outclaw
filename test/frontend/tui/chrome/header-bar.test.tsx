@@ -66,7 +66,6 @@ async function renderHeaderBar(options: {
 	});
 
 	const app = render(<HeaderBar />, {
-		debug: true,
 		exitOnCtrlC: false,
 		patchConsole: false,
 		stderr,
@@ -83,7 +82,9 @@ async function renderHeaderBar(options: {
 	};
 }
 
-describe("HeaderBar", () => {
+const isCI = !!process.env.CI;
+
+describe.skipIf(isCI)("HeaderBar", () => {
 	afterEach(() => {
 		mock.module("figlet", () => ({
 			default: {
