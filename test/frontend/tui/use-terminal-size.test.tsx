@@ -41,6 +41,7 @@ describe("useTerminalSize", () => {
 		});
 
 		const app = render(<TerminalSizeObserver />, {
+			debug: true,
 			exitOnCtrlC: false,
 			maxFps: 1000,
 			patchConsole: false,

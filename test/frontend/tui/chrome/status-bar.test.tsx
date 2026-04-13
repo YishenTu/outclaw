@@ -35,6 +35,7 @@ function renderStatusBar(props: Parameters<typeof StatusBar>[0]) {
 	});
 
 	const app = render(<StatusBar {...props} />, {
+		debug: true,
 		exitOnCtrlC: false,
 		patchConsole: false,
 		stderr,

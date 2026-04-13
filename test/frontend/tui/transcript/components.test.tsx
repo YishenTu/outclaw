@@ -37,6 +37,7 @@ function renderToOutput(element: ReactElement) {
 	});
 
 	const app = render(element, {
+		debug: true,
 		exitOnCtrlC: false,
 		patchConsole: false,
 		stderr,
