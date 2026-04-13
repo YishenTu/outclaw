@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { EventEmitter } from "node:events";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -73,6 +74,10 @@ describe("CronScheduler", () => {
 			) => Promise<string | { text: string; sessionId?: string }>;
 			onResult?: (event: ScheduledCronResult) => void;
 			getDefaultModel?: () => string;
+			watchDir?: (
+				path: string,
+				listener: (eventType: string, filename: string | Buffer | null) => void,
+			) => ReturnType<typeof import("node:fs").watch>;
 		} = {},
 	) {
 		const scheduler = new CronScheduler({
@@ -80,6 +85,7 @@ describe("CronScheduler", () => {
 			runAgent: overrides.runAgent ?? (async () => "agent response"),
 			onResult: overrides.onResult ?? (() => {}),
 			getDefaultModel: overrides.getDefaultModel ?? (() => "opus"),
+			watchDir: overrides.watchDir,
 		});
 		schedulers.push(scheduler);
 		return scheduler;
@@ -330,6 +336,38 @@ prompt: do something
 		rmSync(join(cronDir, "summary.yaml"));
 		await waitForWatcher();
 
+		expect(scheduler.jobCount).toBe(0);
+	});
+
+	test("recovers from watcher ENOENT by resyncing jobs from disk", async () => {
+		const cronDir = makeCronDir();
+		writeJob(
+			cronDir,
+			"summary.yaml",
+			SIMPLE_JOB.replace("name: test-job", "name: daily-summary"),
+		);
+
+		class FakeWatcher extends EventEmitter {
+			close() {}
+		}
+
+		const watcher = new FakeWatcher();
+		const scheduler = createScheduler(cronDir, {
+			watchDir: (_path, _listener) =>
+				watcher as unknown as ReturnType<typeof import("node:fs").watch>,
+		});
+		scheduler.start();
+		expect(scheduler.jobCount).toBe(1);
+
+		rmSync(join(cronDir, "summary.yaml"));
+		watcher.emit(
+			"error",
+			Object.assign(new Error("no such file or directory"), {
+				code: "ENOENT",
+			}),
+		);
+
+		await waitForCondition(() => scheduler.jobCount === 0);
 		expect(scheduler.jobCount).toBe(0);
 	});
 
