@@ -6,11 +6,14 @@ export type TuiMessageRole =
 	| "error"
 	| "status";
 
+export type TuiMessageVariant = "compact_boundary";
+
 export interface TuiMessage {
 	readonly id: number;
 	readonly role: TuiMessageRole;
 	readonly text: string;
 	readonly replyText?: string;
+	readonly variant?: TuiMessageVariant;
 }
 
 export interface TuiState {
@@ -18,6 +21,7 @@ export interface TuiState {
 	streaming: string;
 	streamingThinking: string;
 	running: boolean;
+	compacting: boolean;
 	nextId: number;
 }
 
@@ -27,6 +31,7 @@ export function initialTuiState(): TuiState {
 		streaming: "",
 		streamingThinking: "",
 		running: false,
+		compacting: false,
 		nextId: 1,
 	};
 }

@@ -3,6 +3,7 @@ import type {
 	ContentBlockParam,
 	MessageParam,
 } from "@anthropic-ai/sdk/resources/messages/messages";
+import { contextWindowForResolvedModel } from "../../common/models.ts";
 import {
 	extractError,
 	type Facade,
@@ -36,6 +37,8 @@ interface ClaudeAdapterSdk {
 }
 
 interface ClaudeAdapterOptions {
+	autoCompact?: boolean;
+	claudeProjectsDir?: string;
 	sdk?: ClaudeAdapterSdk;
 	sleep?: (ms: number) => Promise<void>;
 	unlinkFile?: (path: string) => void;
@@ -91,11 +94,16 @@ export class ClaudeAdapter implements Facade {
 	private skills: SkillInfo[] = [];
 	private readonly sdk?: ClaudeAdapterSdk;
 	private cachedSdk?: ClaudeAdapterSdk;
+	private readonly claudeProjectsDir?: string;
 	private readonly sleep: (ms: number) => Promise<void>;
 	private readonly unlinkFile: (path: string) => void;
 
+	readonly autoCompact: boolean;
+
 	constructor(options: ClaudeAdapterOptions = {}) {
+		this.autoCompact = options.autoCompact ?? true;
 		this.sdk = options.sdk;
+		this.claudeProjectsDir = options.claudeProjectsDir;
 		this.sleep = options.sleep ?? waitFor;
 		this.unlinkFile = options.unlinkFile ?? unlinkSync;
 	}
@@ -109,7 +117,11 @@ export class ClaudeAdapter implements Facade {
 
 	async readHistory(sessionId: string) {
 		const sdk = await this.loadSdk();
-		return readClaudeHistory(sessionId, sdk.getSessionMessages);
+		return readClaudeHistory({
+			sessionId,
+			loadHistory: sdk.getSessionMessages,
+			claudeProjectsDir: this.claudeProjectsDir,
+		});
 	}
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
@@ -120,6 +132,7 @@ export class ClaudeAdapter implements Facade {
 		let needsSeparator = false;
 
 		try {
+			const settings = this.buildSettings(params.model);
 			const conversation = sdk.query({
 				prompt: createPromptInput(params),
 				options: {
@@ -137,6 +150,7 @@ export class ClaudeAdapter implements Facade {
 					permissionMode: "bypassPermissions",
 					allowDangerouslySkipPermissions: true,
 					includePartialMessages: params.stream ?? true,
+					settings,
 					tools: [
 						"Bash",
 						"Read",
@@ -157,6 +171,15 @@ export class ClaudeAdapter implements Facade {
 						conversation,
 						event as { skills?: string[] },
 					);
+					continue;
+				}
+
+				if (event.type === "system" && event.subtype === "status") {
+					if (event.status === "compacting") {
+						yield { type: "compacting_started" };
+					} else if (event.status === null) {
+						yield { type: "compacting_finished" };
+					}
 					continue;
 				}
 
@@ -226,6 +249,15 @@ export class ClaudeAdapter implements Facade {
 		} catch (err) {
 			yield { type: "error", message: extractError(err) };
 		}
+	}
+
+	private buildSettings(
+		model: string | undefined,
+	): { autoCompactWindow: number } | undefined {
+		if (!this.autoCompact || !model) return undefined;
+		const contextWindow = contextWindowForResolvedModel(model);
+		if (!contextWindow) return undefined;
+		return { autoCompactWindow: Math.round(contextWindow * 0.8) };
 	}
 
 	private async probeSkills(cwd?: string): Promise<SkillInfo[]> {

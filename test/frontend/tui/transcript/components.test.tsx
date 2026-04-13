@@ -132,6 +132,30 @@ describe("transcript components", () => {
 		}
 	});
 
+	test("MessageItem renders compact boundary info with extra spacing", async () => {
+		const { app, getOutput } = renderToOutput(
+			<MessageItem
+				message={{
+					id: 1,
+					role: "info",
+					text: "context compacted",
+					variant: "compact_boundary",
+				}}
+				columns={40}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const output = getOutput();
+			expect(output).toContain("\n");
+			expect(output).toContain("   ~ context compacted ~");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("MessageItem renders aligned status messages", async () => {
 		const { app, getOutput } = renderToOutput(
 			<MessageItem
@@ -155,6 +179,30 @@ describe("transcript components", () => {
 		} finally {
 			app.unmount();
 			app.cleanup();
+		}
+	});
+
+	test("MessageItem status rendering does not trigger React key warnings", async () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const { app } = renderToOutput(
+			<MessageItem
+				message={{
+					id: 1,
+					role: "status",
+					text: "Runtime\nModel        opus\nEffort       think",
+				}}
+				columns={40}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const combinedErrors = errorSpy.mock.calls.flat().join(" ");
+			expect(combinedErrors).not.toContain('unique "key" prop');
+		} finally {
+			app.unmount();
+			app.cleanup();
+			errorSpy.mockRestore();
 		}
 	});
 
@@ -185,6 +233,7 @@ describe("transcript components", () => {
 				messages={[{ id: 1, role: "assistant", text: "done" }]}
 				streaming="partial response"
 				streamingThinking=""
+				compacting={false}
 				running={true}
 				columns={40}
 			/>,
@@ -207,6 +256,7 @@ describe("transcript components", () => {
 				messages={[]}
 				streaming="**bold** and `code`"
 				streamingThinking=""
+				compacting={false}
 				running={true}
 				columns={40}
 			/>,
@@ -231,6 +281,7 @@ describe("transcript components", () => {
 				messages={[]}
 				streaming=""
 				streamingThinking="**bold** and `code`"
+				compacting={false}
 				running={true}
 				columns={40}
 			/>,
@@ -259,6 +310,7 @@ describe("transcript components", () => {
 				messages={[]}
 				streaming=""
 				streamingThinking=""
+				compacting={false}
 				running={true}
 				columns={40}
 			/>,
@@ -273,6 +325,36 @@ describe("transcript components", () => {
 			await flushUpdates();
 			expect(getOutput()).toContain("Thinking...");
 			expect(getOutput()).not.toBe(firstFrame);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("MessageList renders the full transcript in flow order", async () => {
+		const { app, getOutput } = renderToOutput(
+			<MessageList
+				messages={[
+					{ id: 1, role: "info", text: "history 1" },
+					{ id: 2, role: "info", text: "history 2" },
+					{ id: 3, role: "info", text: "history 3" },
+					{ id: 4, role: "info", text: "history 4" },
+				]}
+				streaming=""
+				streamingThinking=""
+				compacting={false}
+				running={false}
+				columns={40}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const output = getOutput();
+			expect(output).toContain("history 1");
+			expect(output).toContain("history 2");
+			expect(output).toContain("history 3");
+			expect(output).toContain("history 4");
 		} finally {
 			app.unmount();
 			app.cleanup();

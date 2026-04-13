@@ -9,6 +9,7 @@ interface MessageListProps {
 	streaming: string;
 	streamingThinking: string;
 	running: boolean;
+	compacting: boolean;
 	columns: number;
 }
 
@@ -17,12 +18,13 @@ export function MessageList({
 	streaming,
 	streamingThinking,
 	running,
+	compacting,
 	columns,
 }: MessageListProps) {
 	return (
 		<Box flexDirection="column">
-			{messages.map((msg) => (
-				<MessageItem key={msg.id} message={msg} columns={columns} />
+			{messages.map((message) => (
+				<MessageItem key={message.id} message={message} columns={columns} />
 			))}
 			{streamingThinking ? (
 				<Box marginTop={1} paddingLeft={3} paddingRight={1}>
@@ -36,7 +38,11 @@ export function MessageList({
 					<Text>{renderMarkdown(streaming, columns - 4)}</Text>
 				</Box>
 			) : null}
-			{running && !streaming && !streamingThinking ? (
+			{compacting ? (
+				<Box marginTop={1} paddingLeft={1} paddingRight={1}>
+					<Spinner label="Compacting..." />
+				</Box>
+			) : running && !streaming && !streamingThinking ? (
 				<Box marginTop={1} paddingLeft={1} paddingRight={1}>
 					<Spinner label="Thinking..." />
 				</Box>

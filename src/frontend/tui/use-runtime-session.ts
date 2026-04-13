@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { canonicalizePromptSlashCommand } from "../../common/commands.ts";
 import {
 	extractError,
 	parseMessage,
@@ -90,6 +91,7 @@ export function useRuntimeSession(url: string) {
 				}
 				skillsRequestedRef.current = false;
 				setSkills([]);
+				setTuiState((previous) => ({ ...previous, compacting: false }));
 				setStatus("disconnected");
 				retryTimer = setTimeout(connect, 3000);
 			};
@@ -163,6 +165,8 @@ export function useRuntimeSession(url: string) {
 				return false;
 			}
 
+			const compacting = canonicalizePromptSlashCommand(prompt) === "/compact";
+
 			setTuiState((previous) =>
 				applyAction(previous, {
 					type: "push",
@@ -170,9 +174,17 @@ export function useRuntimeSession(url: string) {
 					text: prompt,
 				}),
 			);
+			if (compacting) {
+				setTuiState((previous) =>
+					applyAction(previous, {
+						type: "start_compacting",
+					}),
+				);
+			}
 			setTuiState((previous) => ({
 				...previous,
 				running: true,
+				compacting: compacting || previous.compacting,
 			}));
 			return true;
 		},

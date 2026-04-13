@@ -223,6 +223,71 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("list reopens and retries once on SQLITE_IOERR", () => {
+		const store = createTestStore();
+		const originalDb = (store as unknown as { db: Database }).db;
+		const originalDbFileKey = (store as unknown as { dbFileKey?: string })
+			.dbFileKey;
+		const ioError = Object.assign(new Error("disk I/O error"), {
+			code: "SQLITE_IOERR_VNODE",
+		});
+		let reopenCount = 0;
+		const expectedRows = [
+			{
+				provider_id: CLAUDE_PROVIDER,
+				sdk_session_id: "sdk-123",
+				title: "Recovered",
+				model: "opus",
+				source: "tui",
+				tag: "chat",
+				created_at: 1,
+				last_active: 2,
+			},
+		];
+		const failingDb = {
+			query() {
+				return {
+					all() {
+						throw ioError;
+					},
+				};
+			},
+		};
+		const recoveredDb = {
+			query() {
+				return {
+					all() {
+						return expectedRows;
+					},
+				};
+			},
+		};
+
+		(store as unknown as { db: unknown }).db = failingDb;
+		(store as unknown as { reopenConnection: () => void }).reopenConnection =
+			() => {
+				reopenCount += 1;
+				(store as unknown as { db: unknown }).db = recoveredDb;
+			};
+
+		try {
+			expect(store.list(20, undefined, CLAUDE_PROVIDER)).toEqual([
+				expect.objectContaining({
+					providerId: CLAUDE_PROVIDER,
+					sdkSessionId: "sdk-123",
+					title: "Recovered",
+					model: "opus",
+				}),
+			]);
+			expect(reopenCount).toBe(1);
+		} finally {
+			(store as unknown as { db: Database }).db = originalDb;
+			(store as unknown as { dbFileKey?: string }).dbFileKey =
+				originalDbFileKey;
+			store.close();
+		}
+	});
+
 	test("findByPrefix can filter matches by tag", () => {
 		const store = createTestStore();
 

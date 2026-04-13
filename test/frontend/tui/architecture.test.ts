@@ -20,6 +20,7 @@ describe("TUI architecture", () => {
 			streaming: "",
 			streamingThinking: "",
 			running: false,
+			compacting: false,
 			nextId: 1,
 		});
 	});
@@ -33,6 +34,7 @@ describe("TUI architecture", () => {
 			streaming: "hello",
 			streamingThinking: "",
 			running: true,
+			compacting: false,
 			nextId: 1,
 		});
 	});

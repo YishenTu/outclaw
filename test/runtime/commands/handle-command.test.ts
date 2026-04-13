@@ -195,6 +195,34 @@ describe("handleRuntimeCommand", () => {
 			);
 		});
 
+		test("sends error when session storage throws", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const state = new RuntimeState(PROVIDER_ID);
+			hub.add(ws);
+			const sessions = {
+				activeSessionId: undefined,
+				listSessions() {
+					throw new Error("disk I/O error");
+				},
+			} as unknown as SessionService;
+
+			await handleRuntimeCommand({
+				command: "/session",
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async () => {},
+				sessions,
+				state,
+				ws,
+			});
+
+			expect(ws.events()).toContainEqual({
+				type: "error",
+				message: "disk I/O error",
+			});
+		});
+
 		test("/session list sends session_list event (no store)", async () => {
 			const { ws, run } = setup();
 			await run("/session list");

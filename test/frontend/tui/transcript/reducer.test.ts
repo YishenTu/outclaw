@@ -238,8 +238,8 @@ describe("mapEventToActions", () => {
 		const actions = mapEventToActions({
 			type: "history_replay",
 			messages: [
-				{ role: "assistant", content: "Hello" },
-				{ role: "user", content: "Question" },
+				{ kind: "chat", role: "assistant", content: "Hello" },
+				{ kind: "chat", role: "user", content: "Question" },
 			],
 		});
 		expect(actions).toEqual([
@@ -258,6 +258,7 @@ describe("mapEventToActions", () => {
 			type: "history_replay",
 			messages: [
 				{
+					kind: "chat",
 					role: "assistant",
 					content: "The answer",
 					thinking: "Let me reason",
@@ -280,6 +281,7 @@ describe("mapEventToActions", () => {
 			type: "history_replay",
 			messages: [
 				{
+					kind: "chat",
 					role: "user",
 					content: "",
 					images: [{ mediaType: "image/png" }],
@@ -296,6 +298,7 @@ describe("mapEventToActions", () => {
 			type: "history_replay",
 			messages: [
 				{
+					kind: "chat",
 					role: "user",
 					content: "Question",
 					replyContext: { text: "Earlier answer" },
@@ -312,6 +315,104 @@ describe("mapEventToActions", () => {
 						text: "Question",
 						replyText: "Earlier answer",
 					},
+				],
+			},
+		]);
+	});
+
+	test("compacting_started → start_compacting action", () => {
+		const actions = mapEventToActions({ type: "compacting_started" });
+		expect(actions).toEqual([{ type: "start_compacting" }]);
+	});
+
+	test("compacting_finished → finish_compacting action", () => {
+		const actions = mapEventToActions({ type: "compacting_finished" });
+		expect(actions).toEqual([{ type: "finish_compacting" }]);
+	});
+
+	test("start_compacting sets compacting flag", () => {
+		const state = applyAction(initialTuiState(), { type: "start_compacting" });
+		expect(state.compacting).toBe(true);
+	});
+
+	test("finish_compacting clears flag and pushes info message", () => {
+		const compactingState = applyAction(initialTuiState(), {
+			type: "start_compacting",
+		});
+		const state = applyAction(compactingState, { type: "finish_compacting" });
+		expect(state.compacting).toBe(false);
+		expect(state.messages).toHaveLength(1);
+		expect(state.messages[0]?.role).toBe("info");
+		expect(state.messages[0]?.text).toBe("context compacted");
+		expect(state.messages[0]?.variant).toBe("compact_boundary");
+	});
+
+	test("commit_streaming clears compacting even when no text was produced", () => {
+		const compactingState = applyAction(initialTuiState(), {
+			type: "start_compacting",
+		});
+		const state = applyAction(compactingState, { type: "commit_streaming" });
+		expect(state.compacting).toBe(false);
+	});
+
+	test("push_and_stop clears compacting on error", () => {
+		const compactingState = applyAction(initialTuiState(), {
+			type: "start_compacting",
+		});
+		const state = applyAction(compactingState, {
+			type: "push_and_stop",
+			role: "error",
+			text: "failed",
+		});
+		expect(state.compacting).toBe(false);
+	});
+
+	test("clear resets compacting", () => {
+		const compactingState = applyAction(initialTuiState(), {
+			type: "start_compacting",
+		});
+		const state = applyAction(compactingState, { type: "clear" });
+		expect(state.compacting).toBe(false);
+	});
+
+	test("replay resets compacting", () => {
+		const compactingState = applyAction(initialTuiState(), {
+			type: "start_compacting",
+		});
+		const state = applyAction(compactingState, {
+			type: "replay",
+			messages: [{ id: 1, role: "info", text: "history" }],
+		});
+		expect(state.compacting).toBe(false);
+	});
+
+	test("history_replay renders compact_boundary as info message", () => {
+		const actions = mapEventToActions({
+			type: "history_replay",
+			messages: [
+				{ kind: "chat", role: "user", content: "hello" },
+				{
+					kind: "system",
+					event: "compact_boundary",
+					text: "context compacted",
+					trigger: "auto",
+					preTokens: 100_000,
+				},
+				{ kind: "chat", role: "assistant", content: "world" },
+			],
+		});
+		expect(actions).toEqual([
+			{
+				type: "replay",
+				messages: [
+					{ id: 1, role: "user", text: "hello" },
+					{
+						id: 2,
+						role: "info",
+						text: "context compacted",
+						variant: "compact_boundary",
+					},
+					{ id: 3, role: "assistant", text: "world" },
 				],
 			},
 		]);

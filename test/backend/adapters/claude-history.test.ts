@@ -1,21 +1,131 @@
 import { describe, expect, mock, test } from "bun:test";
-import { ClaudeAdapter } from "../../../src/backend/adapters/claude.ts";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+	type ClaudeHistoryMessage,
+	readClaudeHistory,
+} from "../../../src/backend/adapters/claude-history.ts";
 
-function createAdapter(getSessionMessages: ReturnType<typeof mock>) {
-	const options: ConstructorParameters<typeof ClaudeAdapter>[0] = {
-		sdk: {
-			query: mock(() => (async function* () {})()) as never,
-			getSessionMessages: getSessionMessages as never,
-		},
+const MISSING_PROJECTS_DIR = join(tmpdir(), "outclaw-no-history-here");
+
+function readSdkHistory(
+	messages: ClaudeHistoryMessage[],
+	sessionId = "sdk-test",
+) {
+	const loadHistory = mock(async (requestedSessionId: string) => {
+		expect(requestedSessionId).toBe(sessionId);
+		return messages;
+	});
+
+	const result = readClaudeHistory({
+		sessionId,
+		loadHistory,
+		claudeProjectsDir: MISSING_PROJECTS_DIR,
+	});
+
+	return {
+		loadHistory,
+		result,
 	};
-	return new ClaudeAdapter(options);
 }
 
-describe("ClaudeAdapter.readHistory", () => {
+describe("readClaudeHistory", () => {
+	test("prefers the raw Claude JSONL transcript before falling back to SDK history", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "outclaw-claude-history-module-"));
+		const projectsDir = join(tmp, "projects");
+		const projectDir = join(projectsDir, "sample-project");
+		const sessionId = "sdk-full-history";
+
+		try {
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(
+				join(projectDir, `${sessionId}.jsonl`),
+				[
+					JSON.stringify({
+						type: "user",
+						message: {
+							content: [{ type: "text", text: "hello before compact" }],
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						message: {
+							content: [{ type: "text", text: "answer before compact" }],
+						},
+					}),
+				].join("\n"),
+			);
+
+			const loadHistory = mock(async () => [
+				{
+					type: "user",
+					message: { content: "sdk-only question" },
+				},
+				{
+					type: "assistant",
+					message: {
+						content: [{ type: "text", text: "sdk-only answer" }],
+					},
+				},
+			]);
+
+			const messages = await readClaudeHistory({
+				sessionId,
+				loadHistory,
+				claudeProjectsDir: projectsDir,
+			});
+
+			expect(loadHistory).not.toHaveBeenCalled();
+			expect(messages).toEqual([
+				{ kind: "chat", role: "user", content: "hello before compact" },
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "answer before compact",
+				},
+			]);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	test("falls back to SDK history when the raw JSONL transcript is unavailable", async () => {
+		const loadHistory = mock(async () => [
+			{
+				type: "user",
+				message: { content: "sdk-only question" },
+			},
+			{
+				type: "assistant",
+				message: {
+					content: [{ type: "text", text: "sdk-only answer" }],
+				},
+			},
+		]);
+
+		const messages = await readClaudeHistory({
+			sessionId: "missing-session",
+			loadHistory,
+			claudeProjectsDir: MISSING_PROJECTS_DIR,
+		});
+
+		expect(loadHistory).toHaveBeenCalledWith("missing-session", {
+			includeSystemMessages: true,
+		});
+		expect(messages).toEqual([
+			{ kind: "chat", role: "user", content: "sdk-only question" },
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "sdk-only answer",
+			},
+		]);
+	});
+
 	test("returns displayable user and assistant messages", async () => {
-		const getSessionMessages = mock(async (sessionId: string) => {
-			expect(sessionId).toBe("sdk-123");
-			return [
+		const { result } = readSdkHistory(
+			[
 				{
 					type: "user",
 					message: { content: "hello" },
@@ -40,20 +150,18 @@ describe("ClaudeAdapter.readHistory", () => {
 						content: [{ type: "tool_use", text: "skip" }],
 					},
 				},
-			];
-		});
+			],
+			"sdk-123",
+		);
 
-		const adapter = createAdapter(getSessionMessages);
-		const messages = await adapter.readHistory("sdk-123");
-
-		expect(messages).toEqual([
-			{ role: "user", content: "hello" },
-			{ role: "assistant", content: "hi there" },
+		expect(await result).toEqual([
+			{ kind: "chat", role: "user", content: "hello" },
+			{ kind: "chat", role: "assistant", content: "hi there" },
 		]);
 	});
 
 	test("merges separate thinking and text assistant entries", async () => {
-		const getSessionMessages = mock(async () => [
+		const { result } = readSdkHistory([
 			{
 				type: "user",
 				message: { content: "hello" },
@@ -72,17 +180,19 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		const adapter = createAdapter(getSessionMessages);
-		const messages = await adapter.readHistory("sdk-merge");
-
-		expect(messages).toEqual([
-			{ role: "user", content: "hello" },
-			{ role: "assistant", content: "the answer", thinking: "let me reason" },
+		expect(await result).toEqual([
+			{ kind: "chat", role: "user", content: "hello" },
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "the answer",
+				thinking: "let me reason",
+			},
 		]);
 	});
 
 	test("concatenates consecutive thinking-only assistant entries before text", async () => {
-		const getSessionMessages = mock(async () => [
+		const { result } = readSdkHistory([
 			{
 				type: "assistant",
 				message: {
@@ -103,11 +213,9 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		const adapter = createAdapter(getSessionMessages);
-		const messages = await adapter.readHistory("sdk-consecutive");
-
-		expect(messages).toEqual([
+		expect(await result).toEqual([
 			{
+				kind: "chat",
 				role: "assistant",
 				content: "the answer",
 				thinking: "let me reason",
@@ -116,7 +224,7 @@ describe("ClaudeAdapter.readHistory", () => {
 	});
 
 	test("handles thinking followed by tool_use then text in next turn", async () => {
-		const getSessionMessages = mock(async () => [
+		const { result } = readSdkHistory([
 			{
 				type: "assistant",
 				message: {
@@ -155,17 +263,24 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		const adapter = createAdapter(getSessionMessages);
-		const messages = await adapter.readHistory("sdk-multi");
-
-		expect(messages).toEqual([
-			{ role: "assistant", content: "searching...", thinking: "reasoning" },
-			{ role: "assistant", content: "found it", thinking: "now I know" },
+		expect(await result).toEqual([
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "searching...",
+				thinking: "reasoning",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "found it",
+				thinking: "now I know",
+			},
 		]);
 	});
 
 	test("flushes pending thinking before a new user turn", async () => {
-		const getSessionMessages = mock(async () => [
+		const { result } = readSdkHistory([
 			{
 				type: "assistant",
 				message: {
@@ -184,22 +299,20 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		const adapter = createAdapter(getSessionMessages);
-		const messages = await adapter.readHistory("sdk-user-boundary");
-
-		expect(messages).toEqual([
+		expect(await result).toEqual([
 			{
+				kind: "chat",
 				role: "assistant",
 				content: "",
 				thinking: "unfinished reasoning",
 			},
-			{ role: "user", content: "new prompt" },
-			{ role: "assistant", content: "new answer" },
+			{ kind: "chat", role: "user", content: "new prompt" },
+			{ kind: "chat", role: "assistant", content: "new answer" },
 		]);
 	});
 
 	test("preserves multimodal user prompts in replayable form", async () => {
-		const getSessionMessages = mock(async () => [
+		const { result } = readSdkHistory([
 			{
 				type: "user",
 				message: {
@@ -224,21 +337,19 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		const adapter = createAdapter(getSessionMessages);
-		const messages = await adapter.readHistory("sdk-456");
-
-		expect(messages).toEqual([
+		expect(await result).toEqual([
 			{
+				kind: "chat",
 				role: "user",
 				content: "describe this",
 				images: [{ mediaType: "image/png" }],
 			},
-			{ role: "assistant", content: "It is a cat." },
+			{ kind: "chat", role: "assistant", content: "It is a cat." },
 		]);
 	});
 
 	test("strips reply-context envelopes from replayed user prompts", async () => {
-		const getSessionMessages = mock(async () => [
+		const { result } = readSdkHistory([
 			{
 				type: "user",
 				message: {
@@ -254,16 +365,18 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		const adapter = createAdapter(getSessionMessages);
-		const messages = await adapter.readHistory("sdk-reply-history");
-
-		expect(messages).toEqual([
+		expect(await result).toEqual([
 			{
+				kind: "chat",
 				role: "user",
 				content: "what do you mean?",
 				replyContext: { text: 'the "cron" output <ok>' },
 			},
-			{ role: "assistant", content: "I mean the nightly summary." },
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "I mean the nightly summary.",
+			},
 		]);
 	});
 });

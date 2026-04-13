@@ -68,6 +68,15 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 			let id = 1;
 			const messages: TuiMessage[] = [];
 			for (const message of event.messages) {
+				if (message.kind === "system") {
+					messages.push({
+						id: id++,
+						role: "info",
+						text: message.text,
+						variant: "compact_boundary",
+					});
+					continue;
+				}
 				if (message.role === "assistant" && message.thinking) {
 					messages.push({
 						id: id++,
@@ -100,6 +109,10 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 					},
 				},
 			];
+		case "compacting_started":
+			return [{ type: "start_compacting" }];
+		case "compacting_finished":
+			return [{ type: "finish_compacting" }];
 		case "session_renamed":
 		case "session_deleted":
 		case "session_info":
@@ -107,9 +120,11 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 		case "skills_update":
 			return [{ type: "noop" }];
 	}
+	return [{ type: "noop" }];
 }
 
 function replayContent(message: {
+	kind: "chat";
 	role: string;
 	content: string;
 	images?: Array<{ path?: string; mediaType?: string }>;

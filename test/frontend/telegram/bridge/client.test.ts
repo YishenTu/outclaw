@@ -199,7 +199,7 @@ describe("Telegram bridge", () => {
 
 		const texts: string[] = [];
 		for await (const chunk of bridge.stream("hello")) {
-			texts.push(chunk.text);
+			if ("text" in chunk) texts.push(chunk.text);
 		}
 
 		expect(texts.join("")).toBe("echo: hello");
@@ -219,7 +219,7 @@ describe("Telegram bridge", () => {
 			for await (const chunk of bridge.stream("hello", undefined, (event) => {
 				imageEvents.push(event);
 			})) {
-				texts.push(chunk.text);
+				if ("text" in chunk) texts.push(chunk.text);
 			}
 
 			expect(texts.join("")).toBe(`Saved chart to ${imagePath}`);
@@ -237,7 +237,7 @@ describe("Telegram bridge", () => {
 		for await (const chunk of bridge.stream("", [
 			{ path: "/tmp/cat.png", mediaType: "image/png" },
 		])) {
-			texts.push(chunk.text);
+			if ("text" in chunk) texts.push(chunk.text);
 		}
 
 		expect(texts.join("")).toBe("echo: ");
@@ -259,7 +259,7 @@ describe("Telegram bridge", () => {
 			undefined,
 			{ text: 'the "cron" output' },
 		)) {
-			texts.push(chunk.text);
+			if ("text" in chunk) texts.push(chunk.text);
 		}
 
 		expect(texts.join("")).toBe("echo: what do you mean?");

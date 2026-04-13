@@ -53,6 +53,10 @@ export class RuntimeState {
 		return this.sessions.sessionTitle;
 	}
 
+	get usage(): UsageInfo | undefined {
+		return this.sessions.usage;
+	}
+
 	createStatusEvent(): RuntimeStatusEvent {
 		return {
 			type: "runtime_status",

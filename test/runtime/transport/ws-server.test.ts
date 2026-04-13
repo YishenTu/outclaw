@@ -755,7 +755,7 @@ describe("Runtime server", () => {
 		});
 		const facade = new MockFacade();
 		facade.historyMessages = [
-			{ role: "user", content: "history for sdk-target-abc" },
+			{ kind: "chat", role: "user", content: "history for sdk-target-abc" },
 		];
 
 		const sharedServer = createRuntime({

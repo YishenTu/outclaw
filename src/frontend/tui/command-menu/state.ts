@@ -1,4 +1,4 @@
-import { RUNTIME_COMMANDS } from "../../../common/commands.ts";
+import { SLASH_COMMANDS } from "../../../common/commands.ts";
 import { MODEL_ALIAS_LIST } from "../../../common/models.ts";
 import type { SkillInfo } from "../../../common/protocol.ts";
 
@@ -10,7 +10,7 @@ export interface CommandMenuItem {
 const MODEL_ALIAS_COMMANDS = new Set(MODEL_ALIAS_LIST.map((a) => `/${a}`));
 
 export const BUILTIN_COMMANDS: CommandMenuItem[] = [
-	...RUNTIME_COMMANDS.map((rc) => ({
+	...SLASH_COMMANDS.map((rc) => ({
 		command: `/${rc.command}`,
 		description: rc.description,
 	})),

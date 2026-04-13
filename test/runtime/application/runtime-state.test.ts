@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "../../../src/common/commands.ts";
-import { MODEL_ALIASES } from "../../../src/common/models.ts";
+import { MODELS } from "../../../src/common/models.ts";
 import type { DoneEvent } from "../../../src/common/protocol.ts";
 import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
 
@@ -38,7 +38,7 @@ describe("RuntimeState", () => {
 
 	test("resolvedModel returns the SDK model ID", () => {
 		const state = new RuntimeState(PROVIDER_ID);
-		expect(state.resolvedModel).toBe(MODEL_ALIASES[DEFAULT_MODEL]);
+		expect(state.resolvedModel).toBe(MODELS[DEFAULT_MODEL].id);
 	});
 
 	test("starts with no session", () => {
@@ -51,7 +51,7 @@ describe("RuntimeState", () => {
 		const state = new RuntimeState(PROVIDER_ID);
 		state.setModel("haiku");
 		expect(state.model).toBe("haiku");
-		expect(state.resolvedModel).toBe(MODEL_ALIASES.haiku);
+		expect(state.resolvedModel).toBe(MODELS.haiku.id);
 	});
 
 	test("setEffort changes effort", () => {

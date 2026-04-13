@@ -1,11 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeAdapter } from "../../../src/backend/adapters/claude.ts";
 
 function createAdapter(
 	overrides: {
+		claudeProjectsDir?: string;
 		query?: ReturnType<typeof mock>;
 		getSessionMessages?: ReturnType<typeof mock>;
 		unlinkFile?: ReturnType<typeof mock>;
@@ -18,6 +19,7 @@ function createAdapter(
 	const unlinkFile = overrides.unlinkFile ?? mock(() => {});
 	const sleep = overrides.sleep ?? (async () => {});
 	const options: ConstructorParameters<typeof ClaudeAdapter>[0] = {
+		claudeProjectsDir: overrides.claudeProjectsDir,
 		sdk: {
 			query: query as never,
 			getSessionMessages: getSessionMessages as never,
@@ -45,6 +47,327 @@ describe("ClaudeAdapter", () => {
 		const { adapter } = createAdapter();
 		const result = adapter.run({ prompt: "hello" });
 		expect(result[Symbol.asyncIterator]).toBeFunction();
+	});
+
+	test("readHistory prefers the raw Claude transcript so pre-compact turns survive reload", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "outclaw-claude-history-"));
+		const projectsDir = join(tmp, "projects");
+		const projectDir = join(projectsDir, "sample-project");
+		const sessionId = "sdk-full-history";
+		const compactSummary =
+			"This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.";
+
+		try {
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(
+				join(projectDir, `${sessionId}.jsonl`),
+				[
+					JSON.stringify({ type: "queue-operation" }),
+					JSON.stringify({
+						type: "user",
+						isSidechain: false,
+						message: {
+							content: [{ type: "text", text: "hello before compact" }],
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						isSidechain: false,
+						message: {
+							content: [{ type: "thinking", thinking: "thinking before " }],
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						isSidechain: false,
+						message: {
+							content: [{ type: "text", text: "answer before compact" }],
+						},
+					}),
+					JSON.stringify({
+						type: "system",
+						subtype: "compact_boundary",
+						content: "Conversation compacted",
+						compactMetadata: {
+							trigger: "manual",
+							preTokens: 12_345,
+						},
+					}),
+					JSON.stringify({
+						type: "user",
+						isCompactSummary: true,
+						isVisibleInTranscriptOnly: true,
+						message: { content: compactSummary },
+					}),
+					JSON.stringify({
+						type: "user",
+						isMeta: true,
+						message: {
+							content:
+								"<local-command-caveat>Caveat: local command output omitted</local-command-caveat>",
+						},
+					}),
+					JSON.stringify({
+						type: "user",
+						message: {
+							content:
+								"<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args></command-args>",
+						},
+					}),
+					JSON.stringify({
+						type: "user",
+						message: {
+							content:
+								"<local-command-stdout>Compacted </local-command-stdout>",
+						},
+					}),
+					JSON.stringify({ type: "queue-operation" }),
+					JSON.stringify({ type: "queue-operation" }),
+					JSON.stringify({
+						type: "assistant",
+						message: {
+							content: [{ type: "text", text: "No response requested." }],
+						},
+					}),
+					JSON.stringify({
+						type: "user",
+						message: {
+							content: [{ type: "text", text: "after compact question" }],
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						message: {
+							content: [{ type: "thinking", thinking: "after thought" }],
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						message: {
+							content: [{ type: "text", text: "after compact answer" }],
+						},
+					}),
+				].join("\n"),
+			);
+
+			const getSessionMessages = mock(async () => [
+				{
+					type: "system",
+					message: undefined,
+				},
+				{
+					type: "user",
+					message: { content: compactSummary },
+				},
+				{
+					type: "user",
+					message: { content: "after compact question" },
+				},
+				{
+					type: "assistant",
+					message: {
+						content: [{ type: "text", text: "after compact answer" }],
+					},
+				},
+			]);
+
+			const { adapter } = createAdapter({
+				claudeProjectsDir: projectsDir,
+				getSessionMessages,
+			});
+			const messages = await adapter.readHistory(sessionId);
+
+			expect(getSessionMessages).not.toHaveBeenCalled();
+			expect(messages).toEqual([
+				{ kind: "chat", role: "user", content: "hello before compact" },
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "answer before compact",
+					thinking: "thinking before ",
+				},
+				{
+					kind: "system",
+					event: "compact_boundary",
+					text: "context compacted",
+					trigger: "manual",
+					preTokens: 12_345,
+				},
+				{
+					kind: "chat",
+					role: "user",
+					content: "after compact question",
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "after compact answer",
+					thinking: "after thought",
+				},
+			]);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	test("readHistory rebuilds compact_boundary from summary records in the raw Claude transcript", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "outclaw-claude-history-summary-"));
+		const projectsDir = join(tmp, "projects");
+		const projectDir = join(projectsDir, "sample-project");
+		const sessionId = "sdk-summary-history";
+		const compactSummary =
+			"This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.";
+
+		try {
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(
+				join(projectDir, `${sessionId}.jsonl`),
+				[
+					JSON.stringify({
+						type: "user",
+						message: {
+							content: [{ type: "text", text: "hello before compact" }],
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						message: {
+							content: [{ type: "text", text: "answer before compact" }],
+						},
+					}),
+					JSON.stringify({
+						type: "user",
+						isCompactSummary: true,
+						isVisibleInTranscriptOnly: true,
+						message: { content: compactSummary },
+					}),
+					JSON.stringify({
+						type: "assistant",
+						message: {
+							content: [{ type: "text", text: "No response requested." }],
+						},
+					}),
+					JSON.stringify({
+						type: "user",
+						message: {
+							content: [{ type: "text", text: "after compact question" }],
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						message: {
+							content: [{ type: "text", text: "after compact answer" }],
+						},
+					}),
+				].join("\n"),
+			);
+
+			const getSessionMessages = mock(async () => [
+				{
+					type: "user",
+					message: { content: compactSummary },
+				},
+				{
+					type: "assistant",
+					message: {
+						content: [{ type: "text", text: "No response requested." }],
+					},
+				},
+				{
+					type: "user",
+					message: { content: "after compact question" },
+				},
+				{
+					type: "assistant",
+					message: {
+						content: [{ type: "text", text: "after compact answer" }],
+					},
+				},
+			]);
+
+			const { adapter } = createAdapter({
+				claudeProjectsDir: projectsDir,
+				getSessionMessages,
+			});
+			const messages = await adapter.readHistory(sessionId);
+
+			expect(getSessionMessages).not.toHaveBeenCalled();
+			expect(messages).toEqual([
+				{ kind: "chat", role: "user", content: "hello before compact" },
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "answer before compact",
+				},
+				{
+					kind: "system",
+					event: "compact_boundary",
+					text: "context compacted",
+					trigger: "auto",
+					preTokens: 0,
+				},
+				{
+					kind: "chat",
+					role: "user",
+					content: "after compact question",
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "after compact answer",
+				},
+			]);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	test("readHistory surfaces broken raw transcripts instead of falling back to SDK history", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "outclaw-claude-history-broken-"));
+		const projectsDir = join(tmp, "projects");
+		const projectDir = join(projectsDir, "sample-project");
+		const sessionId = "sdk-broken-history";
+
+		try {
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(
+				join(projectDir, `${sessionId}.jsonl`),
+				[
+					JSON.stringify({
+						type: "user",
+						message: {
+							content: [{ type: "text", text: "hello before compact" }],
+						},
+					}),
+					"{ this is not valid json",
+					JSON.stringify({
+						type: "assistant",
+						message: {
+							content: [{ type: "text", text: "answer before compact" }],
+						},
+					}),
+				].join("\n"),
+			);
+
+			const getSessionMessages = mock(async () => [
+				{
+					type: "user",
+					message: { content: "post compact only" },
+				},
+			]);
+
+			const { adapter } = createAdapter({
+				claudeProjectsDir: projectsDir,
+				getSessionMessages,
+			});
+
+			await expect(adapter.readHistory(sessionId)).rejects.toThrow(
+				"Failed to parse Claude transcript line 2",
+			);
+			expect(getSessionMessages).not.toHaveBeenCalled();
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
 	});
 
 	test("encodes reply context only at the provider boundary", async () => {
@@ -646,6 +969,129 @@ describe("ClaudeAdapter", () => {
 				type: "done",
 				sessionId: "sdk-mt",
 				durationMs: 50,
+				costUsd: 0,
+				usage: undefined,
+			},
+		]);
+	});
+
+	test("passes autoCompactWindow to SDK settings when autoCompact is enabled and model is known", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "result",
+					session_id: "sdk-compact",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		const { adapter } = createAdapter({ query });
+		// adapter has autoCompact: true by default
+
+		for await (const _event of adapter.run({
+			prompt: "hello",
+			model: "claude-opus-4-6[1m]",
+		})) {
+			// Drain
+		}
+
+		const args = query.mock.calls[0]?.[0] as {
+			options: { settings?: { autoCompactWindow?: number } };
+		};
+		expect(args.options.settings?.autoCompactWindow).toBe(800_000);
+	});
+
+	test("does not pass autoCompactWindow when autoCompact is disabled", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "result",
+					session_id: "sdk-no-compact",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		const options: ConstructorParameters<typeof ClaudeAdapter>[0] = {
+			autoCompact: false,
+			sdk: {
+				query: query as never,
+				getSessionMessages: mock(async () => []) as never,
+			},
+		};
+		const adapter = new ClaudeAdapter(options);
+
+		for await (const _event of adapter.run({
+			prompt: "hello",
+			model: "claude-opus-4-6[1m]",
+		})) {
+			// Drain
+		}
+
+		const args = query.mock.calls[0]?.[0] as {
+			options: { settings?: { autoCompactWindow?: number } };
+		};
+		expect(args.options.settings).toBeUndefined();
+	});
+
+	test("does not pass autoCompactWindow when model context window is unknown", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "result",
+					session_id: "sdk-unknown",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		const { adapter } = createAdapter({ query });
+
+		for await (const _event of adapter.run({
+			prompt: "hello",
+			model: "some-unknown-model",
+		})) {
+			// Drain
+		}
+
+		const args = query.mock.calls[0]?.[0] as {
+			options: { settings?: { autoCompactWindow?: number } };
+		};
+		expect(args.options.settings).toBeUndefined();
+	});
+
+	test("maps SDK compacting status events to compacting_started and compacting_finished", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield { type: "system", subtype: "status", status: "compacting" };
+				yield { type: "system", subtype: "status", status: null };
+				yield {
+					type: "result",
+					session_id: "sdk-cmp",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		const { adapter } = createAdapter({ query });
+		const events = [];
+
+		for await (const event of adapter.run({ prompt: "/compact" })) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{ type: "compacting_started" },
+			{ type: "compacting_finished" },
+			{
+				type: "done",
+				sessionId: "sdk-cmp",
+				durationMs: 1,
 				costUsd: 0,
 				usage: undefined,
 			},

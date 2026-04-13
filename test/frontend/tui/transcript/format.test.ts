@@ -92,19 +92,24 @@ describe("formatReplyText", () => {
 describe("formatReplayMessage", () => {
 	test("formats assistant message", () => {
 		expect(
-			formatReplayMessage({ role: "assistant", content: "Hello there" }),
+			formatReplayMessage({
+				kind: "chat",
+				role: "assistant",
+				content: "Hello there",
+			}),
 		).toBe("Hello there\n");
 	});
 
 	test("formats user message with > prefix", () => {
-		expect(formatReplayMessage({ role: "user", content: "Question" })).toBe(
-			"> Question\n",
-		);
+		expect(
+			formatReplayMessage({ kind: "chat", role: "user", content: "Question" }),
+		).toBe("> Question\n");
 	});
 
 	test("formats user message with images", () => {
 		expect(
 			formatReplayMessage({
+				kind: "chat",
 				role: "user",
 				content: "Question",
 				images: [{ path: "/tmp/cat.png", mediaType: "image/png" }],
@@ -115,6 +120,7 @@ describe("formatReplayMessage", () => {
 	test("formats user message with reply context in the main message text", () => {
 		expect(
 			formatReplayMessage({
+				kind: "chat",
 				role: "user",
 				content: "Question",
 				replyContext: { text: "Earlier answer" },
@@ -125,6 +131,7 @@ describe("formatReplayMessage", () => {
 	test("formats user message with image only (no text)", () => {
 		expect(
 			formatReplayMessage({
+				kind: "chat",
 				role: "user",
 				content: "",
 				images: [{ mediaType: "image/png" }],

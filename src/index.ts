@@ -41,7 +41,7 @@ const CLI_ENTRY = join(import.meta.dir, "cli.ts");
 
 const runtime = createRuntime({
 	port: config.port,
-	facade: new ClaudeAdapter(),
+	facade: new ClaudeAdapter({ autoCompact: config.autoCompact }),
 	cwd: HOME_DIR,
 	cronDir: join(HOME_DIR, "cron"),
 	heartbeat: config.heartbeat,

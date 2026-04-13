@@ -173,8 +173,16 @@ describe("RuntimeController", () => {
 
 		test("handleOpen replays history when session is active", async () => {
 			const historyReader = async (_id: string) => [
-				{ role: "user" as const, content: "past question" },
-				{ role: "assistant" as const, content: "past answer" },
+				{
+					kind: "chat" as const,
+					role: "user" as const,
+					content: "past question",
+				},
+				{
+					kind: "chat" as const,
+					role: "assistant" as const,
+					content: "past answer",
+				},
 			];
 			const { controller, facade } = createController({ historyReader });
 			const ws1 = mockWs();
@@ -197,7 +205,11 @@ describe("RuntimeController", () => {
 
 		test("handleOpen does not replay when no active session", async () => {
 			const historyReader = async (_id: string) => [
-				{ role: "user" as const, content: "should not appear" },
+				{
+					kind: "chat" as const,
+					role: "user" as const,
+					content: "should not appear",
+				},
 			];
 			const { controller } = createController({ historyReader });
 			const ws = mockWs();
@@ -713,7 +725,7 @@ describe("RuntimeController", () => {
 			});
 		});
 
-		test("history replay failure is silently swallowed", async () => {
+		test("history replay failure is reported to the client without crashing", async () => {
 			const historyReader = async (_id: string): Promise<never> => {
 				throw new Error("history read failed");
 			};
@@ -725,14 +737,18 @@ describe("RuntimeController", () => {
 			controller.handleMessage(ws1, prompt("setup"));
 			await drain(controller, facade);
 
-			// New client — history replay will fail but should not crash
+			// New client - history replay will fail but should not crash.
 			const ws2 = mockWs();
 			controller.handleOpen(ws2);
 			await new Promise((r) => setTimeout(r, 20));
 
-			// No error event sent (failure is swallowed)
 			const errors = ws2.events().filter((e) => e.type === "error");
-			expect(errors).toHaveLength(0);
+			expect(errors).toEqual([
+				{
+					type: "error",
+					message: "Failed to replay history: history read failed",
+				},
+			]);
 		});
 	});
 

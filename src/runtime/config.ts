@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface Config {
+	autoCompact: boolean;
 	heartbeat: {
 		intervalMinutes: number;
 		deferMinutes: number;
@@ -14,6 +15,7 @@ export interface Config {
 }
 
 const DEFAULTS: Config = {
+	autoCompact: true,
 	heartbeat: {
 		intervalMinutes: 30,
 		deferMinutes: 0,
@@ -72,6 +74,7 @@ export function loadConfig(homeDir: string): Config {
 	const raw = JSON.parse(readFileSync(configPath, "utf-8"));
 
 	const merged = {
+		autoCompact: raw.autoCompact ?? DEFAULTS.autoCompact,
 		heartbeat: {
 			intervalMinutes:
 				raw.heartbeat?.intervalMinutes ?? DEFAULTS.heartbeat.intervalMinutes,

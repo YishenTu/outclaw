@@ -22,6 +22,7 @@ let bridge = {
 let createTelegramBridge = mock((_runtimeUrl: string) => bridge);
 let registerTelegramSessionHandlers = mock(() => {});
 let registerTelegramRuntimeCommands = mock(() => {});
+let registerTelegramPromptCommands = mock(() => {});
 let registerTelegramModelShortcuts = mock(() => {});
 let lastHeartbeatArgs: unknown[] = [];
 let lastTextMessageArgs: unknown[] = [];
@@ -132,6 +133,7 @@ function resetFakes() {
 	createTelegramBridge = mock((_runtimeUrl: string) => bridge);
 	registerTelegramSessionHandlers = mock(() => {});
 	registerTelegramRuntimeCommands = mock(() => {});
+	registerTelegramPromptCommands = mock(() => {});
 	registerTelegramModelShortcuts = mock(() => {});
 	lastHeartbeatArgs = [];
 	lastTextMessageArgs = [];
@@ -184,6 +186,9 @@ function createTestDependencies(params: {
 		registerRuntimeCommands: (
 			...args: Parameters<typeof registerTelegramRuntimeCommands>
 		) => registerTelegramRuntimeCommands(...args),
+		registerPromptCommands: (
+			...args: Parameters<typeof registerTelegramPromptCommands>
+		) => registerTelegramPromptCommands(...args),
 		registerSessionHandlers: (
 			...args: Parameters<typeof registerTelegramSessionHandlers>
 		) => registerTelegramSessionHandlers(...args),
@@ -219,6 +224,7 @@ describe("startTelegramBot", () => {
 		expect(bot.api.setMyCommands).toHaveBeenCalledWith(TELEGRAM_COMMANDS);
 		expect(registerTelegramSessionHandlers).toHaveBeenCalledWith(bot, bridge);
 		expect(registerTelegramRuntimeCommands).toHaveBeenCalledWith(bot, bridge);
+		expect(registerTelegramPromptCommands).toHaveBeenCalledWith(bot, bridge);
 		expect(registerTelegramModelShortcuts).toHaveBeenCalledWith(bot, bridge);
 		expect(bot.start).toHaveBeenCalledTimes(1);
 		expect(log).toHaveBeenCalledWith("Telegram bot started");

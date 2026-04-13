@@ -72,7 +72,7 @@ class FakeWebSocket {
 	}
 }
 
-function createOutputStream() {
+function createOutputStream(rows = 24) {
 	const stream = new PassThrough() as PassThrough &
 		NodeJS.WriteStream & {
 			columns: number;
@@ -81,7 +81,7 @@ function createOutputStream() {
 		};
 	stream.columns = 80;
 	stream.isTTY = false;
-	stream.rows = 24;
+	stream.rows = rows;
 	return stream;
 }
 
@@ -91,15 +91,20 @@ async function flushUpdates() {
 	}
 }
 
-async function renderApp() {
-	const stdout = createOutputStream();
-	const stderr = createOutputStream();
+async function renderApp({ rows = 24 }: { rows?: number } = {}) {
+	const stdout = createOutputStream(rows);
+	const stderr = createOutputStream(rows);
 	const stdin = new PassThrough() as PassThrough & {
 		isTTY: boolean;
 	};
 	stdin.isTTY = false;
+	const frames: string[] = [];
+	stdout.on("data", (chunk) => {
+		frames.push(chunk.toString());
+	});
 
 	const app = render(<TuiApp url="ws://localhost:4100" />, {
+		debug: true,
 		exitOnCtrlC: false,
 		patchConsole: false,
 		stderr,
@@ -113,7 +118,12 @@ async function renderApp() {
 	socket.dispatch("open");
 	await flushUpdates();
 
-	return { app, socket, stdin };
+	return {
+		app,
+		socket,
+		stdin,
+		getOutput: () => frames.at(-1) ?? "",
+	};
 }
 
 async function typeText(stdin: PassThrough, value: string) {
@@ -204,6 +214,34 @@ describe("TuiApp", () => {
 				'{"type":"request_skills"}',
 				'{"type":"command","command":"/status"}',
 			]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("autocomplete submits /compact as a prompt without trailing whitespace", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin, getOutput } = await renderApp();
+
+		try {
+			await typeText(stdin, "/co");
+			expect(socket.sent).toEqual(['{"type":"request_skills"}']);
+
+			await pressEnter(stdin);
+			expect(socket.sent).toEqual(['{"type":"request_skills"}']);
+
+			await pressEnter(stdin);
+			expect(socket.sent).toEqual([
+				'{"type":"request_skills"}',
+				'{"type":"prompt","prompt":"/compact"}',
+			]);
+			expect(
+				socket.sent.some((message) => message.includes('"type":"command"')),
+			).toBe(false);
+			expect(getOutput()).toContain("Compacting...");
+			expect(getOutput()).not.toContain("Thinking...");
 		} finally {
 			app.unmount();
 			app.cleanup();

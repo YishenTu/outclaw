@@ -113,6 +113,14 @@ export interface UserPromptEvent {
 	source: string;
 }
 
+export interface CompactingStartedEvent {
+	type: "compacting_started";
+}
+
+export interface CompactingFinishedEvent {
+	type: "compacting_finished";
+}
+
 export interface SessionClearedEvent {
 	type: "session_cleared";
 }
@@ -184,13 +192,24 @@ export interface RuntimeStatusEvent {
 	requested?: boolean;
 }
 
-export interface DisplayMessage {
+export interface DisplayChatMessage {
+	kind: "chat";
 	role: "user" | "assistant";
 	content: string;
 	thinking?: string;
 	images?: DisplayImage[];
 	replyContext?: ReplyContext;
 }
+
+export interface DisplaySystemMessage {
+	kind: "system";
+	event: "compact_boundary";
+	text: string;
+	trigger: "manual" | "auto";
+	preTokens: number;
+}
+
+export type DisplayMessage = DisplayChatMessage | DisplaySystemMessage;
 
 export interface HistoryReplayEvent {
 	type: "history_replay";
@@ -231,6 +250,8 @@ export type ServerEvent =
 	| SessionDeletedEvent
 	| SessionSwitchedEvent
 	| RuntimeStatusEvent
+	| CompactingStartedEvent
+	| CompactingFinishedEvent
 	| HistoryReplayEvent
 	| CronResultEvent
 	| SkillsUpdateEvent;
@@ -243,7 +264,9 @@ export type FacadeEvent =
 	| ImageEvent
 	| StatusEvent
 	| ErrorEvent
-	| DoneEvent;
+	| DoneEvent
+	| CompactingStartedEvent
+	| CompactingFinishedEvent;
 
 export interface RunParams {
 	prompt: string;

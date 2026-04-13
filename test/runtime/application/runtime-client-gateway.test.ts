@@ -57,7 +57,7 @@ describe("RuntimeClientGateway", () => {
 		});
 	});
 
-	test("handleOpen swallows synchronous history replay throws", async () => {
+	test("handleOpen reports history replay failures to the client", async () => {
 		const gateway = new RuntimeClientGateway({
 			facade: createFacade({
 				readHistory() {
@@ -80,6 +80,10 @@ describe("RuntimeClientGateway", () => {
 				model: "sonnet",
 				effort: "high",
 				sessionId: "sdk-123",
+			},
+			{
+				type: "error",
+				message: "Failed to replay history: history exploded",
 			},
 		]);
 	});

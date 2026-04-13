@@ -11,10 +11,11 @@ import {
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
 
-export interface StreamChunk {
-	type: "thinking" | "text";
-	text: string;
-}
+export type StreamChunk =
+	| { type: "thinking"; text: string }
+	| { type: "text"; text: string }
+	| { type: "compacting_started" }
+	| { type: "compacting_finished" };
 
 export function createTelegramBridge(url: string) {
 	const sockets = new Set<WebSocket>();
@@ -219,7 +220,11 @@ export function createTelegramBridge(url: string) {
 					path?: string;
 					caption?: string;
 				};
-				if (event.type === "thinking" && event.text) {
+				if (event.type === "compacting_started") {
+					enqueue({ type: "compacting_started" });
+				} else if (event.type === "compacting_finished") {
+					enqueue({ type: "compacting_finished" });
+				} else if (event.type === "thinking" && event.text) {
 					enqueue({ type: "thinking", text: event.text });
 				} else if (event.type === "text" && event.text) {
 					enqueue({ type: "text", text: event.text });

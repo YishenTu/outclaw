@@ -25,10 +25,14 @@ const LEGACY_ACTIVE_SESSION_KEY = "active_session_id";
 export class SessionStore {
 	private db: Database;
 	private dbFileKey: string | undefined;
+	private readonly dbPath: string;
+	private readonly journalMode: "WAL" | "DELETE";
 	private legacyProviderId: string;
 
 	constructor(path: string, options: SessionStoreOptions = {}) {
-		const sqlite = openSqliteDatabase(path, options.journalMode ?? "WAL");
+		this.dbPath = path;
+		this.journalMode = options.journalMode ?? "WAL";
+		const sqlite = openSqliteDatabase(path, this.journalMode);
 		this.db = sqlite.db;
 		this.dbFileKey = sqlite.fileKey;
 		this.legacyProviderId = options.legacyProviderId ?? "legacy";
@@ -128,15 +132,17 @@ export class SessionStore {
 
 		const whereClause =
 			conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
-		return mapSessionRows(
-			this.db
-				.query(
-					`SELECT provider_id, sdk_session_id, title, model, source, tag, created_at, last_active
-				 FROM sessions${whereClause}
-				 ORDER BY last_active DESC
-				 LIMIT $limit`,
-				)
-				.all(params) as Parameters<typeof mapSessionRows>[0],
+		return this.withRecoveredConnection(() =>
+			mapSessionRows(
+				this.db
+					.query(
+						`SELECT provider_id, sdk_session_id, title, model, source, tag, created_at, last_active
+						 FROM sessions${whereClause}
+						 ORDER BY last_active DESC
+						 LIMIT $limit`,
+					)
+					.all(params) as Parameters<typeof mapSessionRows>[0],
+			),
 		);
 	}
 
@@ -279,8 +285,44 @@ export class SessionStore {
 	close() {
 		closeSqliteDatabase(this.db, this.dbFileKey);
 	}
+
+	private withRecoveredConnection<T>(operation: () => T): T {
+		try {
+			return operation();
+		} catch (error) {
+			if (!isRetryableSqliteIoError(error)) {
+				throw error;
+			}
+
+			this.reopenConnection();
+			return operation();
+		}
+	}
+
+	private reopenConnection() {
+		try {
+			closeSqliteDatabase(this.db, this.dbFileKey);
+		} catch {
+			// Ignore close failures from a broken connection and replace it below.
+		}
+
+		const sqlite = openSqliteDatabase(this.dbPath, this.journalMode);
+		this.db = sqlite.db;
+		this.dbFileKey = sqlite.fileKey;
+		migrateSessionStore(this.db, this.legacyProviderId);
+	}
 }
 
 function activeSessionKey(providerId: string): string {
 	return `active_session_id:${providerId}`;
+}
+
+function isRetryableSqliteIoError(error: unknown): boolean {
+	return Boolean(
+		error &&
+			typeof error === "object" &&
+			"code" in error &&
+			typeof error.code === "string" &&
+			error.code.startsWith("SQLITE_IOERR"),
+	);
 }

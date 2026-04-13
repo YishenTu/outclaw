@@ -43,6 +43,12 @@ function useHeartbeatCountdown(
 	return getHeartbeatLabel(nextHeartbeatAt, now, deferred);
 }
 
+export function contextWarningColor(percentage: number): string | undefined {
+	if (percentage >= 75) return "red";
+	if (percentage >= 65) return "yellow";
+	return undefined;
+}
+
 export function StatusBar({ status, info }: StatusBarProps) {
 	const heartbeat = useHeartbeatCountdown(
 		info.nextHeartbeatAt,
@@ -51,14 +57,16 @@ export function StatusBar({ status, info }: StatusBarProps) {
 	const parts: string[] = [];
 	if (info.model) parts.push(info.model);
 	if (info.effort) parts.push(info.effort);
+
+	let contextLabel: string | undefined;
+	let contextColor: string | undefined;
 	if (info.contextTokens !== undefined && info.contextWindow !== undefined) {
 		const pct =
 			info.contextWindow > 0
 				? Math.round((info.contextTokens / info.contextWindow) * 100)
 				: 0;
-		parts.push(
-			`${formatCompact(info.contextTokens)}/${formatCompact(info.contextWindow)} (${pct}%)`,
-		);
+		contextLabel = `${formatCompact(info.contextTokens)}/${formatCompact(info.contextWindow)} (${pct}%)`;
+		contextColor = contextWarningColor(pct);
 	}
 	if (heartbeat) parts.push(`♥ ${heartbeat}`);
 
@@ -68,6 +76,11 @@ export function StatusBar({ status, info }: StatusBarProps) {
 			<Text dimColor>{status}</Text>
 			{parts.length > 0 ? (
 				<Text dimColor>{` · ${parts.join(" · ")}`}</Text>
+			) : null}
+			{contextLabel ? (
+				<Text dimColor={!contextColor} color={contextColor}>
+					{` · ${contextLabel}`}
+				</Text>
 			) : null}
 		</Box>
 	);

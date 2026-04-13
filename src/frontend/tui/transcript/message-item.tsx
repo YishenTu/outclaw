@@ -1,49 +1,13 @@
 import { Box, Text } from "ink";
 import { memo } from "react";
 import { theme } from "../chrome/theme.ts";
+import { wrapBubble } from "./bubble.ts";
 import { renderMarkdown } from "./markdown.ts";
 import type { TuiMessage } from "./state.ts";
 
 interface MessageItemProps {
 	message: TuiMessage;
 	columns: number;
-}
-
-function wrapParagraph(paragraph: string, contentWidth: number): string[] {
-	if (!paragraph) return [""];
-	const words = paragraph.split(" ");
-	const lines: string[] = [];
-	let current = "";
-
-	for (const word of words) {
-		const next = current ? `${current} ${word}` : word;
-		if (next.length > contentWidth && current) {
-			lines.push(current);
-			current = word;
-		} else {
-			current = next;
-		}
-	}
-	if (current) lines.push(current);
-	return lines;
-}
-
-function wrapBubble(text: string, columns: number, prefix: string): string {
-	const indent = " ".repeat(prefix.length);
-	const contentWidth = columns - prefix.length;
-	if (contentWidth <= 0) return `${prefix}${text}`.padEnd(columns);
-
-	const allLines: string[] = [];
-	for (const paragraph of text.split("\n")) {
-		allLines.push(...wrapParagraph(paragraph, contentWidth));
-	}
-
-	return allLines
-		.map((line, i) => {
-			const leader = i === 0 ? prefix : indent;
-			return `${leader}${line}`.padEnd(columns);
-		})
-		.join("\n");
 }
 
 export const MessageItem = memo(function MessageItem({
@@ -101,17 +65,24 @@ export const MessageItem = memo(function MessageItem({
 							{`${pad}${title}`.padEnd(columns)}
 						</Text>
 						{body.map((line) => (
-							<>
+							<Text key={line}>
 								{"\n"}
 								<Text bold>{`${pad}${line.slice(0, valStart)}`}</Text>
 								{line.slice(valStart).padEnd(columns - pad.length - valStart)}
-							</>
+							</Text>
 						))}
 					</Text>
 				</Box>
 			);
 		}
 		case "info":
+			if (message.variant === "compact_boundary") {
+				return (
+					<Box marginTop={1} paddingLeft={3} paddingRight={1}>
+						<Text dimColor>{`~ ${message.text} ~`}</Text>
+					</Box>
+				);
+			}
 			return (
 				<Box paddingX={1}>
 					<Text dimColor>{message.text}</Text>

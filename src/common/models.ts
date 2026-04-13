@@ -1,17 +1,34 @@
-export const MODEL_ALIASES = {
-	opus: "claude-opus-4-6[1m]",
-	sonnet: "sonnet",
-	haiku: "haiku",
+export const MODELS = {
+	opus: { id: "claude-opus-4-6[1m]", contextWindow: 1_000_000 },
+	sonnet: { id: "sonnet", contextWindow: 200_000 },
+	haiku: { id: "haiku", contextWindow: 200_000 },
 } as const;
 
-export type ModelAlias = keyof typeof MODEL_ALIASES;
+export type ModelAlias = keyof typeof MODELS;
 
-export const MODEL_ALIAS_LIST = Object.keys(MODEL_ALIASES) as ModelAlias[];
+export const MODEL_ALIAS_LIST = Object.keys(MODELS) as ModelAlias[];
 
 export function isModelAlias(value: string): value is ModelAlias {
-	return Object.hasOwn(MODEL_ALIASES, value);
+	return Object.hasOwn(MODELS, value);
 }
 
 export function resolveModelAlias(value: string): string {
-	return isModelAlias(value) ? MODEL_ALIASES[value] : value;
+	return isModelAlias(value) ? MODELS[value].id : value;
+}
+
+export function contextWindowForAlias(value: string): number | undefined {
+	return isModelAlias(value) ? MODELS[value].contextWindow : undefined;
+}
+
+const resolvedModelIndex = new Map<string, number>(
+	MODEL_ALIAS_LIST.map((alias) => [
+		MODELS[alias].id,
+		MODELS[alias].contextWindow,
+	]),
+);
+
+export function contextWindowForResolvedModel(
+	resolvedModel: string,
+): number | undefined {
+	return resolvedModelIndex.get(resolvedModel);
 }

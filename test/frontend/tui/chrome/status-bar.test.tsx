@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, setSystemTime, test, vi } from "bun:test";
 import { PassThrough } from "node:stream";
 import { render } from "ink";
-import { StatusBar } from "../../../../src/frontend/tui/chrome/status-bar.tsx";
+import {
+	contextWarningColor,
+	StatusBar,
+} from "../../../../src/frontend/tui/chrome/status-bar.tsx";
 
 function createOutputStream() {
 	const stream = new PassThrough() as PassThrough &
@@ -97,6 +100,24 @@ describe("StatusBar", () => {
 			app.unmount();
 			app.cleanup();
 		}
+	});
+
+	test("contextWarningColor returns undefined below 65%", () => {
+		expect(contextWarningColor(0)).toBeUndefined();
+		expect(contextWarningColor(50)).toBeUndefined();
+		expect(contextWarningColor(64)).toBeUndefined();
+	});
+
+	test("contextWarningColor returns yellow between 65-74%", () => {
+		expect(contextWarningColor(65)).toBe("yellow");
+		expect(contextWarningColor(70)).toBe("yellow");
+		expect(contextWarningColor(74)).toBe("yellow");
+	});
+
+	test("contextWarningColor returns red at 75%+", () => {
+		expect(contextWarningColor(75)).toBe("red");
+		expect(contextWarningColor(80)).toBe("red");
+		expect(contextWarningColor(100)).toBe("red");
 	});
 
 	test("updates the heartbeat countdown over time", async () => {

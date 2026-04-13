@@ -1,6 +1,9 @@
 import { Box, Text, useApp } from "ink";
 import { useCallback, useEffect, useState } from "react";
-import { isRuntimeCommand } from "../../common/commands.ts";
+import {
+	canonicalizePromptSlashCommand,
+	isRuntimeCommand,
+} from "../../common/commands.ts";
 import { HeaderBar } from "./chrome/header-bar.tsx";
 import { StatusBar } from "./chrome/status-bar.tsx";
 import { theme } from "./chrome/theme.ts";
@@ -59,12 +62,11 @@ export function TuiApp({ url }: TuiAppProps) {
 
 	const handleSubmit = useCallback(
 		(value: string) => {
-			const text = value;
-			if (!text.trim()) {
+			const trimmed = value.trim();
+			if (!trimmed) {
 				return;
 			}
 
-			const trimmed = text.trim();
 			if (trimmed === "/exit") {
 				exit();
 				return;
@@ -77,7 +79,15 @@ export function TuiApp({ url }: TuiAppProps) {
 				return;
 			}
 
-			if (runPrompt(text)) {
+			const promptSlashCommand = canonicalizePromptSlashCommand(value);
+			if (promptSlashCommand) {
+				if (runPrompt(promptSlashCommand)) {
+					resetComposer();
+				}
+				return;
+			}
+
+			if (runPrompt(value)) {
 				resetComposer();
 			}
 		},
@@ -197,6 +207,7 @@ export function TuiApp({ url }: TuiAppProps) {
 					streaming={tuiState.streaming}
 					streamingThinking={tuiState.streamingThinking}
 					running={tuiState.running}
+					compacting={tuiState.compacting}
 					columns={columns}
 				/>
 			</Box>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "../../../src/common/commands.ts";
-import { MODEL_ALIASES } from "../../../src/common/models.ts";
+import { MODELS } from "../../../src/common/models.ts";
 import { RuntimeSettingsState } from "../../../src/runtime/application/runtime-settings-state.ts";
 
 describe("RuntimeSettingsState", () => {
@@ -12,7 +12,7 @@ describe("RuntimeSettingsState", () => {
 
 	test("resolvedModel returns the SDK model ID", () => {
 		const state = new RuntimeSettingsState();
-		expect(state.resolvedModel).toBe(MODEL_ALIASES[DEFAULT_MODEL]);
+		expect(state.resolvedModel).toBe(MODELS[DEFAULT_MODEL].id);
 	});
 
 	test("setModel changes model", () => {
@@ -20,7 +20,7 @@ describe("RuntimeSettingsState", () => {
 		state.setModel("haiku");
 
 		expect(state.model).toBe("haiku");
-		expect(state.resolvedModel).toBe(MODEL_ALIASES.haiku);
+		expect(state.resolvedModel).toBe(MODELS.haiku.id);
 	});
 
 	test("setEffort changes effort", () => {

@@ -86,6 +86,58 @@ describe("handleRuntimeSettingsCommand", () => {
 			expect(state.model).toBe("opus");
 		});
 
+		test("blocks model switch when context exceeds target context window", () => {
+			const { run, state, ws } = setup();
+			// Simulate high context usage on opus (1M window)
+			state.completeRun({
+				type: "done",
+				sessionId: "sdk-big",
+				durationMs: 1,
+				usage: {
+					inputTokens: 180_000,
+					outputTokens: 5_000,
+					cacheCreationTokens: 0,
+					cacheReadTokens: 0,
+					contextWindow: 1_000_000,
+					maxOutputTokens: 64_000,
+					contextTokens: 180_000,
+					percentage: 18,
+				},
+			});
+
+			expect(run("/model sonnet")).toBe(true);
+			expect(state.model).toBe("opus"); // unchanged
+			expect(ws.events().find((e) => e.type === "error")).toBeDefined();
+		});
+
+		test("allows model switch when context fits target window", () => {
+			const { run, state } = setup();
+			state.completeRun({
+				type: "done",
+				sessionId: "sdk-small",
+				durationMs: 1,
+				usage: {
+					inputTokens: 10_000,
+					outputTokens: 1_000,
+					cacheCreationTokens: 0,
+					cacheReadTokens: 0,
+					contextWindow: 1_000_000,
+					maxOutputTokens: 64_000,
+					contextTokens: 10_000,
+					percentage: 1,
+				},
+			});
+
+			expect(run("/model sonnet")).toBe(true);
+			expect(state.model).toBe("sonnet");
+		});
+
+		test("allows model switch when no usage info available", () => {
+			const { run, state } = setup();
+			expect(run("/model sonnet")).toBe(true);
+			expect(state.model).toBe("sonnet");
+		});
+
 		test("sends error for invalid model aliases", () => {
 			const { run, state, ws } = setup();
 			const initialModel = state.model;

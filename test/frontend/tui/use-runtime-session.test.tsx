@@ -214,6 +214,14 @@ describe("useRuntimeSession", () => {
 				"skills update on first socket",
 			);
 
+			firstSocket.dispatch("message", {
+				data: JSON.stringify({ type: "compacting_started" }),
+			});
+			await waitFor(
+				() => latest?.tuiState.compacting === true,
+				"compacting state before disconnect",
+			);
+
 			vi.useFakeTimers();
 			firstSocket.dispatch("close");
 			await waitFor(
@@ -221,6 +229,7 @@ describe("useRuntimeSession", () => {
 				"disconnected status",
 			);
 			expect(latest?.skills).toEqual([]);
+			expect(latest?.tuiState.compacting).toBe(false);
 
 			vi.advanceTimersByTime(3000);
 			await waitFor(

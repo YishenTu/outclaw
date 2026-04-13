@@ -1,6 +1,6 @@
 import type {
+	DisplayChatMessage,
 	DisplayImage,
-	DisplayMessage,
 	ReplyContext,
 } from "../../../common/protocol.ts";
 
@@ -29,7 +29,7 @@ export function formatLivePrompt(
 	return lines.length > 0 ? `${lines.join("\n")}\n` : "";
 }
 
-export function formatReplayMessage(message: DisplayMessage): string {
+export function formatReplayMessage(message: DisplayChatMessage): string {
 	if (message.role === "assistant") {
 		return `${message.content}\n`;
 	}

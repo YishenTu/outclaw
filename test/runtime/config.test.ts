@@ -209,6 +209,30 @@ describe("loadConfig", () => {
 		}
 	});
 
+	test("defaults autoCompact to true when not specified", () => {
+		const dir = tmp();
+		try {
+			const config = loadConfig(dir);
+			expect(config.autoCompact).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
+	test("reads autoCompact false from config", () => {
+		const dir = tmp();
+		try {
+			writeFileSync(
+				join(dir, "config.json"),
+				JSON.stringify({ autoCompact: false }),
+			);
+			const config = loadConfig(dir);
+			expect(config.autoCompact).toBe(false);
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
 	test("leaves $ENV_VAR as empty string when env var is not set", () => {
 		const dir = tmp();
 		try {

@@ -2,6 +2,7 @@ import { EFFORT_LEVELS, isEffortLevel } from "../../common/commands.ts";
 import {
 	isModelAlias,
 	MODEL_ALIAS_LIST,
+	MODELS,
 	type ModelAlias,
 } from "../../common/models.ts";
 import type {
@@ -21,15 +22,17 @@ interface HandleRuntimeSettingsCommandOptions {
 export function handleRuntimeSettingsCommand(
 	options: HandleRuntimeSettingsCommandOptions,
 ): boolean {
-	const modelArg = options.command.startsWith("/model ")
-		? options.command.split(" ")[1]?.trim()
-		: MODEL_ALIAS_LIST.find((model) => options.command === `/${model}`);
-	if (
-		options.command === "/model" ||
-		options.command.startsWith("/model ") ||
-		modelArg
-	) {
+	if (options.command === "/model" || options.command.startsWith("/model ")) {
+		const modelArg = options.command.split(" ")[1]?.trim();
 		handleModelCommand(options, modelArg);
+		return true;
+	}
+
+	const aliasArg = MODEL_ALIAS_LIST.find(
+		(model) => options.command === `/${model}`,
+	);
+	if (aliasArg) {
+		handleModelCommand(options, aliasArg);
 		return true;
 	}
 
@@ -61,6 +64,20 @@ function handleModelCommand(
 			`Invalid model: ${modelArg}. Valid: ${MODEL_ALIAS_LIST.join(", ")}`,
 		);
 		return;
+	}
+
+	const usage = options.state.usage;
+	if (usage) {
+		const targetWindow = MODELS[modelArg].contextWindow;
+		const cap = Math.round(targetWindow * 0.8);
+		if (usage.contextTokens > cap) {
+			sendError(
+				options.hub,
+				options.ws,
+				`context too large for ${modelArg} (${usage.contextTokens}/${cap}) — run /compact first`,
+			);
+			return;
+		}
 	}
 
 	options.state.setModel(modelArg as ModelAlias);

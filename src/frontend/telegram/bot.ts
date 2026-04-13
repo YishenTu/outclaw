@@ -4,6 +4,7 @@ import type { ImageRef, ReplyContext } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import { createTelegramBridge, type StreamChunk } from "./bridge/client.ts";
 import { TELEGRAM_COMMANDS } from "./commands/catalog.ts";
+import { registerTelegramPromptCommands } from "./commands/prompt.ts";
 import { registerTelegramRuntimeCommands } from "./commands/runtime.ts";
 import { registerTelegramModelShortcuts } from "./commands/shortcuts.ts";
 import type {
@@ -156,6 +157,10 @@ interface TelegramBotDependencies {
 		registrar: TelegramBotLike,
 		bridge: TelegramBridgeLike,
 	): void;
+	registerPromptCommands(
+		registrar: TelegramBotLike,
+		bridge: TelegramBridgeLike,
+	): void;
 	registerRuntimeCommands(
 		registrar: TelegramBotLike,
 		bridge: TelegramBridgeLike,
@@ -185,6 +190,13 @@ const DEFAULT_TELEGRAM_BOT_DEPENDENCIES: TelegramBotDependencies = {
 				typeof registerTelegramModelShortcuts
 			>[0],
 			bridge as unknown as Parameters<typeof registerTelegramModelShortcuts>[1],
+		),
+	registerPromptCommands: (registrar, bridge) =>
+		registerTelegramPromptCommands(
+			registrar as unknown as Parameters<
+				typeof registerTelegramPromptCommands
+			>[0],
+			bridge as unknown as Parameters<typeof registerTelegramPromptCommands>[1],
 		),
 	registerRuntimeCommands: (registrar, bridge) =>
 		registerTelegramRuntimeCommands(
@@ -257,6 +269,7 @@ export function startTelegramBot(
 
 	dependencies.registerSessionHandlers(bot, bridge);
 	dependencies.registerRuntimeCommands(bot, bridge);
+	dependencies.registerPromptCommands(bot, bridge);
 	dependencies.registerModelShortcuts(bot, bridge);
 
 	bot.on("message:text", async (ctx) => {

@@ -146,6 +146,19 @@ export async function runTelegramPrompt(
 		let lastEditTime = 0;
 
 		for await (const chunk of stream) {
+			if (chunk.type === "compacting_started") {
+				await ctx.sendMessage("Compacting context...", {
+					disable_notification: true,
+				});
+				continue;
+			}
+			if (chunk.type === "compacting_finished") {
+				await ctx.sendMessage("Context compacted.", {
+					disable_notification: true,
+				});
+				continue;
+			}
+
 			const isThinking = chunk.type === "thinking";
 			const draft = isThinking ? thinking : response;
 			draft.accumulated += chunk.text;

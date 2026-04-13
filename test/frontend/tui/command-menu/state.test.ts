@@ -114,8 +114,10 @@ describe("matchCommands with skills", () => {
 
 	test("filters skills by prefix", () => {
 		const results = matchCommands("/co", skills);
-		expect(results).toHaveLength(1);
-		expect(results[0]?.command).toBe("/commit");
+		expect(results).toHaveLength(2);
+		const commands = results.map((r) => r.command);
+		expect(commands).toContain("/compact");
+		expect(commands).toContain("/commit");
 	});
 
 	test("does not duplicate built-in commands that match skill names", () => {

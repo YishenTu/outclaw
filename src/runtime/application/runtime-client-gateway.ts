@@ -43,22 +43,26 @@ export class RuntimeClientGateway {
 		targets: Iterable<WsClient>,
 		sessionId = this.options.getStatusEvent().sessionId,
 	) {
+		const targetList = [...targets];
 		if (!sessionId || !this.options.facade.readHistory) {
 			return Promise.resolve();
 		}
 
-		return callFacade(() => this.options.facade.readHistory?.(sessionId))
+		return safeInvoke(() => this.options.facade.readHistory?.(sessionId))
 			.then((messages) => {
 				if (!messages) {
 					return;
 				}
-				this.hub.sendMany(targets, {
+				this.hub.sendMany(targetList, {
 					type: "history_replay",
 					messages,
 				});
 			})
-			.catch(() => {
-				// History is best-effort only.
+			.catch((error) => {
+				this.hub.sendMany(targetList, {
+					type: "error",
+					message: `Failed to replay history: ${extractError(error)}`,
+				});
 			});
 	}
 
@@ -67,7 +71,7 @@ export class RuntimeClientGateway {
 			return;
 		}
 
-		void callFacade(() => this.options.facade.getSkills?.(this.options.cwd))
+		void safeInvoke(() => this.options.facade.getSkills?.(this.options.cwd))
 			.then((skills) => {
 				if (!skills) {
 					return;
@@ -98,7 +102,7 @@ export class RuntimeClientGateway {
 	}
 }
 
-function callFacade<T>(invoke: () => Promise<T> | T): Promise<T> {
+function safeInvoke<T>(invoke: () => Promise<T> | T): Promise<T> {
 	try {
 		return Promise.resolve(invoke());
 	} catch (err) {
