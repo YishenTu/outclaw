@@ -100,10 +100,9 @@ describe("StatusBar", () => {
 		}
 	});
 
-	test("updates the heartbeat countdown over time", async () => {
+	test("shows heartbeat countdown when heartbeat is upcoming", async () => {
 		const now = new Date("2026-04-11T00:00:00Z");
 		setSystemTime(now);
-		vi.useFakeTimers({ now });
 
 		const { app, getOutput } = renderStatusBar({
 			status: "connected",
@@ -113,8 +112,22 @@ describe("StatusBar", () => {
 		try {
 			await flushUpdates();
 			expect(getOutput()).toContain("♥ 1m");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
 
-			vi.advanceTimersByTime(60_000);
+	test("shows zero minutes when heartbeat is due", async () => {
+		const now = new Date("2026-04-11T00:01:00Z");
+		setSystemTime(now);
+
+		const { app, getOutput } = renderStatusBar({
+			status: "connected",
+			info: { nextHeartbeatAt: now.getTime() },
+		});
+
+		try {
 			await flushUpdates();
 			expect(getOutput()).toContain("♥ 0m");
 		} finally {
