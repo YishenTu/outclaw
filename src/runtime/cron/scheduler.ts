@@ -24,6 +24,10 @@ interface CronSchedulerOptions {
 	) => Promise<string | CronAgentRunResult>;
 	onResult: (result: CronExecutionResult) => Promise<void> | void;
 	getDefaultModel: () => string;
+	watchDir?: (
+		path: string,
+		listener: (eventType: string, filename: string | Buffer | null) => void,
+	) => ReturnType<typeof watch>;
 }
 
 interface ActiveJob {
@@ -47,7 +51,7 @@ export class CronScheduler {
 	}
 
 	start() {
-		this.loadAllJobs();
+		this.syncJobsWithDirectory();
 		this.startWatcher();
 	}
 
@@ -68,16 +72,33 @@ export class CronScheduler {
 		await this.executeJob(job.config);
 	}
 
-	private loadAllJobs() {
-		if (!existsSync(this.options.cronDir)) return;
+	private syncJobsWithDirectory() {
+		const files = this.readJobFiles();
+		if (!files) {
+			for (const filename of this.jobs.keys()) {
+				this.removeJobByFile(filename);
+			}
+			return;
+		}
 
-		const files = readdirSync(this.options.cronDir).filter(
-			(f) => f.endsWith(".yaml") || f.endsWith(".yml"),
-		);
+		const filenames = new Set(files);
+		for (const filename of this.jobs.keys()) {
+			if (!filenames.has(filename)) {
+				this.removeJobByFile(filename);
+			}
+		}
 
 		for (const file of files) {
 			this.loadJobFile(file);
 		}
+	}
+
+	private readJobFiles(): string[] | undefined {
+		if (!existsSync(this.options.cronDir)) return undefined;
+
+		return readdirSync(this.options.cronDir).filter(
+			(f) => f.endsWith(".yaml") || f.endsWith(".yml"),
+		);
 	}
 
 	private loadJobFile(filename: string) {
@@ -141,13 +162,24 @@ export class CronScheduler {
 	}
 
 	private startWatcher() {
-		if (!existsSync(this.options.cronDir)) return;
+		if (!existsSync(this.options.cronDir) || this.watcher) return;
 
-		this.watcher = watch(this.options.cronDir, (_event, filename) => {
+		const watcherFactory = this.options.watchDir ?? watch;
+		this.watcher = watcherFactory(this.options.cronDir, (_event, filename) => {
 			if (!filename) return;
-			if (!filename.endsWith(".yaml") && !filename.endsWith(".yml")) return;
+			const normalizedFilename =
+				typeof filename === "string" ? filename : filename.toString("utf-8");
+			if (
+				!normalizedFilename.endsWith(".yaml") &&
+				!normalizedFilename.endsWith(".yml")
+			) {
+				return;
+			}
 
-			this.reloadJobFile(filename);
+			this.reloadJobFile(normalizedFilename);
+		});
+		this.watcher.on("error", (err) => {
+			this.handleWatcherError(err);
 		});
 	}
 
@@ -188,6 +220,14 @@ export class CronScheduler {
 		if (this.filesByName.get(job.config.name) === filename) {
 			this.filesByName.delete(job.config.name);
 		}
+	}
+
+	private handleWatcherError(err: unknown) {
+		console.warn(`Cron watcher error: ${extractError(err)}`);
+		this.watcher?.close();
+		this.watcher = undefined;
+		this.syncJobsWithDirectory();
+		this.startWatcher();
 	}
 }
 

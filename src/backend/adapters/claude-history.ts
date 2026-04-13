@@ -1,4 +1,3 @@
-import { getSessionMessages } from "@anthropic-ai/claude-agent-sdk";
 import type {
 	DisplayImage,
 	DisplayMessage,
@@ -15,10 +14,18 @@ interface HistoryBlock {
 	thinking?: string;
 }
 
+export type LoadClaudeHistory = (sdkSessionId: string) => Promise<
+	Array<{
+		type: string;
+		message: unknown;
+	}>
+>;
+
 export async function readClaudeHistory(
 	sdkSessionId: string,
+	loadHistory: LoadClaudeHistory,
 ): Promise<DisplayMessage[]> {
-	const messages = await getSessionMessages(sdkSessionId);
+	const messages = await loadHistory(sdkSessionId);
 	const result: DisplayMessage[] = [];
 	let pendingThinking = "";
 

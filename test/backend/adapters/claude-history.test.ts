@@ -1,10 +1,14 @@
 import { describe, expect, mock, test } from "bun:test";
+import { ClaudeAdapter } from "../../../src/backend/adapters/claude.ts";
 
-function mockClaudeSdk(getSessionMessages: ReturnType<typeof mock>) {
-	mock.module("@anthropic-ai/claude-agent-sdk", () => ({
-		query: mock(() => (async function* () {})()),
-		getSessionMessages,
-	}));
+function createAdapter(getSessionMessages: ReturnType<typeof mock>) {
+	const options: ConstructorParameters<typeof ClaudeAdapter>[0] = {
+		sdk: {
+			query: mock(() => (async function* () {})()) as never,
+			getSessionMessages: getSessionMessages as never,
+		},
+	};
+	return new ClaudeAdapter(options);
 }
 
 describe("ClaudeAdapter.readHistory", () => {
@@ -39,12 +43,7 @@ describe("ClaudeAdapter.readHistory", () => {
 			];
 		});
 
-		mockClaudeSdk(getSessionMessages);
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const adapter = createAdapter(getSessionMessages);
 		const messages = await adapter.readHistory("sdk-123");
 
 		expect(messages).toEqual([
@@ -73,12 +72,7 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk(getSessionMessages);
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const adapter = createAdapter(getSessionMessages);
 		const messages = await adapter.readHistory("sdk-merge");
 
 		expect(messages).toEqual([
@@ -109,12 +103,7 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk(getSessionMessages);
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const adapter = createAdapter(getSessionMessages);
 		const messages = await adapter.readHistory("sdk-consecutive");
 
 		expect(messages).toEqual([
@@ -166,12 +155,7 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk(getSessionMessages);
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const adapter = createAdapter(getSessionMessages);
 		const messages = await adapter.readHistory("sdk-multi");
 
 		expect(messages).toEqual([
@@ -200,12 +184,7 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk(getSessionMessages);
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const adapter = createAdapter(getSessionMessages);
 		const messages = await adapter.readHistory("sdk-user-boundary");
 
 		expect(messages).toEqual([
@@ -245,12 +224,7 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk(getSessionMessages);
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const adapter = createAdapter(getSessionMessages);
 		const messages = await adapter.readHistory("sdk-456");
 
 		expect(messages).toEqual([
@@ -280,12 +254,7 @@ describe("ClaudeAdapter.readHistory", () => {
 			},
 		]);
 
-		mockClaudeSdk(getSessionMessages);
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const adapter = createAdapter(getSessionMessages);
 		const messages = await adapter.readHistory("sdk-reply-history");
 
 		expect(messages).toEqual([

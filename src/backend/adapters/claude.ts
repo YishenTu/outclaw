@@ -1,4 +1,4 @@
-import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { unlinkSync } from "node:fs";
 import type {
 	ContentBlockParam,
 	MessageParam,
@@ -12,7 +12,34 @@ import {
 	type UsageInfo,
 } from "../../common/protocol.ts";
 import { buildPromptWithReplyContext } from "../../common/reply-context.ts";
-import { readClaudeHistory } from "./claude-history.ts";
+import { type LoadClaudeHistory, readClaudeHistory } from "./claude-history.ts";
+
+/** Structural subset of the SDK's SDKUserMessage — avoids importing the SDK at module level. */
+interface SdkUserMessage {
+	type: "user";
+	message: MessageParam;
+	parent_tool_use_id: string | null;
+}
+
+type SdkQueryFn = (params: {
+	prompt: string | AsyncIterable<SdkUserMessage>;
+	// biome-ignore lint/suspicious/noExplicitAny: SDK options are open-ended
+	options?: any;
+	// biome-ignore lint/suspicious/noExplicitAny: SDK events are discriminated at runtime
+}) => AsyncIterable<any> & {
+	supportedCommands(): Promise<{ name: string; description: string }[]>;
+};
+
+interface ClaudeAdapterSdk {
+	query: SdkQueryFn;
+	getSessionMessages: LoadClaudeHistory;
+}
+
+interface ClaudeAdapterOptions {
+	sdk?: ClaudeAdapterSdk;
+	sleep?: (ms: number) => Promise<void>;
+	unlinkFile?: (path: string) => void;
+}
 
 function extractUsage(event: {
 	modelUsage?: Record<
@@ -62,6 +89,16 @@ function extractUsage(event: {
 export class ClaudeAdapter implements Facade {
 	readonly providerId = "claude";
 	private skills: SkillInfo[] = [];
+	private readonly sdk?: ClaudeAdapterSdk;
+	private cachedSdk?: ClaudeAdapterSdk;
+	private readonly sleep: (ms: number) => Promise<void>;
+	private readonly unlinkFile: (path: string) => void;
+
+	constructor(options: ClaudeAdapterOptions = {}) {
+		this.sdk = options.sdk;
+		this.sleep = options.sleep ?? waitFor;
+		this.unlinkFile = options.unlinkFile ?? unlinkSync;
+	}
 
 	async getSkills(cwd?: string): Promise<SkillInfo[]> {
 		if (this.skills.length > 0) {
@@ -70,18 +107,20 @@ export class ClaudeAdapter implements Facade {
 		return this.probeSkills(cwd);
 	}
 
-	readHistory(sessionId: string) {
-		return readClaudeHistory(sessionId);
+	async readHistory(sessionId: string) {
+		const sdk = await this.loadSdk();
+		return readClaudeHistory(sessionId, sdk.getSessionMessages);
 	}
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		const sdk = await this.loadSdk();
 		const abortController = params.abortController ?? new AbortController();
 		let emittedAssistantText = "";
 		let streamedThinkingText = "";
 		let needsSeparator = false;
 
 		try {
-			const conversation = query({
+			const conversation = sdk.query({
 				prompt: createPromptInput(params),
 				options: {
 					systemPrompt: params.systemPrompt,
@@ -190,11 +229,12 @@ export class ClaudeAdapter implements Facade {
 	}
 
 	private async probeSkills(cwd?: string): Promise<SkillInfo[]> {
+		const sdk = await this.loadSdk();
 		const abortController = new AbortController();
 		let sessionId: string | undefined;
 
 		try {
-			const conversation = query({
+			const conversation = sdk.query({
 				prompt: "",
 				options: {
 					abortController,
@@ -222,10 +262,36 @@ export class ClaudeAdapter implements Facade {
 		}
 
 		if (sessionId) {
-			await cleanupProbeSession(cwd, sessionId);
+			await cleanupProbeSession(
+				{
+					sleep: this.sleep,
+					unlinkFile: this.unlinkFile,
+				},
+				cwd,
+				sessionId,
+			);
 		}
 		return this.skills;
 	}
+
+	private async loadSdk(): Promise<ClaudeAdapterSdk> {
+		if (this.sdk) return this.sdk;
+		if (this.cachedSdk) return this.cachedSdk;
+		// Non-static path prevents Bun from pre-resolving the SDK at module load time
+		const sdkPath = ["@anthropic-ai", "claude-agent-sdk"].join("/");
+		const mod = await import(sdkPath);
+		this.cachedSdk = {
+			query: mod.query,
+			getSessionMessages: mod.getSessionMessages as LoadClaudeHistory,
+		};
+		return this.cachedSdk;
+	}
+}
+
+function waitFor(ms: number): Promise<void> {
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms);
+	});
 }
 
 function extractThinkingText(event: {
@@ -311,6 +377,10 @@ async function extractSkills(
 }
 
 async function cleanupProbeSession(
+	deps: {
+		sleep: (ms: number) => Promise<void>;
+		unlinkFile: (path: string) => void;
+	},
 	cwd: string | undefined,
 	sessionId: string,
 ): Promise<void> {
@@ -319,11 +389,10 @@ async function cleanupProbeSession(
 	const path = `${process.env.HOME}/.claude/projects/${encodedCwd}/${sessionId}.jsonl`;
 
 	// SDK writes the JSONL asynchronously after abort
-	await new Promise((r) => setTimeout(r, 500));
+	await deps.sleep(500);
 
 	try {
-		const { unlinkSync } = await import("node:fs");
-		unlinkSync(path);
+		deps.unlinkFile(path);
 	} catch {
 		// Cleanup is best-effort.
 	}
@@ -331,7 +400,7 @@ async function cleanupProbeSession(
 
 function createPromptInput(
 	params: RunParams,
-): string | AsyncIterable<SDKUserMessage> {
+): string | AsyncIterable<SdkUserMessage> {
 	const prompt = buildPromptWithReplyContext(
 		params.prompt,
 		params.replyContext,
@@ -341,7 +410,7 @@ function createPromptInput(
 		return prompt;
 	}
 
-	return (async function* (): AsyncIterable<SDKUserMessage> {
+	return (async function* (): AsyncIterable<SdkUserMessage> {
 		const content: ContentBlockParam[] = [];
 
 		for (const image of params.images ?? []) {

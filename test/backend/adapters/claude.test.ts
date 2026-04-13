@@ -2,43 +2,47 @@ import { describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ClaudeAdapter } from "../../../src/backend/adapters/claude.ts";
 
-function mockClaudeSdk(
+function createAdapter(
 	overrides: {
 		query?: ReturnType<typeof mock>;
 		getSessionMessages?: ReturnType<typeof mock>;
+		unlinkFile?: ReturnType<typeof mock>;
+		sleep?: (ms: number) => Promise<void>;
 	} = {},
 ) {
 	const query = overrides.query ?? mock(() => (async function* () {})());
 	const getSessionMessages =
 		overrides.getSessionMessages ?? mock(async () => []);
-	mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+	const unlinkFile = overrides.unlinkFile ?? mock(() => {});
+	const sleep = overrides.sleep ?? (async () => {});
+	const options: ConstructorParameters<typeof ClaudeAdapter>[0] = {
+		sdk: {
+			query: query as never,
+			getSessionMessages: getSessionMessages as never,
+		},
+		sleep,
+		unlinkFile,
+	};
+	return {
+		adapter: new ClaudeAdapter(options),
 		query,
 		getSessionMessages,
-	}));
-	return { query, getSessionMessages };
+		unlinkFile,
+	};
 }
 
 describe("ClaudeAdapter", () => {
 	test("implements Facade interface", async () => {
-		mockClaudeSdk();
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter();
 		expect(adapter.providerId).toBe("claude");
 		expect(adapter.run).toBeFunction();
 		expect(adapter.readHistory).toBeFunction();
 	});
 
 	test("run() returns an async iterable", async () => {
-		mockClaudeSdk();
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter();
 		const result = adapter.run({ prompt: "hello" });
 		expect(result[Symbol.asyncIterator]).toBeFunction();
 	});
@@ -55,12 +59,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mockClaudeSdk({ query });
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter({ query });
 
 		for await (const _event of adapter.run({
 			prompt: "what do you mean?",
@@ -113,12 +112,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mockClaudeSdk({ query });
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter({ query });
 		const events = [];
 
 		for await (const event of adapter.run({
@@ -213,12 +207,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mockClaudeSdk({ query });
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter({ query });
 		const events = [];
 
 		for await (const event of adapter.run({ prompt: "think" })) {
@@ -267,12 +256,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mockClaudeSdk({ query });
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter({ query });
 		const events = [];
 
 		for await (const event of adapter.run({ prompt: "think" })) {
@@ -314,12 +298,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mockClaudeSdk({ query });
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter({ query });
 		const events = [];
 
 		for await (const event of adapter.run({
@@ -356,12 +335,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mockClaudeSdk({ query });
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter({ query });
 		const events = [];
 
 		for await (const event of adapter.run({ prompt: "hello" })) {
@@ -399,12 +373,7 @@ describe("ClaudeAdapter", () => {
 				})(),
 			);
 
-			mockClaudeSdk({ query });
-
-			const { ClaudeAdapter } = await import(
-				"../../../src/backend/adapters/claude.ts"
-			);
-			const adapter = new ClaudeAdapter();
+			const { adapter } = createAdapter({ query });
 			const events = [];
 
 			for await (const event of adapter.run({ prompt: "plot something" })) {
@@ -452,12 +421,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mockClaudeSdk({ query });
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter({ query });
 		const events = [];
 
 		for await (const event of adapter.run({
@@ -501,17 +465,12 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mockClaudeSdk({ query });
-
 		const tmp = mkdtempSync(join(tmpdir(), "mis-images-"));
 		try {
 			const imagePath = join(tmp, "cat.png");
 			writeFileSync(imagePath, "image-bytes");
 
-			const { ClaudeAdapter } = await import(
-				"../../../src/backend/adapters/claude.ts"
-			);
-			const adapter = new ClaudeAdapter();
+			const { adapter } = createAdapter({ query });
 
 			for await (const _event of adapter.run({
 				prompt: "describe this image",
@@ -578,37 +537,23 @@ describe("ClaudeAdapter", () => {
 				};
 			},
 		}));
-		const unlinkSync = mock(() => {});
-		const realSetTimeout = globalThis.setTimeout;
+		const unlinkFile = mock(() => {});
+		const { adapter } = createAdapter({
+			query,
+			sleep: async () => {},
+			unlinkFile,
+		});
 
-		mockClaudeSdk({ query });
-		mock.module("node:fs", () => ({ unlinkSync }));
-		globalThis.setTimeout = ((handler: (...args: never[]) => void) => {
-			if (typeof handler === "function") {
-				handler();
-			}
-			return 0 as unknown as ReturnType<typeof setTimeout>;
-		}) as unknown as typeof setTimeout;
+		await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
+			{ name: "commit", description: "Create a git commit" },
+		]);
+		await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
+			{ name: "commit", description: "Create a git commit" },
+		]);
 
-		try {
-			const { ClaudeAdapter } = await import(
-				"../../../src/backend/adapters/claude.ts"
-			);
-			const adapter = new ClaudeAdapter();
-
-			await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
-				{ name: "commit", description: "Create a git commit" },
-			]);
-			await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
-				{ name: "commit", description: "Create a git commit" },
-			]);
-
-			expect(query).toHaveBeenCalledTimes(1);
-			expect(supportedCommands).toHaveBeenCalledTimes(1);
-			expect(unlinkSync).toHaveBeenCalledTimes(1);
-		} finally {
-			globalThis.setTimeout = realSetTimeout;
-		}
+		expect(query).toHaveBeenCalledTimes(1);
+		expect(supportedCommands).toHaveBeenCalledTimes(1);
+		expect(unlinkFile).toHaveBeenCalledTimes(1);
 	});
 
 	test("getSkills falls back to empty descriptions when supportedCommands fails", async () => {
@@ -626,35 +571,21 @@ describe("ClaudeAdapter", () => {
 				};
 			},
 		}));
-		const unlinkSync = mock(() => {});
-		const realSetTimeout = globalThis.setTimeout;
+		const unlinkFile = mock(() => {});
+		const { adapter } = createAdapter({
+			query,
+			sleep: async () => {},
+			unlinkFile,
+		});
 
-		mockClaudeSdk({ query });
-		mock.module("node:fs", () => ({ unlinkSync }));
-		globalThis.setTimeout = ((handler: (...args: never[]) => void) => {
-			if (typeof handler === "function") {
-				handler();
-			}
-			return 0 as unknown as ReturnType<typeof setTimeout>;
-		}) as unknown as typeof setTimeout;
+		await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
+			{ name: "commit", description: "" },
+			{ name: "review", description: "" },
+		]);
 
-		try {
-			const { ClaudeAdapter } = await import(
-				"../../../src/backend/adapters/claude.ts"
-			);
-			const adapter = new ClaudeAdapter();
-
-			await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
-				{ name: "commit", description: "" },
-				{ name: "review", description: "" },
-			]);
-
-			expect(query).toHaveBeenCalledTimes(1);
-			expect(supportedCommands).toHaveBeenCalledTimes(1);
-			expect(unlinkSync).toHaveBeenCalledTimes(1);
-		} finally {
-			globalThis.setTimeout = realSetTimeout;
-		}
+		expect(query).toHaveBeenCalledTimes(1);
+		expect(supportedCommands).toHaveBeenCalledTimes(1);
+		expect(unlinkFile).toHaveBeenCalledTimes(1);
 	});
 
 	test("inserts line break between assistant turns (streaming)", async () => {
@@ -700,12 +631,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mockClaudeSdk({ query });
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter({ query });
 		const events = [];
 
 		for await (const event of adapter.run({ prompt: "find it" })) {
@@ -753,12 +679,7 @@ describe("ClaudeAdapter", () => {
 			})(),
 		);
 
-		mockClaudeSdk({ query });
-
-		const { ClaudeAdapter } = await import(
-			"../../../src/backend/adapters/claude.ts"
-		);
-		const adapter = new ClaudeAdapter();
+		const { adapter } = createAdapter({ query });
 		const events = [];
 
 		for await (const event of adapter.run({
