@@ -132,6 +132,32 @@ describe("transcript components", () => {
 		}
 	});
 
+	test("MessageItem renders aligned status messages", async () => {
+		const { app, getOutput } = renderToOutput(
+			<MessageItem
+				message={{
+					id: 1,
+					role: "status",
+					text: "Runtime\nModel        opus\nEffort       think",
+				}}
+				columns={40}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const output = getOutput();
+			expect(output).toContain("Runtime");
+			expect(output).toContain("Model");
+			expect(output).toContain("opus");
+			expect(output).toContain("Effort");
+			expect(output).toContain("think");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("MessageItem renders markdown in thinking messages", async () => {
 		const { app, getOutput } = renderToOutput(
 			<MessageItem

@@ -263,6 +263,39 @@ describe("startTelegramBot", () => {
 		expect(bridge.stream).toHaveBeenCalledWith("hello", [], onTextImage, 42, {
 			text: "previous message",
 		});
+		const textHandlerCtx = lastTextMessageArgs[0] as {
+			replyWithChatAction: (action: string) => Promise<unknown>;
+			replyWithPhoto: (photo: string, options?: object) => Promise<unknown>;
+			sendMessage: (text: string, options?: object) => Promise<unknown>;
+			editMessageText: (
+				messageId: number,
+				text: string,
+				options?: object,
+			) => Promise<unknown>;
+		};
+		await textHandlerCtx.replyWithChatAction("typing");
+		await textHandlerCtx.replyWithPhoto("/tmp/text-image.png", {
+			caption: "Text",
+		});
+		await textHandlerCtx.sendMessage("text update", { parse_mode: "HTML" });
+		await textHandlerCtx.editMessageText(12, "edited text", {
+			parse_mode: "HTML",
+		});
+		expect(textCtx.replyWithChatAction).toHaveBeenCalledWith("typing");
+		expect(textCtx.replyWithPhoto).toHaveBeenCalledWith("/tmp/text-image.png", {
+			caption: "Text",
+		});
+		expect(bot.api.sendMessage).toHaveBeenCalledWith(42, "text update", {
+			parse_mode: "HTML",
+		});
+		expect(bot.api.editMessageText).toHaveBeenCalledWith(
+			42,
+			12,
+			"edited text",
+			{
+				parse_mode: "HTML",
+			},
+		);
 
 		const missingPhotoCtx = {
 			chat: { id: 7 },
@@ -308,6 +341,55 @@ describe("startTelegramBot", () => {
 		expect(bridge.stream).toHaveBeenCalledWith("plot", [], onPhotoImage, 7, {
 			text: "previous photo",
 		});
+		await (
+			lastPhotoMessageArgs[0] as {
+				replyWithChatAction: (action: string) => Promise<unknown>;
+				replyWithPhoto: (photo: string, options?: object) => Promise<unknown>;
+				sendMessage: (text: string, options?: object) => Promise<unknown>;
+				editMessageText: (
+					messageId: number,
+					text: string,
+					options?: object,
+				) => Promise<unknown>;
+			}
+		).replyWithChatAction("upload_photo");
+		await (
+			lastPhotoMessageArgs[0] as {
+				replyWithPhoto: (photo: string, options?: object) => Promise<unknown>;
+			}
+		).replyWithPhoto("/tmp/photo-preview.png", { caption: "Preview" });
+		await (
+			lastPhotoMessageArgs[0] as {
+				sendMessage: (text: string, options?: object) => Promise<unknown>;
+			}
+		).sendMessage("photo update", { parse_mode: "HTML" });
+		await (
+			lastPhotoMessageArgs[0] as {
+				editMessageText: (
+					messageId: number,
+					text: string,
+					options?: object,
+				) => Promise<unknown>;
+			}
+		).editMessageText(24, "photo edited", { parse_mode: "HTML" });
+		expect(photoCtx.replyWithChatAction).toHaveBeenCalledWith("upload_photo");
+		expect(photoCtx.replyWithPhoto).toHaveBeenCalledWith(
+			"/tmp/photo-preview.png",
+			{
+				caption: "Preview",
+			},
+		);
+		expect(bot.api.sendMessage).toHaveBeenCalledWith(7, "photo update", {
+			parse_mode: "HTML",
+		});
+		expect(bot.api.editMessageText).toHaveBeenCalledWith(
+			7,
+			24,
+			"photo edited",
+			{
+				parse_mode: "HTML",
+			},
+		);
 
 		const docCtx = {
 			api: {
@@ -350,6 +432,52 @@ describe("startTelegramBot", () => {
 			8,
 			{ text: "previous doc" },
 		);
+		await (
+			lastDocumentMessageArgs[0] as {
+				replyWithChatAction: (action: string) => Promise<unknown>;
+				replyWithPhoto: (photo: string, options?: object) => Promise<unknown>;
+				sendMessage: (text: string, options?: object) => Promise<unknown>;
+				editMessageText: (
+					messageId: number,
+					text: string,
+					options?: object,
+				) => Promise<unknown>;
+			}
+		).replyWithChatAction("upload_document");
+		await (
+			lastDocumentMessageArgs[0] as {
+				replyWithPhoto: (photo: string, options?: object) => Promise<unknown>;
+			}
+		).replyWithPhoto("/tmp/doc-preview.png", { caption: "Doc preview" });
+		await (
+			lastDocumentMessageArgs[0] as {
+				sendMessage: (text: string, options?: object) => Promise<unknown>;
+			}
+		).sendMessage("document update", { parse_mode: "HTML" });
+		await (
+			lastDocumentMessageArgs[0] as {
+				editMessageText: (
+					messageId: number,
+					text: string,
+					options?: object,
+				) => Promise<unknown>;
+			}
+		).editMessageText(36, "document edited", { parse_mode: "HTML" });
+		expect(docCtx.replyWithChatAction).toHaveBeenCalledWith("upload_document");
+		expect(docCtx.replyWithPhoto).toHaveBeenCalledWith("/tmp/doc-preview.png", {
+			caption: "Doc preview",
+		});
+		expect(bot.api.sendMessage).toHaveBeenCalledWith(8, "document update", {
+			parse_mode: "HTML",
+		});
+		expect(bot.api.editMessageText).toHaveBeenCalledWith(
+			8,
+			36,
+			"document edited",
+			{
+				parse_mode: "HTML",
+			},
+		);
 
 		await service.sendCronResult({
 			jobName: "nightly",
@@ -364,6 +492,15 @@ describe("startTelegramBot", () => {
 				disable_notification: true,
 			},
 		);
+		await service.sendCronResult({
+			jobName: "heartbeat",
+			telegramChatId: 11,
+			text: "   ",
+		});
+		expect(bot.api.sendMessage).toHaveBeenCalledWith(11, "[cron] heartbeat", {
+			parse_mode: "HTML",
+			disable_notification: true,
+		});
 
 		await service.sendHeartbeatResult({
 			telegramChatId: 5,

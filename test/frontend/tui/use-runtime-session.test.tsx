@@ -14,6 +14,7 @@ class FakeWebSocket {
 
 	readyState = FakeWebSocket.CONNECTING;
 	readonly sent: string[] = [];
+	closeCalls = 0;
 	onclose: ((event?: unknown) => void) | null = null;
 	onerror: ((event?: unknown) => void) | null = null;
 	onmessage: ((event: { data: string }) => void) | null = null;
@@ -46,6 +47,7 @@ class FakeWebSocket {
 	}
 
 	close() {
+		this.closeCalls += 1;
 		this.readyState = FakeWebSocket.CLOSED;
 		this.dispatch("close");
 	}
@@ -75,9 +77,15 @@ class FakeWebSocket {
 }
 
 interface Snapshot {
-	requestSkills: () => void;
+	dismissSessionMenu: () => void;
+	menuData: ReturnType<typeof useRuntimeSession>["menuData"];
+	requestSkills: () => boolean;
+	runCommand: (command: string) => boolean;
+	runPrompt: (prompt: string) => boolean;
+	runtimeInfo: ReturnType<typeof useRuntimeSession>["runtimeInfo"];
 	skills: SkillInfo[];
 	status: string;
+	tuiState: ReturnType<typeof useRuntimeSession>["tuiState"];
 }
 
 function SessionObserver({
@@ -91,11 +99,28 @@ function SessionObserver({
 
 	useLayoutEffect(() => {
 		onSnapshot({
+			dismissSessionMenu: session.dismissSessionMenu,
+			menuData: session.menuData,
 			requestSkills: session.requestSkills,
+			runCommand: session.runCommand,
+			runPrompt: session.runPrompt,
+			runtimeInfo: session.runtimeInfo,
 			skills: session.skills,
 			status: session.status,
+			tuiState: session.tuiState,
 		});
-	}, [onSnapshot, session.requestSkills, session.skills, session.status]);
+	}, [
+		onSnapshot,
+		session.dismissSessionMenu,
+		session.menuData,
+		session.requestSkills,
+		session.runCommand,
+		session.runPrompt,
+		session.runtimeInfo,
+		session.skills,
+		session.status,
+		session.tuiState,
+	]);
 
 	return <Text>{session.status}</Text>;
 }
@@ -176,6 +201,7 @@ describe("useRuntimeSession", () => {
 
 			latest?.requestSkills();
 			expect(firstSocket.sent).toContain('{"type":"request_skills"}');
+			expect(latest?.requestSkills()).toBe(false);
 
 			firstSocket.dispatch("message", {
 				data: JSON.stringify({
@@ -210,6 +236,267 @@ describe("useRuntimeSession", () => {
 			expect(secondSocket.sent).toContain('{"type":"request_skills"}');
 		} finally {
 			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("optimistically pushes prompts and tracks runtime info and session menu events", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		let latest: Snapshot | undefined;
+		const stdout = createOutputStream();
+		const stderr = createOutputStream();
+		const stdin = new PassThrough() as unknown as NodeJS.ReadStream & {
+			isTTY: boolean;
+		};
+		stdin.isTTY = false;
+
+		const app = render(
+			<SessionObserver
+				url="ws://localhost:4100"
+				onSnapshot={(snapshot) => {
+					latest = snapshot;
+				}}
+			/>,
+			{
+				exitOnCtrlC: false,
+				patchConsole: false,
+				stderr,
+				stdin,
+				stdout,
+			},
+		);
+
+		try {
+			await waitFor(
+				() => FakeWebSocket.instances.length === 1,
+				"initial socket",
+			);
+			const socket = FakeWebSocket.instances[0] as FakeWebSocket;
+			socket.dispatch("open");
+			await waitFor(() => latest?.status === "connected", "connected status");
+
+			expect(latest?.runPrompt("hello from tui")).toBe(true);
+			expect(socket.sent).toContain(
+				'{"type":"prompt","prompt":"hello from tui"}',
+			);
+			await waitFor(
+				() =>
+					latest?.tuiState.running === true &&
+					latest?.tuiState.messages.at(-1)?.text === "hello from tui",
+				"optimistic prompt state",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "runtime_status",
+					model: "sonnet",
+					effort: "think",
+					usage: { contextTokens: 1200, contextWindow: 200000 },
+					nextHeartbeatAt: 12345,
+					heartbeatDeferred: true,
+				}),
+			});
+			await waitFor(
+				() =>
+					latest?.runtimeInfo.model === "sonnet" &&
+					latest?.runtimeInfo.effort === "think" &&
+					latest?.runtimeInfo.contextTokens === 1200 &&
+					latest?.runtimeInfo.nextHeartbeatAt === 12345 &&
+					latest?.runtimeInfo.heartbeatDeferred === true,
+				"runtime status info",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({ type: "model_changed", model: "opus" }),
+			});
+			socket.dispatch("message", {
+				data: JSON.stringify({ type: "effort_changed", effort: "ultrathink" }),
+			});
+			await waitFor(
+				() =>
+					latest?.runtimeInfo.model === "opus" &&
+					latest?.runtimeInfo.effort === "ultrathink",
+				"incremental runtime info",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_menu",
+					activeSessionId: "sdk-active",
+					sessions: [
+						{
+							sdkSessionId: "sdk-active",
+							title: "Active",
+							model: "opus",
+							lastActive: 10,
+						},
+						{
+							sdkSessionId: "sdk-other",
+							title: "Other",
+							model: "sonnet",
+							lastActive: 5,
+						},
+					],
+				}),
+			});
+			await waitFor(
+				() => latest?.menuData?.sessions.length === 2,
+				"session menu data",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_renamed",
+					sdkSessionId: "sdk-other",
+					title: "Renamed other",
+				}),
+			});
+			await waitFor(
+				() => latest?.menuData?.sessions[1]?.title === "Renamed other",
+				"renamed session menu entry",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_deleted",
+					sdkSessionId: "sdk-active",
+				}),
+			});
+			await waitFor(
+				() =>
+					latest?.menuData?.activeSessionId === undefined &&
+					latest?.menuData?.sessions.length === 1,
+				"deleted active session",
+			);
+
+			latest?.dismissSessionMenu();
+			await waitFor(() => latest?.menuData === null, "dismissed menu");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("surfaces disconnected and send errors for commands and prompts", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		let latest: Snapshot | undefined;
+		const stdout = createOutputStream();
+		const stderr = createOutputStream();
+		const stdin = new PassThrough() as unknown as NodeJS.ReadStream & {
+			isTTY: boolean;
+		};
+		stdin.isTTY = false;
+
+		const app = render(
+			<SessionObserver
+				url="ws://localhost:4100"
+				onSnapshot={(snapshot) => {
+					latest = snapshot;
+				}}
+			/>,
+			{
+				exitOnCtrlC: false,
+				patchConsole: false,
+				stderr,
+				stdin,
+				stdout,
+			},
+		);
+
+		try {
+			await waitFor(
+				() => FakeWebSocket.instances.length === 1,
+				"initial socket",
+			);
+			expect(latest?.runCommand("/status")).toBe(false);
+			expect(latest?.runPrompt("offline prompt")).toBe(false);
+			await waitFor(
+				() =>
+					latest?.tuiState.messages.filter(
+						(message) =>
+							message.role === "error" &&
+							message.text === "Runtime disconnected. Waiting to reconnect.",
+					).length === 2,
+				"disconnected local errors",
+			);
+
+			const socket = FakeWebSocket.instances[0] as FakeWebSocket;
+			socket.dispatch("open");
+			await waitFor(() => latest?.status === "connected", "connected status");
+
+			socket.send = (_data: string) => {
+				throw new Error("send failed");
+			};
+			expect(latest?.runCommand("/status")).toBe(false);
+			expect(latest?.runPrompt("will fail")).toBe(false);
+			expect(latest?.requestSkills()).toBe(false);
+			await waitFor(
+				() =>
+					latest?.tuiState.messages.filter(
+						(message) =>
+							message.role === "error" && message.text === "send failed",
+					).length === 2,
+				"send failure local errors",
+			);
+			expect(
+				latest?.tuiState.messages.some(
+					(message) => message.role === "user" && message.text === "will fail",
+				),
+			).toBe(false);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("closes the socket on unmount and cancels reconnect timers", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		vi.useFakeTimers();
+
+		let latest: Snapshot | undefined;
+		const stdout = createOutputStream();
+		const stderr = createOutputStream();
+		const stdin = new PassThrough() as unknown as NodeJS.ReadStream & {
+			isTTY: boolean;
+		};
+		stdin.isTTY = false;
+
+		const app = render(
+			<SessionObserver
+				url="ws://localhost:4100"
+				onSnapshot={(snapshot) => {
+					latest = snapshot;
+				}}
+			/>,
+			{
+				exitOnCtrlC: false,
+				patchConsole: false,
+				stderr,
+				stdin,
+				stdout,
+			},
+		);
+
+		try {
+			await waitFor(
+				() => FakeWebSocket.instances.length === 1,
+				"initial socket",
+			);
+			const socket = FakeWebSocket.instances[0] as FakeWebSocket;
+			socket.dispatch("open");
+			await waitFor(() => latest?.status === "connected", "connected status");
+
+			app.unmount();
+			await flushUpdates();
+			expect(socket.closeCalls).toBe(1);
+
+			socket.dispatch("close");
+			vi.advanceTimersByTime(3000);
+			await flushUpdates();
+			expect(FakeWebSocket.instances).toHaveLength(1);
+		} finally {
 			app.cleanup();
 		}
 	});

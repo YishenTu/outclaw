@@ -126,6 +126,36 @@ async function pressEnter(stdin: PassThrough) {
 	await flushUpdates();
 }
 
+async function pressEscape(stdin: PassThrough) {
+	stdin.write("\u001B");
+	await flushUpdates();
+}
+
+async function pressUp(stdin: PassThrough) {
+	stdin.write("\u001B[A");
+	await flushUpdates();
+}
+
+async function pressDown(stdin: PassThrough) {
+	stdin.write("\u001B[B");
+	await flushUpdates();
+}
+
+async function pressTab(stdin: PassThrough) {
+	stdin.write("\t");
+	await flushUpdates();
+}
+
+async function waitFor(predicate: () => boolean, label: string) {
+	for (let index = 0; index < 100; index += 1) {
+		if (predicate()) {
+			return;
+		}
+		await flushUpdates();
+	}
+	throw new Error(`Timed out waiting for ${label}`);
+}
+
 describe("TuiApp", () => {
 	const realWebSocket = globalThis.WebSocket;
 
@@ -176,6 +206,288 @@ describe("TuiApp", () => {
 			]);
 		} finally {
 			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("submits prompts, resets the composer, and uses escape to stop active work", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			await typeText(stdin, "hello");
+			await pressEnter(stdin);
+			expect(socket.sent).toContain('{"type":"prompt","prompt":"hello"}');
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "done",
+					sessionId: "sdk-1",
+					durationMs: 1,
+				}),
+			});
+			await flushUpdates();
+
+			await typeText(stdin, "world");
+			await pressEnter(stdin);
+			expect(socket.sent).toContain('{"type":"prompt","prompt":"world"}');
+
+			await pressEscape(stdin);
+			expect(socket.sent).toContain('{"type":"command","command":"/stop"}');
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("ignores blank submits without sending a prompt", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			await typeText(stdin, "   ");
+			await pressEnter(stdin);
+			expect(socket.sent).toEqual([]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("command completion navigation wraps with up to the last command", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			await typeText(stdin, "/s");
+			expect(socket.sent).toEqual(['{"type":"request_skills"}']);
+
+			await pressUp(stdin);
+			await pressEnter(stdin);
+			await pressEnter(stdin);
+			expect(socket.sent).toContain('{"type":"command","command":"/stop"}');
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("command completion navigation advances with down to the next command", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			await typeText(stdin, "/s");
+			expect(socket.sent).toEqual(['{"type":"request_skills"}']);
+
+			await pressDown(stdin);
+			await pressEnter(stdin);
+			await pressEnter(stdin);
+			expect(socket.sent).toContain('{"type":"command","command":"/status"}');
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("escape dismisses command completion so Enter submits the command directly", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			await typeText(stdin, "/status");
+			expect(socket.sent).toEqual(['{"type":"request_skills"}']);
+
+			await pressEscape(stdin);
+			await pressEnter(stdin);
+			expect(socket.sent).toEqual([
+				'{"type":"request_skills"}',
+				'{"type":"command","command":"/status"}',
+			]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("tab is ignored in the composer and escape clears collapsed pastes", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			await typeText(stdin, "x");
+			await pressTab(stdin);
+			await pressEnter(stdin);
+			expect(socket.sent).toContain('{"type":"prompt","prompt":"x"}');
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "done",
+					sessionId: "sdk-1",
+					durationMs: 1,
+				}),
+			});
+			await flushUpdates();
+
+			await typeText(stdin, "line 1\nline 2\nline 3\nline 4");
+			await pressEscape(stdin);
+			await typeText(stdin, "y");
+			await pressEnter(stdin);
+			expect(socket.sent).toContain('{"type":"prompt","prompt":"y"}');
+			expect(
+				socket.sent.some((message) =>
+					message.includes("line 1\nline 2\nline 3"),
+				),
+			).toBe(false);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("session menu actions send session commands through the runtime", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_menu",
+					activeSessionId: "sdk-active",
+					sessions: [
+						{
+							sdkSessionId: "sdk-active",
+							title: "Active session",
+							model: "opus",
+							lastActive: 10,
+						},
+						{
+							sdkSessionId: "sdk-other",
+							title: "Other session",
+							model: "sonnet",
+							lastActive: 5,
+						},
+					],
+				}),
+			});
+			await flushUpdates();
+
+			await pressEnter(stdin);
+			expect(socket.sent).toContain(
+				'{"type":"command","command":"/session sdk-active"}',
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_menu",
+					activeSessionId: "sdk-active",
+					sessions: [
+						{
+							sdkSessionId: "sdk-active",
+							title: "Active session",
+							model: "opus",
+							lastActive: 10,
+						},
+						{
+							sdkSessionId: "sdk-other",
+							title: "Other session",
+							model: "sonnet",
+							lastActive: 5,
+						},
+					],
+				}),
+			});
+			await flushUpdates();
+
+			await typeText(stdin, "d");
+			expect(socket.sent).toContain(
+				'{"type":"command","command":"/session delete sdk-active"}',
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_menu",
+					activeSessionId: "sdk-active",
+					sessions: [
+						{
+							sdkSessionId: "sdk-active",
+							title: "Active session",
+							model: "opus",
+							lastActive: 10,
+						},
+						{
+							sdkSessionId: "sdk-other",
+							title: "Other session",
+							model: "sonnet",
+							lastActive: 5,
+						},
+					],
+				}),
+			});
+			await flushUpdates();
+
+			await typeText(stdin, "r");
+			await pressEnter(stdin);
+			await pressEnter(stdin);
+			expect(socket.sent).toContain(
+				'{"type":"command","command":"/session rename sdk-active Active session"}',
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_menu",
+					activeSessionId: "sdk-active",
+					sessions: [
+						{
+							sdkSessionId: "sdk-active",
+							title: "Active session",
+							model: "opus",
+							lastActive: 10,
+						},
+						{
+							sdkSessionId: "sdk-other",
+							title: "Other session",
+							model: "sonnet",
+							lastActive: 5,
+						},
+					],
+				}),
+			});
+			await flushUpdates();
+
+			await pressUp(stdin);
+			await pressEnter(stdin);
+			expect(socket.sent).toContain(
+				'{"type":"command","command":"/session sdk-other"}',
+			);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("slash exit closes the runtime session without sending a command", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			await typeText(stdin, "/exit");
+			await pressEnter(stdin);
+			await pressEnter(stdin);
+			await waitFor(
+				() => socket.readyState === FakeWebSocket.CLOSED,
+				"socket close after /exit",
+			);
+			expect(socket.sent).toEqual(['{"type":"request_skills"}']);
+		} finally {
 			app.cleanup();
 		}
 	});
