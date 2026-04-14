@@ -16,6 +16,7 @@ interface TelegramSessionRegistrar {
 	command(
 		command: "session",
 		handler: (ctx: {
+			from?: { id: number };
 			match?: string;
 			reply(
 				text: string,
@@ -27,17 +28,31 @@ interface TelegramSessionRegistrar {
 		pattern: RegExp,
 		handler: (ctx: {
 			callbackQuery: { data: string };
+			from?: { id: number };
 			answerCallbackQuery(text: string): Promise<unknown>;
 			editMessageText(text: string): Promise<unknown>;
 		}) => Promise<void>,
 	): unknown;
 }
 
+type TelegramSessionBridgeFactory = (
+	ctx:
+		| {
+				from?: { id: number };
+				match?: string;
+		  }
+		| {
+				callbackQuery: { data: string };
+				from?: { id: number };
+		  },
+) => TelegramSessionBridge;
+
 export function registerTelegramSessionHandlers(
 	registrar: TelegramSessionRegistrar,
-	bridge: TelegramSessionBridge,
+	createBridge: TelegramSessionBridgeFactory,
 ) {
 	registrar.command("session", async (ctx) => {
+		const bridge = createBridge(ctx);
 		const request = buildSessionCommandRequest(ctx.match);
 		const event = await bridge.sendCommandAndWait(
 			request.command,
@@ -82,6 +97,7 @@ export function registerTelegramSessionHandlers(
 	});
 
 	registrar.callbackQuery(/^ss:/, async (ctx) => {
+		const bridge = createBridge(ctx);
 		const action = parseSessionCallback(ctx.callbackQuery.data);
 		if (!action || action.type !== "switch") {
 			return;

@@ -61,6 +61,7 @@ describe("StatusBar", () => {
 		const { app, getOutput } = renderStatusBar({
 			status: "connected",
 			info: {
+				agentName: "railly",
 				model: "opus",
 				effort: "high",
 				contextTokens: 12_000,
@@ -71,8 +72,12 @@ describe("StatusBar", () => {
 		try {
 			await flushUpdates();
 			expect(getOutput()).toContain("connected");
+			expect(getOutput()).toContain("@railly");
 			expect(getOutput()).toContain("opus");
 			expect(getOutput()).toContain("high");
+			expect(getOutput().indexOf("@railly")).toBeLessThan(
+				getOutput().indexOf("opus"),
+			);
 			expect(getOutput()).toContain("12k/200k (6%)");
 		} finally {
 			app.unmount();
@@ -137,6 +142,39 @@ describe("StatusBar", () => {
 			vi.advanceTimersByTime(60_000);
 			await flushUpdates();
 			expect(getOutput()).toContain("♥ 0m");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("renders heartbeat as the right-most status item", async () => {
+		const now = new Date("2026-04-11T00:00:00Z");
+		setSystemTime(now);
+		vi.useFakeTimers({ now });
+
+		const { app, getOutput } = renderStatusBar({
+			status: "connected",
+			info: {
+				agentName: "railly",
+				model: "opus",
+				effort: "high",
+				contextTokens: 12_000,
+				contextWindow: 200_000,
+				nextHeartbeatAt: now.getTime() + 60_000,
+			},
+		});
+
+		try {
+			await flushUpdates();
+			const output = getOutput();
+			expect(output).toContain("@railly");
+			expect(output).toContain("opus");
+			expect(output).toContain("12k/200k (6%)");
+			expect(output).toContain("♥ 1m");
+			expect(output.indexOf("12k/200k (6%)")).toBeLessThan(
+				output.indexOf("♥ 1m"),
+			);
 		} finally {
 			app.unmount();
 			app.cleanup();

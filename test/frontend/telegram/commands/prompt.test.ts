@@ -72,7 +72,7 @@ describe("Telegram prompt commands", () => {
 					yield { type: "compacting_finished" as const };
 				})(),
 		);
-		registerTelegramPromptCommands(registrar, { stream });
+		registerTelegramPromptCommands(registrar, () => ({ stream }));
 
 		const sendMessage = mock(async (_text: string, _options: object) => ({
 			message_id: 1,

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { DoneEvent } from "../../../src/common/protocol.ts";
 import { RuntimeSessionState } from "../../../src/runtime/application/runtime-session-state.ts";
 
+const AGENT_ID = "agent-legacy";
+
 function makeDoneEvent(
 	sessionId = "sdk-abc",
 	overrides?: Partial<DoneEvent>,
@@ -124,6 +126,7 @@ describe("RuntimeSessionState", () => {
 			state.restorePersistedState({
 				lastTelegramChatId: 123,
 				session: {
+					agentId: AGENT_ID,
 					providerId: "mock",
 					sdkSessionId: "sdk-persist",
 					title: "Stored title",
@@ -155,6 +158,7 @@ describe("RuntimeSessionState", () => {
 
 			state.switchToSession(
 				{
+					agentId: AGENT_ID,
 					providerId: "mock",
 					sdkSessionId: "sdk-old",
 					title: "Old chat",
@@ -179,6 +183,7 @@ describe("RuntimeSessionState", () => {
 		const state = new RuntimeSessionState();
 		state.switchToSession(
 			{
+				agentId: AGENT_ID,
 				providerId: "mock",
 				sdkSessionId: "sdk-1",
 				title: "Original",

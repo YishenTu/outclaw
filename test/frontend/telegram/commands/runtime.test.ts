@@ -40,6 +40,58 @@ describe("Telegram runtime commands", () => {
 		expect(reply).toBe("Session cleared. Starting fresh.");
 	});
 
+	test("/agent without an argument requests the menu and formats available agents", async () => {
+		const calls: Array<{ command: string; expectedTypes: string[] }> = [];
+		const reply = await executeTelegramRuntimeCommand("agent", {
+			sendCommandAndWait: async (command, expectedTypes) => {
+				calls.push({
+					command,
+					expectedTypes: [...(expectedTypes ?? [])],
+				});
+				return {
+					type: "agent_menu",
+					activeAgentId: "agent-railly",
+					activeAgentName: "railly",
+					agents: [
+						{ agentId: "agent-railly", name: "railly" },
+						{ agentId: "agent-mimi", name: "mimi" },
+					],
+				};
+			},
+		});
+
+		expect(calls).toEqual([
+			{ command: "/agent", expectedTypes: ["agent_menu"] },
+		]);
+		expect(reply).toBe("Agents\n* railly\n  mimi");
+	});
+
+	test("/agent with a selector trims the match, switches agents, and formats success", async () => {
+		const calls: Array<{ command: string; expectedTypes: string[] }> = [];
+		const reply = await executeTelegramRuntimeCommand(
+			"agent",
+			{
+				sendCommandAndWait: async (command, expectedTypes) => {
+					calls.push({
+						command,
+						expectedTypes: [...(expectedTypes ?? [])],
+					});
+					return {
+						type: "agent_switched",
+						agentId: "agent-mimi",
+						name: "mimi",
+					};
+				},
+			},
+			" mimi ",
+		);
+
+		expect(calls).toEqual([
+			{ command: "/agent mimi", expectedTypes: ["agent_switched"] },
+		]);
+		expect(reply).toBe("Current agent: mimi");
+	});
+
 	test("/model trims the match, forwards expected types, and formats success", async () => {
 		const calls: Array<{ command: string; expectedTypes: string[] }> = [];
 		const reply = await executeTelegramRuntimeCommand(
@@ -90,6 +142,7 @@ describe("Telegram runtime commands", () => {
 		const withUsage = await executeTelegramRuntimeCommand("status", {
 			sendCommandAndWait: async () => ({
 				type: "runtime_status",
+				agentName: "railly",
 				model: "opus",
 				effort: "high",
 				sessionId: "sdk-session-123",
@@ -110,7 +163,7 @@ describe("Telegram runtime commands", () => {
 		});
 
 		expect(withUsage).toBe(
-			"Status\nsession: My chat\nmodel: opus\neffort: high\ncontext: 12k/200k (6%)",
+			"Status\nsession: My chat\nagent: railly\nmodel: opus\neffort: high\ncontext: 12k/200k (6%)",
 		);
 		expect(withoutUsage).toBe(
 			"Status\nsession: none\nmodel: haiku\neffort: low\ncontext: n/a",
@@ -171,15 +224,26 @@ describe("Telegram runtime commands", () => {
 			},
 		};
 		const calls: string[] = [];
-		registerTelegramRuntimeCommands(registrar, {
+		registerTelegramRuntimeCommands(registrar, () => ({
 			sendCommandAndWait: async (command) => {
 				calls.push(command);
+				if (command === "/agent") {
+					return {
+						type: "agent_menu",
+						activeAgentId: "agent-railly",
+						activeAgentName: "railly",
+						agents: [
+							{ agentId: "agent-railly", name: "railly" },
+							{ agentId: "agent-mimi", name: "mimi" },
+						],
+					};
+				}
 				if (command === "/model sonnet") {
 					return { type: "model_changed", model: "sonnet" };
 				}
 				return { type: "done" };
 			},
-		});
+		}));
 
 		expect([...handlers.keys()]).toEqual(TELEGRAM_RUNTIME_COMMAND_NAMES);
 
@@ -187,6 +251,11 @@ describe("Telegram runtime commands", () => {
 		await handlers.get("model")?.({ match: " sonnet ", reply: modelReply });
 		expect(calls).toContain("/model sonnet");
 		expect(modelReply).toHaveBeenCalledWith("Model: sonnet");
+
+		const agentReply = mock(async (_text: string) => undefined);
+		await handlers.get("agent")?.({ reply: agentReply });
+		expect(calls).toContain("/agent");
+		expect(agentReply).toHaveBeenCalledWith("Agents\n* railly\n  mimi");
 
 		const stopReply = mock(async (_text: string) => undefined);
 		await handlers.get("stop")?.({ reply: stopReply });

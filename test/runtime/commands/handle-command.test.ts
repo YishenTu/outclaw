@@ -232,11 +232,74 @@ describe("handleRuntimeCommand", () => {
 		});
 
 		test("/session delete sends session_deleted", async () => {
-			const { ws, run } = setup();
-			await run("/session delete sdk-123");
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state, store);
+			hub.add(ws);
+
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "sdk-123",
+				title: "Session 123",
+				model: "sonnet",
+			});
+
+			await handleRuntimeCommand({
+				command: "/session delete sdk-123",
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async () => {},
+				sessions,
+				state,
+				ws,
+			});
 			const event = ws.events().find((e) => e.type === "session_deleted");
 			expect(event).toBeDefined();
 			expect((event as { sdkSessionId: string }).sdkSessionId).toBe("sdk-123");
+			expect(store.get(PROVIDER_ID, "sdk-123")).toBeUndefined();
+
+			store.close();
+		});
+
+		test("/session delete resolves chat sessions by prefix before deleting", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state, store);
+			hub.add(ws);
+
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "sdk-target-123",
+				title: "Target session",
+				model: "sonnet",
+				source: "tui",
+			});
+
+			await handleRuntimeCommand({
+				command: "/session delete sdk-target",
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async () => {},
+				sessions,
+				state,
+				ws,
+			});
+
+			expect(store.get(PROVIDER_ID, "sdk-target-123")).toBeUndefined();
+			expect(
+				ws.events().find((event) => event.type === "session_deleted"),
+			).toEqual({
+				type: "session_deleted",
+				sdkSessionId: "sdk-target-123",
+			});
+
+			store.close();
 		});
 
 		test("/session rename sends session_renamed", async () => {
@@ -281,6 +344,19 @@ describe("handleRuntimeCommand", () => {
 			await run("/session delete");
 			const err = ws.events().find((e) => e.type === "error");
 			expect(err).toBeDefined();
+		});
+
+		test("/session delete with unknown selector sends error and no deletion event", async () => {
+			const { ws, run } = setup();
+			await run("/session delete missing");
+
+			expect(ws.events().find((event) => event.type === "error")).toEqual({
+				type: "error",
+				message: "No session matching: missing",
+			});
+			expect(
+				ws.events().find((event) => event.type === "session_deleted"),
+			).toBeUndefined();
 		});
 
 		test("/session with unknown prefix sends error", async () => {

@@ -3,6 +3,7 @@ import type { UsageInfo } from "../../common/protocol.ts";
 export type SessionTag = "chat" | "cron";
 
 export interface SessionRow {
+	agentId: string;
 	providerId: string;
 	sdkSessionId: string;
 	title: string;
@@ -30,6 +31,7 @@ export const SESSION_USAGE_COLUMNS = [
 ] as const;
 
 export const SESSION_TABLE_COLUMNS = [
+	"agent_id",
 	"provider_id",
 	"sdk_session_id",
 	"title",
@@ -42,6 +44,7 @@ export const SESSION_TABLE_COLUMNS = [
 ] as const;
 
 interface SessionDatabaseRow {
+	agent_id: string;
 	provider_id: string;
 	sdk_session_id: string;
 	title: string;
@@ -71,6 +74,7 @@ export function mapSessionRow(
 	}
 
 	return {
+		agentId: row.agent_id,
 		providerId: row.provider_id,
 		sdkSessionId: row.sdk_session_id,
 		title: row.title,
@@ -84,6 +88,7 @@ export function mapSessionRow(
 
 export function mapSessionRows(rows: SessionDatabaseRow[]): SessionRow[] {
 	return rows.map((row) => ({
+		agentId: row.agent_id,
 		providerId: row.provider_id,
 		sdkSessionId: row.sdk_session_id,
 		title: row.title,

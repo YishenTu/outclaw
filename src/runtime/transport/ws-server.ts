@@ -1,18 +1,8 @@
-import type {
-	Facade,
-	HeartbeatResult,
-	RuntimeClientType,
-} from "../../common/protocol.ts";
-import { createRuntimeController } from "../application/create-runtime-controller.ts";
-import { RuntimeState } from "../application/runtime-state.ts";
-import { SessionService } from "../application/session-service.ts";
+import type { Facade, HeartbeatResult } from "../../common/protocol.ts";
+import { createAgentRuntime } from "../application/create-agent-runtime.ts";
 import type { Config } from "../config.ts";
-import { CronScheduler, createCronAgentRunner } from "../cron/index.ts";
-import {
-	HeartbeatScheduler,
-	hasHeartbeatContent,
-} from "../heartbeat/scheduler.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
+import { createSupervisor } from "../supervisor/create-supervisor.ts";
 
 interface RuntimeOptions {
 	port: number;
@@ -36,102 +26,36 @@ interface RuntimeOptions {
 }
 
 export function createRuntime(options: RuntimeOptions) {
-	const facade = options.facade;
-	const state = new RuntimeState(facade.providerId);
-	const sessions = new SessionService(state, options.store);
-	const controller = createRuntimeController({
+	const runtime = createAgentRuntime({
+		agentId: "agent-default",
 		cwd: options.cwd,
-		promptHomeDir: options.promptHomeDir,
-		facade,
-		restart: options.restart,
+		cronDir: options.cronDir,
 		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
-		sessions,
-		state,
+		facade: options.facade,
+		heartbeat: options.heartbeat,
+		name: "default",
+		promptHomeDir: options.promptHomeDir,
+		restart: options.restart,
+		statusAgentName: undefined,
+		store: options.store,
 	});
-	const promptHomeDir = options.promptHomeDir;
-	const heartbeat =
-		promptHomeDir && options.heartbeat
-			? new HeartbeatScheduler({
-					config: options.heartbeat,
-					promptHomeDir,
-					hasHeartbeatContent: () => hasHeartbeatContent(promptHomeDir),
-					onDeferred: (deferMinutes) =>
-						controller.startDeferTimer(deferMinutes),
-					onStatusChange: () => controller.broadcastRuntimeStatus(),
-					shouldAttemptHeartbeat: (scheduledAt, deferMinutes) =>
-						controller.shouldAttemptHeartbeat(scheduledAt, deferMinutes),
-					requestHeartbeat: (prompt, scheduledAt, deferMinutes) =>
-						controller.enqueueHeartbeat(prompt, scheduledAt, deferMinutes),
-				})
-			: undefined;
-	if (heartbeat) {
-		controller.setHeartbeatInfoProvider(() => ({
-			nextHeartbeatAt: heartbeat.nextHeartbeatAt,
-			deferred: heartbeat.deferred,
-		}));
-		controller.setFireDeferredHeartbeat(() => heartbeat.fireDeferred());
-	}
-
-	const cronScheduler =
-		options.cronDir && options.promptHomeDir
-			? new CronScheduler({
-					cronDir: options.cronDir,
-					runAgent: createCronAgentRunner({
-						facade,
-						promptHomeDir: options.promptHomeDir,
-						cwd: options.cwd ?? process.cwd(),
-					}),
-					onResult: (event) => controller.broadcastCronResult(event),
-					getDefaultModel: () => controller.currentModel,
-				})
-			: undefined;
-
-	const server = Bun.serve<{ clientType: RuntimeClientType }>({
+	const supervisor = createSupervisor({
+		agents: [runtime],
+		emitAgentEvents: false,
 		port: options.port,
-		fetch(req, server) {
-			const clientType = resolveClientType(req.url);
-			if (server.upgrade(req, { data: { clientType } })) {
-				return;
-			}
-			return new Response("outclaw runtime", { status: 200 });
-		},
-		websocket: {
-			close: controller.handleClose,
-			message: controller.handleMessage,
-			open: controller.handleOpen,
-		},
 	});
-	heartbeat?.start();
-	cronScheduler?.start();
-	let stopPromise: Promise<void> | undefined;
 
 	return {
-		port: server.port as number,
+		port: supervisor.port,
 		setCronResultHandler(handler: RuntimeOptions["deliverCronResult"]) {
-			controller.setCronResultHandler(handler);
+			runtime.setCronResultHandler(handler);
 		},
 		setHeartbeatResultHandler(
 			handler: RuntimeOptions["deliverHeartbeatResult"],
 		) {
-			controller.setHeartbeatResultHandler(handler);
+			runtime.setHeartbeatResultHandler(handler);
 		},
-		stop() {
-			if (!stopPromise) {
-				stopPromise = (async () => {
-					cronScheduler?.stop();
-					heartbeat?.stop();
-					controller.beginShutdown();
-					await controller.drain();
-					server.stop();
-				})();
-			}
-			return stopPromise;
-		},
+		stop: supervisor.stop,
 	};
-}
-
-function resolveClientType(url: string): RuntimeClientType {
-	const client = new URL(url).searchParams.get("client");
-	return client === "telegram" ? "telegram" : "tui";
 }

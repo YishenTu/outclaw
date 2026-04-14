@@ -7,7 +7,9 @@ import { SessionStore } from "../../../src/runtime/persistence/session-store.ts"
 const TEST_DB = join(import.meta.dir, ".tmp-test.sqlite");
 const CLAUDE_PROVIDER = "claude";
 const MOCK_PROVIDER = "mock";
-const LEGACY_PROVIDER = "legacy-provider";
+const DEFAULT_AGENT_ID = "agent-default";
+const RAILLY_AGENT_ID = "agent-railly";
+const MIMI_AGENT_ID = "agent-mimi";
 
 function createTestStore(
 	options?: ConstructorParameters<typeof SessionStore>[1],
@@ -40,6 +42,7 @@ describe("SessionStore", () => {
 
 		const session = store.get(CLAUDE_PROVIDER, "sdk-123");
 		expect(session).toBeDefined();
+		expect(session?.agentId).toBe(DEFAULT_AGENT_ID);
 		expect(session?.providerId).toBe(CLAUDE_PROVIDER);
 		expect(session?.title).toBe("Hello world");
 		expect(session?.model).toBe("sonnet");
@@ -139,13 +142,46 @@ describe("SessionStore", () => {
 
 	test("persists last telegram chat id", () => {
 		let store = createTestStore();
-		store.setLastTelegramChatId(123);
+		store.setLastTelegramDelivery({
+			botId: "bot-a",
+			chatId: 123,
+		});
 		store.close();
 
 		store = createTestStore();
 		expect(store.getLastTelegramChatId()).toBe(123);
 
 		store.close();
+	});
+
+	test("scopes sessions by the bound agent id", () => {
+		const raillyStore = createTestStore({ agentId: RAILLY_AGENT_ID });
+		const mimiStore = createTestStore({ agentId: MIMI_AGENT_ID });
+
+		raillyStore.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "shared-id",
+			title: "Railly chat",
+			model: "opus",
+		});
+		mimiStore.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "shared-id",
+			title: "Mimi chat",
+			model: "haiku",
+		});
+
+		expect(raillyStore.get(CLAUDE_PROVIDER, "shared-id")).toMatchObject({
+			agentId: RAILLY_AGENT_ID,
+			title: "Railly chat",
+		});
+		expect(mimiStore.get(CLAUDE_PROVIDER, "shared-id")).toMatchObject({
+			agentId: MIMI_AGENT_ID,
+			title: "Mimi chat",
+		});
+
+		raillyStore.close();
+		mimiStore.close();
 	});
 
 	test("upsert updates existing session", () => {
@@ -398,7 +434,43 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
-	test("migrates legacy sessions tables by adding provider ownership", () => {
+	test("last telegram delivery is scoped by bound agent id", () => {
+		const raillyStore = createTestStore({ agentId: RAILLY_AGENT_ID });
+		const mimiStore = createTestStore({ agentId: MIMI_AGENT_ID });
+
+		raillyStore.setLastTelegramDelivery({
+			botId: "bot-a",
+			chatId: 111,
+		});
+		mimiStore.setLastTelegramDelivery({
+			botId: "bot-b",
+			chatId: 222,
+		});
+
+		expect(raillyStore.getLastTelegramDelivery()).toEqual({
+			botId: "bot-a",
+			chatId: 111,
+		});
+		expect(mimiStore.getLastTelegramDelivery()).toEqual({
+			botId: "bot-b",
+			chatId: 222,
+		});
+
+		raillyStore.close();
+		mimiStore.close();
+	});
+
+	test("persists last_tui_agent_id independently of the bound agent", () => {
+		let store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		store.setLastTuiAgentId(MIMI_AGENT_ID);
+		store.close();
+
+		store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		expect(store.getLastTuiAgentId()).toBe(MIMI_AGENT_ID);
+		store.close();
+	});
+
+	test("rejects pre-migration session tables", () => {
 		const db = new Database(TEST_DB, { create: true });
 		db.exec(`CREATE TABLE sessions (
 			sdk_session_id TEXT PRIMARY KEY,
@@ -418,19 +490,14 @@ describe("SessionStore", () => {
 		db.exec(
 			"INSERT INTO state (key, value) VALUES ('active_session_id', 'sdk-legacy')",
 		);
+		db.exec(
+			"INSERT INTO state (key, value) VALUES ('last_telegram_chat_id', '123')",
+		);
 		db.close();
 
-		const store = createTestStore({
-			legacyProviderId: LEGACY_PROVIDER,
-		});
-		expect(store.get(LEGACY_PROVIDER, "sdk-legacy")).toMatchObject({
-			providerId: LEGACY_PROVIDER,
-			sdkSessionId: "sdk-legacy",
-			tag: "chat",
-		});
-		expect(store.getActiveSessionId(LEGACY_PROVIDER)).toBe("sdk-legacy");
-		expect(store.get(CLAUDE_PROVIDER, "sdk-legacy")).toBeUndefined();
-		store.close();
+		expect(() => createTestStore()).toThrow(
+			"Unsupported legacy session store schema",
+		);
 	});
 
 	test("setUsage and getUsage persist usage per provider session", () => {
@@ -525,5 +592,42 @@ describe("SessionStore", () => {
 
 		expect(existsSync(`${TEST_DB}-wal`)).toBe(false);
 		expect(existsSync(`${TEST_DB}-shm`)).toBe(false);
+	});
+
+	test("deleteAgentData removes agent-scoped sessions and state and clears last_tui_agent_id when matched", () => {
+		const globalStore = createTestStore();
+		const raillyStore = createTestStore({ agentId: RAILLY_AGENT_ID });
+		const mimiStore = createTestStore({ agentId: MIMI_AGENT_ID });
+
+		raillyStore.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-railly",
+			title: "Railly chat",
+			model: "opus",
+		});
+		mimiStore.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-mimi",
+			title: "Mimi chat",
+			model: "haiku",
+		});
+		mimiStore.setActiveSessionId(CLAUDE_PROVIDER, "sdk-mimi");
+		mimiStore.setLastTelegramDelivery({
+			botId: "bot-mimi",
+			chatId: 222,
+		});
+		globalStore.setLastTuiAgentId(MIMI_AGENT_ID);
+
+		globalStore.deleteAgentData(MIMI_AGENT_ID);
+
+		expect(raillyStore.get(CLAUDE_PROVIDER, "sdk-railly")).toBeDefined();
+		expect(mimiStore.get(CLAUDE_PROVIDER, "sdk-mimi")).toBeUndefined();
+		expect(mimiStore.getActiveSessionId(CLAUDE_PROVIDER)).toBeUndefined();
+		expect(mimiStore.getLastTelegramDelivery()).toBeUndefined();
+		expect(globalStore.getLastTuiAgentId()).toBeUndefined();
+
+		globalStore.close();
+		raillyStore.close();
+		mimiStore.close();
 	});
 });

@@ -19,6 +19,7 @@ export interface PromptExecution {
 	sender?: import("../transport/client-hub.ts").WsClient;
 	source: PromptSource;
 	stream?: boolean;
+	telegramBotId?: string;
 	telegramChatId?: number;
 }
 
@@ -92,6 +93,7 @@ export class PromptDispatcher {
 					event,
 					task.source,
 					task.telegramChatId,
+					task.telegramBotId,
 				);
 				this.options.clients.broadcastStatus();
 			}

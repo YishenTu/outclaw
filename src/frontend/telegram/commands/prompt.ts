@@ -10,6 +10,7 @@ import { runTelegramPrompt } from "../messages/prompt.ts";
 
 interface TelegramPromptCommandContext {
 	chat: { id: number };
+	from?: { id: number };
 	replyWithChatAction(action: "typing"): Promise<unknown>;
 	replyWithPhoto(
 		photo: unknown,
@@ -43,6 +44,10 @@ export interface TelegramPromptCommandBridge {
 	): AsyncIterable<StreamChunk>;
 }
 
+type TelegramPromptCommandBridgeFactory = (
+	ctx: TelegramPromptCommandContext,
+) => TelegramPromptCommandBridge;
+
 export const TELEGRAM_PROMPT_COMMANDS: BotCommand[] = PROMPT_COMMANDS.map(
 	(command) => ({
 		command: command.command,
@@ -52,10 +57,11 @@ export const TELEGRAM_PROMPT_COMMANDS: BotCommand[] = PROMPT_COMMANDS.map(
 
 export function registerTelegramPromptCommands(
 	registrar: TelegramPromptCommandRegistrar,
-	bridge: TelegramPromptCommandBridge,
+	createBridge: TelegramPromptCommandBridgeFactory,
 ) {
 	for (const command of PROMPT_COMMANDS) {
 		registrar.command(command.command, async (ctx) => {
+			const bridge = createBridge(ctx);
 			await runTelegramPrompt(
 				{
 					chatId: ctx.chat.id,

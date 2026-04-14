@@ -77,6 +77,7 @@ class FakeWebSocket {
 }
 
 interface Snapshot {
+	agentMenuData: ReturnType<typeof useRuntimeSession>["agentMenuData"];
 	dismissSessionMenu: () => void;
 	menuData: ReturnType<typeof useRuntimeSession>["menuData"];
 	requestSkills: () => boolean;
@@ -99,6 +100,7 @@ function SessionObserver({
 
 	useLayoutEffect(() => {
 		onSnapshot({
+			agentMenuData: session.agentMenuData,
 			dismissSessionMenu: session.dismissSessionMenu,
 			menuData: session.menuData,
 			requestSkills: session.requestSkills,
@@ -112,6 +114,7 @@ function SessionObserver({
 	}, [
 		onSnapshot,
 		session.dismissSessionMenu,
+		session.agentMenuData,
 		session.menuData,
 		session.requestSkills,
 		session.runCommand,
@@ -299,6 +302,7 @@ describe("useRuntimeSession", () => {
 			socket.dispatch("message", {
 				data: JSON.stringify({
 					type: "runtime_status",
+					agentName: "railly",
 					model: "sonnet",
 					effort: "think",
 					usage: { contextTokens: 1200, contextWindow: 200000 },
@@ -308,6 +312,7 @@ describe("useRuntimeSession", () => {
 			});
 			await waitFor(
 				() =>
+					latest?.runtimeInfo.agentName === "railly" &&
 					latest?.runtimeInfo.model === "sonnet" &&
 					latest?.runtimeInfo.effort === "think" &&
 					latest?.runtimeInfo.contextTokens === 1200 &&
@@ -327,6 +332,34 @@ describe("useRuntimeSession", () => {
 					latest?.runtimeInfo.model === "opus" &&
 					latest?.runtimeInfo.effort === "ultrathink",
 				"incremental runtime info",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "agent_switched",
+					agentId: "agent-railly",
+					name: "railly",
+				}),
+			});
+			await waitFor(
+				() => latest?.runtimeInfo.agentName === "railly",
+				"current agent info",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "agent_menu",
+					activeAgentId: "agent-railly",
+					activeAgentName: "railly",
+					agents: [
+						{ agentId: "agent-mimi", name: "mimi" },
+						{ agentId: "agent-railly", name: "railly" },
+					],
+				}),
+			});
+			await waitFor(
+				() => latest?.agentMenuData?.agents.length === 2,
+				"agent menu data",
 			);
 
 			socket.dispatch("message", {

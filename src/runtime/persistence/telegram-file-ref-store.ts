@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { resolve, sep } from "node:path";
 import type { ImageMediaType } from "../../common/protocol.ts";
 import {
 	closeSqliteDatabase,
@@ -25,6 +24,7 @@ export type TelegramStoredFile =
 	  };
 
 export interface TelegramFileRefRow {
+	botId: string;
 	chatId: number;
 	messageId: number;
 	path: string;
@@ -36,10 +36,12 @@ export interface TelegramFileRefRow {
 }
 
 interface TelegramFileRefStoreOptions {
+	botId?: string;
 	journalMode?: "WAL" | "DELETE";
 }
 
 interface TelegramFileRefDbRow {
+	bot_id: string;
 	chat_id: number;
 	message_id: number;
 	path: string;
@@ -51,42 +53,51 @@ interface TelegramFileRefDbRow {
 }
 
 const TELEGRAM_FILE_REFS_TABLE = "telegram_file_refs";
-const TELEGRAM_FILE_REFS_MIGRATION_TABLE = "telegram_file_refs_migrated";
+const DEFAULT_BOT_ID = "bot-default";
 
 export class TelegramFileRefStore {
 	private db: Database;
 	private dbFileKey: string | undefined;
+	private readonly botId: string;
 
 	constructor(path: string, options: TelegramFileRefStoreOptions = {}) {
+		this.botId = options.botId ?? DEFAULT_BOT_ID;
 		const sqlite = openSqliteDatabase(path, options.journalMode ?? "WAL");
 		this.db = sqlite.db;
 		this.dbFileKey = sqlite.fileKey;
-		this.migrate();
+		try {
+			this.ensureSchema();
+		} catch (error) {
+			closeSqliteDatabase(this.db, this.dbFileKey);
+			throw error;
+		}
 	}
 
-	private migrate() {
-		this.renameOldTable();
+	private ensureSchema() {
+		if (this.hasTable("telegram_media_refs")) {
+			throw new Error("Unsupported legacy telegram file-ref schema");
+		}
+
 		if (!this.hasTable(TELEGRAM_FILE_REFS_TABLE)) {
 			this.createCurrentTable(TELEGRAM_FILE_REFS_TABLE);
 			return;
 		}
 
-		const columns = this.getColumnNames(TELEGRAM_FILE_REFS_TABLE);
-		if (columns.includes("kind") && columns.includes("display_name")) {
-			return;
-		}
-
-		this.rebuildTable(columns);
-	}
-
-	private renameOldTable() {
-		if (
-			this.hasTable("telegram_media_refs") &&
-			!this.hasTable(TELEGRAM_FILE_REFS_TABLE)
-		) {
-			this.db.exec(
-				"ALTER TABLE telegram_media_refs RENAME TO telegram_file_refs",
-			);
+		const columns = new Set(this.getColumnNames(TELEGRAM_FILE_REFS_TABLE));
+		for (const columnName of [
+			"bot_id",
+			"chat_id",
+			"message_id",
+			"path",
+			"kind",
+			"media_type",
+			"display_name",
+			"direction",
+			"created_at",
+		]) {
+			if (!columns.has(columnName)) {
+				throw new Error("Unsupported legacy telegram file-ref schema");
+			}
 		}
 	}
 
@@ -102,14 +113,13 @@ export class TelegramFileRefStore {
 	private getColumnNames(tableName: string): string[] {
 		const columns = this.db
 			.query(`PRAGMA table_info(${tableName})`)
-			.all() as Array<{
-			name: string;
-		}>;
+			.all() as Array<{ name: string }>;
 		return columns.map((column) => column.name);
 	}
 
 	private createCurrentTable(tableName: string) {
 		this.db.exec(`CREATE TABLE ${tableName} (
+			bot_id TEXT NOT NULL,
 			chat_id INTEGER NOT NULL,
 			message_id INTEGER NOT NULL,
 			path TEXT NOT NULL,
@@ -118,40 +128,8 @@ export class TelegramFileRefStore {
 			display_name TEXT,
 			direction TEXT NOT NULL,
 			created_at INTEGER NOT NULL,
-			PRIMARY KEY (chat_id, message_id)
+			PRIMARY KEY (bot_id, chat_id, message_id)
 		)`);
-	}
-
-	private rebuildTable(columns: string[]) {
-		this.createCurrentTable(TELEGRAM_FILE_REFS_MIGRATION_TABLE);
-		const displayNameExpression = columns.includes("display_name")
-			? "display_name"
-			: "NULL";
-		const kindExpression = columns.includes("kind") ? "kind" : "'image'";
-		this.db.exec(`INSERT INTO ${TELEGRAM_FILE_REFS_MIGRATION_TABLE} (
-			chat_id,
-			message_id,
-			path,
-			kind,
-			media_type,
-			display_name,
-			direction,
-			created_at
-		)
-		SELECT
-			chat_id,
-			message_id,
-			path,
-			${kindExpression},
-			media_type,
-			${displayNameExpression},
-			direction,
-			created_at
-		FROM ${TELEGRAM_FILE_REFS_TABLE}`);
-		this.db.exec(`DROP TABLE ${TELEGRAM_FILE_REFS_TABLE}`);
-		this.db.exec(
-			`ALTER TABLE ${TELEGRAM_FILE_REFS_MIGRATION_TABLE} RENAME TO ${TELEGRAM_FILE_REFS_TABLE}`,
-		);
 	}
 
 	upsert(params: {
@@ -166,8 +144,9 @@ export class TelegramFileRefStore {
 		this.db
 			.query(
 				`INSERT INTO telegram_file_refs
-					(chat_id, message_id, path, kind, media_type, display_name, direction, created_at)
+					(bot_id, chat_id, message_id, path, kind, media_type, display_name, direction, created_at)
 				VALUES (
+					$botId,
 					$chatId,
 					$messageId,
 					$path,
@@ -177,7 +156,7 @@ export class TelegramFileRefStore {
 					$direction,
 					$createdAt
 				)
-				ON CONFLICT(chat_id, message_id) DO UPDATE SET
+				ON CONFLICT(bot_id, chat_id, message_id) DO UPDATE SET
 					path = $path,
 					kind = $kind,
 					media_type = $mediaType,
@@ -185,6 +164,7 @@ export class TelegramFileRefStore {
 					direction = $direction`,
 			)
 			.run({
+				$botId: this.botId,
 				$chatId: params.chatId,
 				$messageId: params.messageId,
 				$path: params.path,
@@ -200,6 +180,7 @@ export class TelegramFileRefStore {
 		const row = this.db
 			.query(
 				`SELECT
+					bot_id,
 					chat_id,
 					message_id,
 					path,
@@ -209,9 +190,12 @@ export class TelegramFileRefStore {
 					direction,
 					created_at
 				FROM telegram_file_refs
-				WHERE chat_id = $chatId AND message_id = $messageId`,
+				WHERE bot_id = $botId
+				  AND chat_id = $chatId
+				  AND message_id = $messageId`,
 			)
 			.get({
+				$botId: this.botId,
 				$chatId: chatId,
 				$messageId: messageId,
 			}) as TelegramFileRefDbRow | null;
@@ -221,6 +205,7 @@ export class TelegramFileRefStore {
 		}
 
 		return {
+			botId: row.bot_id,
 			chatId: row.chat_id,
 			messageId: row.message_id,
 			path: row.path,
@@ -232,50 +217,6 @@ export class TelegramFileRefStore {
 			direction: row.direction,
 			createdAt: row.created_at,
 		};
-	}
-
-	rewriteRoot(previousRoot: string, nextRoot: string) {
-		const resolvedPreviousRoot = resolve(previousRoot);
-		const resolvedNextRoot = resolve(nextRoot);
-		if (resolvedPreviousRoot === resolvedNextRoot) {
-			return;
-		}
-
-		const rows = this.db
-			.query(
-				`SELECT chat_id, message_id, path
-				FROM telegram_file_refs`,
-			)
-			.all() as Array<{
-			chat_id: number;
-			message_id: number;
-			path: string;
-		}>;
-
-		const update = this.db.query(
-			`UPDATE telegram_file_refs
-			SET path = $path
-			WHERE chat_id = $chatId AND message_id = $messageId`,
-		);
-
-		this.db.exec("BEGIN");
-		try {
-			for (const row of rows) {
-				if (!isPathWithinRoot(resolvedPreviousRoot, row.path)) {
-					continue;
-				}
-
-				update.run({
-					$path: `${resolvedNextRoot}${row.path.slice(resolvedPreviousRoot.length)}`,
-					$chatId: row.chat_id,
-					$messageId: row.message_id,
-				});
-			}
-			this.db.exec("COMMIT");
-		} catch (err) {
-			this.db.exec("ROLLBACK");
-			throw err;
-		}
 	}
 
 	close() {
@@ -301,8 +242,4 @@ function serializeFileMetadata(file: TelegramStoredFile): {
 		mediaType: "",
 		displayName: file.document.displayName,
 	};
-}
-
-function isPathWithinRoot(root: string, path: string): boolean {
-	return path === root || path.startsWith(`${root}${sep}`);
 }

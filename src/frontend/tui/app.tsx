@@ -4,6 +4,7 @@ import {
 	canonicalizePromptSlashCommand,
 	isRuntimeCommand,
 } from "../../common/commands.ts";
+import { AgentMenu } from "./agents/menu.tsx";
 import { HeaderBar } from "./chrome/header-bar.tsx";
 import { StatusBar } from "./chrome/status-bar.tsx";
 import { theme } from "./chrome/theme.ts";
@@ -25,16 +26,19 @@ import { useRuntimeSession } from "./use-runtime-session.ts";
 import { useTerminalSize } from "./use-terminal-size.ts";
 
 interface TuiAppProps {
+	agentName?: string;
 	url: string;
 }
 
-export function TuiApp({ url }: TuiAppProps) {
+export function TuiApp({ url, agentName }: TuiAppProps) {
 	const { exit } = useApp();
 	const { columns, rows: termRows } = useTerminalSize();
 	const [composerDraft, setComposerDraft] = useState(() =>
 		createPasteAwareDraft(),
 	);
 	const {
+		agentMenuData,
+		dismissAgentMenu,
 		dismissSessionMenu,
 		menuData,
 		requestSkills,
@@ -44,7 +48,7 @@ export function TuiApp({ url }: TuiAppProps) {
 		skills,
 		status,
 		tuiState,
-	} = useRuntimeSession(url);
+	} = useRuntimeSession(url, agentName);
 	const [cmdMenuIndex, setCmdMenuIndex] = useState(0);
 	const [cmdMenuDismissed, setCmdMenuDismissed] = useState(false);
 	const input = composerDraft.value;
@@ -117,7 +121,17 @@ export function TuiApp({ url }: TuiAppProps) {
 		[runCommand],
 	);
 
-	const inputActive = !tuiState.running && menuData === null;
+	const handleAgentSelect = useCallback(
+		(agent: { name: string }) => {
+			if (runCommand(`/agent ${agent.name}`)) {
+				dismissAgentMenu();
+			}
+		},
+		[dismissAgentMenu, runCommand],
+	);
+
+	const inputActive =
+		!tuiState.running && menuData === null && agentMenuData === null;
 
 	const matchedCommands = matchCommands(composerDraft.value, skills);
 	const cmdMenuVisible =
@@ -188,7 +202,10 @@ export function TuiApp({ url }: TuiAppProps) {
 				runCommand("/stop");
 			}
 		},
-		shouldEnableGlobalStopShortcut(tuiState.running, menuData !== null),
+		shouldEnableGlobalStopShortcut(
+			tuiState.running,
+			menuData !== null || agentMenuData !== null,
+		),
 	);
 
 	const choices = menuData
@@ -211,7 +228,16 @@ export function TuiApp({ url }: TuiAppProps) {
 					columns={columns}
 				/>
 			</Box>
-			{choices ? (
+			{agentMenuData ? (
+				<Box paddingX={1}>
+					<AgentMenu
+						activeAgentId={agentMenuData.activeAgentId}
+						agents={agentMenuData.agents}
+						onDismiss={dismissAgentMenu}
+						onSelect={handleAgentSelect}
+					/>
+				</Box>
+			) : choices ? (
 				<Box paddingX={1}>
 					<SessionMenu
 						choices={choices}

@@ -8,9 +8,12 @@ import type { PromptExecution } from "../../../src/runtime/application/prompt-di
 import { RuntimeMessageRouter } from "../../../src/runtime/application/runtime-message-router.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 
-function createWs(): WsClient & { events: () => ServerEvent[] } {
+function createWs(
+	data?: Partial<WsClient["data"]>,
+): WsClient & { events: () => ServerEvent[] } {
 	const sent: string[] = [];
 	return {
+		data,
 		send(payload: string) {
 			sent.push(payload);
 		},
@@ -20,8 +23,11 @@ function createWs(): WsClient & { events: () => ServerEvent[] } {
 	} as WsClient & { events: () => ServerEvent[] };
 }
 
-function createRouter(overrides?: { isShuttingDown?: boolean }) {
-	const ws = createWs();
+function createRouter(overrides?: {
+	isShuttingDown?: boolean;
+	wsData?: Partial<WsClient["data"]>;
+}) {
+	const ws = createWs(overrides?.wsData);
 	const enqueued: PromptExecution[] = [];
 	const requestedSkills: WsClient[] = [];
 	const commands: Array<{ command: string; ws: WsClient }> = [];
@@ -99,7 +105,12 @@ describe("RuntimeMessageRouter", () => {
 	});
 
 	test("enqueues prompt messages with normalized runtime metadata", () => {
-		const { enqueued, handle, ws } = createRouter();
+		const { enqueued, handle, ws } = createRouter({
+			wsData: {
+				telegramBotId: "bot-a",
+				telegramUserId: 42,
+			},
+		});
 		const replyContext: ReplyContext = { text: "Earlier message" };
 		handle({
 			type: "prompt",
@@ -118,6 +129,7 @@ describe("RuntimeMessageRouter", () => {
 				replyContext,
 				source: "telegram",
 				telegramChatId: 42,
+				telegramBotId: "bot-a",
 			},
 		]);
 	});

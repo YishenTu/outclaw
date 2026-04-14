@@ -88,6 +88,8 @@ function toPromptExecution(
 		replyContext: data.replyContext,
 		source: data.source === "telegram" ? "telegram" : "tui",
 		images: data.images,
+		telegramBotId:
+			data.source === "telegram" ? ws.data.telegramBotId : undefined,
 		telegramChatId: data.telegramChatId,
 	};
 }

@@ -2,7 +2,11 @@ import { autoRetry } from "@grammyjs/auto-retry";
 import { Bot, type Context, InputFile } from "grammy";
 import type { ImageRef, ReplyContext } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
-import { createTelegramBridge, type StreamChunk } from "./bridge/client.ts";
+import {
+	createTelegramBridge,
+	type StreamChunk,
+	type TelegramBridgeRouting,
+} from "./bridge/client.ts";
 import { TELEGRAM_COMMANDS } from "./commands/catalog.ts";
 import { registerTelegramPromptCommands } from "./commands/prompt.ts";
 import { registerTelegramRuntimeCommands } from "./commands/runtime.ts";
@@ -86,14 +90,24 @@ interface TelegramIncomingDocumentContext {
 
 interface TelegramBridgeLike {
 	close(): void;
+	sendCommandAndWait(
+		command: string,
+		expectedTypes?: ReadonlySet<string>,
+		routing?: TelegramBridgeRouting,
+	): Promise<{ type: string; [key: string]: unknown }>;
 	stream(
 		prompt: string,
 		images?: ImageRef[],
 		onImage?: (event: TelegramImageEvent) => void | Promise<void>,
 		telegramChatId?: number,
 		replyContext?: ReplyContext,
+		routing?: TelegramBridgeRouting,
 	): AsyncIterable<StreamChunk>;
 }
+
+type TelegramBridgeFactory = (ctx: {
+	from?: { id: number };
+}) => TelegramBridgeLike;
 
 interface TelegramBotLike {
 	readonly api: {
@@ -121,7 +135,12 @@ interface TelegramBotLike {
 	use(middleware: unknown): unknown;
 	command(
 		command: string,
-		handler: (ctx: Record<string, unknown>) => Promise<void>,
+		handler: (
+			ctx: Record<string, unknown> & {
+				from?: { id: number };
+				reply(text: string): Promise<unknown>;
+			},
+		) => Promise<void>,
 	): unknown;
 	callbackQuery(
 		pattern: RegExp,
@@ -155,19 +174,19 @@ interface TelegramBotDependencies {
 	logInfo(message: string): void;
 	registerModelShortcuts(
 		registrar: TelegramBotLike,
-		bridge: TelegramBridgeLike,
+		createBridge: TelegramBridgeFactory,
 	): void;
 	registerPromptCommands(
 		registrar: TelegramBotLike,
-		bridge: TelegramBridgeLike,
+		createBridge: TelegramBridgeFactory,
 	): void;
 	registerRuntimeCommands(
 		registrar: TelegramBotLike,
-		bridge: TelegramBridgeLike,
+		createBridge: TelegramBridgeFactory,
 	): void;
 	registerSessionHandlers(
 		registrar: TelegramBotLike,
-		bridge: TelegramBridgeLike,
+		createBridge: TelegramBridgeFactory,
 	): void;
 	sendHeartbeatResult: typeof sendTelegramHeartbeatResult;
 }
@@ -221,6 +240,7 @@ const DEFAULT_TELEGRAM_BOT_DEPENDENCIES: TelegramBotDependencies = {
 };
 
 export interface TelegramBotOptions {
+	botId: string;
 	token: string;
 	runtimeUrl: string;
 	allowedUsers: number[];
@@ -234,6 +254,7 @@ export interface TelegramBotOptions {
 
 export function startTelegramBot(
 	{
+		botId,
 		token,
 		runtimeUrl,
 		allowedUsers,
@@ -252,7 +273,16 @@ export function startTelegramBot(
 
 	const allowed = new Set(allowedUsers);
 	bot.use(
-		async (ctx: { from?: { id: number } }, next: () => Promise<unknown>) => {
+		async (
+			ctx: {
+				from?: { id: number };
+				message?: { text?: string };
+			},
+			next: () => Promise<unknown>,
+		) => {
+			if (ctx.message?.text?.trim() === "/start") {
+				return next();
+			}
 			if (ctx.from && allowed.has(ctx.from.id)) {
 				return next();
 			}
@@ -260,6 +290,28 @@ export function startTelegramBot(
 	);
 
 	const bridge = dependencies.createBridge(runtimeUrl);
+	const createContextBridge = (ctx: { from?: { id: number } }) => ({
+		close: () => undefined,
+		sendCommandAndWait: (
+			command: string,
+			expectedTypes?: ReadonlySet<string>,
+		) =>
+			bridge.sendCommandAndWait(command, expectedTypes, {
+				telegramBotId: botId,
+				telegramUserId: ctx.from?.id,
+			}),
+		stream: (
+			prompt: string,
+			images?: ImageRef[],
+			onImage?: (event: TelegramImageEvent) => void | Promise<void>,
+			telegramChatId?: number,
+			replyContext?: ReplyContext,
+		) =>
+			bridge.stream(prompt, images, onImage, telegramChatId, replyContext, {
+				telegramBotId: botId,
+				telegramUserId: ctx.from?.id,
+			}),
+	});
 
 	void bot.api.setMyCommands(TELEGRAM_COMMANDS).catch((err) => {
 		dependencies.logError(
@@ -267,10 +319,20 @@ export function startTelegramBot(
 		);
 	});
 
-	dependencies.registerSessionHandlers(bot, bridge);
-	dependencies.registerRuntimeCommands(bot, bridge);
-	dependencies.registerPromptCommands(bot, bridge);
-	dependencies.registerModelShortcuts(bot, bridge);
+	bot.command(
+		"start",
+		async (ctx: {
+			from?: { id: number };
+			reply(text: string): Promise<unknown>;
+		}) => {
+			await ctx.reply(`Your Telegram user ID is ${ctx.from?.id ?? "unknown"}`);
+		},
+	);
+
+	dependencies.registerSessionHandlers(bot, (ctx) => createContextBridge(ctx));
+	dependencies.registerRuntimeCommands(bot, (ctx) => createContextBridge(ctx));
+	dependencies.registerPromptCommands(bot, (ctx) => createContextBridge(ctx));
+	dependencies.registerModelShortcuts(bot, (ctx) => createContextBridge(ctx));
 
 	bot.on("message:text", async (ctx) => {
 		await dependencies.handleTextMessage(
@@ -289,7 +351,13 @@ export function startTelegramBot(
 				resolveMessageFile,
 				rememberMessageFile,
 				streamPrompt: (prompt, images, onImage, replyContext) =>
-					bridge.stream(prompt, images, onImage, ctx.chat.id, replyContext),
+					createContextBridge(ctx).stream(
+						prompt,
+						images,
+						onImage,
+						ctx.chat.id,
+						replyContext,
+					),
 			},
 		);
 	});
@@ -320,7 +388,13 @@ export function startTelegramBot(
 				token,
 				filesRoot,
 				streamPrompt: (prompt, images, onImage, replyContext) =>
-					bridge.stream(prompt, images, onImage, ctx.chat.id, replyContext),
+					createContextBridge(ctx).stream(
+						prompt,
+						images,
+						onImage,
+						ctx.chat.id,
+						replyContext,
+					),
 			},
 		);
 	});
@@ -345,7 +419,13 @@ export function startTelegramBot(
 				token,
 				filesRoot,
 				streamPrompt: (prompt, images, onImage, replyContext) =>
-					bridge.stream(prompt, images, onImage, ctx.chat.id, replyContext),
+					createContextBridge(ctx).stream(
+						prompt,
+						images,
+						onImage,
+						ctx.chat.id,
+						replyContext,
+					),
 			},
 		);
 	});

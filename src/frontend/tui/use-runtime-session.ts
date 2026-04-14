@@ -13,6 +13,7 @@ import {
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "../runtime-client/index.ts";
+import type { AgentMenuData } from "./agents/types.ts";
 import type { ConnectionStatus, RuntimeInfo } from "./chrome/status-bar.tsx";
 import { applySessionEventToMenuData } from "./sessions/state.ts";
 import type { SessionMenuData } from "./sessions/types.ts";
@@ -20,13 +21,17 @@ import { applyAction } from "./transcript/reducer.ts";
 import { mapEventToActions } from "./transcript/runtime-events.ts";
 import { initialTuiState } from "./transcript/state.ts";
 
-export function useRuntimeSession(url: string) {
+export function useRuntimeSession(url: string, agentName?: string) {
+	const [agentMenuData, setAgentMenuData] = useState<AgentMenuData | null>(
+		null,
+	);
 	const [tuiState, setTuiState] = useState(initialTuiState);
 	const [status, setStatus] = useState<ConnectionStatus>("connecting");
 	const [menuData, setMenuData] = useState<SessionMenuData | null>(null);
 	const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo>({});
 	const [skills, setSkills] = useState<SkillInfo[]>([]);
 	const skillsRequestedRef = useRef(false);
+	const agentNameRef = useRef<string | undefined>(undefined);
 	const wsRef = useRef<WebSocket | null>(null);
 
 	const pushLocalMessage = useCallback(
@@ -69,7 +74,7 @@ export function useRuntimeSession(url: string) {
 				return;
 			}
 
-			const socket = openRuntimeSocket(url, "tui");
+			const socket = openRuntimeSocket(url, "tui", agentName);
 			const { ws } = socket;
 			wsRef.current = ws;
 			setStatus("connecting");
@@ -107,16 +112,37 @@ export function useRuntimeSession(url: string) {
 					setSkills(event.skills);
 					return;
 				}
+				if (event.type === "agent_menu") {
+					setAgentMenuData({
+						activeAgentId: event.activeAgentId,
+						activeAgentName: event.activeAgentName,
+						agents: event.agents,
+					});
+					return;
+				}
+				if (event.type === "agent_switched") {
+					setAgentMenuData(null);
+					agentNameRef.current = event.name;
+					setRuntimeInfo((previous) => ({
+						...previous,
+						agentName: event.name,
+					}));
+				}
 
 				if (event.type === "runtime_status") {
-					setRuntimeInfo({
+					if (event.agentName) {
+						agentNameRef.current = event.agentName;
+					}
+					setRuntimeInfo((previous) => ({
+						agentName:
+							event.agentName ?? agentNameRef.current ?? previous.agentName,
 						model: event.model,
 						effort: event.effort,
 						contextTokens: event.usage?.contextTokens,
 						contextWindow: event.usage?.contextWindow,
 						nextHeartbeatAt: event.nextHeartbeatAt,
 						heartbeatDeferred: event.heartbeatDeferred,
-					});
+					}));
 				}
 				if (event.type === "model_changed") {
 					setRuntimeInfo((previous) => ({ ...previous, model: event.model }));
@@ -150,7 +176,7 @@ export function useRuntimeSession(url: string) {
 				wsRef.current.close();
 			}
 		};
-	}, [url]);
+	}, [agentName, url]);
 
 	const runCommand = useCallback(
 		(command: string): boolean => {
@@ -214,7 +240,13 @@ export function useRuntimeSession(url: string) {
 		setMenuData(null);
 	}, []);
 
+	const dismissAgentMenu = useCallback(() => {
+		setAgentMenuData(null);
+	}, []);
+
 	return {
+		agentMenuData,
+		dismissAgentMenu,
 		dismissSessionMenu,
 		menuData,
 		requestSkills,

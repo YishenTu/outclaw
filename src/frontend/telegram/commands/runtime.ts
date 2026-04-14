@@ -15,9 +15,14 @@ export interface TelegramRuntimeCommandBridge {
 }
 
 interface TelegramCommandContext {
+	from?: { id: number };
 	match?: string;
 	reply(text: string): Promise<unknown>;
 }
+
+type TelegramRuntimeCommandBridgeFactory = (
+	ctx: TelegramCommandContext,
+) => TelegramRuntimeCommandBridge;
 
 interface TelegramCommandRegistrar {
 	command(
@@ -27,6 +32,7 @@ interface TelegramCommandRegistrar {
 }
 
 type TelegramRuntimeCommandName =
+	| "agent"
 	| "new"
 	| "model"
 	| "thinking"
@@ -38,7 +44,7 @@ type TelegramCommandName = TelegramRuntimeCommandName | "session";
 
 interface TelegramRuntimeCommandDefinition {
 	buildCommand(match?: string): string;
-	expectedTypes: ReadonlySet<string>;
+	expectedTypes(match?: string): ReadonlySet<string>;
 	formatReply(event: TelegramCommandEvent): string | undefined;
 }
 
@@ -64,9 +70,45 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	TelegramRuntimeCommandName,
 	TelegramRuntimeCommandDefinition
 > = {
+	agent: {
+		buildCommand: (match) => (match ? `/agent ${match}` : "/agent"),
+		expectedTypes: (match) =>
+			match ? new Set(["agent_switched"]) : new Set(["agent_menu"]),
+		formatReply: (event) => {
+			if (event.type === "agent_switched") {
+				return `Current agent: ${String(event.name)}`;
+			}
+			if (event.type !== "agent_menu") {
+				return formatError(event);
+			}
+
+			const activeAgentId = String(event.activeAgentId);
+			const agents = Array.isArray(event.agents) ? event.agents : [];
+			const lines = ["Agents"];
+			for (const agent of agents) {
+				const item =
+					agent &&
+					typeof agent === "object" &&
+					"name" in agent &&
+					"agentId" in agent
+						? {
+								agentId: String(agent.agentId),
+								name: String(agent.name),
+							}
+						: undefined;
+				if (!item) {
+					continue;
+				}
+				lines.push(
+					`${item.agentId === activeAgentId ? "*" : " "} ${item.name}`,
+				);
+			}
+			return lines.join("\n");
+		},
+	},
 	new: {
 		buildCommand: () => "/new",
-		expectedTypes: new Set(["session_cleared"]),
+		expectedTypes: () => new Set(["session_cleared"]),
 		formatReply: (event) =>
 			event.type === "session_cleared"
 				? "Session cleared. Starting fresh."
@@ -74,7 +116,7 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	},
 	model: {
 		buildCommand: (match) => (match ? `/model ${match}` : "/model"),
-		expectedTypes: new Set(["model_changed"]),
+		expectedTypes: () => new Set(["model_changed"]),
 		formatReply: (event) =>
 			event.type === "model_changed"
 				? `Model: ${String(event.model)}`
@@ -82,7 +124,7 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	},
 	thinking: {
 		buildCommand: (match) => (match ? `/thinking ${match}` : "/thinking"),
-		expectedTypes: new Set(["effort_changed"]),
+		expectedTypes: () => new Set(["effort_changed"]),
 		formatReply: (event) =>
 			event.type === "effort_changed"
 				? `Thinking effort: ${String(event.effort)}`
@@ -90,7 +132,7 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	},
 	status: {
 		buildCommand: () => "/status",
-		expectedTypes: new Set(["runtime_status"]),
+		expectedTypes: () => new Set(["runtime_status"]),
 		formatReply: (event) => {
 			if (event.type !== "runtime_status") {
 				return formatError(event);
@@ -100,13 +142,13 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	},
 	stop: {
 		buildCommand: () => "/stop",
-		expectedTypes: new Set(["status"]),
+		expectedTypes: () => new Set(["status"]),
 		formatReply: (event) =>
 			event.type === "status" ? String(event.message) : formatError(event),
 	},
 	restart: {
 		buildCommand: () => "/restart",
-		expectedTypes: new Set(["status"]),
+		expectedTypes: () => new Set(["status"]),
 		formatReply: (event) =>
 			event.type === "status" ? String(event.message) : formatError(event),
 	},
@@ -122,19 +164,21 @@ export async function executeTelegramRuntimeCommand(
 	match?: string,
 ): Promise<string | undefined> {
 	const definition = TELEGRAM_RUNTIME_COMMAND_DEFINITIONS[command];
+	const trimmedMatch = match?.trim();
 	const event = await bridge.sendCommandAndWait(
-		definition.buildCommand(match?.trim()),
-		definition.expectedTypes,
+		definition.buildCommand(trimmedMatch),
+		definition.expectedTypes(trimmedMatch),
 	);
 	return definition.formatReply(event);
 }
 
 export function registerTelegramRuntimeCommands(
 	registrar: TelegramCommandRegistrar,
-	bridge: TelegramRuntimeCommandBridge,
+	createBridge: TelegramRuntimeCommandBridgeFactory,
 ) {
 	for (const command of TELEGRAM_RUNTIME_COMMAND_NAMES) {
 		registrar.command(command, async (ctx) => {
+			const bridge = createBridge(ctx);
 			const reply = await executeTelegramRuntimeCommand(
 				command,
 				bridge,

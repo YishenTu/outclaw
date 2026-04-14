@@ -96,7 +96,7 @@ describe("HeaderBar", () => {
 			caseId: "missing",
 			startupInfo: {
 				git: null,
-				missingFiles: ["AGENTS.md", "SOUL.md"],
+				missingFiles: ["config.json", "agents/railly/SOUL.md"],
 			},
 		});
 
@@ -104,9 +104,9 @@ describe("HeaderBar", () => {
 			const output = getOutput();
 			expect(output).toContain("OUTCLAW");
 			expect(output).toContain("WANTED: DEAD BUGS OR ALIVE FEATURES");
-			expect(output).toContain("tip: git init ~/.outclaw to track");
-			expect(output).toContain("config changes");
-			expect(output).toContain("missing: AGENTS.md, SOUL.md");
+			expect(output).toContain("tip: git init ~/.outclaw to");
+			expect(output).toContain("track config changes");
+			expect(output).toContain("missing: config.json, agents/railly/SOUL.md");
 			expect(output).toContain("run oc start");
 			expect(output).toContain("to initialize");
 		} finally {

@@ -40,6 +40,16 @@ export class SessionService {
 		);
 	}
 
+	findSession(
+		selector: string,
+		tag: SessionTag = "chat",
+	): SessionRow | undefined {
+		return (
+			this.store?.findByPrefix(this.state.providerId, selector, tag) ??
+			this.matchCurrentSession(selector, tag)
+		);
+	}
+
 	clearActiveSession() {
 		this.state.clearSession();
 		this.store?.setActiveSessionId(this.state.providerId, undefined);
@@ -54,12 +64,22 @@ export class SessionService {
 		return { clearedActiveSession };
 	}
 
-	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
+	completeRun(
+		event: DoneEvent,
+		source?: string,
+		telegramChatId?: number,
+		telegramBotId?: string,
+	) {
 		this.state.completeRun(event, source, telegramChatId);
 		this.persistActiveSession();
 
 		if (source === "telegram" && telegramChatId !== undefined) {
-			this.store?.setLastTelegramChatId(telegramChatId);
+			if (telegramBotId) {
+				this.store?.setLastTelegramDelivery({
+					botId: telegramBotId,
+					chatId: telegramChatId,
+				});
+			}
 		}
 		if (event.usage) {
 			this.store?.setUsage(this.state.providerId, event.sessionId, event.usage);
@@ -72,11 +92,7 @@ export class SessionService {
 	}
 
 	switchToSession(selector: string): SessionRow | undefined {
-		const session = this.store?.findByPrefix(
-			this.state.providerId,
-			selector,
-			"chat",
-		);
+		const session = this.findSession(selector, "chat");
 		if (!session) {
 			return undefined;
 		}
@@ -137,5 +153,30 @@ export class SessionService {
 			session,
 			usage,
 		});
+	}
+
+	private matchCurrentSession(
+		selector: string,
+		tag: SessionTag,
+	): SessionRow | undefined {
+		if (tag !== "chat") {
+			return undefined;
+		}
+		const sessionId = this.state.sessionId;
+		if (!sessionId?.startsWith(selector)) {
+			return undefined;
+		}
+
+		return {
+			agentId: "",
+			providerId: this.state.providerId,
+			sdkSessionId: sessionId,
+			title: this.state.sessionTitle ?? "Untitled",
+			model: this.state.model,
+			source: this.state.sessionSource,
+			tag: "chat",
+			createdAt: 0,
+			lastActive: 0,
+		};
 	}
 }

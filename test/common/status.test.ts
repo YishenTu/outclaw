@@ -13,4 +13,22 @@ describe("status formatting", () => {
 		expect(formatStatus(event)).toContain("session  sdk-blank");
 		expect(formatStatusCompact(event)).toContain("session: sdk-blank");
 	});
+
+	test("renders agent before model when present", () => {
+		const event = {
+			type: "runtime_status" as const,
+			agentName: "railly",
+			model: "opus",
+			effort: "high",
+			sessionTitle: "Chat",
+		};
+
+		expect(formatStatus(event)).toContain("agent    railly");
+		expect(formatStatus(event)).toContain("model    opus");
+		expect(formatStatusCompact(event)).toContain("agent: railly");
+		expect(formatStatusCompact(event)).toContain("model: opus");
+		expect(formatStatusCompact(event).indexOf("agent: railly")).toBeLessThan(
+			formatStatusCompact(event).indexOf("model: opus"),
+		);
+	});
 });

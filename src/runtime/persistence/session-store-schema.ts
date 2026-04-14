@@ -1,14 +1,13 @@
 import type { Database } from "bun:sqlite";
 import {
 	SESSION_TABLE_COLUMNS,
-	SESSION_USAGE_COLUMNS,
 	type TableColumnInfo,
 } from "./session-store-records.ts";
 
-export function migrateSessionStore(db: Database, legacyProviderId: string) {
+export function ensureSessionStoreSchema(db: Database) {
 	db.exec(`CREATE TABLE IF NOT EXISTS state (
-			key TEXT PRIMARY KEY,
-			value TEXT
+				key TEXT PRIMARY KEY,
+				value TEXT
 		)`);
 
 	const hasSessionsTable = Boolean(
@@ -25,16 +24,12 @@ export function migrateSessionStore(db: Database, legacyProviderId: string) {
 	}
 
 	const columns = getTableColumns(db, "sessions");
-	if (!usesProviderScopedPrimaryKey(columns)) {
-		rebuildSessionsTable(db, columns, legacyProviderId);
-		return;
-	}
-
-	ensureSessionColumns(db, columns);
+	assertCurrentSessionsTable(columns);
 }
 
 function createSessionsTable(db: Database) {
 	db.exec(`CREATE TABLE IF NOT EXISTS sessions (
+			agent_id TEXT NOT NULL,
 			provider_id TEXT NOT NULL,
 			sdk_session_id TEXT NOT NULL,
 			title TEXT NOT NULL,
@@ -51,76 +46,37 @@ function createSessionsTable(db: Database) {
 			max_output_tokens INTEGER,
 			context_tokens INTEGER,
 			percentage INTEGER,
-			PRIMARY KEY (provider_id, sdk_session_id)
-		)`);
-}
-
-function ensureSessionColumns(db: Database, columns: TableColumnInfo[]) {
-	if (!columns.some((column) => column.name === "tag")) {
-		db.exec("ALTER TABLE sessions ADD COLUMN tag TEXT NOT NULL DEFAULT 'chat'");
-	}
-
-	for (const columnName of SESSION_USAGE_COLUMNS) {
-		if (!columns.some((column) => column.name === columnName)) {
-			db.exec(`ALTER TABLE sessions ADD COLUMN ${columnName} INTEGER`);
-		}
-	}
-}
-
-function rebuildSessionsTable(
-	db: Database,
-	columns: TableColumnInfo[],
-	legacyProviderId: string,
-) {
-	db.exec("ALTER TABLE sessions RENAME TO sessions_legacy");
-	createSessionsTable(db);
-
-	const legacyColumns = new Set(columns.map((column) => column.name));
-	const selectExpressions = SESSION_TABLE_COLUMNS.map((columnName) => {
-		if (legacyColumns.has(columnName)) {
-			return columnName;
-		}
-
-		switch (columnName) {
-			case "provider_id":
-				return `'${escapeSqlString(legacyProviderId)}' AS provider_id`;
-			case "source":
-				return "'tui' AS source";
-			case "tag":
-				return "'chat' AS tag";
-			case "created_at":
-			case "last_active":
-				return `0 AS ${columnName}`;
-			default:
-				return `NULL AS ${columnName}`;
-		}
-	});
-
-	db.exec(
-		`INSERT INTO sessions (${SESSION_TABLE_COLUMNS.join(", ")})
-		 SELECT ${selectExpressions.join(", ")}
-		 FROM sessions_legacy`,
-	);
-	db.exec("DROP TABLE sessions_legacy");
+			PRIMARY KEY (agent_id, provider_id, sdk_session_id)
+			)`);
 }
 
 function getTableColumns(db: Database, tableName: string): TableColumnInfo[] {
 	return db.query(`PRAGMA table_info(${tableName})`).all() as TableColumnInfo[];
 }
 
-function usesProviderScopedPrimaryKey(columns: TableColumnInfo[]): boolean {
+function usesAgentScopedPrimaryKey(columns: TableColumnInfo[]): boolean {
 	const primaryKey = columns
 		.filter((column) => column.pk > 0)
 		.sort((a, b) => a.pk - b.pk)
 		.map((column) => column.name);
 
 	return (
-		primaryKey.length === 2 &&
-		primaryKey[0] === "provider_id" &&
-		primaryKey[1] === "sdk_session_id"
+		primaryKey.length === 3 &&
+		primaryKey[0] === "agent_id" &&
+		primaryKey[1] === "provider_id" &&
+		primaryKey[2] === "sdk_session_id"
 	);
 }
 
-function escapeSqlString(value: string): string {
-	return value.replaceAll("'", "''");
+function assertCurrentSessionsTable(columns: TableColumnInfo[]) {
+	if (!usesAgentScopedPrimaryKey(columns)) {
+		throw new Error("Unsupported legacy session store schema");
+	}
+
+	const columnNames = new Set(columns.map((column) => column.name));
+	for (const columnName of SESSION_TABLE_COLUMNS) {
+		if (!columnNames.has(columnName)) {
+			throw new Error("Unsupported legacy session store schema");
+		}
+	}
 }

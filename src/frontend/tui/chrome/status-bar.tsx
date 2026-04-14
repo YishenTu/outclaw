@@ -11,6 +11,7 @@ const statusColor: Record<ConnectionStatus, string> = {
 };
 
 export interface RuntimeInfo {
+	agentName?: string;
 	model?: string;
 	effort?: string;
 	contextTokens?: number;
@@ -55,6 +56,7 @@ export function StatusBar({ status, info }: StatusBarProps) {
 		info.heartbeatDeferred ?? false,
 	);
 	const parts: string[] = [];
+	if (info.agentName) parts.push(`@${info.agentName}`);
 	if (info.model) parts.push(info.model);
 	if (info.effort) parts.push(info.effort);
 
@@ -68,8 +70,6 @@ export function StatusBar({ status, info }: StatusBarProps) {
 		contextLabel = `${formatCompact(info.contextTokens)}/${formatCompact(info.contextWindow)} (${pct}%)`;
 		contextColor = contextWarningColor(pct);
 	}
-	if (heartbeat) parts.push(`♥ ${heartbeat}`);
-
 	return (
 		<Box>
 			<Text color={statusColor[status]}>● </Text>
@@ -82,6 +82,7 @@ export function StatusBar({ status, info }: StatusBarProps) {
 					{` · ${contextLabel}`}
 				</Text>
 			) : null}
+			{heartbeat ? <Text dimColor>{` · ♥ ${heartbeat}`}</Text> : null}
 		</Box>
 	);
 }

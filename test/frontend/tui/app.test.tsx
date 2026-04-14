@@ -511,6 +511,35 @@ describe("TuiApp", () => {
 		}
 	});
 
+	test("agent menu actions send agent switch commands through the runtime", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "agent_menu",
+					activeAgentId: "agent-railly",
+					activeAgentName: "railly",
+					agents: [
+						{ agentId: "agent-mimi", name: "mimi" },
+						{ agentId: "agent-railly", name: "railly" },
+					],
+				}),
+			});
+			await flushUpdates();
+
+			await pressEnter(stdin);
+			expect(socket.sent).toContain(
+				'{"type":"command","command":"/agent mimi"}',
+			);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("slash exit closes the runtime session without sending a command", async () => {
 		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 

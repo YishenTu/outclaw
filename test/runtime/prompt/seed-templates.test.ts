@@ -41,6 +41,21 @@ describe("seedTemplates", () => {
 		}
 	});
 
+	test("replaces the seeded agent-name placeholder in text templates", () => {
+		writeFileSync(
+			join(source, "AGENTS.md"),
+			"cwd: ~/.outclaw/agents/<agent-name>/\n",
+		);
+
+		seedTemplates(target, source, {
+			agentName: "railly",
+		});
+
+		expect(readFileSync(join(target, "AGENTS.md"), "utf-8")).toBe(
+			"cwd: ~/.outclaw/agents/railly/\n",
+		);
+	});
+
 	test("does not overwrite existing files", () => {
 		writeFileSync(join(target, "AGENTS.md"), "custom agents");
 

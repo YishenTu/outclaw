@@ -1,4 +1,5 @@
 import type { Facade, HeartbeatResult } from "../../common/protocol.ts";
+import type { WsClient } from "../transport/client-hub.ts";
 import { PromptDispatcher } from "./prompt-dispatcher.ts";
 import { PromptRunner } from "./prompt-runner.ts";
 import { RuntimeClientGateway } from "./runtime-client-gateway.ts";
@@ -11,6 +12,7 @@ import type { RuntimeState } from "./runtime-state.ts";
 import type { SessionService } from "./session-service.ts";
 
 interface CreateRuntimeControllerOptions {
+	canSendToClient?: (ws: WsClient) => boolean;
 	cwd?: string;
 	deliverCronResult?: (params: {
 		jobName: string;
@@ -36,6 +38,7 @@ export function createRuntimeController(
 	// controller has been fully assembled, when heartbeat-enriched status is ready.
 	let getStatusEvent = () => options.state.createStatusEvent();
 	const clients = new RuntimeClientGateway({
+		canSendToClient: options.canSendToClient,
 		cwd: options.cwd,
 		facade: options.facade,
 		getStatusEvent: () => getStatusEvent(),

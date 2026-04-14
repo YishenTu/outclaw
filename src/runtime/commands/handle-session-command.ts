@@ -25,15 +25,20 @@ export async function handleSessionCommand(
 	}
 
 	if (options.arg === "delete" || options.arg.startsWith("delete ")) {
-		const deleteId = options.arg.split(" ").slice(1).join(" ").trim();
-		if (!deleteId) {
+		const selector = options.arg.split(" ").slice(1).join(" ").trim();
+		if (!selector) {
 			options.sendError("Usage: /session delete <id>");
 			return;
 		}
-		const deletion = options.sessions.deleteSession(deleteId);
+		const session = options.sessions.findSession(selector, "chat");
+		if (!session) {
+			options.sendError(`No session matching: ${selector}`);
+			return;
+		}
+		const deletion = options.sessions.deleteSession(session.sdkSessionId);
 		options.hub.broadcast({
 			type: "session_deleted",
-			sdkSessionId: deleteId,
+			sdkSessionId: session.sdkSessionId,
 		});
 		if (deletion.clearedActiveSession) {
 			options.hub.broadcast({ type: "session_cleared" });

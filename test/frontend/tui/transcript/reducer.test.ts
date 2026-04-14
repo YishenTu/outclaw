@@ -63,6 +63,7 @@ describe("mapEventToActions", () => {
 	test("runtime_status with requested → push info with vertically aligned status", () => {
 		const actions = mapEventToActions({
 			type: "runtime_status",
+			agentName: "railly",
 			model: "opus",
 			effort: "high",
 			sessionId: "session-123",
@@ -86,6 +87,7 @@ describe("mapEventToActions", () => {
 				text: [
 					"Status",
 					"session  My chat",
+					"agent    railly",
 					"model    opus",
 					"effort   high",
 					"context  1k/200k (1%)",

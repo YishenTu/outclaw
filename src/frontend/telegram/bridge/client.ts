@@ -7,6 +7,7 @@ import {
 import {
 	closeRuntimeSocket,
 	openRuntimeSocket,
+	type RuntimeSocketConnectOptions,
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
@@ -17,11 +18,13 @@ export type StreamChunk =
 	| { type: "compacting_started" }
 	| { type: "compacting_finished" };
 
+export type TelegramBridgeRouting = RuntimeSocketConnectOptions;
+
 export function createTelegramBridge(url: string) {
 	const sockets = new Set<WebSocket>();
 
-	function createSocket() {
-		const socket = openRuntimeSocket(url, "telegram");
+	function createSocket(routing?: TelegramBridgeRouting) {
+		const socket = openRuntimeSocket(url, "telegram", undefined, routing);
 		const { ws } = socket;
 		sockets.add(ws);
 		ws.addEventListener("close", () => {
@@ -42,8 +45,9 @@ export function createTelegramBridge(url: string) {
 			images?: ImageRef[],
 			telegramChatId?: number,
 			replyContext?: ReplyContext,
+			routing?: TelegramBridgeRouting,
 		): Promise<string> {
-			const { ws, ready } = createSocket();
+			const { ws, ready } = createSocket(routing);
 			await ready;
 
 			return new Promise<string>((resolve, reject) => {
@@ -112,8 +116,9 @@ export function createTelegramBridge(url: string) {
 		async sendCommandAndWait(
 			command: string,
 			expectedTypes?: ReadonlySet<string>,
+			routing?: TelegramBridgeRouting,
 		): Promise<{ type: string; [key: string]: unknown }> {
-			const { ws, ready } = createSocket();
+			const { ws, ready } = createSocket(routing);
 			await ready;
 			return new Promise((resolve, reject) => {
 				let settled = false;
@@ -178,8 +183,9 @@ export function createTelegramBridge(url: string) {
 			onImage?: (event: ImageEvent) => void | Promise<void>,
 			telegramChatId?: number,
 			replyContext?: ReplyContext,
+			routing?: TelegramBridgeRouting,
 		): AsyncIterable<StreamChunk> {
-			const { ws, ready } = createSocket();
+			const { ws, ready } = createSocket(routing);
 			await ready;
 
 			let resolve: ((value: IteratorResult<StreamChunk>) => void) | null = null;

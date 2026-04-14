@@ -39,7 +39,7 @@ describe("Telegram session handler registration", () => {
 			})),
 		};
 
-		registerTelegramSessionHandlers(registrar, bridge);
+		registerTelegramSessionHandlers(registrar, () => bridge);
 
 		const reply = mock(
 			async (
@@ -95,7 +95,7 @@ describe("Telegram session handler registration", () => {
 			})),
 		};
 
-		registerTelegramSessionHandlers(registrar, bridge);
+		registerTelegramSessionHandlers(registrar, () => bridge);
 
 		const reply = mock(async (_text: string) => undefined);
 		await commandHandler?.({ reply });
@@ -132,7 +132,7 @@ describe("Telegram session handler registration", () => {
 			})),
 		};
 
-		registerTelegramSessionHandlers(registrar, bridge);
+		registerTelegramSessionHandlers(registrar, () => bridge);
 
 		const answerCallbackQuery = mock(async (_text: string) => undefined);
 		const editMessageText = mock(async (_text: string) => undefined);

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { migrateSessionStore } from "../../../src/runtime/persistence/session-store-schema.ts";
+import { ensureSessionStoreSchema } from "../../../src/runtime/persistence/session-store-schema.ts";
 
 function getColumnNames(db: Database, tableName: string): string[] {
 	return (
@@ -31,11 +31,12 @@ describe("session-store-schema", () => {
 		const db = new Database(":memory:");
 		databases.push(db);
 
-		migrateSessionStore(db, "legacy");
+		ensureSessionStoreSchema(db);
 
 		expect(hasTable(db, "state")).toBe(true);
 		expect(hasTable(db, "sessions")).toBe(true);
 		expect(getColumnNames(db, "sessions")).toEqual([
+			"agent_id",
 			"provider_id",
 			"sdk_session_id",
 			"title",
@@ -55,7 +56,7 @@ describe("session-store-schema", () => {
 		]);
 	});
 
-	test("adds missing tag and usage columns to a provider-scoped sessions table", () => {
+	test("rejects provider-scoped pre-migration session tables", () => {
 		const db = new Database(":memory:");
 		databases.push(db);
 		db.exec(`CREATE TABLE sessions (
@@ -68,57 +69,38 @@ describe("session-store-schema", () => {
 			last_active INTEGER NOT NULL,
 			PRIMARY KEY (provider_id, sdk_session_id)
 		)`);
+		db.exec(`INSERT INTO sessions
+			(provider_id, sdk_session_id, title, model, source, created_at, last_active)
+			VALUES ('claude', 'sdk-123', 'Scoped', 'opus', 'tui', 1, 2)`);
 
-		migrateSessionStore(db, "legacy");
-
-		expect(getColumnNames(db, "sessions")).toEqual([
-			"provider_id",
-			"sdk_session_id",
-			"title",
-			"model",
-			"source",
-			"created_at",
-			"last_active",
-			"tag",
-			"input_tokens",
-			"output_tokens",
-			"cache_creation_tokens",
-			"cache_read_tokens",
-			"context_window",
-			"max_output_tokens",
-			"context_tokens",
-			"percentage",
-		]);
+		expect(() => ensureSessionStoreSchema(db)).toThrow(
+			"Unsupported legacy session store schema",
+		);
 	});
 
-	test("rebuilds a legacy sessions table with provider ownership defaults", () => {
+	test("accepts an already-current session table", () => {
 		const db = new Database(":memory:");
 		databases.push(db);
 		db.exec(`CREATE TABLE sessions (
-			sdk_session_id TEXT PRIMARY KEY,
+			agent_id TEXT NOT NULL,
+			provider_id TEXT NOT NULL,
+			sdk_session_id TEXT NOT NULL,
 			title TEXT NOT NULL,
 			model TEXT NOT NULL,
 			source TEXT NOT NULL DEFAULT 'tui',
+			tag TEXT NOT NULL DEFAULT 'chat',
 			created_at INTEGER NOT NULL,
-			last_active INTEGER NOT NULL
+			last_active INTEGER NOT NULL,
+			input_tokens INTEGER,
+			output_tokens INTEGER,
+			cache_creation_tokens INTEGER,
+			cache_read_tokens INTEGER,
+			context_window INTEGER,
+			max_output_tokens INTEGER,
+			context_tokens INTEGER,
+			percentage INTEGER,
+			PRIMARY KEY (agent_id, provider_id, sdk_session_id)
 		)`);
-		db.exec(`INSERT INTO sessions
-			(sdk_session_id, title, model, source, created_at, last_active)
-			VALUES ('sdk-legacy', 'Legacy', 'opus', 'tui', 1, 2)`);
-
-		migrateSessionStore(db, "legacy-provider");
-
-		const migrated = db
-			.query(
-				`SELECT provider_id, sdk_session_id, tag
-				 FROM sessions
-				 WHERE provider_id = 'legacy-provider' AND sdk_session_id = 'sdk-legacy'`,
-			)
-			.get() as { provider_id: string; sdk_session_id: string; tag: string };
-		expect(migrated).toEqual({
-			provider_id: "legacy-provider",
-			sdk_session_id: "sdk-legacy",
-			tag: "chat",
-		});
+		expect(() => ensureSessionStoreSchema(db)).not.toThrow();
 	});
 });

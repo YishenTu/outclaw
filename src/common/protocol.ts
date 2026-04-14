@@ -180,8 +180,25 @@ export interface SessionSwitchedEvent {
 	title: string;
 }
 
+export interface AgentMenuEvent {
+	type: "agent_menu";
+	activeAgentId: string;
+	activeAgentName: string;
+	agents: Array<{
+		agentId: string;
+		name: string;
+	}>;
+}
+
+export interface AgentSwitchedEvent {
+	type: "agent_switched";
+	agentId: string;
+	name: string;
+}
+
 export interface RuntimeStatusEvent {
 	type: "runtime_status";
+	agentName?: string;
 	model: string;
 	effort: string;
 	sessionId?: string;
@@ -249,6 +266,8 @@ export type ServerEvent =
 	| SessionRenamedEvent
 	| SessionDeletedEvent
 	| SessionSwitchedEvent
+	| AgentMenuEvent
+	| AgentSwitchedEvent
 	| RuntimeStatusEvent
 	| CompactingStartedEvent
 	| CompactingFinishedEvent

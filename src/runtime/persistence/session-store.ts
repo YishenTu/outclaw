@@ -7,36 +7,51 @@ import {
 	type SessionRow,
 	type SessionTag,
 } from "./session-store-records.ts";
-import { migrateSessionStore } from "./session-store-schema.ts";
+import { ensureSessionStoreSchema } from "./session-store-schema.ts";
 import {
 	closeSqliteDatabase,
 	openSqliteDatabase,
 } from "./sqlite-file-lifecycle.ts";
+import {
+	activeSessionKey,
+	LAST_TUI_AGENT_KEY,
+	lastTelegramDeliveryKey,
+} from "./state-keys.ts";
 
 interface SessionStoreOptions {
+	agentId?: string;
 	journalMode?: "WAL" | "DELETE";
-	legacyProviderId?: string;
+}
+
+interface TelegramDelivery {
+	botId: string;
+	chatId: number;
 }
 
 export type { SessionRow, SessionTag } from "./session-store-records.ts";
 
-const LEGACY_ACTIVE_SESSION_KEY = "active_session_id";
+const DEFAULT_AGENT_ID = "agent-default";
 
 export class SessionStore {
 	private db: Database;
 	private dbFileKey: string | undefined;
+	private readonly agentId: string;
 	private readonly dbPath: string;
 	private readonly journalMode: "WAL" | "DELETE";
-	private legacyProviderId: string;
 
 	constructor(path: string, options: SessionStoreOptions = {}) {
 		this.dbPath = path;
 		this.journalMode = options.journalMode ?? "WAL";
+		this.agentId = options.agentId ?? DEFAULT_AGENT_ID;
 		const sqlite = openSqliteDatabase(path, this.journalMode);
 		this.db = sqlite.db;
 		this.dbFileKey = sqlite.fileKey;
-		this.legacyProviderId = options.legacyProviderId ?? "legacy";
-		migrateSessionStore(this.db, this.legacyProviderId);
+		try {
+			ensureSessionStoreSchema(this.db);
+		} catch (error) {
+			closeSqliteDatabase(this.db, this.dbFileKey);
+			throw error;
+		}
 	}
 
 	upsert(params: {
@@ -50,12 +65,37 @@ export class SessionStore {
 		const now = Date.now();
 		this.db
 			.query(
-				`INSERT INTO sessions (provider_id, sdk_session_id, title, model, source, tag, created_at, last_active)
-				 VALUES ($providerId, $id, $title, $model, $source, $tag, $now, $now)
-				 ON CONFLICT(provider_id, sdk_session_id) DO UPDATE SET
-					title = $title, model = $model, source = $source, tag = $tag, last_active = $now`,
+				`INSERT INTO sessions (
+					agent_id,
+					provider_id,
+					sdk_session_id,
+					title,
+					model,
+					source,
+					tag,
+					created_at,
+					last_active
+				)
+				VALUES (
+					$agentId,
+					$providerId,
+					$id,
+					$title,
+					$model,
+					$source,
+					$tag,
+					$now,
+					$now
+				)
+				ON CONFLICT(agent_id, provider_id, sdk_session_id) DO UPDATE SET
+					title = $title,
+					model = $model,
+					source = $source,
+					tag = $tag,
+					last_active = $now`,
 			)
 			.run({
+				$agentId: this.agentId,
 				$providerId: params.providerId,
 				$id: params.sdkSessionId,
 				$title: params.title,
@@ -70,11 +110,23 @@ export class SessionStore {
 		return mapSessionRow(
 			this.db
 				.query(
-					`SELECT provider_id, sdk_session_id, title, model, source, tag, created_at, last_active
-				 FROM sessions
-				 WHERE provider_id = $providerId AND sdk_session_id = $id`,
+					`SELECT
+						agent_id,
+						provider_id,
+						sdk_session_id,
+						title,
+						model,
+						source,
+						tag,
+						created_at,
+						last_active
+					FROM sessions
+					WHERE agent_id = $agentId
+					  AND provider_id = $providerId
+					  AND sdk_session_id = $id`,
 				)
 				.get({
+					$agentId: this.agentId,
 					$providerId: providerId,
 					$id: sdkSessionId,
 				}) as Parameters<typeof mapSessionRow>[0],
@@ -92,10 +144,12 @@ export class SessionStore {
 		}
 
 		const conditions = [
+			"agent_id = $agentId",
 			"provider_id = $providerId",
 			"sdk_session_id LIKE $prefix",
 		];
 		const params: Record<string, string> = {
+			$agentId: this.agentId,
 			$providerId: providerId,
 			$prefix: `${prefix}%`,
 		};
@@ -107,19 +161,31 @@ export class SessionStore {
 		return mapSessionRow(
 			this.db
 				.query(
-					`SELECT provider_id, sdk_session_id, title, model, source, tag, created_at, last_active
-				 FROM sessions
-				 WHERE ${conditions.join(" AND ")}
-				 ORDER BY last_active DESC
-				 LIMIT 1`,
+					`SELECT
+						agent_id,
+						provider_id,
+						sdk_session_id,
+						title,
+						model,
+						source,
+						tag,
+						created_at,
+						last_active
+					FROM sessions
+					WHERE ${conditions.join(" AND ")}
+					ORDER BY last_active DESC
+					LIMIT 1`,
 				)
 				.get(params) as Parameters<typeof mapSessionRow>[0],
 		);
 	}
 
 	list(limit = 20, tag?: SessionTag, providerId?: string): SessionRow[] {
-		const conditions: string[] = [];
-		const params: Record<string, string | number> = { $limit: limit };
+		const conditions: string[] = ["agent_id = $agentId"];
+		const params: Record<string, string | number> = {
+			$agentId: this.agentId,
+			$limit: limit,
+		};
 
 		if (providerId) {
 			conditions.push("provider_id = $providerId");
@@ -130,16 +196,24 @@ export class SessionStore {
 			params.$tag = tag;
 		}
 
-		const whereClause =
-			conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
 		return this.withRecoveredConnection(() =>
 			mapSessionRows(
 				this.db
 					.query(
-						`SELECT provider_id, sdk_session_id, title, model, source, tag, created_at, last_active
-						 FROM sessions${whereClause}
-						 ORDER BY last_active DESC
-						 LIMIT $limit`,
+						`SELECT
+							agent_id,
+							provider_id,
+							sdk_session_id,
+							title,
+							model,
+							source,
+							tag,
+							created_at,
+							last_active
+						FROM sessions
+						WHERE ${conditions.join(" AND ")}
+						ORDER BY last_active DESC
+						LIMIT $limit`,
 					)
 					.all(params) as Parameters<typeof mapSessionRows>[0],
 			),
@@ -149,12 +223,38 @@ export class SessionStore {
 	delete(providerId: string, sdkSessionId: string) {
 		this.db
 			.query(
-				"DELETE FROM sessions WHERE provider_id = $providerId AND sdk_session_id = $id",
+				`DELETE FROM sessions
+				 WHERE agent_id = $agentId
+				   AND provider_id = $providerId
+				   AND sdk_session_id = $id`,
 			)
 			.run({
+				$agentId: this.agentId,
 				$providerId: providerId,
 				$id: sdkSessionId,
 			});
+	}
+
+	deleteAgentData(agentId: string) {
+		this.db.transaction(() => {
+			this.db
+				.query("DELETE FROM sessions WHERE agent_id = $agentId")
+				.run({ $agentId: agentId });
+			this.db
+				.query(
+					`DELETE FROM state
+					 WHERE key LIKE $activeSessionPrefix
+					    OR key = $lastTelegramDeliveryKey`,
+				)
+				.run({
+					$activeSessionPrefix: `${activeSessionKey(agentId, "")}%`,
+					$lastTelegramDeliveryKey: lastTelegramDeliveryKey(agentId),
+				});
+
+			if (this.getLastTuiAgentId() === agentId) {
+				this.deleteStateValue(LAST_TUI_AGENT_KEY);
+			}
+		})();
 	}
 
 	rename(providerId: string, sdkSessionId: string, title: string) {
@@ -162,9 +262,12 @@ export class SessionStore {
 			.query(
 				`UPDATE sessions
 				 SET title = $title
-				 WHERE provider_id = $providerId AND sdk_session_id = $id`,
+				 WHERE agent_id = $agentId
+				   AND provider_id = $providerId
+				   AND sdk_session_id = $id`,
 			)
 			.run({
+				$agentId: this.agentId,
 				$providerId: providerId,
 				$id: sdkSessionId,
 				$title: title,
@@ -172,70 +275,71 @@ export class SessionStore {
 	}
 
 	getActiveSessionId(providerId: string): string | undefined {
-		const providerScopedValue = this.getStateValue(
-			activeSessionKey(providerId),
-		);
-		if (providerScopedValue !== undefined) {
-			return providerScopedValue;
+		return this.getStateValue(activeSessionKey(this.agentId, providerId));
+	}
+
+	setActiveSessionId(providerId: string, id: string | undefined) {
+		const key = activeSessionKey(this.agentId, providerId);
+		if (id) {
+			this.setStateValue(key, id);
+			return;
 		}
 
-		if (providerId === this.legacyProviderId) {
-			return this.getStateValue(LEGACY_ACTIVE_SESSION_KEY);
+		this.deleteStateValue(key);
+	}
+
+	getLastTelegramChatId(): number | undefined {
+		return this.getLastTelegramDelivery()?.chatId;
+	}
+
+	getLastTelegramDelivery(): TelegramDelivery | undefined {
+		const value = this.getStateValue(lastTelegramDeliveryKey(this.agentId));
+		if (!value) {
+			return undefined;
+		}
+
+		try {
+			const parsed = JSON.parse(value) as Partial<TelegramDelivery>;
+			if (
+				typeof parsed.botId === "string" &&
+				typeof parsed.chatId === "number" &&
+				Number.isFinite(parsed.chatId)
+			) {
+				return {
+					botId: parsed.botId,
+					chatId: parsed.chatId,
+				};
+			}
+		} catch {
+			return undefined;
 		}
 
 		return undefined;
 	}
 
-	setActiveSessionId(providerId: string, id: string | undefined) {
-		const key = activeSessionKey(providerId);
-		if (id) {
-			this.setStateValue(key, id);
-			if (providerId === this.legacyProviderId) {
-				this.setStateValue(LEGACY_ACTIVE_SESSION_KEY, id);
-			}
+	setLastTelegramDelivery(delivery: TelegramDelivery | undefined) {
+		if (!delivery) {
+			this.deleteStateValue(lastTelegramDeliveryKey(this.agentId));
 			return;
 		}
 
-		this.deleteStateValue(key);
-		if (providerId === this.legacyProviderId) {
-			this.deleteStateValue(LEGACY_ACTIVE_SESSION_KEY);
-		}
+		this.setStateValue(
+			lastTelegramDeliveryKey(this.agentId),
+			JSON.stringify(delivery),
+		);
 	}
 
-	getLastTelegramChatId(): number | undefined {
-		const value = this.getStateValue("last_telegram_chat_id");
-		if (!value) {
-			return undefined;
-		}
-
-		const chatId = Number(value);
-		return Number.isFinite(chatId) ? chatId : undefined;
+	getLastTuiAgentId(): string | undefined {
+		return this.getStateValue(LAST_TUI_AGENT_KEY);
 	}
 
-	setLastTelegramChatId(chatId: number | undefined) {
-		if (chatId === undefined) {
-			this.deleteStateValue("last_telegram_chat_id");
+	setLastTuiAgentId(agentId: string | undefined) {
+		if (!agentId) {
+			this.deleteStateValue(LAST_TUI_AGENT_KEY);
 			return;
 		}
 
-		this.setStateValue("last_telegram_chat_id", String(chatId));
-	}
-
-	private deleteStateValue(key: string) {
-		this.db.query("DELETE FROM state WHERE key = $key").run({ $key: key });
-	}
-
-	private getStateValue(key: string): string | undefined {
-		const row = this.db
-			.query("SELECT value FROM state WHERE key = $key")
-			.get({ $key: key }) as { value: string | null } | null;
-		return row?.value ?? undefined;
-	}
-
-	private setStateValue(key: string, value: string) {
-		this.db
-			.query("INSERT OR REPLACE INTO state (key, value) VALUES ($key, $value)")
-			.run({ $key: key, $value: value });
+		this.setStateValue(LAST_TUI_AGENT_KEY, agentId);
 	}
 
 	setUsage(providerId: string, sdkSessionId: string, usage: UsageInfo) {
@@ -250,9 +354,12 @@ export class SessionStore {
 					max_output_tokens = $maxOutputTokens,
 					context_tokens = $contextTokens,
 					percentage = $percentage
-				WHERE provider_id = $providerId AND sdk_session_id = $id`,
+				WHERE agent_id = $agentId
+				  AND provider_id = $providerId
+				  AND sdk_session_id = $id`,
 			)
 			.run({
+				$agentId: this.agentId,
 				$providerId: providerId,
 				$id: sdkSessionId,
 				$inputTokens: usage.inputTokens,
@@ -270,12 +377,22 @@ export class SessionStore {
 		return mapUsageRow(
 			this.db
 				.query(
-					`SELECT input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
-						context_window, max_output_tokens, context_tokens, percentage
-				FROM sessions
-				WHERE provider_id = $providerId AND sdk_session_id = $id`,
+					`SELECT
+						input_tokens,
+						output_tokens,
+						cache_creation_tokens,
+						cache_read_tokens,
+						context_window,
+						max_output_tokens,
+						context_tokens,
+						percentage
+					FROM sessions
+					WHERE agent_id = $agentId
+					  AND provider_id = $providerId
+					  AND sdk_session_id = $id`,
 				)
 				.get({
+					$agentId: this.agentId,
 					$providerId: providerId,
 					$id: sdkSessionId,
 				}) as Parameters<typeof mapUsageRow>[0],
@@ -284,6 +401,23 @@ export class SessionStore {
 
 	close() {
 		closeSqliteDatabase(this.db, this.dbFileKey);
+	}
+
+	private deleteStateValue(key: string) {
+		this.db.query("DELETE FROM state WHERE key = $key").run({ $key: key });
+	}
+
+	private getStateValue(key: string): string | undefined {
+		const row = this.db
+			.query("SELECT value FROM state WHERE key = $key")
+			.get({ $key: key }) as { value: string | null } | null;
+		return row?.value ?? undefined;
+	}
+
+	private setStateValue(key: string, value: string) {
+		this.db
+			.query("INSERT OR REPLACE INTO state (key, value) VALUES ($key, $value)")
+			.run({ $key: key, $value: value });
 	}
 
 	private withRecoveredConnection<T>(operation: () => T): T {
@@ -309,12 +443,8 @@ export class SessionStore {
 		const sqlite = openSqliteDatabase(this.dbPath, this.journalMode);
 		this.db = sqlite.db;
 		this.dbFileKey = sqlite.fileKey;
-		migrateSessionStore(this.db, this.legacyProviderId);
+		ensureSessionStoreSchema(this.db);
 	}
-}
-
-function activeSessionKey(providerId: string): string {
-	return `active_session_id:${providerId}`;
 }
 
 function isRetryableSqliteIoError(error: unknown): boolean {

@@ -87,6 +87,17 @@ describe("runtime client", () => {
 		expect(buildRuntimeSocketUrl("ws://localhost:4000", "telegram")).toBe(
 			"ws://localhost:4000/?client=telegram",
 		);
+		expect(buildRuntimeSocketUrl("ws://localhost:4000", "tui", "railly")).toBe(
+			"ws://localhost:4000/?client=tui&agent=railly",
+		);
+		expect(
+			buildRuntimeSocketUrl("ws://localhost:4000", "telegram", undefined, {
+				telegramBotId: "bot-a",
+				telegramUserId: 101,
+			}),
+		).toBe(
+			"ws://localhost:4000/?client=telegram&telegramBotId=bot-a&telegramUserId=101",
+		);
 	});
 
 	test("serializes prompt images into the websocket message", () => {
@@ -145,15 +156,36 @@ describe("runtime client", () => {
 	test("openRuntimeSocket resolves on open and close() closes connecting sockets", async () => {
 		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 
-		const socket = openRuntimeSocket("ws://localhost:4000");
+		const socket = openRuntimeSocket("ws://localhost:4000", "tui", "railly");
 		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
-		expect(ws?.url).toBe("ws://localhost:4000/?client=tui");
+		expect(ws?.url).toBe("ws://localhost:4000/?client=tui&agent=railly");
 
 		ws.dispatch("open");
 		await expect(socket.ready).resolves.toBeUndefined();
 
 		socket.close();
 		expect(ws.closeCount).toBe(1);
+	});
+
+	test("openRuntimeSocket includes Telegram routing query parameters", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const socket = openRuntimeSocket(
+			"ws://localhost:4000",
+			"telegram",
+			undefined,
+			{
+				telegramBotId: "bot-a",
+				telegramUserId: 101,
+			},
+		);
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		expect(ws?.url).toBe(
+			"ws://localhost:4000/?client=telegram&telegramBotId=bot-a&telegramUserId=101",
+		);
+
+		ws.dispatch("open");
+		await expect(socket.ready).resolves.toBeUndefined();
 	});
 
 	test("openRuntimeSocket rejects on websocket error before opening", async () => {

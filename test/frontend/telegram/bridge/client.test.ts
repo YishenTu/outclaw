@@ -281,6 +281,32 @@ describe("Telegram bridge", () => {
 		bridge.close();
 	});
 
+	test("sendCommandAndWait() binds telegram routing query parameters", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		const bridge = createTelegramBridge("ws://fake");
+
+		const response = bridge.sendCommandAndWait("/model", undefined, {
+			telegramBotId: "bot-a",
+			telegramUserId: 101,
+		});
+		const ws = FakeWebSocket.instances[0] as FakeWebSocket;
+		expect(ws.url).toBe(
+			"ws://fake/?client=telegram&telegramBotId=bot-a&telegramUserId=101",
+		);
+
+		ws.dispatch("open");
+		await flushMicrotasks();
+		ws.dispatch("message", {
+			data: JSON.stringify({ type: "model_changed", model: "haiku" }),
+		});
+		await expect(response).resolves.toEqual({
+			type: "model_changed",
+			model: "haiku",
+		});
+
+		bridge.close();
+	});
+
 	test("send() rejects when the runtime socket closes unexpectedly", async () => {
 		const closingServer = createClosingServer();
 		const bridge = createTelegramBridge(`ws://localhost:${closingServer.port}`);

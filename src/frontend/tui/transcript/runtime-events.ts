@@ -63,6 +63,7 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 			];
 		case "session_cleared":
 		case "session_switched":
+		case "agent_switched":
 			return [{ type: "clear" }];
 		case "history_replay": {
 			let id = 1;
@@ -117,6 +118,7 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 		case "session_deleted":
 		case "session_info":
 		case "session_list":
+		case "agent_menu":
 		case "skills_update":
 			return [{ type: "noop" }];
 	}

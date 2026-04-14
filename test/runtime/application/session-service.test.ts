@@ -60,7 +60,10 @@ describe("SessionService", () => {
 			source: "telegram",
 		});
 		store.setActiveSessionId(PROVIDER_ID, "sdk-456");
-		store.setLastTelegramChatId(123);
+		store.setLastTelegramDelivery({
+			botId: "bot-a",
+			chatId: 123,
+		});
 		store.setUsage(PROVIDER_ID, "sdk-456", requireUsage(makeDoneEvent()));
 
 		const state = new RuntimeState(PROVIDER_ID);
@@ -124,12 +127,16 @@ describe("SessionService", () => {
 		const sessions = new SessionService(state, store);
 
 		state.preparePrompt("from telegram");
-		sessions.completeRun(makeDoneEvent("sdk-tg"), "telegram", 123);
+		sessions.completeRun(makeDoneEvent("sdk-tg"), "telegram", 123, "bot-a");
 
 		expect(store.get(PROVIDER_ID, "sdk-tg")).toMatchObject({
 			source: "telegram",
 		});
 		expect(store.getLastTelegramChatId()).toBe(123);
+		expect(store.getLastTelegramDelivery()).toEqual({
+			botId: "bot-a",
+			chatId: 123,
+		});
 		expect(state.createHeartbeatDeliveryTarget()).toEqual({
 			clientType: "telegram",
 			telegramChatId: 123,

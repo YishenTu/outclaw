@@ -11,6 +11,11 @@ export interface RuntimeSocket {
 	ws: WebSocket;
 }
 
+export interface RuntimeSocketConnectOptions {
+	telegramBotId?: string;
+	telegramUserId?: number;
+}
+
 export function isRuntimeSocketOpen(
 	ws: WebSocket | null | undefined,
 ): ws is WebSocket {
@@ -29,17 +34,35 @@ export function closeRuntimeSocket(ws: WebSocket) {
 export function buildRuntimeSocketUrl(
 	url: string,
 	clientType: RuntimeClientType,
+	agentName?: string,
+	options?: RuntimeSocketConnectOptions,
 ): string {
 	const runtimeUrl = new URL(url);
 	runtimeUrl.searchParams.set("client", clientType);
+	if (agentName) {
+		runtimeUrl.searchParams.set("agent", agentName);
+	}
+	if (options?.telegramBotId) {
+		runtimeUrl.searchParams.set("telegramBotId", options.telegramBotId);
+	}
+	if (options?.telegramUserId !== undefined) {
+		runtimeUrl.searchParams.set(
+			"telegramUserId",
+			String(options.telegramUserId),
+		);
+	}
 	return runtimeUrl.toString();
 }
 
 export function openRuntimeSocket(
 	url: string,
 	clientType: RuntimeClientType = "tui",
+	agentName?: string,
+	options?: RuntimeSocketConnectOptions,
 ): RuntimeSocket {
-	const ws = new WebSocket(buildRuntimeSocketUrl(url, clientType));
+	const ws = new WebSocket(
+		buildRuntimeSocketUrl(url, clientType, agentName, options),
+	);
 	const ready = new Promise<void>((resolve, reject) => {
 		const handleOpen = () => {
 			cleanup();

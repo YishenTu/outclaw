@@ -30,7 +30,7 @@ describe("Telegram model shortcuts", () => {
 			),
 		};
 
-		registerTelegramModelShortcuts(registrar, bridge);
+		registerTelegramModelShortcuts(registrar, () => bridge);
 
 		expect([...handlers.keys()]).toEqual(MODEL_ALIAS_LIST);
 

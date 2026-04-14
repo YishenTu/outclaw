@@ -6,6 +6,9 @@ import {
 
 export interface RuntimeClientData {
 	clientType: RuntimeClientType;
+	requestedAgentName?: string;
+	telegramBotId?: string;
+	telegramUserId?: number;
 }
 
 export type WsClient = import("bun").ServerWebSocket<RuntimeClientData>;

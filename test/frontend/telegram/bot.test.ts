@@ -10,6 +10,7 @@ function createEmptyTextStream() {
 
 let bridge = {
 	close: mock(() => {}),
+	sendCommandAndWait: mock(async () => ({ type: "done" })),
 	stream: mock(
 		(
 			_prompt: string,
@@ -55,6 +56,10 @@ class FakeInputFile {
 class FakeBot {
 	static lastInstance: FakeBot | undefined;
 
+	readonly commandHandlers = new Map<
+		string,
+		(ctx: Record<string, unknown>) => Promise<void>
+	>();
 	readonly handlers = new Map<
 		string,
 		(ctx: Record<string, unknown>) => Promise<void>
@@ -99,9 +104,10 @@ class FakeBot {
 	}
 
 	command(
-		_command: string,
+		command: string,
 		_handler: (ctx: Record<string, unknown>) => Promise<void>,
 	) {
+		this.commandHandlers.set(command, _handler);
 		return this;
 	}
 
@@ -121,6 +127,7 @@ class FakeBot {
 function resetFakes() {
 	bridge = {
 		close: mock(() => {}),
+		sendCommandAndWait: mock(async () => ({ type: "done" })),
 		stream: mock(
 			(
 				_prompt: string,
@@ -208,6 +215,7 @@ describe("startTelegramBot", () => {
 		const rememberMessageFile = mock(async () => undefined);
 		const service = startTelegramBot(
 			{
+				botId: "bot-a",
 				token: "telegram-token",
 				runtimeUrl: "ws://runtime",
 				allowedUsers: [1],
@@ -222,15 +230,27 @@ describe("startTelegramBot", () => {
 		expect(bot.api.config.use).toHaveBeenCalledWith(autoRetryMiddleware);
 		expect(createTelegramBridge).toHaveBeenCalledWith("ws://runtime");
 		expect(bot.api.setMyCommands).toHaveBeenCalledWith(TELEGRAM_COMMANDS);
-		expect(registerTelegramSessionHandlers).toHaveBeenCalledWith(bot, bridge);
-		expect(registerTelegramRuntimeCommands).toHaveBeenCalledWith(bot, bridge);
-		expect(registerTelegramPromptCommands).toHaveBeenCalledWith(bot, bridge);
-		expect(registerTelegramModelShortcuts).toHaveBeenCalledWith(bot, bridge);
+		expect(registerTelegramSessionHandlers).toHaveBeenCalledWith(
+			bot,
+			expect.any(Function),
+		);
+		expect(registerTelegramRuntimeCommands).toHaveBeenCalledWith(
+			bot,
+			expect.any(Function),
+		);
+		expect(registerTelegramPromptCommands).toHaveBeenCalledWith(
+			bot,
+			expect.any(Function),
+		);
+		expect(registerTelegramModelShortcuts).toHaveBeenCalledWith(
+			bot,
+			expect.any(Function),
+		);
 		expect(bot.start).toHaveBeenCalledTimes(1);
 		expect(log).toHaveBeenCalledWith("Telegram bot started");
 
 		const authMiddleware = bot.middleware[0] as (
-			ctx: { from?: { id: number } },
+			ctx: { from?: { id: number }; message?: { text?: string } },
 			next: () => Promise<unknown>,
 		) => Promise<unknown>;
 		const allowedNext = mock(async () => "allowed");
@@ -244,6 +264,22 @@ describe("startTelegramBot", () => {
 			authMiddleware({ from: { id: 999 } }, blockedNext),
 		).resolves.toBeUndefined();
 		expect(blockedNext).not.toHaveBeenCalled();
+
+		const startNext = mock(async () => "start");
+		await expect(
+			authMiddleware(
+				{ from: { id: 999 }, message: { text: "/start" } },
+				startNext,
+			),
+		).resolves.toBe("start");
+		expect(startNext).toHaveBeenCalledTimes(1);
+
+		const startReply = mock(async (_text: string) => undefined);
+		await bot.commandHandlers.get("start")?.({
+			from: { id: 999 },
+			reply: startReply,
+		});
+		expect(startReply).toHaveBeenCalledWith("Your Telegram user ID is 999");
 
 		const textCtx = {
 			chat: { id: 42 },
@@ -266,9 +302,19 @@ describe("startTelegramBot", () => {
 		await textDeps.streamPrompt("hello", [], onTextImage, {
 			text: "previous message",
 		});
-		expect(bridge.stream).toHaveBeenCalledWith("hello", [], onTextImage, 42, {
-			text: "previous message",
-		});
+		expect(bridge.stream).toHaveBeenCalledWith(
+			"hello",
+			[],
+			onTextImage,
+			42,
+			{
+				text: "previous message",
+			},
+			{
+				telegramBotId: "bot-a",
+				telegramUserId: undefined,
+			},
+		);
 		const textHandlerCtx = lastTextMessageArgs[0] as {
 			replyWithChatAction: (action: string) => Promise<unknown>;
 			replyWithPhoto: (photo: string, options?: object) => Promise<unknown>;
@@ -344,9 +390,19 @@ describe("startTelegramBot", () => {
 		await photoDeps.streamPrompt("plot", [], onPhotoImage, {
 			text: "previous photo",
 		});
-		expect(bridge.stream).toHaveBeenCalledWith("plot", [], onPhotoImage, 7, {
-			text: "previous photo",
-		});
+		expect(bridge.stream).toHaveBeenCalledWith(
+			"plot",
+			[],
+			onPhotoImage,
+			7,
+			{
+				text: "previous photo",
+			},
+			{
+				telegramBotId: "bot-a",
+				telegramUserId: undefined,
+			},
+		);
 		await (
 			lastPhotoMessageArgs[0] as {
 				replyWithChatAction: (action: string) => Promise<unknown>;
@@ -437,6 +493,10 @@ describe("startTelegramBot", () => {
 			onDocImage,
 			8,
 			{ text: "previous doc" },
+			{
+				telegramBotId: "bot-a",
+				telegramUserId: undefined,
+			},
 		);
 		await (
 			lastDocumentMessageArgs[0] as {
@@ -556,6 +616,7 @@ describe("startTelegramBot", () => {
 
 		const service = startTelegramBot(
 			{
+				botId: "bot-a",
 				token: "telegram-token",
 				runtimeUrl: "ws://runtime",
 				allowedUsers: [],

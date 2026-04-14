@@ -17,6 +17,11 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
 	{
+		command: "agent",
+		description: "Show or switch agents",
+		transport: "runtime",
+	},
+	{
 		command: "new",
 		description: "Start a new conversation",
 		transport: "runtime",

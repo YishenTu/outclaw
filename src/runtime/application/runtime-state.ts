@@ -15,7 +15,10 @@ export class RuntimeState {
 	private readonly sessions = new RuntimeSessionState();
 	private readonly settings = new RuntimeSettingsState();
 
-	constructor(private readonly currentProviderId: string) {}
+	constructor(
+		private readonly currentProviderId: string,
+		private readonly agentName?: string,
+	) {}
 
 	get generation(): number {
 		return this.sessions.generation;
@@ -60,6 +63,7 @@ export class RuntimeState {
 	createStatusEvent(): RuntimeStatusEvent {
 		return {
 			type: "runtime_status",
+			agentName: this.agentName,
 			model: this.settings.model,
 			effort: this.settings.effort,
 			sessionId: this.sessions.sessionId,

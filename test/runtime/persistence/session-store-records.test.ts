@@ -9,6 +9,7 @@ describe("session-store-records", () => {
 	test("mapSessionRow converts a database row to the runtime shape", () => {
 		expect(
 			mapSessionRow({
+				agent_id: "agent-railly",
 				provider_id: "claude",
 				sdk_session_id: "sdk-123",
 				title: "Chat",
@@ -19,6 +20,7 @@ describe("session-store-records", () => {
 				last_active: 2,
 			}),
 		).toEqual({
+			agentId: "agent-railly",
 			providerId: "claude",
 			sdkSessionId: "sdk-123",
 			title: "Chat",
@@ -34,6 +36,7 @@ describe("session-store-records", () => {
 		expect(
 			mapSessionRows([
 				{
+					agent_id: "agent-railly",
 					provider_id: "claude",
 					sdk_session_id: "sdk-1",
 					title: "One",
@@ -44,6 +47,7 @@ describe("session-store-records", () => {
 					last_active: 20,
 				},
 				{
+					agent_id: "agent-mimi",
 					provider_id: "claude",
 					sdk_session_id: "sdk-2",
 					title: "Two",
@@ -56,6 +60,7 @@ describe("session-store-records", () => {
 			]),
 		).toEqual([
 			{
+				agentId: "agent-railly",
 				providerId: "claude",
 				sdkSessionId: "sdk-1",
 				title: "One",
@@ -66,6 +71,7 @@ describe("session-store-records", () => {
 				lastActive: 20,
 			},
 			{
+				agentId: "agent-mimi",
 				providerId: "claude",
 				sdkSessionId: "sdk-2",
 				title: "Two",

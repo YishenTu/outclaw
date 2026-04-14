@@ -3,6 +3,7 @@ import { extractError } from "../../common/protocol.ts";
 import { ClientHub, type WsClient } from "../transport/client-hub.ts";
 
 interface RuntimeClientGatewayOptions {
+	canSendToClient?: (ws: WsClient) => boolean;
 	cwd?: string;
 	facade: Facade;
 	getStatusEvent: () => RuntimeStatusEvent;
@@ -76,10 +77,10 @@ export class RuntimeClientGateway {
 				if (!skills) {
 					return;
 				}
-				this.hub.send(ws, { type: "skills_update", skills });
+				this.send(ws, { type: "skills_update", skills });
 			})
 			.catch((err) => {
-				this.hub.send(ws, {
+				this.send(ws, {
 					type: "error",
 					message: extractError(err),
 				});
@@ -87,6 +88,9 @@ export class RuntimeClientGateway {
 	}
 
 	send(ws: WsClient, event: Parameters<ClientHub["send"]>[1]) {
+		if (this.options.canSendToClient && !this.options.canSendToClient(ws)) {
+			return;
+		}
 		this.hub.send(ws, event);
 	}
 

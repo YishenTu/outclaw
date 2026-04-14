@@ -37,6 +37,7 @@ describe("TelegramFileRefStore", () => {
 		});
 
 		expect(store.get(123, 456)).toEqual({
+			botId: "bot-default",
 			chatId: 123,
 			messageId: 456,
 			path: "/tmp/cat.png",
@@ -68,6 +69,7 @@ describe("TelegramFileRefStore", () => {
 		});
 
 		expect(store.get(123, 789)).toEqual({
+			botId: "bot-default",
 			chatId: 123,
 			messageId: 789,
 			path: "/tmp/report.pdf",
@@ -112,7 +114,7 @@ describe("TelegramFileRefStore", () => {
 		fileRefStore.close();
 	});
 
-	test("migrates old telegram_media_refs table to telegram_file_refs", () => {
+	test("rejects the legacy telegram_media_refs table", () => {
 		const db = new Database(TEST_DB, { create: true });
 		db.exec(`CREATE TABLE telegram_media_refs (
 			chat_id INTEGER NOT NULL,
@@ -128,12 +130,9 @@ describe("TelegramFileRefStore", () => {
 		).run();
 		db.close();
 
-		const store = new TelegramFileRefStore(TEST_DB);
-		const record = store.get(1, 2);
-		expect(record?.path).toBe("/tmp/old.png");
-		expect(record?.kind).toBe("image");
-		expect(record?.mediaType).toBe("image/png");
-		store.close();
+		expect(() => new TelegramFileRefStore(TEST_DB)).toThrow(
+			"Unsupported legacy telegram file-ref schema",
+		);
 	});
 
 	test("uses WAL during operation and cleans up on close", () => {
@@ -209,5 +208,43 @@ describe("TelegramFileRefStore", () => {
 
 		expect(existsSync(`${TEST_DB}-wal`)).toBe(false);
 		expect(existsSync(`${TEST_DB}-shm`)).toBe(false);
+	});
+
+	test("scopes refs by bot id", () => {
+		const botAStore = new TelegramFileRefStore(TEST_DB, { botId: "bot-a" });
+		const botBStore = new TelegramFileRefStore(TEST_DB, { botId: "bot-b" });
+
+		botAStore.upsert({
+			chatId: 10,
+			messageId: 20,
+			path: "/tmp/a.png",
+			file: {
+				kind: "image",
+				image: {
+					path: "/tmp/a.png",
+					mediaType: "image/png",
+				},
+			},
+			direction: "inbound",
+		});
+		botBStore.upsert({
+			chatId: 10,
+			messageId: 20,
+			path: "/tmp/b.png",
+			file: {
+				kind: "image",
+				image: {
+					path: "/tmp/b.png",
+					mediaType: "image/png",
+				},
+			},
+			direction: "inbound",
+		});
+
+		expect(botAStore.get(10, 20)?.path).toBe("/tmp/a.png");
+		expect(botBStore.get(10, 20)?.path).toBe("/tmp/b.png");
+
+		botAStore.close();
+		botBStore.close();
 	});
 });

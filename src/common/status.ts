@@ -44,10 +44,15 @@ function statusRows(
 ): [string, string][] {
 	const rows: [string, string][] = [
 		["session", truncate(event.sessionTitle ?? event.sessionId ?? "none", 40)],
+	];
+	if (event.agentName) {
+		rows.push(["agent", event.agentName]);
+	}
+	rows.push(
 		["model", event.model],
 		["effort", event.effort],
 		["context", formatContext(event.usage)],
-	];
+	);
 	const heartbeat = getHeartbeatLabel(
 		event.nextHeartbeatAt,
 		now ?? Date.now(),

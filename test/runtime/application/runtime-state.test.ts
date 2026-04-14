@@ -4,6 +4,7 @@ import { MODELS } from "../../../src/common/models.ts";
 import type { DoneEvent } from "../../../src/common/protocol.ts";
 import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
 
+const AGENT_ID = "agent-legacy";
 const PROVIDER_ID = "mock";
 
 function makeDoneEvent(
@@ -160,6 +161,7 @@ describe("RuntimeState", () => {
 		test("switches to a stored session and updates model", () => {
 			const state = new RuntimeState(PROVIDER_ID);
 			state.switchToSession({
+				agentId: AGENT_ID,
 				providerId: PROVIDER_ID,
 				sdkSessionId: "sdk-old",
 				title: "Old chat",
@@ -179,6 +181,7 @@ describe("RuntimeState", () => {
 			const state = new RuntimeState(PROVIDER_ID);
 			const gen0 = state.generation;
 			state.switchToSession({
+				agentId: AGENT_ID,
 				providerId: PROVIDER_ID,
 				sdkSessionId: "sdk-1",
 				title: "t",
@@ -194,6 +197,7 @@ describe("RuntimeState", () => {
 		test("ignores unknown model alias in stored session", () => {
 			const state = new RuntimeState(PROVIDER_ID);
 			state.switchToSession({
+				agentId: AGENT_ID,
 				providerId: PROVIDER_ID,
 				sdkSessionId: "sdk-1",
 				title: "t",
@@ -239,6 +243,7 @@ describe("RuntimeState", () => {
 			state.restorePersistedState({
 				lastTelegramChatId: 123,
 				session: {
+					agentId: AGENT_ID,
 					providerId: PROVIDER_ID,
 					sdkSessionId: "sdk-persist",
 					title: "Stored title",

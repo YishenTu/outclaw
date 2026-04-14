@@ -10,17 +10,21 @@ The key difference is the engine: outclaw runs on the **Claude Agent SDK** inste
 
 The SDK handles the agent loop and built-in tools, **skill system** extends the agent's abilities on top of that foundation.
 
-You don't need more than one personal assistant — one well-tailored agent is enough. In a multi-user setup, each user gets their own agent with isolated sessions, so context never leaks between people.
+outclaw now runs as a multi-agent daemon. Each agent has its own workspace,
+prompt files, sessions, heartbeat, and cron jobs under
+`~/.outclaw/agents/<name>/`, while shared infra stays at the root.
 
 <!-- TODO: more on philosophy -->
 
 ## Features
 
+- Multi-agent daemon with one long-lived runtime per agent workspace
 - Terminal UI with markdown rendering, session picker, and multiline composer
-- Telegram bot with the same capabilities, synced to the same runtime session
-- Periodic heartbeat prompts injected into the active session
+- Telegram bot with the same capabilities, synced to the same agent runtime
+- `/agent` switching in both TUI and Telegram
+- Periodic heartbeat prompts injected into the active agent session
 - Parallel cron jobs running independent agent instances on a schedule
-- State-changing commands (model, effort, session) stay in sync across all connected frontends
+- State-changing commands (model, effort, session) stay in sync across all connected frontends bound to the same agent
 
 <!-- TODO: more features -->
 
@@ -33,14 +37,17 @@ bun install
 bun link
 ```
 
-Run `oc start` or `oc dev` once to create `~/.outclaw/`.
+Run `oc start` or `oc dev` once to create `~/.outclaw/`, onboard the first
+agent, and seed its workspace under `~/.outclaw/agents/<name>/`.
 
 Optional Telegram setup:
 
-- Put Telegram settings in `~/.outclaw/config.json`
+- Store per-agent Telegram settings in root `~/.outclaw/config.json` under
+  `agents.{agent_id}.telegram`
 - Use literal values or `$ENV_VAR` references for `telegram.botToken`
 - Use an array or a `$ENV_VAR` reference for `telegram.allowedUsers`
 - Put those referenced env vars in the shell environment or in `~/.outclaw/.env`
+- Use `oc config secure` to extract hardcoded Telegram secrets into `.env`
 
 ## Stack
 

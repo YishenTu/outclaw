@@ -3,134 +3,43 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude.ts";
 import { ensureClaudeSkillsSymlink } from "./backend/adapters/claude-setup.ts";
+import { deriveTelegramBotId } from "./common/telegram.ts";
+import type { TelegramMessageFileRecord } from "./frontend/telegram/files/message-file-ref.ts";
 import { copyTelegramFile } from "./frontend/telegram/files/storage.ts";
-import { startTelegramBot } from "./frontend/telegram/index.ts";
-import { loadConfig } from "./runtime/config.ts";
-import { migrateLegacyTelegramFilesRoot } from "./runtime/persistence/migrate-telegram-files-root.ts";
+import { createTelegramBotManager } from "./frontend/telegram/index.ts";
+import { discoverAgents } from "./runtime/agents/discover-agents.ts";
+import { createAgentRuntime } from "./runtime/application/create-agent-runtime.ts";
+import { loadGlobalConfig } from "./runtime/config.ts";
 import { SessionStore } from "./runtime/persistence/session-store.ts";
 import { TelegramFileRefStore } from "./runtime/persistence/telegram-file-ref-store.ts";
+import { TelegramRouteStore } from "./runtime/persistence/telegram-route-store.ts";
 import { PidManager } from "./runtime/process/pid-manager.ts";
 import { spawnDaemonRestart } from "./runtime/process/restart-daemon.ts";
-import { seedTemplates } from "./runtime/prompt/seed-templates.ts";
-import { createRuntime } from "./runtime/transport/ws-server.ts";
+import { createSupervisor } from "./runtime/supervisor/create-supervisor.ts";
 
 const HOME_DIR = join(homedir(), ".outclaw");
-mkdirSync(HOME_DIR, { recursive: true });
-seedTemplates(HOME_DIR, join(import.meta.dir, "templates"));
-ensureClaudeSkillsSymlink(HOME_DIR);
+const CLI_ENTRY = join(import.meta.dir, "cli.ts");
+const dbPath = join(HOME_DIR, "db.sqlite");
+const filesRoot = join(HOME_DIR, "files");
 
-const config = loadConfig(HOME_DIR);
+mkdirSync(HOME_DIR, { recursive: true });
+
+const config = loadGlobalConfig(HOME_DIR);
+const discoveredAgents = discoverAgents(HOME_DIR);
 
 const pidManager = new PidManager(join(HOME_DIR, "daemon.pid"));
 pidManager.write(process.pid);
 
-const dbPath = join(HOME_DIR, "db.sqlite");
-const legacyMediaRoot = join(HOME_DIR, "media");
-const filesRoot = join(HOME_DIR, "files");
-const store = new SessionStore(dbPath, { legacyProviderId: "claude" });
-const telegramFileRefStore = new TelegramFileRefStore(dbPath);
-const migrateTelegramFilesRoot = () =>
-	migrateLegacyTelegramFilesRoot({
-		legacyRoot: legacyMediaRoot,
-		filesRoot,
-		store: telegramFileRefStore,
-	});
-migrateTelegramFilesRoot();
-
-const CLI_ENTRY = join(import.meta.dir, "cli.ts");
-
-const runtime = createRuntime({
-	port: config.port,
-	facade: new ClaudeAdapter({ autoCompact: config.autoCompact }),
-	cwd: HOME_DIR,
-	cronDir: join(HOME_DIR, "cron"),
-	heartbeat: config.heartbeat,
-	promptHomeDir: HOME_DIR,
-	restart: () => {
-		spawnDaemonRestart(CLI_ENTRY);
-	},
-	store,
-});
-console.log(`outclaw runtime listening on ws://localhost:${runtime.port}`);
-console.log(`agent cwd: ${HOME_DIR}`);
-console.log(`daemon pid: ${process.pid}`);
-
-let telegram: ReturnType<typeof startTelegramBot> | undefined;
-
-if (config.telegram.botToken) {
-	if (config.telegram.allowedUsers.length === 0) {
-		console.warn(
-			"WARNING: telegram.botToken is set but telegram.allowedUsers is empty. " +
-				"Telegram bot will not start. Add allowed user IDs to ~/.outclaw/config.json.",
-		);
-	} else {
-		telegram = startTelegramBot({
-			token: config.telegram.botToken,
-			runtimeUrl: `ws://localhost:${runtime.port}`,
-			allowedUsers: config.telegram.allowedUsers,
-			filesRoot,
-			resolveMessageFile: async (chatId, messageId) => {
-				const record = telegramFileRefStore.get(chatId, messageId);
-				if (!record || !existsSync(record.path)) return undefined;
-				if (record.kind === "image" && record.mediaType) {
-					return {
-						kind: "image",
-						image: {
-							path: record.path,
-							mediaType: record.mediaType,
-						},
-					};
-				}
-				if (record.kind === "document") {
-					return {
-						kind: "document",
-						document: {
-							path: record.path,
-							displayName: record.displayName ?? basename(record.path),
-						},
-					};
-				}
-				return undefined;
-			},
-			rememberMessageFile: async ({ chatId, messageId, file, direction }) => {
-				const storedPath =
-					direction === "outbound" && file.kind === "image"
-						? (await copyTelegramFile(filesRoot, file.image.path)).path
-						: file.kind === "image"
-							? file.image.path
-							: file.document.path;
-				telegramFileRefStore.upsert({
-					chatId,
-					messageId,
-					path: storedPath,
-					file:
-						file.kind === "image"
-							? {
-									kind: "image",
-									image: {
-										path: storedPath,
-										mediaType: file.image.mediaType,
-									},
-								}
-							: {
-									kind: "document",
-									document: {
-										path: storedPath,
-										displayName: file.document.displayName,
-									},
-								},
-					direction,
-				});
-			},
-		});
-		runtime.setHeartbeatResultHandler((params) =>
-			telegram?.sendHeartbeatResult(params),
-		);
-		runtime.setCronResultHandler((params) => telegram?.sendCronResult(params));
-	}
-} else {
-	console.log("Telegram not configured, skipping");
+if (discoveredAgents.length === 0) {
+	throw new Error(
+		"No agents configured. Run `oc start` to onboard the first agent.",
+	);
 }
+
+const daemon = startMultiAgentDaemon(config, discoveredAgents);
+
+console.log(`outclaw runtime listening on ws://localhost:${daemon.port}`);
+console.log(`daemon pid: ${process.pid}`);
 
 let shuttingDown = false;
 
@@ -140,10 +49,7 @@ async function shutdown() {
 	}
 	shuttingDown = true;
 
-	await runtime.stop();
-	telegram?.stop();
-	store.close();
-	telegramFileRefStore.close();
+	await daemon.stop();
 	pidManager.remove();
 	process.exit(0);
 }
@@ -154,3 +60,183 @@ process.on("SIGINT", () => {
 process.on("SIGTERM", () => {
 	void shutdown();
 });
+
+function startMultiAgentDaemon(
+	config: ReturnType<typeof loadGlobalConfig>,
+	agents: ReturnType<typeof discoverAgents>,
+) {
+	for (const agent of agents) {
+		ensureClaudeSkillsSymlink(agent.promptHomeDir);
+	}
+
+	const stateStore = new SessionStore(dbPath, {
+		agentId: agents[0]?.agentId,
+	});
+	const routeStore = new TelegramRouteStore(dbPath);
+	const agentStores = new Map(
+		agents.map((agent) => [
+			agent.agentId,
+			new SessionStore(dbPath, {
+				agentId: agent.agentId,
+			}),
+		]),
+	);
+	const runtimes = agents.map((agent) =>
+		createAgentRuntime({
+			agentId: agent.agentId,
+			cwd: agent.homeDir,
+			cronDir: join(agent.homeDir, "cron"),
+			facade: new ClaudeAdapter({ autoCompact: config.autoCompact }),
+			heartbeat: config.heartbeat,
+			name: agent.name,
+			promptHomeDir: agent.promptHomeDir,
+			restart: () => {
+				spawnDaemonRestart(CLI_ENTRY);
+			},
+			store: agentStores.get(agent.agentId),
+		}),
+	);
+	const availableAgentsByBotUser = buildTelegramAgentIndex(agents);
+	const supervisor = createSupervisor({
+		agents: runtimes,
+		getDefaultAgentId: () => stateStore.getLastTuiAgentId(),
+		port: config.port,
+		rememberTuiAgentId: (agentId) => stateStore.setLastTuiAgentId(agentId),
+		telegramRouting: {
+			getAgentId(botId, telegramUserId) {
+				return routeStore.getAgentId(botId, telegramUserId);
+			},
+			listAgentIds(botId, telegramUserId) {
+				return availableAgentsByBotUser(botId, telegramUserId);
+			},
+			rememberAgentId(botId, telegramUserId, agentId) {
+				routeStore.setAgentId(botId, telegramUserId, agentId);
+			},
+		},
+	});
+	const botManager = createTelegramBotManager({
+		agents: agents.map((agent) => ({
+			agentId: agent.agentId,
+			allowedUsers: agent.config.telegram.allowedUsers,
+			botToken: agent.config.telegram.botToken,
+		})),
+		createBotId: deriveTelegramBotId,
+		createFileBindings: (botId) =>
+			createTelegramFileBindings(dbPath, botId, filesRoot),
+		filesRoot,
+		runtimeUrl: `ws://localhost:${supervisor.port}`,
+	});
+
+	for (const runtime of runtimes) {
+		runtime.setCronResultHandler((params) =>
+			botManager.sendCronResult(runtime.agentId, params),
+		);
+		runtime.setHeartbeatResultHandler((params) =>
+			botManager.sendHeartbeatResult(runtime.agentId, params),
+		);
+	}
+
+	console.log(`agents: ${agents.map((agent) => agent.name).join(", ")}`);
+
+	return {
+		port: supervisor.port,
+		async stop() {
+			await supervisor.stop();
+			botManager.stop();
+			for (const store of agentStores.values()) {
+				store.close();
+			}
+			stateStore.close();
+			routeStore.close();
+		},
+	};
+}
+
+function buildTelegramAgentIndex(agents: ReturnType<typeof discoverAgents>) {
+	return (botId: string, telegramUserId: number) =>
+		agents
+			.filter((agent) => {
+				const token = agent.config.telegram.botToken;
+				return (
+					token !== "" &&
+					deriveTelegramBotId(token) === botId &&
+					agent.config.telegram.allowedUsers.includes(telegramUserId)
+				);
+			})
+			.map((agent) => agent.agentId);
+}
+
+function createTelegramFileBindings(
+	path: string,
+	botId: string,
+	storageRoot: string,
+) {
+	const store = new TelegramFileRefStore(path, { botId });
+
+	return {
+		close() {
+			store.close();
+		},
+		async rememberMessageFile({
+			chatId,
+			messageId,
+			file,
+			direction,
+		}: TelegramMessageFileRecord) {
+			const storedPath =
+				direction === "outbound" && file.kind === "image"
+					? (await copyTelegramFile(storageRoot, file.image.path)).path
+					: file.kind === "image"
+						? file.image.path
+						: file.document.path;
+			store.upsert({
+				chatId,
+				messageId,
+				path: storedPath,
+				file:
+					file.kind === "image"
+						? {
+								kind: "image" as const,
+								image: {
+									path: storedPath,
+									mediaType: file.image.mediaType,
+								},
+							}
+						: {
+								kind: "document" as const,
+								document: {
+									path: storedPath,
+									displayName: file.document.displayName,
+								},
+							},
+				direction,
+			});
+		},
+		async resolveMessageFile(chatId: number, messageId: number) {
+			const record = store.get(chatId, messageId);
+			if (!record || !existsSync(record.path)) {
+				return undefined;
+			}
+			if (record.kind === "image" && record.mediaType) {
+				return {
+					kind: "image" as const,
+					image: {
+						path: record.path,
+						mediaType: record.mediaType,
+					},
+				};
+			}
+			if (record.kind === "document") {
+				return {
+					kind: "document" as const,
+					document: {
+						path: record.path,
+						displayName: record.displayName ?? basename(record.path),
+					},
+				};
+			}
+			return undefined;
+		},
+		store,
+	};
+}
