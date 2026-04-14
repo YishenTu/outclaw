@@ -6,6 +6,7 @@ import type {
 	DisplayMessage,
 	DisplaySystemMessage,
 	ImageMediaType,
+	TranscriptTurn,
 } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import { parsePromptWithReplyContext } from "../../common/reply-context.ts";
@@ -21,6 +22,7 @@ interface HistoryBlock {
 
 export interface ClaudeHistoryMessage {
 	type: string;
+	timestamp?: string;
 	message?: unknown;
 	subtype?: string;
 	compactMetadata?: {
@@ -64,6 +66,31 @@ export async function readClaudeHistory(
 		includeSystemMessages: true,
 	});
 	return normalizeClaudeHistory(messages);
+}
+
+export async function readClaudeTranscript(options: {
+	sessionId: string;
+	loadHistory?: LoadClaudeHistory;
+	claudeProjectsDir?: string;
+}): Promise<TranscriptTurn[]> {
+	const rawHistory = await loadClaudeRawHistory(
+		options.sessionId,
+		options.claudeProjectsDir,
+	);
+	if (rawHistory === undefined) {
+		if (!options.loadHistory) {
+			throw new Error(
+				`Claude transcript unavailable for session: ${options.sessionId}`,
+			);
+		}
+
+		const messages = await options.loadHistory(options.sessionId, {
+			includeSystemMessages: true,
+		});
+		return normalizeClaudeTranscript(messages);
+	}
+
+	return normalizeClaudeTranscript(rawHistory);
 }
 
 export function normalizeClaudeHistory(
@@ -176,6 +203,97 @@ export function normalizeClaudeHistory(
 			role: "assistant",
 			content: "",
 			thinking: pendingThinking,
+		});
+	}
+
+	return result;
+}
+
+export function normalizeClaudeTranscript(
+	messages: ClaudeHistoryMessage[],
+): TranscriptTurn[] {
+	const result: TranscriptTurn[] = [];
+
+	for (let index = 0; index < messages.length; index++) {
+		const msg = messages[index];
+		if (!msg) {
+			continue;
+		}
+		if (
+			msg.isMeta ||
+			msg.isSidechain ||
+			msg.teamName ||
+			msg.type === "system"
+		) {
+			continue;
+		}
+
+		const content = getContent(msg.message);
+		if (content === undefined) {
+			continue;
+		}
+
+		if (msg.type === "user") {
+			if (
+				isCompactionCommand(content) ||
+				isCompactSummaryMessage(msg, content)
+			) {
+				continue;
+			}
+
+			const timestamp = parseTranscriptTimestamp(msg);
+			if (typeof content === "string") {
+				const parsed = parsePromptWithReplyContext(content);
+				if (parsed.prompt || parsed.replyContext) {
+					result.push({
+						role: "user",
+						content: parsed.prompt,
+						replyContext: parsed.replyContext,
+						timestamp,
+					});
+				}
+				continue;
+			}
+
+			const parsed = parsePromptWithReplyContext(extractText(content));
+			const images = extractImages(content);
+			if (parsed.prompt || parsed.replyContext || images.length > 0) {
+				result.push({
+					role: "user",
+					content: parsed.prompt,
+					images: images.length > 0 ? images : undefined,
+					replyContext: parsed.replyContext,
+					timestamp,
+				});
+			}
+			continue;
+		}
+
+		if (msg.type !== "assistant") {
+			continue;
+		}
+
+		const timestamp = parseTranscriptTimestamp(msg);
+		if (typeof content === "string") {
+			if (content) {
+				result.push({
+					role: "assistant",
+					content,
+					timestamp,
+				});
+			}
+			continue;
+		}
+
+		const text = extractText(content);
+		if (!text || isSyntheticNoResponseReply(text, msg, messages, index)) {
+			continue;
+		}
+
+		result.push({
+			role: "assistant",
+			content: text,
+			timestamp,
 		});
 	}
 
@@ -387,6 +505,15 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 	}
 
 	return value as Record<string, unknown>;
+}
+
+function parseTranscriptTimestamp(message: ClaudeHistoryMessage): number {
+	const timestamp = message.timestamp;
+	const parsed = typeof timestamp === "string" ? Date.parse(timestamp) : NaN;
+	if (Number.isNaN(parsed)) {
+		throw new Error("Claude transcript turn is missing a valid timestamp");
+	}
+	return parsed;
 }
 
 async function loadClaudeRawHistory(

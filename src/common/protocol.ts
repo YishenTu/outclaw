@@ -228,6 +228,14 @@ export interface DisplaySystemMessage {
 
 export type DisplayMessage = DisplayChatMessage | DisplaySystemMessage;
 
+export interface TranscriptTurn {
+	role: "user" | "assistant";
+	content: string;
+	timestamp: number;
+	images?: DisplayImage[];
+	replyContext?: ReplyContext;
+}
+
 export interface HistoryReplayEvent {
 	type: "history_replay";
 	messages: DisplayMessage[];
@@ -304,6 +312,7 @@ export interface Facade {
 	providerId: string;
 	run(params: RunParams): AsyncIterable<FacadeEvent>;
 	readHistory?(sessionId: string): Promise<DisplayMessage[]>;
+	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;
 	getSkills?(cwd?: string): Promise<SkillInfo[]>;
 }
 

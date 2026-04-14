@@ -52,6 +52,7 @@ The shipped system uses:
 
 - `oc agent list`
 - `oc agent create {name}`
+- `oc agent config {name}`
 - `oc agent rename {old} {new}`
 - `oc agent remove {name}`
 - first-run onboarding through `oc start`
@@ -60,7 +61,7 @@ The shipped system uses:
 
 - `oc config secure` rewrites hardcoded Telegram values in root `config.json`
   into `.env` placeholder references derived from the agent selector name
-- `outclaw-guide` skill is seeded into every created agent
+- `self-manage` skill is seeded into every created agent as the `oc` manual
 
 ## Deliberate Current Assumptions
 

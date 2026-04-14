@@ -14,6 +14,7 @@ import { listAgents } from "../../../src/runtime/agents/list-agents.ts";
 import { readAgentId } from "../../../src/runtime/agents/read-agent-id.ts";
 import { removeAgent } from "../../../src/runtime/agents/remove-agent.ts";
 import { renameAgent } from "../../../src/runtime/agents/rename-agent.ts";
+import { updateAgent } from "../../../src/runtime/agents/update-agent.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 import { TelegramRouteStore } from "../../../src/runtime/persistence/telegram-route-store.ts";
 
@@ -79,7 +80,7 @@ describe("agent management", () => {
 		}
 	});
 
-	test("createAgent seeds the outclaw-guide skill from the default templates", () => {
+	test("createAgent seeds the self-manage skill from the default templates", () => {
 		const homeDir = createHomeDir();
 		try {
 			const created = createAgent({
@@ -91,10 +92,46 @@ describe("agent management", () => {
 
 			expect(
 				readFileSync(
-					join(created.agentHomeDir, "skills", "outclaw-guide", "SKILL.md"),
+					join(created.agentHomeDir, "skills", "self-manage", "SKILL.md"),
 					"utf-8",
 				),
-			).toContain("outclaw");
+			).toContain("name: self-manage");
+			expect(
+				readFileSync(
+					join(
+						created.agentHomeDir,
+						"skills",
+						"self-manage",
+						"references",
+						"daemon-operations.md",
+					),
+					"utf-8",
+				),
+			).toContain("oc start");
+			expect(
+				readFileSync(
+					join(
+						created.agentHomeDir,
+						"skills",
+						"self-manage",
+						"references",
+						"session-lookup.md",
+					),
+					"utf-8",
+				),
+			).toContain("oc session transcript <id-or-prefix>");
+			expect(
+				readFileSync(
+					join(
+						created.agentHomeDir,
+						"skills",
+						"self-manage",
+						"references",
+						"agent-management.md",
+					),
+					"utf-8",
+				),
+			).toContain("oc agent create <name>");
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 		}
@@ -116,6 +153,24 @@ describe("agent management", () => {
 			expect(
 				readFileSync(join(created.agentHomeDir, "AGENTS.md"), "utf-8"),
 			).not.toContain("<agent-name>");
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+		}
+	});
+
+	test("createAgent seeds AGENTS instructions for cross-session references", () => {
+		const homeDir = createHomeDir();
+		try {
+			const created = createAgent({
+				homeDir,
+				name: "railly",
+				templatesDir: REPO_TEMPLATES_DIR,
+				createAgentId: () => "agent-railly",
+			});
+
+			expect(
+				readFileSync(join(created.agentHomeDir, "AGENTS.md"), "utf-8"),
+			).toContain("Invoke the `self-manage` skill before proceeding");
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 		}
@@ -226,6 +281,146 @@ describe("agent management", () => {
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 			rmSync(templatesDir, { force: true, recursive: true });
+		}
+	});
+
+	test("updateAgent updates telegram config on an existing agent", () => {
+		const homeDir = createHomeDir();
+		const templatesDir = createTemplatesDir();
+		try {
+			createAgent({
+				homeDir,
+				name: "railly",
+				templatesDir,
+				createAgentId: () => "agent-railly",
+				botToken: "token-a",
+				allowedUsers: [1, 2],
+			});
+
+			updateAgent({
+				homeDir,
+				name: "railly",
+				botToken: "token-b",
+				allowedUsers: [3, 4],
+			});
+
+			const config = JSON.parse(
+				readFileSync(join(homeDir, "config.json"), "utf-8"),
+			);
+			expect(config.agents["agent-railly"].telegram.botToken).toBe("token-b");
+			expect(config.agents["agent-railly"].telegram.allowedUsers).toEqual([
+				3, 4,
+			]);
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+			rmSync(templatesDir, { force: true, recursive: true });
+		}
+	});
+
+	test("updateAgent does partial update when only one flag is provided", () => {
+		const homeDir = createHomeDir();
+		const templatesDir = createTemplatesDir();
+		try {
+			createAgent({
+				homeDir,
+				name: "railly",
+				templatesDir,
+				createAgentId: () => "agent-railly",
+				botToken: "token-a",
+				allowedUsers: [1, 2],
+			});
+
+			updateAgent({
+				homeDir,
+				name: "railly",
+				botToken: "token-b",
+			});
+
+			const config = JSON.parse(
+				readFileSync(join(homeDir, "config.json"), "utf-8"),
+			);
+			expect(config.agents["agent-railly"].telegram.botToken).toBe("token-b");
+			expect(config.agents["agent-railly"].telegram.allowedUsers).toEqual([
+				1, 2,
+			]);
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+			rmSync(templatesDir, { force: true, recursive: true });
+		}
+	});
+
+	test("updateAgent preserves env indirection for secured telegram config", () => {
+		const homeDir = createHomeDir();
+		const templatesDir = createTemplatesDir();
+		try {
+			createAgent({
+				homeDir,
+				name: "railly",
+				templatesDir,
+				createAgentId: () => "agent-railly",
+			});
+			writeFileSync(
+				join(homeDir, "config.json"),
+				JSON.stringify(
+					{
+						agents: {
+							"agent-railly": {
+								telegram: {
+									botToken: "$RAILLY_TELEGRAM_BOT_TOKEN",
+									allowedUsers: "$RAILLY_TELEGRAM_USERS",
+								},
+							},
+						},
+					},
+					null,
+					"\t",
+				),
+			);
+			writeFileSync(
+				join(homeDir, ".env"),
+				"RAILLY_TELEGRAM_BOT_TOKEN=token-a\nRAILLY_TELEGRAM_USERS=1,2\n",
+			);
+
+			updateAgent({
+				homeDir,
+				name: "railly",
+				botToken: "token-b",
+				allowedUsers: [3, 4],
+			});
+
+			const config = JSON.parse(
+				readFileSync(join(homeDir, "config.json"), "utf-8"),
+			);
+			expect(config.agents["agent-railly"].telegram.botToken).toBe(
+				"$RAILLY_TELEGRAM_BOT_TOKEN",
+			);
+			expect(config.agents["agent-railly"].telegram.allowedUsers).toBe(
+				"$RAILLY_TELEGRAM_USERS",
+			);
+			expect(readFileSync(join(homeDir, ".env"), "utf-8")).toContain(
+				"RAILLY_TELEGRAM_BOT_TOKEN=token-b",
+			);
+			expect(readFileSync(join(homeDir, ".env"), "utf-8")).toContain(
+				"RAILLY_TELEGRAM_USERS=3,4",
+			);
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+			rmSync(templatesDir, { force: true, recursive: true });
+		}
+	});
+
+	test("updateAgent throws when agent does not exist", () => {
+		const homeDir = createHomeDir();
+		try {
+			expect(() =>
+				updateAgent({
+					homeDir,
+					name: "nonexistent",
+					botToken: "token-a",
+				}),
+			).toThrow("Agent does not exist: nonexistent");
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
 		}
 	});
 

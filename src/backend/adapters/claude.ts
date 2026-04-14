@@ -13,7 +13,11 @@ import {
 	type UsageInfo,
 } from "../../common/protocol.ts";
 import { buildPromptWithReplyContext } from "../../common/reply-context.ts";
-import { type LoadClaudeHistory, readClaudeHistory } from "./claude-history.ts";
+import {
+	type LoadClaudeHistory,
+	readClaudeHistory,
+	readClaudeTranscript,
+} from "./claude-history.ts";
 
 /** Structural subset of the SDK's SDKUserMessage — avoids importing the SDK at module level. */
 interface SdkUserMessage {
@@ -118,6 +122,15 @@ export class ClaudeAdapter implements Facade {
 	async readHistory(sessionId: string) {
 		const sdk = await this.loadSdk();
 		return readClaudeHistory({
+			sessionId,
+			loadHistory: sdk.getSessionMessages,
+			claudeProjectsDir: this.claudeProjectsDir,
+		});
+	}
+
+	async readTranscript(sessionId: string) {
+		const sdk = await this.loadSdk();
+		return readClaudeTranscript({
 			sessionId,
 			loadHistory: sdk.getSessionMessages,
 			claudeProjectsDir: this.claudeProjectsDir,

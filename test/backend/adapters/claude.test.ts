@@ -41,6 +41,7 @@ describe("ClaudeAdapter", () => {
 		expect(adapter.providerId).toBe("claude");
 		expect(adapter.run).toBeFunction();
 		expect(adapter.readHistory).toBeFunction();
+		expect(adapter.readTranscript).toBeFunction();
 	});
 
 	test("run() returns an async iterable", async () => {

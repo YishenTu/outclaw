@@ -133,6 +133,7 @@ Available management commands:
 
 - `oc agent list`
 - `oc agent create {name}`
+- `oc agent config {name}`
 - `oc agent rename {old-name} {new-name}`
 - `oc agent remove {name}`
 - `oc agent {name}`
@@ -160,11 +161,14 @@ config.json: agents/agent-railly.telegram.allowedUsers -> $RAILLY_TELEGRAM_USERS
 Updated .env
 ```
 
-## Outclaw Guide Skill
+## Self-Manage Skill
 
-Every newly created agent receives the `outclaw-guide` skill. It explains:
+Every newly created agent receives the `self-manage` skill. It is the manual
+for `oc` and explains:
 
+- daemon operations
 - agent creation and management
+- session lookup through `oc session`
 - Telegram setup through BotFather
 - finding a Telegram user ID via `/start`
 - working files, sessions, skills, cron, and heartbeat

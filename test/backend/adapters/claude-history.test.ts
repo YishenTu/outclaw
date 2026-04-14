@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
 	type ClaudeHistoryMessage,
 	readClaudeHistory,
+	readClaudeTranscript,
 } from "../../../src/backend/adapters/claude-history.ts";
 
 const MISSING_PROJECTS_DIR = join(tmpdir(), "outclaw-no-history-here");
@@ -378,5 +379,160 @@ describe("readClaudeHistory", () => {
 				content: "I mean the nightly summary.",
 			},
 		]);
+	});
+});
+
+describe("readClaudeTranscript", () => {
+	test("returns timestamped conversational turns from the raw Claude transcript", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "outclaw-claude-transcript-"));
+		const projectsDir = join(tmp, "projects");
+		const projectDir = join(projectsDir, "sample-project");
+		const sessionId = "sdk-transcript";
+
+		try {
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(
+				join(projectDir, `${sessionId}.jsonl`),
+				[
+					JSON.stringify({
+						type: "user",
+						timestamp: "2025-01-15T14:30:00.000Z",
+						message: {
+							content: [
+								{
+									type: "image",
+									source: {
+										type: "base64",
+										media_type: "image/png",
+										data: "abc123",
+									},
+								},
+								{ type: "text", text: "describe this" },
+							],
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						timestamp: "2025-01-15T14:31:00.000Z",
+						message: {
+							content: [
+								{ type: "thinking", thinking: "let me think" },
+								{ type: "text", text: "It is a cat." },
+								{ type: "tool_use", text: "skip" },
+							],
+						},
+					}),
+					JSON.stringify({
+						type: "user",
+						timestamp: "2025-01-15T14:32:00.000Z",
+						message: {
+							content:
+								"what do you mean?\n\n<reply-context>the &quot;cron&quot; output &lt;ok&gt;</reply-context>",
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						timestamp: "2025-01-15T14:33:00.000Z",
+						message: {
+							content: [{ type: "tool_use", text: "skip" }],
+						},
+					}),
+				].join("\n"),
+			);
+
+			const turns = await readClaudeTranscript({
+				sessionId,
+				claudeProjectsDir: projectsDir,
+			});
+
+			expect(turns).toEqual([
+				{
+					role: "user",
+					content: "describe this",
+					images: [{ mediaType: "image/png" }],
+					timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+				},
+				{
+					role: "assistant",
+					content: "It is a cat.",
+					timestamp: Date.parse("2025-01-15T14:31:00.000Z"),
+				},
+				{
+					role: "user",
+					content: "what do you mean?",
+					replyContext: { text: 'the "cron" output <ok>' },
+					timestamp: Date.parse("2025-01-15T14:32:00.000Z"),
+				},
+			]);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	test("errors when no raw transcript is available", async () => {
+		await expect(
+			readClaudeTranscript({
+				sessionId: "missing-session",
+				claudeProjectsDir: MISSING_PROJECTS_DIR,
+			}),
+		).rejects.toThrow(
+			"Claude transcript unavailable for session: missing-session",
+		);
+	});
+
+	test("falls back to SDK history when raw transcript is unavailable and timestamps are preserved", async () => {
+		const loadHistory = mock(async () => [
+			{
+				type: "user",
+				timestamp: "2025-01-15T14:30:00.000Z",
+				message: { content: "sdk-only question" },
+			},
+			{
+				type: "assistant",
+				timestamp: "2025-01-15T14:31:00.000Z",
+				message: {
+					content: [{ type: "text", text: "sdk-only answer" }],
+				},
+			},
+		]);
+
+		const turns = await readClaudeTranscript({
+			sessionId: "missing-session",
+			loadHistory,
+			claudeProjectsDir: MISSING_PROJECTS_DIR,
+		});
+
+		expect(loadHistory).toHaveBeenCalledWith("missing-session", {
+			includeSystemMessages: true,
+		});
+		expect(turns).toEqual([
+			{
+				role: "user",
+				content: "sdk-only question",
+				timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+			},
+			{
+				role: "assistant",
+				content: "sdk-only answer",
+				timestamp: Date.parse("2025-01-15T14:31:00.000Z"),
+			},
+		]);
+	});
+
+	test("errors when fallback history cannot preserve timestamps", async () => {
+		const loadHistory = mock(async () => [
+			{
+				type: "user",
+				message: { content: "sdk-only question" },
+			},
+		]);
+
+		await expect(
+			readClaudeTranscript({
+				sessionId: "missing-session",
+				loadHistory,
+				claudeProjectsDir: MISSING_PROJECTS_DIR,
+			}),
+		).rejects.toThrow("Claude transcript turn is missing a valid timestamp");
 	});
 });

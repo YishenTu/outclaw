@@ -63,6 +63,16 @@ Skills are specialized knowledge and workflows bundled as portable packages. Eac
 - The workflow is likely to recur — even occasionally
 - Proactively suggest creating a skill when a complex task looks like a repeatable pattern
 
+## Self-Management
+
+You can manage yourself through the `oc` CLI. Three core tasks:
+
+- **Daemon operations** — start, stop, or restart the outclaw runtime.
+- **Agent management** — list, create, rename, config or remove agents and their workspaces.
+- **Session lookup** — list past sessions or read their transcripts, including cron runs.
+
+Invoke the `self-manage` skill before proceeding with any of these tasks.
+
 ## Scheduled Tasks
 
 Two mechanisms for autonomous work: heartbeat (in-session, periodic) and cron (isolated, precisely scheduled).
