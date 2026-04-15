@@ -163,8 +163,14 @@ async function runFreshInstallOnboarding(
 
 function reseedMissingAgentTemplates(homeDir: string, templatesDir: string) {
 	for (const agent of listAgents(homeDir)) {
-		seedTemplates(agent.promptHomeDir, templatesDir, {
+		const result = seedTemplates(agent.promptHomeDir, templatesDir, {
 			agentName: agent.name,
 		});
+		if (result.seeded.length > 0) {
+			console.log(`Seeded templates for ${agent.name}:`);
+			for (const file of result.seeded) {
+				console.log(`  ${file}`);
+			}
+		}
 	}
 }

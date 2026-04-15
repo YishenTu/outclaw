@@ -21,13 +21,14 @@ const TEXT_TEMPLATE_EXTENSIONS = new Set([
 	".json",
 ]);
 
-function tryCopyFile(sourcePath: string, targetPath: string): void {
+function tryCopyFile(sourcePath: string, targetPath: string): boolean {
 	try {
 		copyFileSync(sourcePath, targetPath, constants.COPYFILE_EXCL);
+		return true;
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException | undefined)?.code;
 		if (code === "EEXIST" || (code === "ENOENT" && !existsSync(sourcePath))) {
-			return;
+			return false;
 		}
 		throw error;
 	}
@@ -61,10 +62,16 @@ function maybeRenderCopiedTemplate(
 	}
 }
 
+export interface SeedResult {
+	seeded: string[];
+}
+
 function seedRecursive(
 	sourceDir: string,
 	targetDir: string,
 	options: SeedTemplateOptions,
+	rootTargetDir: string,
+	seeded: string[],
 ): void {
 	if (!existsSync(sourceDir)) return;
 
@@ -74,10 +81,16 @@ function seedRecursive(
 		const sourcePath = join(sourceDir, entry.name);
 		const targetPath = join(targetDir, entry.name);
 		if (entry.isDirectory()) {
-			seedRecursive(sourcePath, targetPath, options);
+			seedRecursive(sourcePath, targetPath, options, rootTargetDir, seeded);
 		} else {
-			tryCopyFile(sourcePath, targetPath);
-			maybeRenderCopiedTemplate(targetPath, options);
+			const copied = tryCopyFile(sourcePath, targetPath);
+			if (copied) {
+				maybeRenderCopiedTemplate(targetPath, options);
+				const relative = targetPath
+					.slice(rootTargetDir.length)
+					.replace(/^\//, "");
+				seeded.push(relative);
+			}
 		}
 	}
 }
@@ -86,6 +99,8 @@ export function seedTemplates(
 	promptHomeDir: string,
 	templatesDir: string,
 	options: SeedTemplateOptions = {},
-): void {
-	seedRecursive(templatesDir, promptHomeDir, options);
+): SeedResult {
+	const seeded: string[] = [];
+	seedRecursive(templatesDir, promptHomeDir, options, promptHomeDir, seeded);
+	return { seeded };
 }

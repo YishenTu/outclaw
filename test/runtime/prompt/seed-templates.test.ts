@@ -31,7 +31,7 @@ afterEach(() => {
 
 describe("seedTemplates", () => {
 	test("copies all files when none exist in target", () => {
-		seedTemplates(target, source);
+		const result = seedTemplates(target, source);
 
 		for (const file of FILES) {
 			expect(existsSync(join(target, file))).toBe(true);
@@ -39,6 +39,7 @@ describe("seedTemplates", () => {
 				`template:${file}`,
 			);
 		}
+		expect(result.seeded.sort()).toEqual(FILES.sort());
 	});
 
 	test("replaces the seeded agent-name placeholder in text templates", () => {
@@ -59,31 +60,35 @@ describe("seedTemplates", () => {
 	test("does not overwrite existing files", () => {
 		writeFileSync(join(target, "AGENTS.md"), "custom agents");
 
-		seedTemplates(target, source);
+		const result = seedTemplates(target, source);
 
 		expect(readFileSync(join(target, "AGENTS.md"), "utf-8")).toBe(
 			"custom agents",
 		);
+		expect(result.seeded).not.toContain("AGENTS.md");
 	});
 
 	test("copies only missing files", () => {
 		writeFileSync(join(target, "SOUL.md"), "my soul");
 
-		seedTemplates(target, source);
+		const result = seedTemplates(target, source);
 
 		expect(readFileSync(join(target, "SOUL.md"), "utf-8")).toBe("my soul");
 		expect(readFileSync(join(target, "AGENTS.md"), "utf-8")).toBe(
 			"template:AGENTS.md",
 		);
+		expect(result.seeded).toContain("AGENTS.md");
+		expect(result.seeded).not.toContain("SOUL.md");
 	});
 
 	test("handles missing source templates gracefully", () => {
 		rmSync(join(source, "HEARTBEAT.md"));
 
-		seedTemplates(target, source);
+		const result = seedTemplates(target, source);
 
 		expect(existsSync(join(target, "AGENTS.md"))).toBe(true);
 		expect(existsSync(join(target, "HEARTBEAT.md"))).toBe(false);
+		expect(result.seeded).not.toContain("HEARTBEAT.md");
 	});
 
 	test("throws on unexpected filesystem errors", () => {
@@ -100,7 +105,7 @@ describe("seedTemplates", () => {
 		mkdirSync(join(skillSource, "references"));
 		writeFileSync(join(skillSource, "references", "guide.md"), "ref content");
 
-		seedTemplates(target, source);
+		const result = seedTemplates(target, source);
 
 		expect(
 			readFileSync(join(target, "skills", "my-skill", "SKILL.md"), "utf-8"),
@@ -111,6 +116,8 @@ describe("seedTemplates", () => {
 				"utf-8",
 			),
 		).toBe("ref content");
+		expect(result.seeded).toContain("skills/my-skill/SKILL.md");
+		expect(result.seeded).toContain("skills/my-skill/references/guide.md");
 	});
 
 	test("does not overwrite existing files in subdirectories", () => {
@@ -122,11 +129,22 @@ describe("seedTemplates", () => {
 		mkdirSync(existingSkill, { recursive: true });
 		writeFileSync(join(existingSkill, "SKILL.md"), "user version");
 
-		seedTemplates(target, source);
+		const result = seedTemplates(target, source);
 
 		expect(
 			readFileSync(join(target, "skills", "my-skill", "SKILL.md"), "utf-8"),
 		).toBe("user version");
+		expect(result.seeded).not.toContain("skills/my-skill/SKILL.md");
+	});
+
+	test("returns empty seeded list when all files already exist", () => {
+		for (const file of FILES) {
+			writeFileSync(join(target, file), "existing");
+		}
+
+		const result = seedTemplates(target, source);
+
+		expect(result.seeded).toEqual([]);
 	});
 
 	test("copies all file types in subdirectories", () => {
