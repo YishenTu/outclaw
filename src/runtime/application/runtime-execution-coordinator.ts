@@ -2,6 +2,7 @@ import { HeartbeatCoordinator } from "./heartbeat-coordinator.ts";
 import { MessageQueue } from "./message-queue.ts";
 import type { PromptDispatcher, PromptExecution } from "./prompt-dispatcher.ts";
 import type { RuntimeState } from "./runtime-state.ts";
+import type { SessionService } from "./session-service.ts";
 
 interface HeartbeatTask {
 	prompt: string;
@@ -10,7 +11,8 @@ interface HeartbeatTask {
 }
 
 interface RuntimeExecutionCoordinatorOptions {
-	promptDispatcher: PromptDispatcher;
+	promptDispatcher: Pick<PromptDispatcher, "run">;
+	sessions: Pick<SessionService, "recordAcceptedPromptTarget">;
 	state: RuntimeState;
 }
 
@@ -88,9 +90,19 @@ export class RuntimeExecutionCoordinator {
 		if (this.shuttingDown) {
 			return;
 		}
-		this.options.state.preparePrompt(task.prompt, task.images);
-		this.heartbeatCoordinator.noteUserActivity();
-		this.queue.enqueue(() => this.runPrompt(task));
+		this.queue.enqueue(
+			() => this.runPrompt(task),
+			() => {
+				this.options.state.preparePrompt(task.prompt, task.images);
+				this.heartbeatCoordinator.noteUserActivity();
+				if (task.source === "telegram" || task.source === "tui") {
+					this.options.sessions.recordAcceptedPromptTarget(
+						task.source,
+						task.telegramChatId,
+					);
+				}
+			},
+		);
 	}
 
 	enqueueAgentPrompt(task: PromptExecution): Promise<string> {
@@ -115,14 +127,20 @@ export class RuntimeExecutionCoordinator {
 					}
 				},
 			};
-			this.options.state.preparePrompt(wrappedTask.prompt, wrappedTask.images);
-			this.heartbeatCoordinator.noteUserActivity();
-			const queued = this.queue.enqueue(async () => {
-				await this.runPrompt(wrappedTask);
-				if (!failed) {
-					resolve(responseText);
-				}
-			});
+			const queued = this.queue.enqueue(
+				async () => {
+					await this.runPrompt(wrappedTask);
+					if (!failed) {
+						resolve(responseText);
+					}
+				},
+				() => {
+					this.options.state.preparePrompt(
+						wrappedTask.prompt,
+						wrappedTask.images,
+					);
+				},
+			);
 			if (!queued) {
 				reject(new Error("Runtime shutting down"));
 			}

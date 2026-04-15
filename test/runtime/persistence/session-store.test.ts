@@ -140,16 +140,19 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
-	test("persists last telegram chat id", () => {
+	test("persists last user target", () => {
 		let store = createTestStore();
-		store.setLastTelegramDelivery({
-			botId: "bot-a",
+		store.setLastUserTarget({
+			kind: "telegram",
 			chatId: 123,
 		});
 		store.close();
 
 		store = createTestStore();
-		expect(store.getLastTelegramChatId()).toBe(123);
+		expect(store.getLastUserTarget()).toEqual({
+			kind: "telegram",
+			chatId: 123,
+		});
 
 		store.close();
 	});
@@ -434,25 +437,25 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
-	test("last telegram delivery is scoped by bound agent id", () => {
+	test("last user target is scoped by bound agent id", () => {
 		const raillyStore = createTestStore({ agentId: RAILLY_AGENT_ID });
 		const mimiStore = createTestStore({ agentId: MIMI_AGENT_ID });
 
-		raillyStore.setLastTelegramDelivery({
-			botId: "bot-a",
+		raillyStore.setLastUserTarget({
+			kind: "telegram",
 			chatId: 111,
 		});
-		mimiStore.setLastTelegramDelivery({
-			botId: "bot-b",
+		mimiStore.setLastUserTarget({
+			kind: "telegram",
 			chatId: 222,
 		});
 
-		expect(raillyStore.getLastTelegramDelivery()).toEqual({
-			botId: "bot-a",
+		expect(raillyStore.getLastUserTarget()).toEqual({
+			kind: "telegram",
 			chatId: 111,
 		});
-		expect(mimiStore.getLastTelegramDelivery()).toEqual({
-			botId: "bot-b",
+		expect(mimiStore.getLastUserTarget()).toEqual({
+			kind: "telegram",
 			chatId: 222,
 		});
 
@@ -612,8 +615,8 @@ describe("SessionStore", () => {
 			model: "haiku",
 		});
 		mimiStore.setActiveSessionId(CLAUDE_PROVIDER, "sdk-mimi");
-		mimiStore.setLastTelegramDelivery({
-			botId: "bot-mimi",
+		mimiStore.setLastUserTarget({
+			kind: "telegram",
 			chatId: 222,
 		});
 		globalStore.setLastTuiAgentId(MIMI_AGENT_ID);
@@ -623,7 +626,7 @@ describe("SessionStore", () => {
 		expect(raillyStore.get(CLAUDE_PROVIDER, "sdk-railly")).toBeDefined();
 		expect(mimiStore.get(CLAUDE_PROVIDER, "sdk-mimi")).toBeUndefined();
 		expect(mimiStore.getActiveSessionId(CLAUDE_PROVIDER)).toBeUndefined();
-		expect(mimiStore.getLastTelegramDelivery()).toBeUndefined();
+		expect(mimiStore.getLastUserTarget()).toBeUndefined();
 		expect(globalStore.getLastTuiAgentId()).toBeUndefined();
 
 		globalStore.close();

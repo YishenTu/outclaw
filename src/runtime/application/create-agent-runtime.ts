@@ -4,6 +4,7 @@ import type {
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
 import type { Config } from "../config.ts";
+import type { CronJobConfig } from "../cron/index.ts";
 import { CronScheduler, createCronAgentRunner } from "../cron/index.ts";
 import {
 	HeartbeatScheduler,
@@ -33,6 +34,7 @@ interface CreateAgentRuntimeOptions {
 	heartbeat?: Config["heartbeat"];
 	name: string;
 	promptHomeDir?: string;
+	resolveCronTelegramChatId?: (config: CronJobConfig) => number | undefined;
 	restart?: () => void;
 	cronDir?: string;
 	statusAgentName?: string;
@@ -128,6 +130,7 @@ export function createAgentRuntime(
 					}),
 					onResult: (event) => controller.broadcastCronResult(event),
 					getDefaultModel: () => controller.currentModel,
+					resolveTelegramChatId: options.resolveCronTelegramChatId,
 				})
 			: undefined;
 

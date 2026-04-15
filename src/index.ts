@@ -10,6 +10,7 @@ import { createTelegramBotManager } from "./frontend/telegram/index.ts";
 import { discoverAgents } from "./runtime/agents/discover-agents.ts";
 import { createAgentRuntime } from "./runtime/application/create-agent-runtime.ts";
 import { loadGlobalConfig } from "./runtime/config.ts";
+import { createCronTelegramChatIdResolver } from "./runtime/cron/resolve-telegram-chat-id.ts";
 import { SessionStore } from "./runtime/persistence/session-store.ts";
 import { TelegramFileRefStore } from "./runtime/persistence/telegram-file-ref-store.ts";
 import { TelegramRouteStore } from "./runtime/persistence/telegram-route-store.ts";
@@ -90,6 +91,9 @@ function startMultiAgentDaemon(
 			heartbeat: config.heartbeat,
 			name: agent.name,
 			promptHomeDir: agent.promptHomeDir,
+			resolveCronTelegramChatId: createCronTelegramChatIdResolver(
+				agent.config.telegram,
+			),
 			restart: () => {
 				spawnDaemonRestart(CLI_ENTRY);
 			},

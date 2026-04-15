@@ -5,6 +5,7 @@ export interface CronJobConfig {
 	schedule: string;
 	model?: string;
 	enabled: boolean;
+	telegramUserId?: number;
 	prompt: string;
 }
 
@@ -20,6 +21,11 @@ export function parseJobConfig(yamlContent: string): CronJobConfig {
 		schedule: raw.schedule,
 		model: raw.model ?? undefined,
 		enabled: raw.enabled ?? true,
+		telegramUserId:
+			typeof raw.telegramUserId === "number" &&
+			Number.isFinite(raw.telegramUserId)
+				? raw.telegramUserId
+				: undefined,
 		prompt: raw.prompt,
 	};
 }

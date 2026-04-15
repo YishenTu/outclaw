@@ -4,6 +4,6 @@ export function activeSessionKey(agentId: string, providerId: string): string {
 	return `active_session_id:${agentId}:${providerId}`;
 }
 
-export function lastTelegramDeliveryKey(agentId: string): string {
-	return `last_telegram_delivery:${agentId}`;
+export function lastUserTargetKey(agentId: string): string {
+	return `last_user_target:${agentId}`;
 }

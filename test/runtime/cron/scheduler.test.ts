@@ -9,6 +9,7 @@ interface ScheduledCronResult {
 	jobName: string;
 	model: string;
 	sessionId?: string;
+	telegramChatId?: number;
 	text: string;
 }
 
@@ -74,6 +75,10 @@ describe("CronScheduler", () => {
 			) => Promise<string | { text: string; sessionId?: string }>;
 			onResult?: (event: ScheduledCronResult) => void;
 			getDefaultModel?: () => string;
+			resolveTelegramChatId?: (config: {
+				name: string;
+				telegramUserId?: number;
+			}) => number | undefined;
 			watchDir?: (
 				path: string,
 				listener: (eventType: string, filename: string | Buffer | null) => void,
@@ -85,6 +90,7 @@ describe("CronScheduler", () => {
 			runAgent: overrides.runAgent ?? (async () => "agent response"),
 			onResult: overrides.onResult ?? (() => {}),
 			getDefaultModel: overrides.getDefaultModel ?? (() => "opus"),
+			resolveTelegramChatId: overrides.resolveTelegramChatId,
 			watchDir: overrides.watchDir,
 		});
 		schedulers.push(scheduler);
@@ -170,7 +176,41 @@ describe("CronScheduler", () => {
 				jobName: "test-job",
 				model: "haiku",
 				sessionId: undefined,
+				telegramChatId: undefined,
 				text: "hello from agent",
+			},
+		]);
+	});
+
+	test("includes the resolved telegram chat id in cron results", async () => {
+		const cronDir = makeCronDir();
+		writeJob(
+			cronDir,
+			"job.yaml",
+			`
+name: notify-job
+schedule: "* * * * *"
+telegramUserId: 456
+prompt: say hello
+				`.trim(),
+		);
+
+		const results: ScheduledCronResult[] = [];
+		const scheduler = createScheduler(cronDir, {
+			onResult: (event) => results.push(event),
+			resolveTelegramChatId: (config) => config.telegramUserId,
+		});
+		scheduler.start();
+
+		await scheduler.triggerJob("notify-job");
+
+		expect(results).toEqual([
+			{
+				jobName: "notify-job",
+				model: "opus",
+				sessionId: undefined,
+				telegramChatId: 456,
+				text: "agent response",
 			},
 		]);
 	});

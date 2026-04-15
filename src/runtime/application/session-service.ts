@@ -1,4 +1,5 @@
 import type { DoneEvent } from "../../common/protocol.ts";
+import type { LastUserTarget } from "../persistence/last-user-target.ts";
 import type {
 	SessionRow,
 	SessionStore,
@@ -25,8 +26,8 @@ export class SessionService {
 		return this.state.sessionId;
 	}
 
-	get lastTelegramChatId(): number | undefined {
-		return this.state.getLastTelegramChatId();
+	get lastUserTarget(): LastUserTarget | undefined {
+		return this.state.getLastUserTarget();
 	}
 
 	listSessions(limit = 20, tag: SessionTag = "chat"): SessionListEntry[] {
@@ -64,26 +65,37 @@ export class SessionService {
 		return { clearedActiveSession };
 	}
 
-	completeRun(
-		event: DoneEvent,
-		source?: string,
-		telegramChatId?: number,
-		telegramBotId?: string,
-	) {
+	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
 		this.state.completeRun(event, source, telegramChatId);
 		this.persistActiveSession();
 
-		if (source === "telegram" && telegramChatId !== undefined) {
-			if (telegramBotId) {
-				this.store?.setLastTelegramDelivery({
-					botId: telegramBotId,
-					chatId: telegramChatId,
-				});
-			}
-		}
 		if (event.usage) {
 			this.store?.setUsage(this.state.providerId, event.sessionId, event.usage);
 		}
+	}
+
+	recordAcceptedPromptTarget(
+		source: "telegram" | "tui",
+		telegramChatId?: number,
+	) {
+		const target: LastUserTarget | undefined =
+			source === "telegram"
+				? telegramChatId !== undefined
+					? {
+							kind: "telegram",
+							chatId: telegramChatId,
+						}
+					: undefined
+				: {
+						kind: "tui",
+					};
+
+		if (!target) {
+			return;
+		}
+
+		this.state.setLastUserTarget(target);
+		this.store?.setLastUserTarget(target);
 	}
 
 	renameSession(sessionId: string, title: string) {
@@ -149,7 +161,7 @@ export class SessionService {
 				: undefined;
 
 		this.state.restorePersistedState({
-			lastTelegramChatId: this.store.getLastTelegramChatId(),
+			lastUserTarget: this.store.getLastUserTarget(),
 			session,
 			usage,
 		});

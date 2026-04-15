@@ -67,10 +67,6 @@ export class PromptDispatcher {
 			task.source === "telegram" || task.source === "heartbeat"
 				? this.options.clients.listTuiTargets(task.sender)
 				: [];
-		const heartbeatDeliveryTarget =
-			task.source === "heartbeat"
-				? this.options.state.createHeartbeatDeliveryTarget()
-				: undefined;
 		const heartbeatBuffer: FacadeEvent[] = [];
 
 		if (task.source === "telegram" || task.source === "heartbeat") {
@@ -100,7 +96,6 @@ export class PromptDispatcher {
 					event,
 					task.source,
 					task.telegramChatId,
-					task.telegramBotId,
 				);
 				this.options.clients.broadcastStatus();
 			}
@@ -115,6 +110,10 @@ export class PromptDispatcher {
 			task,
 		});
 
+		const heartbeatDeliveryTarget =
+			task.source === "heartbeat"
+				? this.options.state.createHeartbeatDeliveryTarget()
+				: undefined;
 		if (
 			task.source === "heartbeat" &&
 			heartbeatDeliveryTarget?.clientType === "telegram" &&

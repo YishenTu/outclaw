@@ -102,7 +102,7 @@ function createAgentCommand(options: AgentCommandOptions) {
 	const name = options.argv[4];
 	if (!name) {
 		console.log(
-			"Usage: oc agent create <name> [--bot-token <token>] [--users <ids>]",
+			"Usage: oc agent create <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>]",
 		);
 		process.exit(1);
 	}
@@ -111,6 +111,10 @@ function createAgentCommand(options: AgentCommandOptions) {
 	const created = createAgent({
 		allowedUsers: parseUsers(flags.users),
 		botToken: flags["bot-token"] ?? "",
+		defaultCronUserId:
+			flags["default-cron-user"] !== undefined
+				? parseDefaultCronUser(flags["default-cron-user"])
+				: undefined,
 		homeDir: options.homeDir,
 		name,
 		templatesDir: options.templatesDir,
@@ -140,7 +144,7 @@ function configAgentCommand(homeDir: string, argv: string[]) {
 	const name = argv[4];
 	if (!name) {
 		console.log(
-			"Usage: oc agent config <name> [--bot-token <token>] [--users <ids>]",
+			"Usage: oc agent config <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>]",
 		);
 		process.exit(1);
 	}
@@ -152,6 +156,10 @@ function configAgentCommand(homeDir: string, argv: string[]) {
 		botToken: flags["bot-token"],
 		allowedUsers:
 			flags.users !== undefined ? parseUsers(flags.users) : undefined,
+		defaultCronUserId:
+			flags["default-cron-user"] !== undefined
+				? parseDefaultCronUser(flags["default-cron-user"])
+				: undefined,
 	});
 	console.log(`Configured agent ${name}`);
 }
@@ -192,9 +200,9 @@ function parseFlags(args: string[]) {
 	return flags;
 }
 
-function parseTimeoutSeconds(value: string | undefined): number {
+function parseTimeoutSeconds(value: string | undefined): number | undefined {
 	if (value === undefined || value === "") {
-		return 300;
+		return undefined;
 	}
 	const parsed = Number.parseInt(value, 10);
 	if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -204,10 +212,23 @@ function parseTimeoutSeconds(value: string | undefined): number {
 	return parsed;
 }
 
-function parseAskArgs(args: string[]): {
+function parseDefaultCronUser(value: string | undefined): number {
+	if (value === undefined || value === "" || !/^\d+$/.test(value)) {
+		console.error(`Invalid default cron user: ${value ?? ""}`);
+		process.exit(1);
+	}
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		console.error(`Invalid default cron user: ${value}`);
+		process.exit(1);
+	}
+	return parsed;
+}
+
+export function parseAskArgs(args: string[]): {
 	message?: string;
 	target?: string;
-	timeoutSeconds: number;
+	timeoutSeconds?: number;
 } {
 	let target: string | undefined;
 	let timeoutValue: string | undefined;
@@ -264,33 +285,38 @@ async function requestAgentResponse(params: {
 	port: number;
 	senderAgentId: string;
 	target: string;
-	timeoutSeconds: number;
+	timeoutSeconds?: number;
 }): Promise<string> {
 	const ws = new WebSocket(`ws://localhost:${params.port}/?client=control`);
 
 	return new Promise<string>((resolve, reject) => {
 		let settled = false;
 		let opened = false;
+		let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
 		const finish = (fn: () => void) => {
 			if (settled) {
 				return;
 			}
 			settled = true;
-			clearTimeout(timeoutHandle);
+			if (timeoutHandle !== undefined) {
+				clearTimeout(timeoutHandle);
+			}
 			fn();
 		};
 
-		const timeoutHandle = setTimeout(() => {
-			finish(() =>
-				reject(
-					new Error(
-						`TIMEOUT:agent ask timed out after ${params.timeoutSeconds}s`,
+		if (params.timeoutSeconds !== undefined) {
+			timeoutHandle = setTimeout(() => {
+				finish(() =>
+					reject(
+						new Error(
+							`TIMEOUT:agent ask timed out after ${params.timeoutSeconds}s`,
+						),
 					),
-				),
-			);
-			ws.close();
-		}, params.timeoutSeconds * 1000);
+				);
+				ws.close();
+			}, params.timeoutSeconds * 1000);
+		}
 
 		ws.addEventListener("open", () => {
 			opened = true;

@@ -1,8 +1,16 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { upsertSharedEnvEntries } from "../config/env.ts";
+import {
+	loadSharedEnv,
+	resolveAllowedUsers,
+	resolveOptionalUserId,
+	upsertSharedEnvEntries,
+} from "../config/env.ts";
 import { readStoredAgentConfig, writeStoredAgentConfig } from "../config.ts";
-import type { StoredAgentConfig } from "./agent-config.ts";
+import {
+	assertDefaultCronUserAllowed,
+	type StoredAgentConfig,
+} from "./agent-config.ts";
 import { assertValidAgentName } from "./agent-name.ts";
 import { readAgentId } from "./read-agent-id.ts";
 
@@ -11,6 +19,7 @@ interface UpdateAgentOptions {
 	name: string;
 	botToken?: string;
 	allowedUsers?: number[];
+	defaultCronUserId?: number;
 }
 
 export function updateAgent(options: UpdateAgentOptions) {
@@ -25,6 +34,19 @@ export function updateAgent(options: UpdateAgentOptions) {
 	const stored = readStoredAgentConfig(options.homeDir, agentId);
 	const currentTelegram = stored.telegram ?? {};
 	const envEntries: Record<string, string> = {};
+	loadSharedEnv(options.homeDir);
+	const nextAllowedUsers =
+		options.allowedUsers ??
+		resolveAllowedUsers(currentTelegram.allowedUsers ?? []);
+	const nextDefaultCronUserId =
+		options.defaultCronUserId ??
+		resolveOptionalUserId(currentTelegram.defaultCronUserId);
+	if (
+		options.allowedUsers !== undefined ||
+		options.defaultCronUserId !== undefined
+	) {
+		assertDefaultCronUserAllowed(nextAllowedUsers, nextDefaultCronUserId);
+	}
 
 	const merged = {
 		...stored,
@@ -44,6 +66,15 @@ export function updateAgent(options: UpdateAgentOptions) {
 						allowedUsers: preserveStoredAllowedUsers(
 							currentTelegram.allowedUsers,
 							options.allowedUsers,
+							envEntries,
+						),
+					}
+				: {}),
+			...(options.defaultCronUserId !== undefined
+				? {
+						defaultCronUserId: preserveStoredOptionalUserId(
+							currentTelegram.defaultCronUserId,
+							options.defaultCronUserId,
 							envEntries,
 						),
 					}
@@ -81,6 +112,22 @@ function preserveStoredAllowedUsers(
 ) {
 	if (typeof currentValue === "string" && currentValue.startsWith("$")) {
 		envEntries[currentValue.slice(1)] = nextValue.join(",");
+		return currentValue;
+	}
+	return nextValue;
+}
+
+function preserveStoredOptionalUserId(
+	currentValue: StoredAgentConfig["telegram"] extends infer T
+		? T extends { defaultCronUserId?: infer U }
+			? U | undefined
+			: undefined
+		: undefined,
+	nextValue: number,
+	envEntries: Record<string, string>,
+) {
+	if (typeof currentValue === "string" && currentValue.startsWith("$")) {
+		envEntries[currentValue.slice(1)] = String(nextValue);
 		return currentValue;
 	}
 	return nextValue;

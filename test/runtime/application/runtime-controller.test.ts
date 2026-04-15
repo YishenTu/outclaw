@@ -66,6 +66,7 @@ function createController(
 	}
 	return {
 		facade,
+		state,
 		controller: createRuntimeController({
 			facade,
 			cwd: overrides.cwd,
@@ -127,9 +128,18 @@ async function drain(
 async function waitForDone(
 	ws: WsClient & { events: () => ServerEvent[] },
 ): Promise<void> {
+	await waitForDoneCount(ws, 1);
+}
+
+async function waitForDoneCount(
+	ws: WsClient & { events: () => ServerEvent[] },
+	count: number,
+): Promise<void> {
 	return new Promise<void>((resolve) => {
 		const check = setInterval(() => {
-			if (ws.events().some((event) => event.type === "done")) {
+			if (
+				ws.events().filter((event) => event.type === "done").length >= count
+			) {
 				clearInterval(check);
 				resolve();
 			}
@@ -778,6 +788,32 @@ describe("RuntimeController", () => {
 			const types = significant.map((e) => e.type);
 			expect(types).toEqual(["text", "done", "text", "done", "text", "done"]);
 		});
+
+		test("concurrent telegram prompts keep direct replies bound to each sender", async () => {
+			const facade = new MockFacade();
+			facade.delayMs = 20;
+			const { controller, state } = createController({ facade });
+			const tg123 = mockWs("telegram");
+			const tg456 = mockWs("telegram");
+			controller.handleOpen(tg123);
+			controller.handleOpen(tg456);
+
+			controller.handleMessage(tg123, prompt("from 123", "telegram", [], 123));
+			controller.handleMessage(tg456, prompt("from 456", "telegram", [], 456));
+
+			await new Promise((r) => setTimeout(r, 200));
+
+			expect(tg123.events().filter((event) => event.type === "text")).toEqual([
+				{ type: "text", text: "echo: from 123" },
+			]);
+			expect(tg456.events().filter((event) => event.type === "text")).toEqual([
+				{ type: "text", text: "echo: from 456" },
+			]);
+			expect(state.createHeartbeatDeliveryTarget()).toEqual({
+				clientType: "telegram",
+				telegramChatId: 456,
+			});
+		});
 	});
 
 	describe("heartbeat", () => {
@@ -870,7 +906,7 @@ describe("RuntimeController", () => {
 				telegramChatId: number;
 				text: string;
 			}> = [];
-			const { controller, facade } = createController({
+			const { controller } = createController({
 				deliverHeartbeatResult: (params) => {
 					delivered.push(params);
 				},
@@ -885,9 +921,12 @@ describe("RuntimeController", () => {
 				prompt("hello from tg", "telegram", [], 123),
 			);
 			await waitForDone(tg);
+			const initialTuiDoneCount = tui
+				.events()
+				.filter((event) => event.type === "done").length;
 
 			expect(controller.enqueueHeartbeat("check in", Date.now(), 0)).toBe(true);
-			await drain(controller, facade);
+			await waitForDoneCount(tui, initialTuiDoneCount + 1);
 
 			expect(delivered).toEqual([
 				{
@@ -928,7 +967,7 @@ describe("RuntimeController", () => {
 			};
 
 			try {
-				const { controller, facade } = createController({
+				const { controller } = createController({
 					deliverHeartbeatResult: async () => {
 						throw new Error("telegram send failed");
 					},
@@ -943,11 +982,14 @@ describe("RuntimeController", () => {
 					prompt("hello from tg", "telegram", [], 123),
 				);
 				await waitForDone(tg);
+				const initialTuiDoneCount = tui
+					.events()
+					.filter((event) => event.type === "done").length;
 
 				expect(
 					controller.enqueueHeartbeat("check failure", Date.now(), 0),
 				).toBe(true);
-				await drain(controller, facade);
+				await waitForDoneCount(tui, initialTuiDoneCount + 1);
 
 				const tuiEvents = tui
 					.events()
@@ -969,6 +1011,41 @@ describe("RuntimeController", () => {
 			} finally {
 				console.error = originalConsoleError;
 			}
+		});
+
+		test("heartbeat delivery uses the latest user target at send time", async () => {
+			const delivered: Array<{
+				images: Array<{ path: string; caption?: string }>;
+				telegramChatId: number;
+				text: string;
+			}> = [];
+			const facade = new MockFacade();
+			const { controller } = createController({
+				deliverHeartbeatResult: (params) => {
+					delivered.push(params);
+				},
+				facade,
+			});
+			const tui = mockWs("tui");
+			const tg = mockWs("telegram");
+			controller.handleOpen(tui);
+			controller.handleOpen(tg);
+
+			controller.handleMessage(
+				tg,
+				prompt("hello from tg", "telegram", [], 123),
+			);
+			await waitForDone(tg);
+
+			facade.delayMs = 40;
+			expect(controller.enqueueHeartbeat("check switch", Date.now(), 0)).toBe(
+				true,
+			);
+			await new Promise((r) => setTimeout(r, 10));
+			controller.handleMessage(tui, prompt("switch to tui", "tui"));
+			await drain(controller, facade);
+
+			expect(delivered).toEqual([]);
 		});
 
 		test("drops queued heartbeat when user activity happens after scheduling", async () => {
@@ -1010,7 +1087,7 @@ describe("RuntimeController", () => {
 	});
 
 	describe("cron", () => {
-		test("broadcasts cron results to tui clients and forwards them to the last telegram chat", async () => {
+		test("broadcasts cron results to tui clients and forwards them to the explicit cron telegram chat", async () => {
 			const delivered: Array<{
 				jobName: string;
 				telegramChatId: number;
@@ -1022,20 +1099,13 @@ describe("RuntimeController", () => {
 				},
 			});
 			const tui = mockWs("tui");
-			const tg = mockWs("telegram");
 			controller.handleOpen(tui);
-			controller.handleOpen(tg);
-
-			controller.handleMessage(
-				tg,
-				prompt("hello from telegram", "telegram", [], 123),
-			);
-			await waitForDone(tg);
 
 			await controller.broadcastCronResult({
 				jobName: "daily-summary",
 				model: "haiku",
 				sessionId: "cron-session-1",
+				telegramChatId: 123,
 				text: "All clear",
 			});
 
@@ -1055,6 +1125,39 @@ describe("RuntimeController", () => {
 					text: "All clear",
 				},
 			]);
+		});
+
+		test("does not forward cron results to telegram when no explicit cron chat is resolved", async () => {
+			const delivered: Array<{
+				jobName: string;
+				telegramChatId: number;
+				text: string;
+			}> = [];
+			const { controller } = createController({
+				deliverCronResult: (params) => {
+					delivered.push(params);
+				},
+			});
+			const tui = mockWs("tui");
+			controller.handleOpen(tui);
+
+			await controller.broadcastCronResult({
+				jobName: "daily-summary",
+				model: "haiku",
+				sessionId: "cron-session-1",
+				text: "All clear",
+			});
+
+			expect(
+				tui.events().filter((event) => event.type === "cron_result"),
+			).toEqual([
+				{
+					type: "cron_result",
+					jobName: "daily-summary",
+					text: "All clear",
+				},
+			]);
+			expect(delivered).toEqual([]);
 		});
 
 		test("records cron runs as tagged sessions without replacing the active session", async () => {

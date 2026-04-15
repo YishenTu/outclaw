@@ -2,6 +2,7 @@ import {
 	loadSharedEnv,
 	resolveAllowedUsers,
 	resolveEnvString,
+	resolveOptionalUserId,
 } from "../config/env.ts";
 import { readStoredAgentConfig } from "../config.ts";
 import type { AgentConfig } from "./agent-config.ts";
@@ -19,6 +20,9 @@ export function readAgentConfig(options: {
 		telegram: {
 			botToken: resolveEnvString(stored.telegram?.botToken ?? ""),
 			allowedUsers: resolveAllowedUsers(stored.telegram?.allowedUsers ?? []),
+			defaultCronUserId: resolveOptionalUserId(
+				stored.telegram?.defaultCronUserId,
+			),
 		},
 	};
 }

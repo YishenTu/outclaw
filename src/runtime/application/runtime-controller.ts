@@ -79,6 +79,7 @@ export class RuntimeController {
 		jobName: string;
 		model: string;
 		sessionId?: string;
+		telegramChatId?: number;
 		text: string;
 	}) {
 		await this.cronBroadcaster.broadcastResult(result);

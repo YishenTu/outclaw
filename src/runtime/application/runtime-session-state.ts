@@ -4,14 +4,15 @@ import type {
 	ImageRef,
 	UsageInfo,
 } from "../../common/protocol.ts";
+import type { LastUserTarget } from "../persistence/last-user-target.ts";
 import type { SessionRow } from "../persistence/session-store.ts";
 
 export class RuntimeSessionState {
 	private activeSessionId: string | undefined;
 	private activeSessionSource: "tui" | "telegram" | "agent" = "tui";
 	private currentTitle: string | undefined;
+	private lastUserTarget: LastUserTarget | undefined;
 	private lastUsage: UsageInfo | undefined;
-	private lastTelegramChatId: number | undefined;
 	private currentGeneration = 0;
 
 	get generation(): number {
@@ -34,15 +35,19 @@ export class RuntimeSessionState {
 		return this.lastUsage;
 	}
 
-	getLastTelegramChatId(): number | undefined {
-		return this.lastTelegramChatId;
+	getLastUserTarget(): LastUserTarget | undefined {
+		return this.lastUserTarget;
 	}
 
-	createHeartbeatDeliveryTarget(): HeartbeatDeliveryTarget {
-		if (this.activeSessionSource === "telegram") {
+	createHeartbeatDeliveryTarget(): HeartbeatDeliveryTarget | undefined {
+		if (!this.lastUserTarget) {
+			return undefined;
+		}
+
+		if (this.lastUserTarget?.kind === "telegram") {
 			return {
 				clientType: "telegram",
-				telegramChatId: this.lastTelegramChatId,
+				telegramChatId: this.lastUserTarget.chatId,
 			};
 		}
 
@@ -69,11 +74,11 @@ export class RuntimeSessionState {
 	}
 
 	restorePersistedState(params: {
-		lastTelegramChatId?: number;
+		lastUserTarget?: LastUserTarget;
 		session?: SessionRow;
 		usage?: UsageInfo;
 	}) {
-		this.lastTelegramChatId = params.lastTelegramChatId;
+		this.lastUserTarget = params.lastUserTarget;
 		if (!params.session) {
 			return;
 		}
@@ -108,12 +113,13 @@ export class RuntimeSessionState {
 		this.lastUsage = usage;
 	}
 
-	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
+	setLastUserTarget(target: LastUserTarget | undefined) {
+		this.lastUserTarget = target;
+	}
+
+	completeRun(event: DoneEvent, source?: string, _telegramChatId?: number) {
 		if (source === "telegram") {
 			this.activeSessionSource = "telegram";
-			if (telegramChatId !== undefined) {
-				this.lastTelegramChatId = telegramChatId;
-			}
 		} else if (source === "tui" || source === undefined) {
 			this.activeSessionSource = "tui";
 		} else if (source === "agent" && this.activeSessionId === undefined) {

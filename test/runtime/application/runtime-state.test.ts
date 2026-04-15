@@ -46,6 +46,7 @@ describe("RuntimeState", () => {
 		const state = new RuntimeState(PROVIDER_ID);
 		expect(state.sessionId).toBeUndefined();
 		expect(state.sessionTitle).toBeUndefined();
+		expect(state.createHeartbeatDeliveryTarget()).toBeUndefined();
 	});
 
 	test("setModel changes model", () => {
@@ -131,10 +132,13 @@ describe("RuntimeState", () => {
 			expect(status.usage).toEqual(done.usage);
 		});
 
-		test("tracks the last telegram delivery target", () => {
+		test("tracks the last user target separately from session source", () => {
 			const state = new RuntimeState(PROVIDER_ID);
 
-			state.preparePrompt("from telegram");
+			state.setLastUserTarget({
+				kind: "telegram",
+				chatId: 123,
+			});
 			state.completeRun(makeDoneEvent("sdk-tg"), "telegram", 123);
 
 			expect(state.createHeartbeatDeliveryTarget()).toEqual({
@@ -146,7 +150,10 @@ describe("RuntimeState", () => {
 		test("keeps the last user delivery target when heartbeat completes", () => {
 			const state = new RuntimeState(PROVIDER_ID);
 
-			state.preparePrompt("from telegram");
+			state.setLastUserTarget({
+				kind: "telegram",
+				chatId: 123,
+			});
 			state.completeRun(makeDoneEvent("sdk-tg"), "telegram", 123);
 			state.completeRun(makeDoneEvent("sdk-tg"), "heartbeat");
 
@@ -241,7 +248,10 @@ describe("RuntimeState", () => {
 			const state = new RuntimeState(PROVIDER_ID);
 
 			state.restorePersistedState({
-				lastTelegramChatId: 123,
+				lastUserTarget: {
+					kind: "telegram",
+					chatId: 123,
+				},
 				session: {
 					agentId: AGENT_ID,
 					providerId: PROVIDER_ID,

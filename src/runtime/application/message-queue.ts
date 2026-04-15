@@ -6,11 +6,12 @@ export class MessageQueue {
 	private closed = false;
 	private drainResolvers: Array<() => void> = [];
 
-	enqueue(task: Task): boolean {
+	enqueue(task: Task, onAccepted?: () => void): boolean {
 		if (this.closed) {
 			return false;
 		}
 		this.queue.push(task);
+		onAccepted?.();
 		this.process();
 		return true;
 	}

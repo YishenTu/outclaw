@@ -6,6 +6,7 @@ import type {
 	RuntimeStatusEvent,
 	UsageInfo,
 } from "../../common/protocol.ts";
+import type { LastUserTarget } from "../persistence/last-user-target.ts";
 import type { SessionRow } from "../persistence/session-store.ts";
 import { RuntimeSessionState } from "./runtime-session-state.ts";
 import { RuntimeSettingsState } from "./runtime-settings-state.ts";
@@ -35,8 +36,8 @@ export class RuntimeState {
 		return this.currentProviderId;
 	}
 
-	getLastTelegramChatId(): number | undefined {
-		return this.sessions.getLastTelegramChatId();
+	getLastUserTarget(): LastUserTarget | undefined {
+		return this.sessions.getLastUserTarget();
 	}
 
 	get resolvedModel(): string {
@@ -71,7 +72,9 @@ export class RuntimeState {
 		};
 	}
 
-	createHeartbeatDeliveryTarget() {
+	createHeartbeatDeliveryTarget():
+		| import("../../common/protocol.ts").HeartbeatDeliveryTarget
+		| undefined {
 		return this.sessions.createHeartbeatDeliveryTarget();
 	}
 
@@ -92,7 +95,7 @@ export class RuntimeState {
 	}
 
 	restorePersistedState(params: {
-		lastTelegramChatId?: number;
+		lastUserTarget?: LastUserTarget;
 		session?: SessionRow;
 		usage?: UsageInfo;
 	}) {
@@ -104,6 +107,10 @@ export class RuntimeState {
 
 	renameSession(sessionId: string, title: string) {
 		this.sessions.renameSession(sessionId, title);
+	}
+
+	setLastUserTarget(target: LastUserTarget | undefined) {
+		this.sessions.setLastUserTarget(target);
 	}
 
 	switchToSession(session: SessionRow, usage?: UsageInfo) {

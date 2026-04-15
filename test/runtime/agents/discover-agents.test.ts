@@ -69,6 +69,7 @@ describe("agent discovery", () => {
 						telegram: {
 							botToken: "",
 							allowedUsers: [33],
+							defaultCronUserId: undefined,
 						},
 					},
 				},
@@ -82,6 +83,7 @@ describe("agent discovery", () => {
 						telegram: {
 							botToken: "railly-token",
 							allowedUsers: [11, 22],
+							defaultCronUserId: undefined,
 						},
 					},
 				},
@@ -155,6 +157,38 @@ describe("agent config", () => {
 				telegram: {
 					botToken: "bot-token",
 					allowedUsers: [101, 202],
+					defaultCronUserId: undefined,
+				},
+			});
+		} finally {
+			rmSync(homeDir, { recursive: true });
+		}
+	});
+
+	test("reads defaultCronUserId from shared agent config", () => {
+		const homeDir = tmp();
+		try {
+			createAgent(homeDir, "railly", "agent-railly");
+			writeFileSync(
+				join(homeDir, "config.json"),
+				JSON.stringify({
+					agents: {
+						"agent-railly": {
+							telegram: {
+								botToken: "",
+								allowedUsers: [101, 202],
+								defaultCronUserId: 202,
+							},
+						},
+					},
+				}),
+			);
+
+			expect(readAgentConfig({ agentId: "agent-railly", homeDir })).toEqual({
+				telegram: {
+					botToken: "",
+					allowedUsers: [101, 202],
+					defaultCronUserId: 202,
 				},
 			});
 		} finally {
@@ -173,6 +207,7 @@ describe("agent config", () => {
 				telegram: {
 					botToken: "",
 					allowedUsers: [],
+					defaultCronUserId: undefined,
 				},
 			});
 			expect(
@@ -209,6 +244,7 @@ describe("agent config", () => {
 					telegram: {
 						botToken: "$BOT_TOKEN",
 						allowedUsers: "$ALLOWED_USERS",
+						defaultCronUserId: 123,
 					},
 				},
 				homeDir,
@@ -222,6 +258,7 @@ describe("agent config", () => {
 						telegram: {
 							botToken: "$BOT_TOKEN",
 							allowedUsers: "$ALLOWED_USERS",
+							defaultCronUserId: 123,
 						},
 					},
 				},

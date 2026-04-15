@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHeartbeatPrompt } from "../../../src/runtime/heartbeat/create-heartbeat-prompt.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 import { createRuntime } from "../../../src/runtime/transport/ws-server.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
@@ -847,8 +848,7 @@ describe("Runtime server", () => {
 					ws,
 					(event) =>
 						event.type === "user_prompt" &&
-						event.prompt ===
-							"Read HEARTBEAT.md and follow its instructions. Only act on what the file currently says — do not repeat tasks from earlier heartbeats or infer tasks from conversation history. If the file is missing or nothing needs attention, reply only `HEARTBEAT_OK`, no explaination.",
+						event.prompt === createHeartbeatPrompt(promptHomeDir),
 				),
 				new Promise<never>((_, reject) =>
 					setTimeout(

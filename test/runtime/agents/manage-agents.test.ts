@@ -80,6 +80,64 @@ describe("agent management", () => {
 		}
 	});
 
+	test("createAgent persists a default cron user when configured", () => {
+		const homeDir = createHomeDir();
+		const templatesDir = createTemplatesDir();
+		try {
+			createAgent({
+				allowedUsers: [2, 1],
+				botToken: "token-a",
+				defaultCronUserId: 1,
+				homeDir,
+				name: "railly",
+				templatesDir,
+				createAgentId: () => "agent-railly",
+			});
+
+			expect(
+				JSON.parse(readFileSync(join(homeDir, "config.json"), "utf-8")),
+			).toEqual({
+				agents: {
+					"agent-railly": {
+						telegram: {
+							allowedUsers: [2, 1],
+							botToken: "token-a",
+							defaultCronUserId: 1,
+						},
+					},
+				},
+				autoCompact: true,
+				heartbeat: {
+					deferMinutes: 0,
+					intervalMinutes: 30,
+				},
+				port: 4000,
+			});
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+			rmSync(templatesDir, { force: true, recursive: true });
+		}
+	});
+
+	test("createAgent rejects a default cron user outside allowed users", () => {
+		const homeDir = createHomeDir();
+		const templatesDir = createTemplatesDir();
+		try {
+			expect(() =>
+				createAgent({
+					allowedUsers: [1, 2],
+					defaultCronUserId: 3,
+					homeDir,
+					name: "railly",
+					templatesDir,
+				}),
+			).toThrow("Default cron user 3 must be included in allowed users");
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+			rmSync(templatesDir, { force: true, recursive: true });
+		}
+	});
+
 	test("createAgent seeds the oc skill from the default templates", () => {
 		const homeDir = createHomeDir();
 		try {
@@ -302,6 +360,7 @@ describe("agent management", () => {
 				name: "railly",
 				botToken: "token-b",
 				allowedUsers: [3, 4],
+				defaultCronUserId: 3,
 			});
 
 			const config = JSON.parse(
@@ -311,6 +370,7 @@ describe("agent management", () => {
 			expect(config.agents["agent-railly"].telegram.allowedUsers).toEqual([
 				3, 4,
 			]);
+			expect(config.agents["agent-railly"].telegram.defaultCronUserId).toBe(3);
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 			rmSync(templatesDir, { force: true, recursive: true });
@@ -343,6 +403,9 @@ describe("agent management", () => {
 			expect(config.agents["agent-railly"].telegram.allowedUsers).toEqual([
 				1, 2,
 			]);
+			expect(config.agents["agent-railly"].telegram.defaultCronUserId).toBe(
+				undefined,
+			);
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 			rmSync(templatesDir, { force: true, recursive: true });
@@ -368,6 +431,7 @@ describe("agent management", () => {
 								telegram: {
 									botToken: "$RAILLY_TELEGRAM_BOT_TOKEN",
 									allowedUsers: "$RAILLY_TELEGRAM_USERS",
+									defaultCronUserId: "$RAILLY_DEFAULT_CRON_USER",
 								},
 							},
 						},
@@ -378,7 +442,7 @@ describe("agent management", () => {
 			);
 			writeFileSync(
 				join(homeDir, ".env"),
-				"RAILLY_TELEGRAM_BOT_TOKEN=token-a\nRAILLY_TELEGRAM_USERS=1,2\n",
+				"RAILLY_TELEGRAM_BOT_TOKEN=token-a\nRAILLY_TELEGRAM_USERS=1,2\nRAILLY_DEFAULT_CRON_USER=1\n",
 			);
 
 			updateAgent({
@@ -386,6 +450,7 @@ describe("agent management", () => {
 				name: "railly",
 				botToken: "token-b",
 				allowedUsers: [3, 4],
+				defaultCronUserId: 3,
 			});
 
 			const config = JSON.parse(
@@ -397,11 +462,17 @@ describe("agent management", () => {
 			expect(config.agents["agent-railly"].telegram.allowedUsers).toBe(
 				"$RAILLY_TELEGRAM_USERS",
 			);
+			expect(config.agents["agent-railly"].telegram.defaultCronUserId).toBe(
+				"$RAILLY_DEFAULT_CRON_USER",
+			);
 			expect(readFileSync(join(homeDir, ".env"), "utf-8")).toContain(
 				"RAILLY_TELEGRAM_BOT_TOKEN=token-b",
 			);
 			expect(readFileSync(join(homeDir, ".env"), "utf-8")).toContain(
 				"RAILLY_TELEGRAM_USERS=3,4",
+			);
+			expect(readFileSync(join(homeDir, ".env"), "utf-8")).toContain(
+				"RAILLY_DEFAULT_CRON_USER=3",
 			);
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
@@ -421,6 +492,31 @@ describe("agent management", () => {
 			).toThrow("Agent does not exist: nonexistent");
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
+		}
+	});
+
+	test("updateAgent rejects a default cron user outside allowed users", () => {
+		const homeDir = createHomeDir();
+		const templatesDir = createTemplatesDir();
+		try {
+			createAgent({
+				homeDir,
+				name: "railly",
+				templatesDir,
+				createAgentId: () => "agent-railly",
+				allowedUsers: [1, 2],
+			});
+
+			expect(() =>
+				updateAgent({
+					homeDir,
+					name: "railly",
+					defaultCronUserId: 3,
+				}),
+			).toThrow("Default cron user 3 must be included in allowed users");
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+			rmSync(templatesDir, { force: true, recursive: true });
 		}
 	});
 
@@ -460,8 +556,8 @@ describe("agent management", () => {
 					model: "haiku",
 				});
 				mimiStore.setActiveSessionId("claude", "sdk-mimi");
-				mimiStore.setLastTelegramDelivery({
-					botId: "bot-mimi",
+				mimiStore.setLastUserTarget({
+					kind: "telegram",
 					chatId: 202,
 				});
 				globalStore.setLastTuiAgentId("agent-mimi");
@@ -472,7 +568,7 @@ describe("agent management", () => {
 
 				expect(mimiStore.get("claude", "sdk-mimi")).toBeUndefined();
 				expect(mimiStore.getActiveSessionId("claude")).toBeUndefined();
-				expect(mimiStore.getLastTelegramDelivery()).toBeUndefined();
+				expect(mimiStore.getLastUserTarget()).toBeUndefined();
 				expect(globalStore.getLastTuiAgentId()).toBeUndefined();
 				expect(routeStore.getAgentId("bot-a", 101)).toBeUndefined();
 				expect(raillyStore.get("claude", "sdk-railly")).toBeDefined();

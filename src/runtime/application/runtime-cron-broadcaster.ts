@@ -7,6 +7,7 @@ interface CronExecutionResult {
 	jobName: string;
 	model: string;
 	sessionId?: string;
+	telegramChatId?: number;
 	text: string;
 }
 
@@ -45,7 +46,7 @@ export class RuntimeCronBroadcaster {
 		};
 		this.options.clients.broadcast(event);
 
-		const telegramChatId = this.options.sessions.lastTelegramChatId;
+		const telegramChatId = result.telegramChatId;
 		if (!this.deliverCronResult || telegramChatId === undefined) {
 			return;
 		}

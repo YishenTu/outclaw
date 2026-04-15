@@ -39,9 +39,20 @@ prompt: do something
 name: test-job
 schedule: "*/5 * * * *"
 prompt: do something
-`.trim();
+	`.trim();
 		const job = parseJobConfig(yaml);
 		expect(job.model).toBeUndefined();
+	});
+
+	test("parses telegramUserId when provided", () => {
+		const yaml = `
+name: notify-job
+schedule: "*/5 * * * *"
+telegramUserId: 123
+prompt: do something
+	`.trim();
+		const job = parseJobConfig(yaml);
+		expect(job.telegramUserId).toBe(123);
 	});
 
 	test("throws when name is missing", () => {

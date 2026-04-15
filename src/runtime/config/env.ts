@@ -43,6 +43,23 @@ export function resolveAllowedUsers(value: unknown): number[] {
 	return [];
 }
 
+export function resolveOptionalUserId(value: unknown): number | undefined {
+	if (typeof value === "number") {
+		return Number.isFinite(value) && value !== 0 ? value : undefined;
+	}
+
+	if (typeof value === "string") {
+		const resolved = resolveEnvString(value).trim();
+		if (!resolved) {
+			return undefined;
+		}
+		const parsed = Number(resolved);
+		return Number.isFinite(parsed) && parsed !== 0 ? parsed : undefined;
+	}
+
+	return undefined;
+}
+
 export function upsertSharedEnvEntries(
 	homeDir: string,
 	entries: Record<string, string>,

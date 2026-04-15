@@ -60,8 +60,8 @@ describe("SessionService", () => {
 			source: "telegram",
 		});
 		store.setActiveSessionId(PROVIDER_ID, "sdk-456");
-		store.setLastTelegramDelivery({
-			botId: "bot-a",
+		store.setLastUserTarget({
+			kind: "telegram",
 			chatId: 123,
 		});
 		store.setUsage(PROVIDER_ID, "sdk-456", requireUsage(makeDoneEvent()));
@@ -121,20 +121,15 @@ describe("SessionService", () => {
 		store.close();
 	});
 
-	test("completeRun persists the last telegram chat id for telegram sessions", () => {
+	test("recordAcceptedPromptTarget persists the last user target for telegram prompts", () => {
 		const store = createTestStore();
 		const state = new RuntimeState(PROVIDER_ID);
 		const sessions = new SessionService(state, store);
 
-		state.preparePrompt("from telegram");
-		sessions.completeRun(makeDoneEvent("sdk-tg"), "telegram", 123, "bot-a");
+		sessions.recordAcceptedPromptTarget("telegram", 123);
 
-		expect(store.get(PROVIDER_ID, "sdk-tg")).toMatchObject({
-			source: "telegram",
-		});
-		expect(store.getLastTelegramChatId()).toBe(123);
-		expect(store.getLastTelegramDelivery()).toEqual({
-			botId: "bot-a",
+		expect(store.getLastUserTarget()).toEqual({
+			kind: "telegram",
 			chatId: 123,
 		});
 		expect(state.createHeartbeatDeliveryTarget()).toEqual({
@@ -145,36 +140,38 @@ describe("SessionService", () => {
 		store.close();
 	});
 
-	test("agent-originated runs preserve telegram delivery ownership for active telegram sessions", () => {
+	test("accepted tui prompts overwrite a prior telegram target immediately", () => {
 		const store = createTestStore();
 		const state = new RuntimeState(PROVIDER_ID);
 		const sessions = new SessionService(state, store);
 
-		state.preparePrompt("from telegram");
-		sessions.completeRun(makeDoneEvent("sdk-tg"), "telegram", 123, "bot-a");
-		sessions.completeRun(makeDoneEvent("sdk-tg"), "agent");
+		sessions.recordAcceptedPromptTarget("telegram", 123);
+		sessions.recordAcceptedPromptTarget("tui");
 
-		expect(store.get(PROVIDER_ID, "sdk-tg")).toMatchObject({
-			source: "telegram",
-		});
+		expect(store.getLastUserTarget()).toEqual({ kind: "tui" });
 		expect(state.createHeartbeatDeliveryTarget()).toEqual({
-			clientType: "telegram",
-			telegramChatId: 123,
+			clientType: "tui",
 		});
 
 		store.close();
 	});
 
-	test("agent-originated runs can create agent-sourced sessions when no session exists yet", () => {
+	test("agent-originated runs do not mutate the last user target", () => {
 		const store = createTestStore();
 		const state = new RuntimeState(PROVIDER_ID);
 		const sessions = new SessionService(state, store);
 
+		sessions.recordAcceptedPromptTarget("telegram", 123);
 		state.preparePrompt("from agent");
 		sessions.completeRun(makeDoneEvent("sdk-agent"), "agent");
 
-		expect(store.get(PROVIDER_ID, "sdk-agent")).toMatchObject({
-			source: "agent",
+		expect(store.getLastUserTarget()).toEqual({
+			kind: "telegram",
+			chatId: 123,
+		});
+		expect(state.createHeartbeatDeliveryTarget()).toEqual({
+			clientType: "telegram",
+			telegramChatId: 123,
 		});
 
 		store.close();

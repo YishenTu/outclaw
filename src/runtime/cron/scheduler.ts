@@ -13,6 +13,7 @@ interface CronExecutionResult {
 	jobName: string;
 	model: string;
 	sessionId?: string;
+	telegramChatId?: number;
 	text: string;
 }
 
@@ -24,6 +25,7 @@ interface CronSchedulerOptions {
 	) => Promise<string | CronAgentRunResult>;
 	onResult: (result: CronExecutionResult) => Promise<void> | void;
 	getDefaultModel: () => string;
+	resolveTelegramChatId?: (config: CronJobConfig) => number | undefined;
 	watchDir?: (
 		path: string,
 		listener: (eventType: string, filename: string | Buffer | null) => void,
@@ -34,6 +36,7 @@ interface ActiveJob {
 	filename: string;
 	config: CronJobConfig;
 	cron: Cron;
+	telegramChatId?: number;
 }
 
 export class CronScheduler {
@@ -69,7 +72,7 @@ export class CronScheduler {
 		if (!filename) return;
 		const job = this.jobs.get(filename);
 		if (!job) return;
-		await this.executeJob(job.config);
+		await this.executeJob(job);
 	}
 
 	private syncJobsWithDirectory() {
@@ -128,34 +131,41 @@ export class CronScheduler {
 			this.removeJobByFile(duplicateFile);
 		}
 
+		const telegramChatId = this.options.resolveTelegramChatId?.(config);
 		const cron = new Cron(config.schedule, () => {
-			void this.executeJob(config);
+			const job = this.jobs.get(filename);
+			if (!job) {
+				return;
+			}
+			void this.executeJob(job);
 		});
 
-		this.jobs.set(filename, { filename, config, cron });
+		this.jobs.set(filename, { filename, config, cron, telegramChatId });
 		this.filesByName.set(config.name, filename);
 	}
 
-	private async executeJob(config: CronJobConfig) {
-		const model = config.model ?? this.options.getDefaultModel();
+	private async executeJob(job: ActiveJob) {
+		const model = job.config.model ?? this.options.getDefaultModel();
 
 		try {
 			const runResult = normalizeRunResult(
-				await this.options.runAgent(config.prompt, model),
+				await this.options.runAgent(job.config.prompt, model),
 			);
 
 			if (isSuppressedCronResult(runResult.text)) return;
 
 			await this.options.onResult({
-				jobName: config.name,
+				jobName: job.config.name,
 				model,
 				sessionId: runResult.sessionId,
+				telegramChatId: job.telegramChatId,
 				text: runResult.text,
 			});
 		} catch (err) {
 			await this.options.onResult({
-				jobName: config.name,
+				jobName: job.config.name,
 				model,
+				telegramChatId: job.telegramChatId,
 				text: `[error] ${extractError(err)}`,
 			});
 		}

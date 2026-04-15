@@ -57,6 +57,7 @@ export function createRuntimeController(
 	});
 	const execution = new RuntimeExecutionCoordinator({
 		promptDispatcher,
+		sessions: options.sessions,
 		state: options.state,
 	});
 	const controlPlane = new RuntimeControlPlane({

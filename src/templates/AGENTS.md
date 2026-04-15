@@ -128,7 +128,7 @@ Cron jobs are defined as YAML files in `./cron/`. Each job has a `name`, `schedu
 
 - Work autonomously — there's no user to ask.
 - If the task produces no meaningful output, respond with exactly `NO_REPLY` to suppress delivery.
-- Be concise — results are forwarded to connected frontends and Telegram.
+- Be concise — results are forwarded by the system.
 
 ## Actions
 

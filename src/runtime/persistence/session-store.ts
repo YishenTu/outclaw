@@ -1,6 +1,11 @@
 import type { Database } from "bun:sqlite";
 import type { UsageInfo } from "../../common/protocol.ts";
 import {
+	type LastUserTarget,
+	parseLastUserTarget,
+	serializeLastUserTarget,
+} from "./last-user-target.ts";
+import {
 	mapSessionRow,
 	mapSessionRows,
 	mapUsageRow,
@@ -15,17 +20,12 @@ import {
 import {
 	activeSessionKey,
 	LAST_TUI_AGENT_KEY,
-	lastTelegramDeliveryKey,
+	lastUserTargetKey,
 } from "./state-keys.ts";
 
 interface SessionStoreOptions {
 	agentId?: string;
 	journalMode?: "WAL" | "DELETE";
-}
-
-interface TelegramDelivery {
-	botId: string;
-	chatId: number;
 }
 
 export type { SessionRow, SessionTag } from "./session-store-records.ts";
@@ -244,11 +244,11 @@ export class SessionStore {
 				.query(
 					`DELETE FROM state
 					 WHERE key LIKE $activeSessionPrefix
-					    OR key = $lastTelegramDeliveryKey`,
+					    OR key = $lastUserTargetKey`,
 				)
 				.run({
 					$activeSessionPrefix: `${activeSessionKey(agentId, "")}%`,
-					$lastTelegramDeliveryKey: lastTelegramDeliveryKey(agentId),
+					$lastUserTargetKey: lastUserTargetKey(agentId),
 				});
 
 			if (this.getLastTuiAgentId() === agentId) {
@@ -288,44 +288,21 @@ export class SessionStore {
 		this.deleteStateValue(key);
 	}
 
-	getLastTelegramChatId(): number | undefined {
-		return this.getLastTelegramDelivery()?.chatId;
+	getLastUserTarget(): LastUserTarget | undefined {
+		return parseLastUserTarget(
+			this.getStateValue(lastUserTargetKey(this.agentId)),
+		);
 	}
 
-	getLastTelegramDelivery(): TelegramDelivery | undefined {
-		const value = this.getStateValue(lastTelegramDeliveryKey(this.agentId));
-		if (!value) {
-			return undefined;
-		}
-
-		try {
-			const parsed = JSON.parse(value) as Partial<TelegramDelivery>;
-			if (
-				typeof parsed.botId === "string" &&
-				typeof parsed.chatId === "number" &&
-				Number.isFinite(parsed.chatId)
-			) {
-				return {
-					botId: parsed.botId,
-					chatId: parsed.chatId,
-				};
-			}
-		} catch {
-			return undefined;
-		}
-
-		return undefined;
-	}
-
-	setLastTelegramDelivery(delivery: TelegramDelivery | undefined) {
-		if (!delivery) {
-			this.deleteStateValue(lastTelegramDeliveryKey(this.agentId));
+	setLastUserTarget(target: LastUserTarget | undefined) {
+		if (!target) {
+			this.deleteStateValue(lastUserTargetKey(this.agentId));
 			return;
 		}
 
 		this.setStateValue(
-			lastTelegramDeliveryKey(this.agentId),
-			JSON.stringify(delivery),
+			lastUserTargetKey(this.agentId),
+			serializeLastUserTarget(target),
 		);
 	}
 

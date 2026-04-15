@@ -8,6 +8,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { parseAskArgs } from "../src/cli/agent.ts";
 import { SessionStore } from "../src/runtime/persistence/session-store.ts";
 
 const TEST_HOME = join(import.meta.dir, ".tmp-cli-test");
@@ -264,6 +265,8 @@ describe("CLI", () => {
 			"railly",
 			"--bot-token",
 			"token-b",
+			"--default-cron-user",
+			"2",
 		]);
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("Configured agent railly");
@@ -277,6 +280,32 @@ describe("CLI", () => {
 		).trim();
 		expect(config.agents[agentId].telegram.botToken).toBe("token-b");
 		expect(config.agents[agentId].telegram.allowedUsers).toEqual([1, 2]);
+		expect(config.agents[agentId].telegram.defaultCronUserId).toBe(2);
+	});
+
+	test("agent create persists a default cron user when provided", () => {
+		const result = runCli([
+			"agent",
+			"create",
+			"railly",
+			"--bot-token",
+			"token-a",
+			"--users",
+			"1,2",
+			"--default-cron-user",
+			"2",
+		]);
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Created agent railly");
+
+		const config = JSON.parse(
+			readFileSync(join(OUTCLAW_DIR, "config.json"), "utf-8"),
+		);
+		const agentId = readFileSync(
+			join(OUTCLAW_DIR, "agents", "railly", ".agent-id"),
+			"utf-8",
+		).trim();
+		expect(config.agents[agentId].telegram.defaultCronUserId).toBe(2);
 	});
 
 	test("agent create does not restart the daemon when it is running", () => {
@@ -368,6 +397,23 @@ describe("CLI", () => {
 		expect(existsSync(join(OUTCLAW_DIR, "agents", "railly"))).toBe(false);
 	});
 
+	test("agent create rejects a default cron user outside allowed users", () => {
+		const result = runCli([
+			"agent",
+			"create",
+			"railly",
+			"--users",
+			"1,2",
+			"--default-cron-user",
+			"3",
+		]);
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain(
+			"Default cron user 3 must be included in allowed users",
+		);
+		expect(existsSync(join(OUTCLAW_DIR, "agents", "railly"))).toBe(false);
+	});
+
 	test("agent config rejects invalid users and preserves existing config", () => {
 		runCli([
 			"agent",
@@ -392,6 +438,62 @@ describe("CLI", () => {
 		).trim();
 		expect(config.agents[agentId].telegram.botToken).toBe("token-a");
 		expect(config.agents[agentId].telegram.allowedUsers).toEqual([1, 2]);
+		expect(config.agents[agentId].telegram.defaultCronUserId).toBeUndefined();
+	});
+
+	test("agent config rejects invalid default cron user and preserves existing config", () => {
+		runCli([
+			"agent",
+			"create",
+			"railly",
+			"--bot-token",
+			"token-a",
+			"--users",
+			"1,2",
+		]);
+
+		const result = runCli([
+			"agent",
+			"config",
+			"railly",
+			"--default-cron-user",
+			"abc",
+		]);
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain("Invalid default cron user");
+
+		const config = JSON.parse(
+			readFileSync(join(OUTCLAW_DIR, "config.json"), "utf-8"),
+		);
+		const agentId = readFileSync(
+			join(OUTCLAW_DIR, "agents", "railly", ".agent-id"),
+			"utf-8",
+		).trim();
+		expect(config.agents[agentId].telegram.defaultCronUserId).toBeUndefined();
+	});
+
+	test("agent config rejects a default cron user outside allowed users", () => {
+		runCli([
+			"agent",
+			"create",
+			"railly",
+			"--bot-token",
+			"token-a",
+			"--users",
+			"1,2",
+		]);
+
+		const result = runCli([
+			"agent",
+			"config",
+			"railly",
+			"--default-cron-user",
+			"3",
+		]);
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain(
+			"Default cron user 3 must be included in allowed users",
+		);
 	});
 
 	test("agent config preserves env-backed telegram config", () => {
@@ -405,6 +507,7 @@ describe("CLI", () => {
 							telegram: {
 								botToken: "$RAILLY_TELEGRAM_BOT_TOKEN",
 								allowedUsers: "$RAILLY_TELEGRAM_USERS",
+								defaultCronUserId: "$RAILLY_DEFAULT_CRON_USER",
 							},
 						},
 					},
@@ -415,7 +518,7 @@ describe("CLI", () => {
 		);
 		writeFileSync(
 			join(OUTCLAW_DIR, ".env"),
-			"RAILLY_TELEGRAM_BOT_TOKEN=token-a\nRAILLY_TELEGRAM_USERS=1,2\n",
+			"RAILLY_TELEGRAM_BOT_TOKEN=token-a\nRAILLY_TELEGRAM_USERS=1,2\nRAILLY_DEFAULT_CRON_USER=1\n",
 		);
 
 		const result = runCli([
@@ -426,6 +529,8 @@ describe("CLI", () => {
 			"token-b",
 			"--users",
 			"3,4",
+			"--default-cron-user",
+			"3",
 		]);
 		expect(result.exitCode).toBe(0);
 
@@ -438,11 +543,17 @@ describe("CLI", () => {
 		expect(config.agents["agent-railly"].telegram.allowedUsers).toBe(
 			"$RAILLY_TELEGRAM_USERS",
 		);
+		expect(config.agents["agent-railly"].telegram.defaultCronUserId).toBe(
+			"$RAILLY_DEFAULT_CRON_USER",
+		);
 		expect(readFileSync(join(OUTCLAW_DIR, ".env"), "utf-8")).toContain(
 			"RAILLY_TELEGRAM_BOT_TOKEN=token-b",
 		);
 		expect(readFileSync(join(OUTCLAW_DIR, ".env"), "utf-8")).toContain(
 			"RAILLY_TELEGRAM_USERS=3,4",
+		);
+		expect(readFileSync(join(OUTCLAW_DIR, ".env"), "utf-8")).toContain(
+			"RAILLY_DEFAULT_CRON_USER=3",
 		);
 	});
 
@@ -536,6 +647,52 @@ describe("CLI", () => {
 			);
 			expect(result.exitCode).toBe(0);
 			expect(result.stdout).toContain("hello back");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("agent ask has no timeout unless --timeout is passed", () => {
+		expect(parseAskArgs(["--to", "mimi", "hello", "there"])).toEqual({
+			message: "hello there",
+			target: "mimi",
+			timeoutSeconds: undefined,
+		});
+		expect(
+			parseAskArgs(["--to", "mimi", "--timeout", "10", "hello", "there"]),
+		).toEqual({
+			message: "hello there",
+			target: "mimi",
+			timeoutSeconds: 10,
+		});
+	});
+
+	test("agent ask times out only when --timeout is passed", async () => {
+		createAgentHome("railly", "agent-railly");
+		createAgentHome("mimi", "agent-mimi");
+		const server = Bun.serve({
+			port: 0,
+			fetch(req, websocketServer) {
+				if (websocketServer.upgrade(req)) {
+					return;
+				}
+				return new Response("ok");
+			},
+			websocket: {
+				message() {},
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["agent", "ask", "--to", "mimi", "--timeout", "1", "hi there"],
+				{
+					cwd: join(OUTCLAW_DIR, "agents", "railly"),
+				},
+			);
+			expect(result.exitCode).toBe(124);
+			expect(result.stderr).toContain("agent ask timed out after 1s");
 		} finally {
 			server.stop();
 		}
