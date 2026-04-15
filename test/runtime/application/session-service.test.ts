@@ -145,6 +145,41 @@ describe("SessionService", () => {
 		store.close();
 	});
 
+	test("agent-originated runs preserve telegram delivery ownership for active telegram sessions", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		state.preparePrompt("from telegram");
+		sessions.completeRun(makeDoneEvent("sdk-tg"), "telegram", 123, "bot-a");
+		sessions.completeRun(makeDoneEvent("sdk-tg"), "agent");
+
+		expect(store.get(PROVIDER_ID, "sdk-tg")).toMatchObject({
+			source: "telegram",
+		});
+		expect(state.createHeartbeatDeliveryTarget()).toEqual({
+			clientType: "telegram",
+			telegramChatId: 123,
+		});
+
+		store.close();
+	});
+
+	test("agent-originated runs can create agent-sourced sessions when no session exists yet", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		state.preparePrompt("from agent");
+		sessions.completeRun(makeDoneEvent("sdk-agent"), "agent");
+
+		expect(store.get(PROVIDER_ID, "sdk-agent")).toMatchObject({
+			source: "agent",
+		});
+
+		store.close();
+	});
+
 	test("switchToSession restores usage and updates the active session id", () => {
 		const store = createTestStore();
 		const usage = requireUsage(makeDoneEvent());

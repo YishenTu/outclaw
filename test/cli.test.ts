@@ -27,6 +27,25 @@ function runCli(args: string[], options?: { cwd?: string }) {
 	};
 }
 
+async function runCliAsync(args: string[], options?: { cwd?: string }) {
+	const child = Bun.spawn(["bun", CLI_PATH, ...args], {
+		cwd: options?.cwd,
+		env: { ...process.env, HOME: TEST_HOME, TZ: "UTC" },
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [exitCode, stdout, stderr] = await Promise.all([
+		child.exited,
+		new Response(child.stdout).text(),
+		new Response(child.stderr).text(),
+	]);
+	return {
+		stdout: stdout.trim(),
+		stderr: stderr.trim(),
+		exitCode,
+	};
+}
+
 function createAgentHome(name: string, agentId: string) {
 	const agentHome = join(OUTCLAW_DIR, "agents", name);
 	mkdirSync(agentHome, { recursive: true });
@@ -342,9 +361,12 @@ describe("CLI", () => {
 		writeConfig(server.port as number);
 
 		try {
-			const result = runCli(["agent", "ask", "--to", "mimi", "hi there"], {
-				cwd: join(OUTCLAW_DIR, "agents", "railly"),
-			});
+			const result = await runCliAsync(
+				["agent", "ask", "--to", "mimi", "hi there"],
+				{
+					cwd: join(OUTCLAW_DIR, "agents", "railly"),
+				},
+			);
 			expect(result.exitCode).toBe(0);
 			expect(result.stdout).toContain("hello back");
 		} finally {
@@ -359,6 +381,82 @@ describe("CLI", () => {
 		});
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr).toContain("cannot resolve sender agent from cwd");
+	});
+
+	test("agent ask does not treat flag values as the message body", async () => {
+		createAgentHome("railly", "agent-railly");
+		createAgentHome("mimi", "agent-mimi");
+		const server = Bun.serve({
+			port: 0,
+			fetch(req, websocketServer) {
+				if (websocketServer.upgrade(req)) {
+					return;
+				}
+				return new Response("ok");
+			},
+			websocket: {
+				message(ws, rawMessage) {
+					const message = JSON.parse(String(rawMessage));
+					expect(message).toEqual({
+						type: "ask",
+						fromAgentId: "agent-railly",
+						to: "mimi",
+						message: "hello there",
+					});
+					ws.send(JSON.stringify({ type: "ask_response", text: "hello back" }));
+				},
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["agent", "ask", "--to", "mimi", "--timeout", "10", "hello", "there"],
+				{
+					cwd: join(OUTCLAW_DIR, "agents", "railly"),
+				},
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toContain("hello back");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("agent ask exits when the control connection closes before a response", async () => {
+		createAgentHome("railly", "agent-railly");
+		createAgentHome("mimi", "agent-mimi");
+		const server = Bun.serve({
+			port: 0,
+			fetch(req, websocketServer) {
+				if (websocketServer.upgrade(req)) {
+					return;
+				}
+				return new Response("ok");
+			},
+			websocket: {
+				message() {},
+				open(ws) {
+					ws.close();
+				},
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["agent", "ask", "--to", "mimi", "hi there"],
+				{
+					cwd: join(OUTCLAW_DIR, "agents", "railly"),
+				},
+			);
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr).toContain(
+				"agent ask connection closed before response",
+			);
+		} finally {
+			server.stop();
+		}
 	});
 
 	test("config secure extracts hardcoded agent telegram config into .env", () => {

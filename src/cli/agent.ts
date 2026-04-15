@@ -47,10 +47,10 @@ export async function agentCommand(options: AgentCommandOptions) {
 
 async function askAgentCommand(homeDir: string, argv: string[]) {
 	const args = argv.slice(4);
-	const flags = parseFlags(args);
-	const target = flags.to;
-	const timeoutSeconds = parseTimeoutSeconds(flags.timeout);
-	const message = args.filter((value) => !value.startsWith("--")).at(-1);
+	const parsed = parseAskArgs(args);
+	const target = parsed.target;
+	const timeoutSeconds = parsed.timeoutSeconds;
+	const message = parsed.message;
 	if (!target || !message) {
 		console.error(
 			'Usage: oc agent ask --to <target> [--timeout <seconds>] "<message>"',
@@ -65,53 +65,25 @@ async function askAgentCommand(homeDir: string, argv: string[]) {
 	}
 
 	const config = loadGlobalConfig(homeDir);
-	const ws = new WebSocket(`ws://localhost:${config.port}/?client=control`);
-	const timeoutHandle = setTimeout(() => {
-		ws.close();
-		console.error(`agent ask timed out after ${timeoutSeconds}s`);
-		process.exit(124);
-	}, timeoutSeconds * 1000);
-
-	await new Promise<void>((resolve) => {
-		ws.addEventListener("open", () => {
-			ws.send(
-				JSON.stringify({
-					type: "ask",
-					fromAgentId: sender.agentId,
-					to: target,
-					message,
-				}),
-			);
+	try {
+		const text = await requestAgentResponse({
+			message,
+			port: config.port,
+			senderAgentId: sender.agentId,
+			target,
+			timeoutSeconds,
 		});
-		ws.addEventListener("message", (event) => {
-			const data = JSON.parse(String(event.data)) as {
-				type: string;
-				message?: string;
-				text?: string;
-			};
-			if (data.type === "ask_response") {
-				clearTimeout(timeoutHandle);
-				console.log(data.text ?? "");
-				ws.close();
-				resolve();
-				return;
-			}
-			if (data.type === "ask_error") {
-				clearTimeout(timeoutHandle);
-				console.error(data.message ?? "agent ask failed");
-				ws.close();
-				process.exit(1);
-			}
-		});
-		ws.addEventListener("error", () => {
-			clearTimeout(timeoutHandle);
-			console.error("daemon not running");
-			process.exit(1);
-		});
-		ws.addEventListener("close", () => {
-			clearTimeout(timeoutHandle);
-		});
-	});
+		console.log(text);
+		process.exit(0);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (message.startsWith("TIMEOUT:")) {
+			console.error(message.slice("TIMEOUT:".length));
+			process.exit(124);
+		}
+		console.error(message);
+		process.exit(1);
+	}
 }
 
 function printAgentList(homeDir: string) {
@@ -230,6 +202,145 @@ function parseTimeoutSeconds(value: string | undefined): number {
 		process.exit(1);
 	}
 	return parsed;
+}
+
+function parseAskArgs(args: string[]): {
+	message?: string;
+	target?: string;
+	timeoutSeconds: number;
+} {
+	let target: string | undefined;
+	let timeoutValue: string | undefined;
+	let parseFlags = true;
+	const messageParts: string[] = [];
+	let valid = true;
+
+	for (let index = 0; index < args.length; index += 1) {
+		const value = args[index];
+		if (!value) {
+			continue;
+		}
+		if (parseFlags && value === "--") {
+			parseFlags = false;
+			continue;
+		}
+		if (parseFlags && value === "--to") {
+			const nextValue = args[index + 1];
+			if (!nextValue || nextValue.startsWith("--")) {
+				valid = false;
+				break;
+			}
+			target = nextValue;
+			index += 1;
+			continue;
+		}
+		if (parseFlags && value === "--timeout") {
+			const nextValue = args[index + 1];
+			if (!nextValue || nextValue.startsWith("--")) {
+				valid = false;
+				break;
+			}
+			timeoutValue = nextValue;
+			index += 1;
+			continue;
+		}
+		if (parseFlags && value.startsWith("--")) {
+			valid = false;
+			break;
+		}
+		messageParts.push(value);
+	}
+
+	return {
+		message:
+			valid && messageParts.length > 0 ? messageParts.join(" ") : undefined,
+		target: valid ? target : undefined,
+		timeoutSeconds: parseTimeoutSeconds(timeoutValue),
+	};
+}
+
+async function requestAgentResponse(params: {
+	message: string;
+	port: number;
+	senderAgentId: string;
+	target: string;
+	timeoutSeconds: number;
+}): Promise<string> {
+	const ws = new WebSocket(`ws://localhost:${params.port}/?client=control`);
+
+	return new Promise<string>((resolve, reject) => {
+		let settled = false;
+		let opened = false;
+
+		const finish = (fn: () => void) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			clearTimeout(timeoutHandle);
+			fn();
+		};
+
+		const timeoutHandle = setTimeout(() => {
+			finish(() =>
+				reject(
+					new Error(
+						`TIMEOUT:agent ask timed out after ${params.timeoutSeconds}s`,
+					),
+				),
+			);
+			ws.close();
+		}, params.timeoutSeconds * 1000);
+
+		ws.addEventListener("open", () => {
+			opened = true;
+			ws.send(
+				JSON.stringify({
+					type: "ask",
+					fromAgentId: params.senderAgentId,
+					to: params.target,
+					message: params.message,
+				}),
+			);
+		});
+
+		ws.addEventListener("message", (event) => {
+			const data = JSON.parse(String(event.data)) as {
+				type: string;
+				message?: string;
+				text?: string;
+			};
+			if (data.type === "ask_response") {
+				const text = data.text ?? "";
+				finish(() => resolve(text));
+				ws.close();
+				return;
+			}
+			if (data.type === "ask_error") {
+				finish(() => reject(new Error(data.message ?? "agent ask failed")));
+				ws.close();
+			}
+		});
+
+		ws.addEventListener("error", () => {
+			finish(() => reject(new Error("daemon not running")));
+		});
+
+		ws.addEventListener("close", () => {
+			if (settled) {
+				return;
+			}
+			finish(() =>
+				reject(
+					new Error(
+						opened
+							? "agent ask connection closed before response"
+							: "daemon not running",
+					),
+				),
+			);
+		});
+	});
 }
 
 function resolveSenderAgent(

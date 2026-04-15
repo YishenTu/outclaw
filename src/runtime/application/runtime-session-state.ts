@@ -116,7 +116,7 @@ export class RuntimeSessionState {
 			}
 		} else if (source === "tui" || source === undefined) {
 			this.activeSessionSource = "tui";
-		} else if (source === "agent") {
+		} else if (source === "agent" && this.activeSessionId === undefined) {
 			this.activeSessionSource = "agent";
 		}
 
