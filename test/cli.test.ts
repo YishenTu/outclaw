@@ -77,6 +77,22 @@ function writePid(pid: number) {
 	writeFileSync(PID_PATH, String(pid));
 }
 
+function writeConfig(port: number) {
+	mkdirSync(OUTCLAW_DIR, { recursive: true });
+	writeFileSync(
+		join(OUTCLAW_DIR, "config.json"),
+		JSON.stringify(
+			{
+				autoCompact: true,
+				heartbeat: { intervalMinutes: 30, deferMinutes: 0 },
+				port,
+			},
+			null,
+			"\t",
+		),
+	);
+}
+
 describe("CLI", () => {
 	afterEach(() => {
 		if (existsSync(PID_PATH)) {
@@ -94,7 +110,7 @@ describe("CLI", () => {
 		const { stdout, exitCode } = runCli([]);
 		expect(stdout).toContain("Usage:");
 		expect(stdout).toContain(
-			"oc agent <list|create|config|rename|remove|name>",
+			"oc agent <list|create|config|rename|remove|ask|name>",
 		);
 		expect(exitCode).toBe(1);
 	});
@@ -297,6 +313,52 @@ describe("CLI", () => {
 		const { stdout, exitCode } = runCli(["agent", "railly"]);
 		expect(stdout).toContain("not running");
 		expect(exitCode).toBe(1);
+	});
+
+	test("agent ask resolves sender from cwd and prints control response", async () => {
+		createAgentHome("railly", "agent-railly");
+		createAgentHome("mimi", "agent-mimi");
+		const server = Bun.serve({
+			port: 0,
+			fetch(req, websocketServer) {
+				if (websocketServer.upgrade(req)) {
+					return;
+				}
+				return new Response("ok");
+			},
+			websocket: {
+				message(ws, rawMessage) {
+					const message = JSON.parse(String(rawMessage));
+					expect(message).toEqual({
+						type: "ask",
+						fromAgentId: "agent-railly",
+						to: "mimi",
+						message: "hi there",
+					});
+					ws.send(JSON.stringify({ type: "ask_response", text: "hello back" }));
+				},
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = runCli(["agent", "ask", "--to", "mimi", "hi there"], {
+				cwd: join(OUTCLAW_DIR, "agents", "railly"),
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toContain("hello back");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("agent ask exits when cwd cannot resolve sender", () => {
+		mkdirSync(TEST_HOME, { recursive: true });
+		const result = runCli(["agent", "ask", "--to", "mimi", "hi there"], {
+			cwd: TEST_HOME,
+		});
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain("cannot resolve sender agent from cwd");
 	});
 
 	test("config secure extracts hardcoded agent telegram config into .env", () => {

@@ -1,10 +1,11 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createAgent } from "../runtime/agents/create-agent.ts";
 import { listAgents } from "../runtime/agents/list-agents.ts";
 import { removeAgent } from "../runtime/agents/remove-agent.ts";
 import { renameAgent } from "../runtime/agents/rename-agent.ts";
 import { updateAgent } from "../runtime/agents/update-agent.ts";
+import { loadGlobalConfig } from "../runtime/config.ts";
 
 interface AgentCommandOptions {
 	argv: string[];
@@ -32,6 +33,9 @@ export async function agentCommand(options: AgentCommandOptions) {
 		case "config":
 			configAgentCommand(options.homeDir, options.argv);
 			return;
+		case "ask":
+			await askAgentCommand(options.homeDir, options.argv);
+			return;
 		case undefined:
 			options.printUsage();
 			process.exit(1);
@@ -39,6 +43,75 @@ export async function agentCommand(options: AgentCommandOptions) {
 		default:
 			options.tui(subcommand);
 	}
+}
+
+async function askAgentCommand(homeDir: string, argv: string[]) {
+	const args = argv.slice(4);
+	const flags = parseFlags(args);
+	const target = flags.to;
+	const timeoutSeconds = parseTimeoutSeconds(flags.timeout);
+	const message = args.filter((value) => !value.startsWith("--")).at(-1);
+	if (!target || !message) {
+		console.error(
+			'Usage: oc agent ask --to <target> [--timeout <seconds>] "<message>"',
+		);
+		process.exit(1);
+	}
+
+	const sender = resolveSenderAgent(homeDir, process.cwd());
+	if (!sender) {
+		console.error("cannot resolve sender agent from cwd");
+		process.exit(1);
+	}
+
+	const config = loadGlobalConfig(homeDir);
+	const ws = new WebSocket(`ws://localhost:${config.port}/?client=control`);
+	const timeoutHandle = setTimeout(() => {
+		ws.close();
+		console.error(`agent ask timed out after ${timeoutSeconds}s`);
+		process.exit(124);
+	}, timeoutSeconds * 1000);
+
+	await new Promise<void>((resolve) => {
+		ws.addEventListener("open", () => {
+			ws.send(
+				JSON.stringify({
+					type: "ask",
+					fromAgentId: sender.agentId,
+					to: target,
+					message,
+				}),
+			);
+		});
+		ws.addEventListener("message", (event) => {
+			const data = JSON.parse(String(event.data)) as {
+				type: string;
+				message?: string;
+				text?: string;
+			};
+			if (data.type === "ask_response") {
+				clearTimeout(timeoutHandle);
+				console.log(data.text ?? "");
+				ws.close();
+				resolve();
+				return;
+			}
+			if (data.type === "ask_error") {
+				clearTimeout(timeoutHandle);
+				console.error(data.message ?? "agent ask failed");
+				ws.close();
+				process.exit(1);
+			}
+		});
+		ws.addEventListener("error", () => {
+			clearTimeout(timeoutHandle);
+			console.error("daemon not running");
+			process.exit(1);
+		});
+		ws.addEventListener("close", () => {
+			clearTimeout(timeoutHandle);
+		});
+	});
 }
 
 function printAgentList(homeDir: string) {
@@ -145,6 +218,33 @@ function parseFlags(args: string[]) {
 		flags[key.slice(2)] = "";
 	}
 	return flags;
+}
+
+function parseTimeoutSeconds(value: string | undefined): number {
+	if (value === undefined || value === "") {
+		return 300;
+	}
+	const parsed = Number.parseInt(value, 10);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		console.error(`Invalid timeout: ${value}`);
+		process.exit(1);
+	}
+	return parsed;
+}
+
+function resolveSenderAgent(
+	homeDir: string,
+	cwd: string,
+): { agentId: string; name: string } | undefined {
+	const agentIdPath = join(cwd, ".agent-id");
+	if (!existsSync(agentIdPath)) {
+		return undefined;
+	}
+	const agentId = readFileSync(agentIdPath, "utf-8").trim();
+	if (!agentId) {
+		return undefined;
+	}
+	return listAgents(homeDir).find((agent) => agent.agentId === agentId);
 }
 
 function parseUsers(value: string | undefined) {

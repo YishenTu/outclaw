@@ -87,6 +87,9 @@ describe("runtime client", () => {
 		expect(buildRuntimeSocketUrl("ws://localhost:4000", "telegram")).toBe(
 			"ws://localhost:4000/?client=telegram",
 		);
+		expect(buildRuntimeSocketUrl("ws://localhost:4000", "control")).toBe(
+			"ws://localhost:4000/?client=control",
+		);
 		expect(buildRuntimeSocketUrl("ws://localhost:4000", "tui", "railly")).toBe(
 			"ws://localhost:4000/?client=tui&agent=railly",
 		);

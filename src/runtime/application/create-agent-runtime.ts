@@ -41,6 +41,11 @@ interface CreateAgentRuntimeOptions {
 
 export interface AgentRuntime {
 	agentId: string;
+	askFromAgent(params: {
+		fromAgentId: string;
+		fromAgentName: string;
+		message: string;
+	}): Promise<string>;
 	currentModel: string;
 	getStatusEvent(): RuntimeStatusEvent;
 	handleClose(ws: WsClient): void;
@@ -132,6 +137,7 @@ export function createAgentRuntime(
 
 	return {
 		agentId: options.agentId,
+		askFromAgent: controller.askFromAgent.bind(controller),
 		get currentModel() {
 			return controller.currentModel;
 		},

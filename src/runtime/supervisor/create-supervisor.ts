@@ -86,7 +86,10 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 
 function resolveClientType(url: URL): RuntimeClientType {
 	const client = url.searchParams.get("client");
-	return client === "telegram" ? "telegram" : "tui";
+	if (client === "telegram" || client === "control") {
+		return client;
+	}
+	return "tui";
 }
 
 function resolveTelegramUserId(url: URL): number | undefined {

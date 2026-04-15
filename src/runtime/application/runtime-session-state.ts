@@ -2,14 +2,13 @@ import type {
 	DoneEvent,
 	HeartbeatDeliveryTarget,
 	ImageRef,
-	RuntimeClientType,
 	UsageInfo,
 } from "../../common/protocol.ts";
 import type { SessionRow } from "../persistence/session-store.ts";
 
 export class RuntimeSessionState {
 	private activeSessionId: string | undefined;
-	private activeSessionSource: RuntimeClientType = "tui";
+	private activeSessionSource: "tui" | "telegram" | "agent" = "tui";
 	private currentTitle: string | undefined;
 	private lastUsage: UsageInfo | undefined;
 	private lastTelegramChatId: number | undefined;
@@ -23,7 +22,7 @@ export class RuntimeSessionState {
 		return this.activeSessionId;
 	}
 
-	get sessionSource(): RuntimeClientType {
+	get sessionSource(): "tui" | "telegram" | "agent" {
 		return this.activeSessionSource;
 	}
 
@@ -82,7 +81,11 @@ export class RuntimeSessionState {
 		this.activeSessionId = params.session.sdkSessionId;
 		this.currentTitle = params.session.title;
 		this.activeSessionSource =
-			params.session.source === "telegram" ? "telegram" : "tui";
+			params.session.source === "telegram"
+				? "telegram"
+				: params.session.source === "agent"
+					? "agent"
+					: "tui";
 		this.lastUsage = params.usage;
 	}
 
@@ -97,7 +100,11 @@ export class RuntimeSessionState {
 		this.activeSessionId = session.sdkSessionId;
 		this.currentTitle = session.title;
 		this.activeSessionSource =
-			session.source === "telegram" ? "telegram" : "tui";
+			session.source === "telegram"
+				? "telegram"
+				: session.source === "agent"
+					? "agent"
+					: "tui";
 		this.lastUsage = usage;
 	}
 
@@ -109,6 +116,8 @@ export class RuntimeSessionState {
 			}
 		} else if (source === "tui" || source === undefined) {
 			this.activeSessionSource = "tui";
+		} else if (source === "agent") {
+			this.activeSessionSource = "agent";
 		}
 
 		this.activeSessionId = event.sessionId;

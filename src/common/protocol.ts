@@ -34,7 +34,14 @@ export interface CommandMessage {
 	command: string;
 }
 
-export type RuntimeClientType = "telegram" | "tui";
+export interface AskMessage {
+	type: "ask";
+	fromAgentId: string;
+	to: string;
+	message: string;
+}
+
+export type RuntimeClientType = "telegram" | "tui" | "control";
 
 export interface HeartbeatDeliveryTarget {
 	clientType: RuntimeClientType;
@@ -56,7 +63,8 @@ export interface RequestSkillsMessage {
 export type ClientMessage =
 	| PromptMessage
 	| CommandMessage
-	| RequestSkillsMessage;
+	| RequestSkillsMessage
+	| AskMessage;
 
 // --- Server → Client events ---
 
@@ -257,6 +265,16 @@ export interface SkillsUpdateEvent {
 	skills: SkillInfo[];
 }
 
+export interface AskResponseEvent {
+	type: "ask_response";
+	text: string;
+}
+
+export interface AskErrorEvent {
+	type: "ask_error";
+	message: string;
+}
+
 export type ServerEvent =
 	| TextEvent
 	| ThinkingEvent
@@ -281,7 +299,9 @@ export type ServerEvent =
 	| CompactingFinishedEvent
 	| HistoryReplayEvent
 	| CronResultEvent
-	| SkillsUpdateEvent;
+	| SkillsUpdateEvent
+	| AskResponseEvent
+	| AskErrorEvent;
 
 // --- Facade types (backend contract) ---
 

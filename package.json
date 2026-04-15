@@ -11,9 +11,9 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",
-		"test": "bun test --max-concurrency 1",
-		"test:watch": "bun test --watch --max-concurrency 1",
-		"test:coverage": "bun test --coverage --max-concurrency 1",
+		"test": "bun test --max-concurrency=1",
+		"test:watch": "bun test --watch --max-concurrency=1",
+		"test:coverage": "bun test --coverage --max-concurrency=1",
 		"check:boundaries": "bun run scripts/check-boundaries.ts",
 		"check": "bun run lint && bun run typecheck && bun run test && bun run check:boundaries"
 	},

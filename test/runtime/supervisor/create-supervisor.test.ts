@@ -32,6 +32,15 @@ function connectTelegramWs(
 	});
 }
 
+function connectControlWs(port: number): Promise<WebSocket> {
+	return new Promise((resolve) => {
+		const url = new URL(`ws://localhost:${port}`);
+		url.searchParams.set("client", "control");
+		const ws = new WebSocket(url);
+		ws.onopen = () => resolve(ws);
+	});
+}
+
 function waitForEvent(
 	ws: WebSocket,
 	predicate: (event: { type: string; [key: string]: unknown }) => boolean,
@@ -393,6 +402,98 @@ describe("createSupervisor", () => {
 			message: "Unknown agent: mimi",
 		});
 		expect(remembered).toEqual([]);
+
+		ws.close();
+	});
+
+	test("control clients receive ask responses without runtime status noise", async () => {
+		const raillyFacade = new MockFacade();
+		raillyFacade.textChunks = ["from railly"];
+		const mimiFacade = new MockFacade();
+		mimiFacade.textChunks = ["from mimi"];
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: raillyFacade,
+				}),
+				createAgentRuntime({
+					agentId: "agent-mimi",
+					name: "mimi",
+					facade: mimiFacade,
+				}),
+			],
+		});
+		cleanup = () => supervisor.stop();
+		const ws = await connectControlWs(supervisor.port);
+
+		ws.send(
+			JSON.stringify({
+				type: "ask",
+				fromAgentId: "agent-railly",
+				to: "mimi",
+				message: "hello",
+			}),
+		);
+
+		expect(
+			await waitForEvent(ws, (event) =>
+				["ask_response", "runtime_status", "agent_switched"].includes(
+					event.type,
+				),
+			),
+		).toEqual({
+			type: "ask_response",
+			text: "from mimi",
+		});
+		ws.close();
+	});
+
+	test("control ask rejects unknown target and self-calls", async () => {
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+				}),
+			],
+		});
+		cleanup = () => supervisor.stop();
+		const ws = await connectControlWs(supervisor.port);
+
+		ws.send(
+			JSON.stringify({
+				type: "ask",
+				fromAgentId: "agent-railly",
+				to: "mimi",
+				message: "hello",
+			}),
+		);
+		expect(
+			await waitForEvent(ws, (event) => event.type === "ask_error"),
+		).toEqual({
+			type: "ask_error",
+			message: 'agent "mimi" not found',
+		});
+
+		ws.send(
+			JSON.stringify({
+				type: "ask",
+				fromAgentId: "agent-railly",
+				to: "railly",
+				message: "hello",
+			}),
+		);
+		expect(
+			await waitForEvent(ws, (event) => event.type === "ask_error"),
+		).toEqual({
+			type: "ask_error",
+			message: "cannot ask self",
+		});
 
 		ws.close();
 	});

@@ -3,7 +3,6 @@ import { isModelAlias, type ModelAlias } from "../../common/models.ts";
 import type {
 	DoneEvent,
 	ImageRef,
-	RuntimeClientType,
 	RuntimeStatusEvent,
 	UsageInfo,
 } from "../../common/protocol.ts";
@@ -48,7 +47,7 @@ export class RuntimeState {
 		return this.sessions.sessionId;
 	}
 
-	get sessionSource(): RuntimeClientType {
+	get sessionSource(): "tui" | "telegram" | "agent" {
 		return this.sessions.sessionSource;
 	}
 

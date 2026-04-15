@@ -24,6 +24,9 @@ interface SupervisorControllerOptions {
 
 interface IncomingMessage {
 	command?: string;
+	fromAgentId?: string;
+	message?: string;
+	to?: string;
 	type?: string;
 }
 
@@ -31,10 +34,18 @@ export class SupervisorController {
 	constructor(private readonly options: SupervisorControllerOptions) {}
 
 	handleClose = (ws: WsClient) => {
+		if (ws.data.clientType === "control") {
+			return;
+		}
 		this.options.bindings.unbind(ws)?.handleClose(ws);
 	};
 
 	handleMessage = (ws: WsClient, message: string | Buffer) => {
+		if (ws.data.clientType === "control") {
+			void this.handleControlMessage(ws, message);
+			return;
+		}
+
 		const runtime = this.options.bindings.getCurrentRuntime(ws);
 		if (!runtime) {
 			this.sendError(ws, "No agent runtime is bound to this client");
@@ -52,6 +63,10 @@ export class SupervisorController {
 	};
 
 	handleOpen = (ws: WsClient) => {
+		if (ws.data.clientType === "control") {
+			return;
+		}
+
 		const runtime = this.options.bindings.bindInitial(ws);
 		if (!runtime) {
 			const requestedAgentName = ws.data.requestedAgentName;
@@ -71,6 +86,52 @@ export class SupervisorController {
 		this.rememberTuiAgentId(ws, runtime.agentId);
 		runtime.handleOpen(ws);
 	};
+
+	private async handleControlMessage(ws: WsClient, message: string | Buffer) {
+		const data = this.tryParseMessage(message);
+		if (
+			data?.type !== "ask" ||
+			typeof data.fromAgentId !== "string" ||
+			typeof data.to !== "string" ||
+			typeof data.message !== "string"
+		) {
+			this.sendAskError(ws, "Invalid ask request");
+			return;
+		}
+
+		const sender = this.options.registry.getById(data.fromAgentId);
+		if (!sender) {
+			this.sendAskError(ws, "Unknown sender agent");
+			return;
+		}
+
+		const target = this.options.registry.getByName(data.to);
+		if (!target) {
+			this.sendAskError(ws, `agent "${data.to}" not found`);
+			return;
+		}
+
+		if (sender.agentId === target.agentId) {
+			this.sendAskError(ws, "cannot ask self");
+			return;
+		}
+
+		try {
+			const text = await target.askFromAgent({
+				fromAgentId: sender.agentId,
+				fromAgentName: sender.name,
+				message: data.message,
+			});
+			ws.send(
+				serialize({
+					type: "ask_response",
+					text,
+				}),
+			);
+		} catch (error) {
+			this.sendAskError(ws, extractError(error));
+		}
+	}
 
 	private handleAgentCommand(
 		ws: WsClient,
@@ -151,6 +212,15 @@ export class SupervisorController {
 		ws.send(
 			serialize({
 				type: "error",
+				message,
+			}),
+		);
+	}
+
+	private sendAskError(ws: WsClient, message: string) {
+		ws.send(
+			serialize({
+				type: "ask_error",
 				message,
 			}),
 		);

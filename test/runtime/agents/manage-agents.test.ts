@@ -80,7 +80,7 @@ describe("agent management", () => {
 		}
 	});
 
-	test("createAgent seeds the self-manage skill from the default templates", () => {
+	test("createAgent seeds the oc skill from the default templates", () => {
 		const homeDir = createHomeDir();
 		try {
 			const created = createAgent({
@@ -92,16 +92,16 @@ describe("agent management", () => {
 
 			expect(
 				readFileSync(
-					join(created.agentHomeDir, "skills", "self-manage", "SKILL.md"),
+					join(created.agentHomeDir, "skills", "oc", "SKILL.md"),
 					"utf-8",
 				),
-			).toContain("name: self-manage");
+			).toContain("name: oc");
 			expect(
 				readFileSync(
 					join(
 						created.agentHomeDir,
 						"skills",
-						"self-manage",
+						"oc",
 						"references",
 						"daemon-operations.md",
 					),
@@ -113,7 +113,7 @@ describe("agent management", () => {
 					join(
 						created.agentHomeDir,
 						"skills",
-						"self-manage",
+						"oc",
 						"references",
 						"session-lookup.md",
 					),
@@ -125,7 +125,7 @@ describe("agent management", () => {
 					join(
 						created.agentHomeDir,
 						"skills",
-						"self-manage",
+						"oc",
 						"references",
 						"agent-management.md",
 					),
@@ -170,7 +170,7 @@ describe("agent management", () => {
 
 			expect(
 				readFileSync(join(created.agentHomeDir, "AGENTS.md"), "utf-8"),
-			).toContain("Invoke the `self-manage` skill before proceeding");
+			).toContain("Invoke the `oc` skill before proceeding");
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 		}

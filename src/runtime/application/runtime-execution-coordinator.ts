@@ -93,6 +93,42 @@ export class RuntimeExecutionCoordinator {
 		this.queue.enqueue(() => this.runPrompt(task));
 	}
 
+	enqueueAgentPrompt(task: PromptExecution): Promise<string> {
+		return new Promise((resolve, reject) => {
+			if (this.shuttingDown) {
+				reject(new Error("Runtime shutting down"));
+				return;
+			}
+
+			let responseText = "";
+			let failed = false;
+			const wrappedTask: PromptExecution = {
+				...task,
+				onEvent: (event) => {
+					task.onEvent?.(event);
+					if (event.type === "text") {
+						responseText += event.text;
+					}
+					if (event.type === "error" && !failed) {
+						failed = true;
+						reject(new Error(event.message));
+					}
+				},
+			};
+			this.options.state.preparePrompt(wrappedTask.prompt, wrappedTask.images);
+			this.heartbeatCoordinator.noteUserActivity();
+			const queued = this.queue.enqueue(async () => {
+				await this.runPrompt(wrappedTask);
+				if (!failed) {
+					resolve(responseText);
+				}
+			});
+			if (!queued) {
+				reject(new Error("Runtime shutting down"));
+			}
+		});
+	}
+
 	setFireDeferredHeartbeat(handler: () => Promise<void> | void) {
 		this.heartbeatCoordinator.setFireDeferredHeartbeat(handler);
 	}

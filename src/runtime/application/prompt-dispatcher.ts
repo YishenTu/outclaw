@@ -10,10 +10,16 @@ import type { RuntimeClientGateway } from "./runtime-client-gateway.ts";
 import type { RuntimeState } from "./runtime-state.ts";
 import type { SessionService } from "./session-service.ts";
 
-export type PromptSource = "heartbeat" | "telegram" | "tui";
+export type PromptSource = "heartbeat" | "telegram" | "tui" | "agent";
+export interface AgentPromptMetadata {
+	fromAgentId: string;
+	fromAgentName: string;
+}
 
 export interface PromptExecution {
+	agentMessage?: AgentPromptMetadata;
 	images?: ImageRef[];
+	onEvent?: (event: FacadeEvent) => void;
 	prompt: string;
 	replyContext?: ReplyContext;
 	sender?: import("../transport/client-hub.ts").WsClient;
@@ -78,6 +84,7 @@ export class PromptDispatcher {
 		}
 
 		const emit = (event: FacadeEvent) => {
+			task.onEvent?.(event);
 			if (task.source === "heartbeat") {
 				heartbeatBuffer.push(event);
 			}

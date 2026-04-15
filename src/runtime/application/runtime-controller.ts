@@ -162,4 +162,19 @@ export class RuntimeController {
 	): "attempt" | "skip" | "defer" {
 		return this.execution.shouldAttemptHeartbeat(scheduledAt, deferMinutes);
 	}
+
+	askFromAgent(params: {
+		fromAgentId: string;
+		fromAgentName: string;
+		message: string;
+	}): Promise<string> {
+		return this.execution.enqueueAgentPrompt({
+			source: "agent",
+			agentMessage: {
+				fromAgentId: params.fromAgentId,
+				fromAgentName: params.fromAgentName,
+			},
+			prompt: `[from agent "${params.fromAgentName}"]\n${params.message}`,
+		});
+	}
 }
