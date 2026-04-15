@@ -145,17 +145,23 @@ export function normalizeClaudeHistory(
 		}
 
 		if (msg.type === "user" && typeof content === "string") {
-			const parsed = parsePromptWithReplyContext(content);
-			result.push({
-				kind: "chat",
-				role: "user",
-				content: parsed.prompt,
-				replyContext: parsed.replyContext,
-			});
+			const parsed = parsePromptWithReplyContext(
+				stripTaskNotifications(content),
+			);
+			if (parsed.prompt || parsed.replyContext) {
+				result.push({
+					kind: "chat",
+					role: "user",
+					content: parsed.prompt,
+					replyContext: parsed.replyContext,
+				});
+			}
 		}
 
 		if (msg.type === "user" && Array.isArray(content)) {
-			const parsed = parsePromptWithReplyContext(extractText(content));
+			const parsed = parsePromptWithReplyContext(
+				stripTaskNotifications(extractText(content)),
+			);
 			const images = extractImages(content);
 			if (parsed.prompt || parsed.replyContext || images.length > 0) {
 				result.push({
@@ -169,7 +175,7 @@ export function normalizeClaudeHistory(
 		}
 
 		if (msg.type === "assistant" && Array.isArray(content)) {
-			const text = extractText(content);
+			const text = stripTaskNotifications(extractText(content));
 			const thinking = extractThinking(content);
 			if (isSyntheticNoResponseReply(text, msg, messages, index)) {
 				pendingThinking = "";
@@ -209,6 +215,9 @@ export function normalizeClaudeHistory(
 	return result;
 }
 
+const TASK_NOTIFICATION_PATTERN =
+	/\s*<task-notification>\s*[\s\S]*?\s*<\/task-notification>\s*/g;
+
 export function normalizeClaudeTranscript(
 	messages: ClaudeHistoryMessage[],
 ): TranscriptTurn[] {
@@ -243,7 +252,9 @@ export function normalizeClaudeTranscript(
 
 			const timestamp = parseTranscriptTimestamp(msg);
 			if (typeof content === "string") {
-				const parsed = parsePromptWithReplyContext(content);
+				const parsed = parsePromptWithReplyContext(
+					stripTaskNotifications(content),
+				);
 				if (parsed.prompt || parsed.replyContext) {
 					result.push({
 						role: "user",
@@ -255,7 +266,9 @@ export function normalizeClaudeTranscript(
 				continue;
 			}
 
-			const parsed = parsePromptWithReplyContext(extractText(content));
+			const parsed = parsePromptWithReplyContext(
+				stripTaskNotifications(extractText(content)),
+			);
 			const images = extractImages(content);
 			if (parsed.prompt || parsed.replyContext || images.length > 0) {
 				result.push({
@@ -497,6 +510,17 @@ function extractThinking(blocks: HistoryBlock[]): string {
 		.filter((block) => block.type === "thinking" && block.thinking)
 		.map((block) => block.thinking)
 		.join("");
+}
+
+function stripTaskNotifications(text: string): string {
+	if (!text.includes("<task-notification>")) {
+		return text;
+	}
+
+	return text
+		.replace(TASK_NOTIFICATION_PATTERN, "\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

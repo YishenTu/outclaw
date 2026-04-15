@@ -380,6 +380,78 @@ describe("readClaudeHistory", () => {
 			},
 		]);
 	});
+
+	test("hides assistant task notifications from replayed history", async () => {
+		const { result } = readSdkHistory([
+			{
+				type: "user",
+				message: { content: "run async agent task" },
+			},
+			{
+				type: "user",
+				message: {
+					content: [
+						"<task-notification>",
+						"<task-id>bhqnmt830</task-id>",
+						"<tool-use-id>toolu_01Cfs5PKJSSPBh9iUfc1iYZc</tool-use-id>",
+						"<output-file>/tmp/task-user.output</output-file>",
+						"<status>completed</status>",
+						"<summary>Background command completed</summary>",
+						"</task-notification>",
+					].join("\n"),
+				},
+			},
+			{
+				type: "assistant",
+				message: {
+					content: [
+						{
+							type: "text",
+							text: [
+								"<task-notification>",
+								"<task-id>bhqnmt831</task-id>",
+								"<tool-use-id>toolu_01Cfs5PKJSSPBh9iUfc1iYZd</tool-use-id>",
+								"<output-file>/tmp/task.output</output-file>",
+								"<status>completed</status>",
+								"<summary>Background command completed</summary>",
+								"</task-notification>",
+							].join("\n"),
+						},
+					],
+				},
+			},
+			{
+				type: "assistant",
+				message: {
+					content: [
+						{
+							type: "text",
+							text: [
+								"first line",
+								"<task-notification>",
+								"<task-id>bhqnmt832</task-id>",
+								"<tool-use-id>toolu_01Cfs5PKJSSPBh9iUfc1iYZe</tool-use-id>",
+								"<output-file>/tmp/task-2.output</output-file>",
+								"<status>completed</status>",
+								"<summary>Background command completed</summary>",
+								"</task-notification>",
+								"second line",
+							].join("\n"),
+						},
+					],
+				},
+			},
+		]);
+
+		expect(await result).toEqual([
+			{ kind: "chat", role: "user", content: "run async agent task" },
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "first line\nsecond line",
+			},
+		]);
+	});
 });
 
 describe("readClaudeTranscript", () => {

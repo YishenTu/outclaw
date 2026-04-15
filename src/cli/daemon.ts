@@ -4,6 +4,7 @@ import { listAgents } from "../runtime/agents/list-agents.ts";
 import { onboardFirstAgent } from "../runtime/agents/onboard-first-agent.ts";
 import { stopDaemon } from "../runtime/process/daemon-stop.ts";
 import { PidManager } from "../runtime/process/pid-manager.ts";
+import { seedTemplates } from "../runtime/prompt/seed-templates.ts";
 
 interface DaemonCommandOptions {
 	argv: string[];
@@ -31,6 +32,7 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 			if (listAgents(options.homeDir).length === 0) {
 				await runFreshInstallOnboarding(options.homeDir, options.templatesDir);
 			}
+			reseedMissingAgentTemplates(options.homeDir, options.templatesDir);
 
 			pid.remove();
 
@@ -156,5 +158,13 @@ async function runFreshInstallOnboarding(
 		});
 	} finally {
 		rl.close();
+	}
+}
+
+function reseedMissingAgentTemplates(homeDir: string, templatesDir: string) {
+	for (const agent of listAgents(homeDir)) {
+		seedTemplates(agent.promptHomeDir, templatesDir, {
+			agentName: agent.name,
+		});
 	}
 }

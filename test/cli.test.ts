@@ -96,6 +96,10 @@ function writePid(pid: number) {
 	writeFileSync(PID_PATH, String(pid));
 }
 
+function readPid() {
+	return Number.parseInt(readFileSync(PID_PATH, "utf-8"), 10);
+}
+
 function writeConfig(port: number) {
 	mkdirSync(OUTCLAW_DIR, { recursive: true });
 	writeFileSync(
@@ -171,6 +175,38 @@ describe("CLI", () => {
 		expect(exitCode).toBe(1);
 	});
 
+	test("start reseeds missing prompt templates for existing agents", () => {
+		runCli(["agent", "create", "railly"]);
+		const agentHome = join(OUTCLAW_DIR, "agents", "railly");
+		const missingPaths = [
+			"AGENTS.md",
+			join("cron", "memory-distill.yaml"),
+			join("skills", "oc", "references", "agent-com.md"),
+		];
+		for (const relativePath of missingPaths) {
+			rmSync(join(agentHome, relativePath));
+		}
+		writeConfig(0);
+
+		const result = runCli(["start"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Daemon started");
+		expect(existsSync(join(agentHome, "AGENTS.md"))).toBe(true);
+		expect(readFileSync(join(agentHome, "AGENTS.md"), "utf-8")).toContain(
+			"# AGENTS.md",
+		);
+		expect(
+			readFileSync(join(agentHome, "cron", "memory-distill.yaml"), "utf-8"),
+		).toContain("name:");
+		expect(
+			readFileSync(
+				join(agentHome, "skills", "oc", "references", "agent-com.md"),
+				"utf-8",
+			),
+		).toContain("# Agent Communication");
+	});
+
 	test("tui when no daemon shows not running", () => {
 		const { stdout, exitCode } = runCli(["tui"]);
 		expect(stdout).toContain("not running");
@@ -241,6 +277,88 @@ describe("CLI", () => {
 		).trim();
 		expect(config.agents[agentId].telegram.botToken).toBe("token-b");
 		expect(config.agents[agentId].telegram.allowedUsers).toEqual([1, 2]);
+	});
+
+	test("agent create does not restart the daemon when it is running", () => {
+		runCli(["agent", "create", "railly"]);
+		writeConfig(0);
+		expect(runCli(["start"]).exitCode).toBe(0);
+		const originalPid = readPid();
+
+		const result = runCli(["agent", "create", "mimi"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Created agent mimi");
+		expect(readPid()).toBe(originalPid);
+	});
+
+	test("agent rename does not restart the daemon when it is running", () => {
+		runCli(["agent", "create", "railly"]);
+		writeConfig(0);
+		expect(runCli(["start"]).exitCode).toBe(0);
+		const originalPid = readPid();
+
+		const result = runCli(["agent", "rename", "railly", "mimi"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Renamed agent railly -> mimi");
+		expect(readPid()).toBe(originalPid);
+	});
+
+	test("agent remove does not restart the daemon when it is running", () => {
+		runCli(["agent", "create", "railly"]);
+		runCli(["agent", "create", "mimi"]);
+		writeConfig(0);
+		expect(runCli(["start"]).exitCode).toBe(0);
+		const originalPid = readPid();
+
+		const result = runCli(["agent", "remove", "mimi"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Removed agent mimi");
+		expect(readPid()).toBe(originalPid);
+	});
+
+	test("agent remove leaves the daemon running when it removes the last agent", () => {
+		runCli(["agent", "create", "railly"]);
+		writeConfig(0);
+		expect(runCli(["start"]).exitCode).toBe(0);
+		const originalPid = readPid();
+		expect(existsSync(PID_PATH)).toBe(true);
+
+		const result = runCli(["agent", "remove", "railly"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Removed agent railly");
+		expect(existsSync(PID_PATH)).toBe(true);
+		expect(readPid()).toBe(originalPid);
+	});
+
+	test("agent config does not restart the daemon when it is running", () => {
+		runCli([
+			"agent",
+			"create",
+			"railly",
+			"--bot-token",
+			"token-a",
+			"--users",
+			"1,2",
+		]);
+		writeConfig(0);
+		expect(runCli(["start"]).exitCode).toBe(0);
+		const originalPid = readPid();
+
+		const result = runCli([
+			"agent",
+			"config",
+			"railly",
+			"--bot-token",
+			"token-b",
+		]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Configured agent railly");
+		expect(readPid()).toBe(originalPid);
 	});
 
 	test("agent create rejects invalid users", () => {

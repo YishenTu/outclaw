@@ -40,3 +40,9 @@ oc agent config <name> [--bot-token <token>] [--users <telegram-user-id>,...]
 ```
 
 Only the flags you pass are updated — omitted fields are preserved.
+
+## Runtime Note
+
+Agent create/config/rename/remove change disk state immediately, but the running daemon does not hot-reload its in-memory agent set. After making one of these changes while the daemon is running, tell the user a manual `oc restart` is needed for the runtime to pick it up.
+
+Do not restart the daemon automatically from inside an ongoing agent flow. Ask the user first so they can choose when to interrupt the current runtime session.
