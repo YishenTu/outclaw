@@ -78,6 +78,15 @@ Invoke the `oc` skill before proceeding with any of these tasks.
 You can talk to other agents via the `oc` CLI. Use this to ask questions,
 delegate work, or share findings.
 
+When another agent contacts you, the message arrives prefixed with a sender tag:
+
+```
+[from agent "alice"]
+What's the status of the deployment pipeline?
+```
+
+When you see this prefix, the message is from a peer agent — not the user. Respond concisely and stay on topic.
+
 Invoke the `oc` skill when you need to contact another agent.
 
 ## Session Lookup

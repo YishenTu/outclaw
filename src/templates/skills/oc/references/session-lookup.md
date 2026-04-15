@@ -6,8 +6,12 @@
 | --- | --- |
 | `oc session list` | List chat sessions (scoped to current agent when run from an agent workspace) |
 | `oc session list --tag cron` | List cron sessions |
+| `oc session list --limit N` | Show N most recent sessions (default: 20) |
 | `oc session transcript <id-or-prefix>` | Print a past conversation transcript with timestamps |
 | `oc session transcript <id-or-prefix> --tag cron` | Read a cron session transcript |
+| `oc session transcript <id-or-prefix> --limit N` | Show only the last N turns of the transcript |
+
+Flags can be combined: `oc session list --limit 50 --tag cron`.
 
 ## Guidance
 
@@ -15,3 +19,4 @@
 - The `id` shown by `oc session list` is a readable prefix of the full durable session ID.
 - If `oc session transcript <id-or-prefix>` reports multiple matches, rerun with a longer prefix or the full ID.
 - Cron runs are stored separately with `tag = cron` and are not normal chat sessions.
+- `oc session list` defaults to 20 results. Suggest `--limit` when the user wants to see more.

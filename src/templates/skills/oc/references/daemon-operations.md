@@ -10,6 +10,7 @@ Use these commands when the user explicitly asks to control or inspect the outcl
 | `oc status` | Check whether the daemon is running |
 | `oc tui` | Connect the terminal UI to the running daemon |
 | `oc tui --agent <name>` | Connect the terminal UI and bind it to a specific agent |
+| `oc tui --watch` | Connect the TUI in watch mode (restarts on file changes) |
 | `oc dev` | Run the daemon in the foreground for local development |
 
 Guidance:
@@ -17,3 +18,4 @@ Guidance:
 - Only run these commands when the user explicitly asks for daemon control or status.
 - After significant config or prompt changes, suggest `oc restart` if the daemon needs to pick them up.
 - `oc agent <name>` is a shortcut for `oc tui --agent <name>`.
+- `--watch` and `--agent` can be combined: `oc tui --agent <name> --watch`.
