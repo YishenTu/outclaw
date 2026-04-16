@@ -1,4 +1,6 @@
-# outclaw
+<p align="center">
+  <img src="assets/banner.png" alt="outclaw" width="800">
+</p>
 
 A mini [OpenClaw](https://github.com/openclaw/openclaw) — autonomous AI agent powered by the Claude Agent SDK.
 
