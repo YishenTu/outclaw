@@ -133,6 +133,7 @@ describe("CLI", () => {
 	test("no args prints usage", () => {
 		const { stdout, exitCode } = runCli([]);
 		expect(stdout).toContain("Usage:");
+		expect(stdout).toContain("<start|stop|restart|status|tui|browser|dev");
 		expect(stdout).toContain(
 			"oc agent <list|create|config|rename|remove|ask|name>",
 		);

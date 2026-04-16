@@ -41,7 +41,7 @@ export interface AskMessage {
 	message: string;
 }
 
-export type RuntimeClientType = "telegram" | "tui" | "control";
+export type RuntimeClientType = "telegram" | "tui" | "browser" | "control";
 
 export interface HeartbeatDeliveryTarget {
 	clientType: RuntimeClientType;
@@ -207,6 +207,7 @@ export interface AgentSwitchedEvent {
 export interface RuntimeStatusEvent {
 	type: "runtime_status";
 	agentName?: string;
+	providerId?: string;
 	model: string;
 	effort: string;
 	sessionId?: string;
@@ -258,6 +259,75 @@ export interface CronResultEvent {
 export interface SkillInfo {
 	name: string;
 	description: string;
+}
+
+export interface BrowserSessionSummary {
+	providerId: string;
+	sdkSessionId: string;
+	title: string;
+	model: string;
+	lastActive: number;
+}
+
+export interface BrowserAgentSummary {
+	agentId: string;
+	name: string;
+	activeSession?: {
+		providerId: string;
+		sdkSessionId: string;
+	};
+	sessions: BrowserSessionSummary[];
+}
+
+export interface BrowserAgentsResponse {
+	activeAgentId?: string;
+	agents: BrowserAgentSummary[];
+}
+
+export interface BrowserTreeEntry {
+	kind: "file" | "directory";
+	name: string;
+	path: string;
+	children?: BrowserTreeEntry[];
+}
+
+export interface BrowserCronEntry {
+	name: string;
+	path: string;
+	schedule: string;
+	model?: string;
+	enabled: boolean;
+	error?: string;
+}
+
+export interface BrowserFileResponse {
+	path: string;
+	kind: "text" | "binary";
+	content?: string;
+	language?: string;
+	truncated: boolean;
+}
+
+export interface BrowserGitFileStatus {
+	path: string;
+	indexStatus: string;
+	worktreeStatus: string;
+	renamedFrom?: string;
+}
+
+export interface BrowserGitStatusResponse {
+	root: string;
+	branch: string | null;
+	ahead: number;
+	behind: number;
+	clean: boolean;
+	graph: string;
+	files: BrowserGitFileStatus[];
+}
+
+export interface BrowserGitDiffResponse {
+	path: string;
+	diff: string;
 }
 
 export interface SkillsUpdateEvent {

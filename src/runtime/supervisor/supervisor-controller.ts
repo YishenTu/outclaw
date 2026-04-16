@@ -11,7 +11,7 @@ import type { ClientAgentBinding } from "./client-agent-binding.ts";
 interface SupervisorControllerOptions {
 	bindings: ClientAgentBinding;
 	emitAgentEvents?: boolean;
-	rememberTuiAgentId?: (agentId: string) => void;
+	rememberInteractiveAgentId?: (agentId: string) => void;
 	registry: AgentRuntimeRegistry;
 	telegramRouting?: {
 		rememberAgentId(
@@ -83,7 +83,7 @@ export class SupervisorController {
 		if (this.options.emitAgentEvents !== false) {
 			this.sendAgentSwitched(ws, runtime);
 		}
-		this.rememberTuiAgentId(ws, runtime.agentId);
+		this.rememberInteractiveAgentId(ws, runtime.agentId);
 		runtime.handleOpen(ws);
 	};
 
@@ -228,7 +228,7 @@ export class SupervisorController {
 
 	private rememberAgentSelection(ws: WsClient, agentId: string) {
 		if (ws.data.clientType === "tui") {
-			this.options.rememberTuiAgentId?.(agentId);
+			this.options.rememberInteractiveAgentId?.(agentId);
 			return;
 		}
 
@@ -246,11 +246,11 @@ export class SupervisorController {
 		}
 	}
 
-	private rememberTuiAgentId(ws: WsClient, agentId: string) {
+	private rememberInteractiveAgentId(ws: WsClient, agentId: string) {
 		if (ws.data.clientType !== "tui") {
 			return;
 		}
-		this.options.rememberTuiAgentId?.(agentId);
+		this.options.rememberInteractiveAgentId?.(agentId);
 	}
 
 	private tryParseMessage(

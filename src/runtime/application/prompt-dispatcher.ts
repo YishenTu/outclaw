@@ -68,7 +68,7 @@ export class PromptDispatcher {
 	) {
 		const observers =
 			task.source === "telegram" || task.source === "heartbeat"
-				? this.options.clients.listTuiTargets(task.sender)
+				? this.options.clients.listInteractiveTargets(task.sender)
 				: [];
 		const heartbeatBuffer: FacadeEvent[] = [];
 		let completedEvent: DoneEvent | undefined;

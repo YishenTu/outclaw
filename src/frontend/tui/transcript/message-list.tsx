@@ -22,6 +22,8 @@ export const MessageList = memo(function MessageList({
 	compacting,
 	columns,
 }: MessageListProps) {
+	const hasAssistantOutput = streaming !== "" || streamingThinking !== "";
+
 	return (
 		<Box flexDirection="column">
 			{messages.map((message) => (
@@ -43,9 +45,9 @@ export const MessageList = memo(function MessageList({
 				<Box marginTop={1} paddingLeft={1} paddingRight={1}>
 					<Spinner label="Compacting..." />
 				</Box>
-			) : running && !streaming && !streamingThinking ? (
+			) : running ? (
 				<Box marginTop={1} paddingLeft={1} paddingRight={1}>
-					<Spinner label="Thinking..." />
+					<Spinner label={hasAssistantOutput ? "Working..." : "Thinking..."} />
 				</Box>
 			) : null}
 		</Box>

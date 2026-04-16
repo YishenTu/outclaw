@@ -6,9 +6,11 @@ import { onboardFirstAgent } from "../runtime/agents/onboard-first-agent.ts";
 import { stopDaemon } from "../runtime/process/daemon-stop.ts";
 import { PidManager } from "../runtime/process/pid-manager.ts";
 import { seedTemplates } from "../runtime/prompt/seed-templates.ts";
+import { launchBrowserFrontend } from "./browser.ts";
 
 interface DaemonCommandOptions {
 	argv: string[];
+	browserDir: string;
 	daemonEntry: string;
 	homeDir: string;
 	logPath: string;
@@ -125,6 +127,14 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 			Bun.spawnSync(args, {
 				stdio: ["inherit", "inherit", "inherit"],
 				env: { ...process.env },
+			});
+		},
+
+		browser() {
+			launchBrowserFrontend({
+				argv: options.argv,
+				browserDir: options.browserDir,
+				runtimeRunning: pid.isRunning(),
 			});
 		},
 

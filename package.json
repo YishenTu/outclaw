@@ -4,6 +4,9 @@
 	"module": "src/index.ts",
 	"type": "module",
 	"private": true,
+	"workspaces": [
+		"src/frontend/browser"
+	],
 	"bin": {
 		"oc": "src/cli.ts"
 	},
@@ -38,7 +41,7 @@
 		"ink-multiline-input": "^0.1.0",
 		"marked": "15",
 		"marked-terminal": "^7.3.0",
-		"react": "^19.2.4",
+		"react": "19.2.4",
 		"yaml": "^2.8.3"
 	}
 }

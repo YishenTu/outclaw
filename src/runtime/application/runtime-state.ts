@@ -64,6 +64,7 @@ export class RuntimeState {
 		return {
 			type: "runtime_status",
 			agentName: this.agentName,
+			providerId: this.currentProviderId,
 			model: this.settings.model,
 			effort: this.settings.effort,
 			sessionId: this.sessions.sessionId,

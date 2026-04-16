@@ -1,13 +1,10 @@
 import { unlinkSync } from "node:fs";
-import type {
-	ContentBlockParam,
-	MessageParam,
-} from "@anthropic-ai/sdk/resources/messages/messages";
 import { contextWindowForResolvedModel } from "../../common/models.ts";
 import {
 	extractError,
 	type Facade,
 	type FacadeEvent,
+	type ImageMediaType,
 	type RunParams,
 	type SkillInfo,
 	type UsageInfo,
@@ -24,6 +21,25 @@ interface SdkUserMessage {
 	type: "user";
 	message: MessageParam;
 	parent_tool_use_id: string | null;
+}
+
+type ContentBlockParam =
+	| {
+			type: "text";
+			text: string;
+	  }
+	| {
+			type: "image";
+			source: {
+				type: "base64";
+				data: string;
+				media_type: ImageMediaType;
+			};
+	  };
+
+interface MessageParam {
+	role: "user";
+	content: string | ContentBlockParam[];
 }
 
 type SdkQueryFn = (params: {

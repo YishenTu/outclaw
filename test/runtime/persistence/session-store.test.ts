@@ -665,14 +665,44 @@ describe("SessionStore", () => {
 		mimiStore.close();
 	});
 
-	test("persists last_tui_agent_id independently of the bound agent", () => {
+	test("persists last_interactive_agent_id independently of the bound agent", () => {
 		let store = createTestStore({ agentId: RAILLY_AGENT_ID });
-		store.setLastTuiAgentId(MIMI_AGENT_ID);
+		store.setLastInteractiveAgentId(MIMI_AGENT_ID);
 		store.close();
 
 		store = createTestStore({ agentId: RAILLY_AGENT_ID });
-		expect(store.getLastTuiAgentId()).toBe(MIMI_AGENT_ID);
+		expect(store.getLastInteractiveAgentId()).toBe(MIMI_AGENT_ID);
 		store.close();
+	});
+
+	test("migrates legacy last_tui_agent_id into last_interactive_agent_id", () => {
+		const initialStore = createTestStore({ agentId: RAILLY_AGENT_ID });
+		initialStore.close();
+
+		const db = new Database(TEST_DB);
+		db.exec(
+			"INSERT INTO state (key, value) VALUES ('last_tui_agent_id', 'agent-mimi')",
+		);
+		db.close();
+
+		const store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		expect(store.getLastInteractiveAgentId()).toBe(MIMI_AGENT_ID);
+		store.close();
+
+		const migratedDb = new Database(TEST_DB, { readonly: true });
+		expect(
+			migratedDb
+				.query("SELECT value FROM state WHERE key = 'last_tui_agent_id'")
+				.get(),
+		).toBeNull();
+		expect(
+			migratedDb
+				.query(
+					"SELECT value FROM state WHERE key = 'last_interactive_agent_id'",
+				)
+				.get(),
+		).toEqual({ value: MIMI_AGENT_ID });
+		migratedDb.close();
 	});
 
 	test("rejects pre-migration session tables", () => {
@@ -799,7 +829,7 @@ describe("SessionStore", () => {
 		expect(existsSync(`${TEST_DB}-shm`)).toBe(false);
 	});
 
-	test("deleteAgentData removes agent-scoped sessions and state and clears last_tui_agent_id when matched", () => {
+	test("deleteAgentData removes agent-scoped sessions and state and clears last_interactive_agent_id when matched", () => {
 		const globalStore = createTestStore();
 		const raillyStore = createTestStore({ agentId: RAILLY_AGENT_ID });
 		const mimiStore = createTestStore({ agentId: MIMI_AGENT_ID });
@@ -821,7 +851,7 @@ describe("SessionStore", () => {
 			kind: "telegram",
 			chatId: 222,
 		});
-		globalStore.setLastTuiAgentId(MIMI_AGENT_ID);
+		globalStore.setLastInteractiveAgentId(MIMI_AGENT_ID);
 
 		globalStore.deleteAgentData(MIMI_AGENT_ID);
 
@@ -829,7 +859,7 @@ describe("SessionStore", () => {
 		expect(mimiStore.get(CLAUDE_PROVIDER, "sdk-mimi")).toBeUndefined();
 		expect(mimiStore.getActiveSessionId(CLAUDE_PROVIDER)).toBeUndefined();
 		expect(mimiStore.getLastUserTarget()).toBeUndefined();
-		expect(globalStore.getLastTuiAgentId()).toBeUndefined();
+		expect(globalStore.getLastInteractiveAgentId()).toBeUndefined();
 
 		globalStore.close();
 		raillyStore.close();

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { parseJobConfig } from "../../../src/runtime/cron/job-config.ts";
+import {
+	parseJobConfig,
+	serializeJobConfig,
+} from "../../../src/runtime/cron/job-config.ts";
 
 const VALID_YAML = `
 name: daily-summary
@@ -92,5 +95,12 @@ prompt: do something
 `.trim();
 		const job = parseJobConfig(yaml);
 		expect(job.enabled).toBe(false);
+	});
+
+	test("serializes a parsed config back to equivalent YAML", () => {
+		const parsed = parseJobConfig(VALID_YAML);
+		const reparsed = parseJobConfig(serializeJobConfig(parsed));
+
+		expect(reparsed).toEqual(parsed);
 	});
 });

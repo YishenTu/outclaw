@@ -1,4 +1,4 @@
-import { parse } from "yaml";
+import { parse, stringify } from "yaml";
 
 export interface CronJobConfig {
 	name: string;
@@ -28,4 +28,25 @@ export function parseJobConfig(yamlContent: string): CronJobConfig {
 				: undefined,
 		prompt: raw.prompt,
 	};
+}
+
+export function serializeJobConfig(config: CronJobConfig): string {
+	const raw: Record<string, unknown> = {
+		name: config.name,
+		schedule: config.schedule,
+	};
+
+	if (config.model) {
+		raw.model = config.model;
+	}
+
+	raw.enabled = config.enabled;
+
+	if (config.telegramUserId !== undefined) {
+		raw.telegramUserId = config.telegramUserId;
+	}
+
+	raw.prompt = config.prompt;
+
+	return `${stringify(raw).trimEnd()}\n`;
 }

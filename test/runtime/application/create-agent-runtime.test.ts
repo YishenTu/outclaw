@@ -77,6 +77,7 @@ describe("createAgentRuntime", () => {
 		).toEqual({
 			type: "runtime_status",
 			agentName: "railly",
+			providerId: "mock",
 			model: "opus",
 			effort: "high",
 		});

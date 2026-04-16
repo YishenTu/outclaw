@@ -20,7 +20,8 @@ import {
 } from "./sqlite-file-lifecycle.ts";
 import {
 	activeSessionKey,
-	LAST_TUI_AGENT_KEY,
+	LAST_INTERACTIVE_AGENT_KEY,
+	LEGACY_LAST_TUI_AGENT_KEY,
 	lastUserTargetKey,
 } from "./state-keys.ts";
 
@@ -49,6 +50,7 @@ export class SessionStore {
 		this.dbFileKey = sqlite.fileKey;
 		try {
 			ensureSessionStoreSchema(this.db);
+			this.migrateLegacyStateKeys();
 		} catch (error) {
 			closeSqliteDatabase(this.db, this.dbFileKey);
 			throw error;
@@ -252,8 +254,9 @@ export class SessionStore {
 					$lastUserTargetKey: lastUserTargetKey(agentId),
 				});
 
-			if (this.getLastTuiAgentId() === agentId) {
-				this.deleteStateValue(LAST_TUI_AGENT_KEY);
+			if (this.getLastInteractiveAgentId() === agentId) {
+				this.deleteStateValue(LAST_INTERACTIVE_AGENT_KEY);
+				this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
 			}
 		})();
 	}
@@ -307,17 +310,19 @@ export class SessionStore {
 		);
 	}
 
-	getLastTuiAgentId(): string | undefined {
-		return this.getStateValue(LAST_TUI_AGENT_KEY);
+	getLastInteractiveAgentId(): string | undefined {
+		return this.getStateValue(LAST_INTERACTIVE_AGENT_KEY);
 	}
 
-	setLastTuiAgentId(agentId: string | undefined) {
+	setLastInteractiveAgentId(agentId: string | undefined) {
 		if (!agentId) {
-			this.deleteStateValue(LAST_TUI_AGENT_KEY);
+			this.deleteStateValue(LAST_INTERACTIVE_AGENT_KEY);
+			this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
 			return;
 		}
 
-		this.setStateValue(LAST_TUI_AGENT_KEY, agentId);
+		this.setStateValue(LAST_INTERACTIVE_AGENT_KEY, agentId);
+		this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
 	}
 
 	setUsage(providerId: string, sdkSessionId: string, usage: UsageInfo) {
@@ -441,6 +446,20 @@ export class SessionStore {
 
 	close() {
 		closeSqliteDatabase(this.db, this.dbFileKey);
+	}
+
+	private migrateLegacyStateKeys() {
+		this.db.transaction(() => {
+			const legacyAgentId = this.getStateValue(LEGACY_LAST_TUI_AGENT_KEY);
+			if (!legacyAgentId) {
+				return;
+			}
+
+			if (!this.getStateValue(LAST_INTERACTIVE_AGENT_KEY)) {
+				this.setStateValue(LAST_INTERACTIVE_AGENT_KEY, legacyAgentId);
+			}
+			this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
+		})();
 	}
 
 	private deleteStateValue(key: string) {

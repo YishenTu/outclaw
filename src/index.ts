@@ -9,6 +9,7 @@ import { copyTelegramFile } from "./frontend/telegram/files/storage.ts";
 import { createTelegramBotManager } from "./frontend/telegram/index.ts";
 import { discoverAgents } from "./runtime/agents/discover-agents.ts";
 import { createAgentRuntime } from "./runtime/application/create-agent-runtime.ts";
+import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
 import { loadGlobalConfig } from "./runtime/config.ts";
 import { createCronTelegramChatIdResolver } from "./runtime/cron/resolve-telegram-chat-id.ts";
 import { SessionStore } from "./runtime/persistence/session-store.ts";
@@ -103,9 +104,29 @@ function startMultiAgentDaemon(
 	const availableAgentsByBotUser = buildTelegramAgentIndex(agents);
 	const supervisor = createSupervisor({
 		agents: runtimes,
-		getDefaultAgentId: () => stateStore.getLastTuiAgentId(),
+		browserApi: createBrowserApi({
+			agents: agents.map((agent) => {
+				const runtime = runtimes.find(
+					(candidate) => candidate.agentId === agent.agentId,
+				);
+				if (!runtime) {
+					throw new Error(`Missing runtime for agent ${agent.agentId}`);
+				}
+				return {
+					agentId: agent.agentId,
+					name: agent.name,
+					homeDir: agent.homeDir,
+					providerId: runtime.providerId,
+				};
+			}),
+			getRememberedAgentId: () => stateStore.getLastInteractiveAgentId(),
+			gitRoot: HOME_DIR,
+			storesByAgent: agentStores,
+		}),
+		getDefaultAgentId: () => stateStore.getLastInteractiveAgentId(),
 		port: config.port,
-		rememberTuiAgentId: (agentId) => stateStore.setLastTuiAgentId(agentId),
+		rememberInteractiveAgentId: (agentId) =>
+			stateStore.setLastInteractiveAgentId(agentId),
 		telegramRouting: {
 			getAgentId(botId, telegramUserId) {
 				return routeStore.getAgentId(botId, telegramUserId);

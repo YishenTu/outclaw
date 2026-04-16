@@ -36,8 +36,8 @@ export class RuntimeClientGateway {
 		return this.hub.list();
 	}
 
-	listTuiTargets(exclude?: WsClient): WsClient[] {
-		return this.hub.listByType("tui", exclude);
+	listInteractiveTargets(exclude?: WsClient): WsClient[] {
+		return this.hub.listByTypes(["tui", "browser"], exclude);
 	}
 
 	replayHistory(

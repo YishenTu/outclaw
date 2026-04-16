@@ -577,7 +577,7 @@ describe("agent management", () => {
 					kind: "telegram",
 					chatId: 202,
 				});
-				globalStore.setLastTuiAgentId("agent-mimi");
+				globalStore.setLastInteractiveAgentId("agent-mimi");
 				routeStore.setAgentId("bot-a", 101, "agent-mimi");
 				routeStore.setAgentId("bot-a", 202, "agent-railly");
 
@@ -586,7 +586,7 @@ describe("agent management", () => {
 				expect(mimiStore.get("claude", "sdk-mimi")).toBeUndefined();
 				expect(mimiStore.getActiveSessionId("claude")).toBeUndefined();
 				expect(mimiStore.getLastUserTarget()).toBeUndefined();
-				expect(globalStore.getLastTuiAgentId()).toBeUndefined();
+				expect(globalStore.getLastInteractiveAgentId()).toBeUndefined();
 				expect(routeStore.getAgentId("bot-a", 101)).toBeUndefined();
 				expect(raillyStore.get("claude", "sdk-railly")).toBeDefined();
 				expect(routeStore.getAgentId("bot-a", 202)).toBe("agent-railly");

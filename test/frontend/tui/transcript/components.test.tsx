@@ -243,6 +243,7 @@ describe("transcript components", () => {
 			await flushUpdates();
 			expect(getOutput()).toContain("done");
 			expect(getOutput()).toContain("partial response");
+			expect(getOutput()).toContain("Working...");
 			expect(getOutput()).not.toContain("Thinking...");
 		} finally {
 			app.unmount();
@@ -320,6 +321,7 @@ describe("transcript components", () => {
 			await flushUpdates();
 			const firstFrame = getOutput();
 			expect(firstFrame).toContain("Thinking...");
+			expect(firstFrame).not.toContain("Working...");
 
 			vi.advanceTimersByTime(80);
 			await flushUpdates();

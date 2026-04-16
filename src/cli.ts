@@ -13,9 +13,11 @@ const LOG_PATH = join(HOME_DIR, "daemon.log");
 const DAEMON_ENTRY = join(import.meta.dir, "index.ts");
 const TEMPLATES_DIR = join(import.meta.dir, "templates");
 const TUI_ENTRY = join(import.meta.dir, "tui.ts");
+const BROWSER_DIR = join(import.meta.dir, "frontend", "browser");
 const argv = process.argv;
 const daemon = createDaemonCommands({
 	argv,
+	browserDir: BROWSER_DIR,
 	daemonEntry: DAEMON_ENTRY,
 	homeDir: HOME_DIR,
 	logPath: LOG_PATH,
@@ -41,6 +43,9 @@ switch (command) {
 		break;
 	case "tui":
 		daemon.tui();
+		break;
+	case "browser":
+		daemon.browser();
 		break;
 	case "agent":
 		await agentCommand({

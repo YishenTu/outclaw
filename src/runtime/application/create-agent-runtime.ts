@@ -49,11 +49,13 @@ export interface AgentRuntime {
 		message: string;
 	}): Promise<string>;
 	currentModel: string;
+	cwd?: string;
 	getStatusEvent(): RuntimeStatusEvent;
 	handleClose(ws: WsClient): void;
 	handleMessage(ws: WsClient, message: string | Buffer): void;
 	handleOpen(ws: WsClient): void;
 	name: string;
+	providerId: string;
 	setCronResultHandler(
 		handler:
 			| ((params: {
@@ -141,8 +143,12 @@ export function createAgentRuntime(
 	return {
 		agentId: options.agentId,
 		askFromAgent: controller.askFromAgent.bind(controller),
+		cwd: options.cwd,
 		get currentModel() {
 			return controller.currentModel;
+		},
+		get providerId() {
+			return facade.providerId;
 		},
 		getStatusEvent() {
 			return controller.getStatusEvent();

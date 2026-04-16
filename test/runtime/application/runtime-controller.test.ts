@@ -24,7 +24,7 @@ const PROVIDER_ID = "mock";
 
 // Minimal WsClient stub — ClientHub only calls .send()
 function mockWs(
-	clientType: "telegram" | "tui" = "tui",
+	clientType: "telegram" | "tui" | "browser" = "tui",
 ): WsClient & { events: () => ServerEvent[] } {
 	const sent: string[] = [];
 	const ws = {
@@ -621,6 +621,30 @@ describe("RuntimeController", () => {
 
 			const tuiText = tuiEvents.filter((e) => e.type === "text");
 			expect(tuiText.length).toBeGreaterThanOrEqual(1);
+		});
+
+		test("broadcasts user_prompt and events to browser observers", async () => {
+			const { controller, facade } = createController();
+			const browser = mockWs("browser");
+			const tg = mockWs("telegram");
+
+			controller.handleOpen(browser);
+			controller.handleOpen(tg);
+
+			controller.handleMessage(tg, prompt("hi browser", "telegram"));
+			await drain(controller, facade);
+
+			const browserEvents = browser.events();
+			expect(
+				browserEvents.find((event) => event.type === "user_prompt"),
+			).toEqual({
+				type: "user_prompt",
+				prompt: "hi browser",
+				source: "telegram",
+				images: undefined,
+				replyContext: undefined,
+			});
+			expect(browserEvents.some((event) => event.type === "text")).toBeTrue();
 		});
 
 		test("broadcasts image prompts to observers", async () => {

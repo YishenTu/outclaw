@@ -34,6 +34,14 @@ export class ClientHub {
 		);
 	}
 
+	listByTypes(types: RuntimeClientType[], exclude?: WsClient): WsClient[] {
+		const allowedTypes = new Set(types);
+		return [...this.clients].filter(
+			(client) =>
+				client !== exclude && allowedTypes.has(client.data.clientType),
+		);
+	}
+
 	send(client: WsClient, event: ServerEvent) {
 		client.send(serialize(event));
 	}

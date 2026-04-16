@@ -1,8 +1,7 @@
 import { Text } from "ink";
 import { useEffect, useState } from "react";
+import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../../spinner-frames.ts";
 import { theme } from "../chrome/theme.ts";
-
-const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 interface SpinnerProps {
 	label?: string;
@@ -13,14 +12,14 @@ export function Spinner({ label }: SpinnerProps) {
 
 	useEffect(() => {
 		const timer = setInterval(() => {
-			setI((prev) => (prev + 1) % frames.length);
-		}, 80);
+			setI((prev) => (prev + 1) % SPINNER_FRAMES.length);
+		}, SPINNER_INTERVAL_MS);
 		return () => clearInterval(timer);
 	}, []);
 
 	return (
 		<Text>
-			<Text color={theme.accent}>{frames[i]}</Text>
+			<Text color={theme.accent}>{SPINNER_FRAMES[i]}</Text>
 			{label ? ` ${label}` : ""}
 		</Text>
 	);

@@ -1,6 +1,6 @@
 export function printUsage() {
 	console.log(
-		"Usage: oc <start|stop|restart|status|tui|dev|agent|config|session>\n" +
+		"Usage: oc <start|stop|restart|status|tui|browser|dev|agent|config|session>\n" +
 			"       oc agent <list|create|config|rename|remove|ask|name>\n" +
 			"       oc config secure\n" +
 			"       oc session list [--limit N] [--tag cron]\n" +
