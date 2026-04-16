@@ -84,7 +84,7 @@ export const MessageItem = memo(function MessageItem({
 				);
 			}
 			return (
-				<Box paddingX={1}>
+				<Box marginTop={1} paddingLeft={3} paddingRight={1}>
 					<Text dimColor>{message.text}</Text>
 				</Box>
 			);
