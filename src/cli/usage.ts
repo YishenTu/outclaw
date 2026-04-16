@@ -4,6 +4,7 @@ export function printUsage() {
 			"       oc agent <list|create|config|rename|remove|ask|name>\n" +
 			"       oc config secure\n" +
 			"       oc session list [--limit N] [--tag cron]\n" +
+			"       oc session search <query> [--limit N]\n" +
 			"       oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
 	);
 }

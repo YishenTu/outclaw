@@ -1,7 +1,7 @@
 import type { ReadStream } from "node:tty";
 import type { Key } from "ink";
 import { useStdin } from "ink";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
 	createTerminalInputParser,
 	nonAlphanumericKeys,
@@ -196,14 +196,18 @@ export function useTerminalInput(
 	isActive: boolean,
 ) {
 	const { stdin } = useStdin();
+	const onInputRef = useRef(onInput);
+	onInputRef.current = onInput;
 
 	useEffect(() => {
 		if (!isActive || !stdin || typeof stdin.read !== "function") {
 			return;
 		}
 
-		return getInputManager(stdin as ManagedStdin).subscribe(onInput);
-	}, [isActive, onInput, stdin]);
+		return getInputManager(stdin as ManagedStdin).subscribe((event) => {
+			onInputRef.current(event);
+		});
+	}, [isActive, stdin]);
 }
 
 export function useTextAreaInput(

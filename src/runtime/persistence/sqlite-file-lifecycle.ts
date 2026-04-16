@@ -22,6 +22,7 @@ export function openSqliteDatabase(
 	}
 
 	try {
+		db.exec("PRAGMA foreign_keys=ON");
 		db.exec(`PRAGMA journal_mode=${journalMode}`);
 		return { db, fileKey };
 	} catch (error) {

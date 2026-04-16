@@ -540,6 +540,27 @@ describe("TuiApp", () => {
 		}
 	});
 
+	test("rapid input with interleaved escape sequences preserves all characters", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			// "f" + up-arrow + "e" in one chunk: parser splits into 3 events
+			// emitted synchronously within one handleReadable call.
+			// Up-arrow is a no-op on single-line text.
+			// Without the stale-closure fix, only "e" survives.
+			stdin.write("f\x1b[Ae");
+			await flushUpdates();
+
+			await pressEnter(stdin);
+			expect(socket.sent).toContain('{"type":"prompt","prompt":"fe"}');
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("slash exit closes the runtime session without sending a command", async () => {
 		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 

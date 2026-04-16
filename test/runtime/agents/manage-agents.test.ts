@@ -229,6 +229,9 @@ describe("agent management", () => {
 			expect(
 				readFileSync(join(created.agentHomeDir, "AGENTS.md"), "utf-8"),
 			).toContain("Invoke the `oc` skill before proceeding");
+			expect(
+				readFileSync(join(created.agentHomeDir, "AGENTS.md"), "utf-8"),
+			).toContain("retrieve chat history");
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 		}

@@ -6,9 +6,9 @@ import {
 
 export function ensureSessionStoreSchema(db: Database) {
 	db.exec(`CREATE TABLE IF NOT EXISTS state (
-				key TEXT PRIMARY KEY,
-				value TEXT
-		)`);
+					key TEXT PRIMARY KEY,
+					value TEXT
+			)`);
 
 	const hasSessionsTable = Boolean(
 		db
@@ -20,11 +20,13 @@ export function ensureSessionStoreSchema(db: Database) {
 
 	if (!hasSessionsTable) {
 		createSessionsTable(db);
+		createTranscriptTables(db);
 		return;
 	}
 
 	const columns = getTableColumns(db, "sessions");
 	assertCurrentSessionsTable(columns);
+	createTranscriptTables(db);
 }
 
 function createSessionsTable(db: Database) {
@@ -46,8 +48,48 @@ function createSessionsTable(db: Database) {
 			max_output_tokens INTEGER,
 			context_tokens INTEGER,
 			percentage INTEGER,
-			PRIMARY KEY (agent_id, provider_id, sdk_session_id)
-			)`);
+				PRIMARY KEY (agent_id, provider_id, sdk_session_id)
+				)`);
+}
+
+function createTranscriptTables(db: Database) {
+	db.exec(`CREATE TABLE IF NOT EXISTS transcript_turns (
+			agent_id TEXT NOT NULL,
+			provider_id TEXT NOT NULL,
+			sdk_session_id TEXT NOT NULL,
+			turn_index INTEGER NOT NULL,
+			role TEXT NOT NULL,
+			body_text TEXT NOT NULL,
+			timestamp INTEGER NOT NULL,
+			PRIMARY KEY (agent_id, provider_id, sdk_session_id, turn_index),
+			FOREIGN KEY (agent_id, provider_id, sdk_session_id)
+				REFERENCES sessions(agent_id, provider_id, sdk_session_id)
+				ON DELETE CASCADE
+		)`);
+
+	db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS transcript_turns_fts USING fts5(
+			body_text,
+			content='transcript_turns',
+			content_rowid='rowid'
+		)`);
+
+	db.exec(`CREATE TRIGGER IF NOT EXISTS transcript_turns_ai
+		AFTER INSERT ON transcript_turns BEGIN
+			INSERT INTO transcript_turns_fts(rowid, body_text)
+			VALUES (new.rowid, new.body_text);
+		END`);
+	db.exec(`CREATE TRIGGER IF NOT EXISTS transcript_turns_ad
+		AFTER DELETE ON transcript_turns BEGIN
+			INSERT INTO transcript_turns_fts(transcript_turns_fts, rowid, body_text)
+			VALUES ('delete', old.rowid, old.body_text);
+		END`);
+	db.exec(`CREATE TRIGGER IF NOT EXISTS transcript_turns_au
+		AFTER UPDATE ON transcript_turns BEGIN
+			INSERT INTO transcript_turns_fts(transcript_turns_fts, rowid, body_text)
+			VALUES ('delete', old.rowid, old.body_text);
+			INSERT INTO transcript_turns_fts(rowid, body_text)
+			VALUES (new.rowid, new.body_text);
+		END`);
 }
 
 function getTableColumns(db: Database, tableName: string): TableColumnInfo[] {

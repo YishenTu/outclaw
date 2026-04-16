@@ -1,4 +1,4 @@
-import type { DoneEvent } from "../../common/protocol.ts";
+import type { DoneEvent, TranscriptTurn } from "../../common/protocol.ts";
 import type { LastUserTarget } from "../persistence/last-user-target.ts";
 import type {
 	SessionRow,
@@ -125,6 +125,18 @@ export class SessionService {
 			model: params.model,
 			tag: "cron",
 		});
+	}
+
+	async refreshTranscript(
+		sessionId: string,
+		readTranscript?: (sessionId: string) => Promise<TranscriptTurn[]>,
+	) {
+		if (!this.store || !readTranscript) {
+			return;
+		}
+
+		const turns = await readTranscript(sessionId);
+		this.store.replaceTranscript(this.state.providerId, sessionId, turns);
 	}
 
 	private persistActiveSession() {

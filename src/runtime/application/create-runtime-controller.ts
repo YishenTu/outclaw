@@ -52,6 +52,7 @@ export function createRuntimeController(
 		clients,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
 		promptRunner,
+		readTranscript: options.facade.readTranscript?.bind(options.facade),
 		sessions: options.sessions,
 		state: options.state,
 	});

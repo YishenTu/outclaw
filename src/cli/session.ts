@@ -1,13 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { ClaudeAdapter } from "../backend/adapters/claude.ts";
+import { createFacadeForProvider } from "../backend/facade-registry.ts";
 import type { TranscriptTurn } from "../common/protocol.ts";
+import { formatTranscriptTurnBody } from "../common/transcript-turn-body.ts";
 import type { AgentRecord } from "../runtime/agents/agent-record.ts";
 import { listAgents } from "../runtime/agents/list-agents.ts";
 import {
 	SessionQuery,
 	type SessionResolveResult,
+	type SessionSearchMatch,
 } from "../runtime/persistence/session-query.ts";
 import type { SessionRow } from "../runtime/persistence/session-store.ts";
 import type { SessionTag } from "../runtime/persistence/session-store-records.ts";
@@ -20,6 +22,9 @@ export async function sessionCommand(argv: string[]) {
 	switch (subcommand) {
 		case "list":
 			await listSessions(argv.slice(4));
+			return;
+		case "search":
+			await searchSessions(argv.slice(4));
 			return;
 		case "transcript":
 			await showTranscript(argv.slice(4));
@@ -55,6 +60,47 @@ async function listSessions(args: string[]) {
 		}
 
 		console.log(formatSessionList(sessions, agents));
+	} finally {
+		query.close();
+	}
+}
+
+async function searchSessions(args: string[]) {
+	const firstFlagIndex = args.findIndex((arg) => arg.startsWith("--"));
+	const queryText = (
+		firstFlagIndex === -1 ? args : args.slice(0, firstFlagIndex)
+	).join(" ");
+	if (!queryText.trim()) {
+		console.log("Usage: oc session search <query> [--limit N]");
+		process.exit(1);
+	}
+
+	const flags = parseFlags(
+		firstFlagIndex === -1 ? [] : args.slice(firstFlagIndex),
+	);
+	const limit = parseLimit(flags.limit);
+	const agents = listAgents(HOME_DIR);
+	const scopedAgent = resolveScopedAgent(agents, process.cwd());
+
+	if (!existsSync(DB_PATH)) {
+		console.log("No matches");
+		return;
+	}
+
+	const query = new SessionQuery(DB_PATH);
+	try {
+		const matches = query.search({
+			agentId: scopedAgent?.agentId,
+			limit,
+			query: queryText,
+			tag: "chat",
+		});
+		if (matches.length === 0) {
+			console.log("No matches");
+			return;
+		}
+
+		console.log(formatSearchMatches(matches, agents));
 	} finally {
 		query.close();
 	}
@@ -104,7 +150,7 @@ async function showTranscript(args: string[]) {
 	}
 
 	const session = resolution.match;
-	const facade = createFacade(session.providerId);
+	const facade = createFacadeForProvider(session.providerId);
 	if (!facade?.readTranscript) {
 		console.error(
 			`Transcript reading is not supported for provider: ${session.providerId}`,
@@ -115,15 +161,6 @@ async function showTranscript(args: string[]) {
 	const transcript = await facade.readTranscript(session.sdkSessionId);
 	const turns = limit === undefined ? transcript : transcript.slice(-limit);
 	console.log(formatTranscript(session, turns, agents));
-}
-
-function createFacade(providerId: string) {
-	switch (providerId) {
-		case "claude":
-			return new ClaudeAdapter();
-		default:
-			return undefined;
-	}
 }
 
 function formatSessionList(
@@ -192,7 +229,9 @@ function formatTranscript(
 
 	for (const turn of turns) {
 		lines.push(`[${turn.role}] ${formatTimestamp(turn.timestamp)}`);
-		const body = formatTranscriptTurnBody(turn);
+		const body = formatTranscriptTurnBody(turn, {
+			includeImagePlaceholders: true,
+		});
 		if (body) {
 			lines.push(body);
 		}
@@ -206,17 +245,47 @@ function formatTranscript(
 	return lines.join("\n");
 }
 
-function formatTranscriptTurnBody(turn: TranscriptTurn): string {
-	const parts: string[] = [];
-	if (turn.replyContext?.text) {
-		parts.push(`> ${turn.replyContext.text}`);
+function formatSearchMatches(
+	matches: SessionSearchMatch[],
+	agents: AgentRecord[],
+): string {
+	const agentNames = new Map(
+		agents.map((agent) => [agent.agentId, agent.name]),
+	);
+	const ids = createDisplayIds(
+		matches.map((match) => match.session.sdkSessionId),
+	);
+	const lines: string[] = [];
+
+	for (let index = 0; index < matches.length; index += 1) {
+		const match = matches[index];
+		const displayId = ids[index] ?? match?.session.sdkSessionId ?? "";
+		if (!match) {
+			continue;
+		}
+
+		const agentName =
+			agentNames.get(match.session.agentId) ?? match.session.agentId;
+		lines.push(
+			`session: ${sanitizeTitle(match.session.title)} (${displayId})`,
+			`agent: ${agentName}`,
+			`provider: ${match.session.providerId}`,
+		);
+
+		for (const turn of match.turns) {
+			lines.push(`[${turn.role}] ${formatTimestamp(turn.timestamp)}`);
+			lines.push(turn.bodyText, "");
+		}
+
+		if (lines.at(-1) === "") {
+			lines.pop();
+		}
+		if (index < matches.length - 1) {
+			lines.push("");
+		}
 	}
-	if (turn.content) {
-		parts.push(turn.content);
-	} else if ((turn.images?.length ?? 0) > 0) {
-		parts.push(`[images: ${turn.images?.length ?? 0}]`);
-	}
-	return parts.join("\n");
+
+	return lines.join("\n");
 }
 
 function createDisplayIds(ids: string[]): string[] {
@@ -332,6 +401,7 @@ function formatTimestamp(timestamp: number): string {
 function printSessionUsage() {
 	console.log(
 		"Usage: oc session list [--limit N] [--tag cron]\n" +
+			"       oc session search <query> [--limit N]\n" +
 			"       oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
 	);
 }

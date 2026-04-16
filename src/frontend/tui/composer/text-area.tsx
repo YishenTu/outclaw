@@ -1,5 +1,5 @@
 import { ControlledMultilineInput } from "ink-multiline-input";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTextAreaInput } from "./input.ts";
 import { applyTextAreaKeypress } from "./keypress.ts";
 
@@ -39,6 +39,9 @@ export function TextArea({
 	const [preferredColumn, setPreferredColumn] = useState<number | null>(null);
 	const resolvedCursor = resolveTextAreaCursor(value, cursor, cursorOverride);
 
+	const stateRef = useRef({ value, cursor: resolvedCursor, preferredColumn });
+	stateRef.current = { value, cursor: resolvedCursor, preferredColumn };
+
 	useEffect(() => {
 		if (cursor > value.length) setCursor(value.length);
 	}, [value.length, cursor]);
@@ -54,18 +57,19 @@ export function TextArea({
 	};
 
 	useTextAreaInput(({ input, key, sequence }) => {
-		const result = applyTextAreaKeypress(
-			{ value, cursor: resolvedCursor, preferredColumn },
-			input,
-			key,
-			sequence,
-		);
+		const current = stateRef.current;
+		const result = applyTextAreaKeypress(current, input, key, sequence);
 		if (!result.handled) return;
 		if (result.submit) {
 			onSubmit(result.value);
 			return;
 		}
-		if (result.value !== value || result.cursor !== resolvedCursor) {
+		if (result.value !== current.value || result.cursor !== current.cursor) {
+			stateRef.current = {
+				value: result.value,
+				cursor: result.cursor,
+				preferredColumn: result.preferredColumn,
+			};
 			edit(result);
 		}
 	}, focus && captureInput);

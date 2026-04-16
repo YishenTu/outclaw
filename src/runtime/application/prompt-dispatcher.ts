@@ -1,8 +1,10 @@
 import type {
+	DoneEvent,
 	FacadeEvent,
 	HeartbeatResult,
 	ImageRef,
 	ReplyContext,
+	TranscriptTurn,
 } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import type { PromptRunner } from "./prompt-runner.ts";
@@ -37,6 +39,7 @@ interface PromptDispatcherOptions {
 		} & HeartbeatResult,
 	) => Promise<void> | void;
 	promptRunner: PromptRunner;
+	readTranscript?: (sessionId: string) => Promise<TranscriptTurn[]>;
 	sessions: SessionService;
 	state: RuntimeState;
 }
@@ -68,6 +71,7 @@ export class PromptDispatcher {
 				? this.options.clients.listTuiTargets(task.sender)
 				: [];
 		const heartbeatBuffer: FacadeEvent[] = [];
+		let completedEvent: DoneEvent | undefined;
 
 		if (task.source === "telegram" || task.source === "heartbeat") {
 			this.options.clients.sendMany(observers, {
@@ -88,10 +92,14 @@ export class PromptDispatcher {
 				this.options.clients.send(task.sender, event);
 			}
 			this.options.clients.sendMany(observers, event);
+			if (event.type === "error") {
+				completedEvent = undefined;
+			}
 			if (
 				event.type === "done" &&
 				this.options.state.generation === generation
 			) {
+				completedEvent = event;
 				this.options.sessions.completeRun(
 					event,
 					task.source,
@@ -109,6 +117,19 @@ export class PromptDispatcher {
 			resume: this.options.state.sessionId,
 			task,
 		});
+
+		if (completedEvent) {
+			try {
+				await this.options.sessions.refreshTranscript(
+					completedEvent.sessionId,
+					this.options.readTranscript,
+				);
+			} catch (err) {
+				console.error(
+					`Failed to refresh transcript search snapshot: ${extractError(err)}`,
+				);
+			}
+		}
 
 		const heartbeatDeliveryTarget =
 			task.source === "heartbeat"

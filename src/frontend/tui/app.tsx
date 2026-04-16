@@ -1,5 +1,5 @@
 import { Box, Text, useApp } from "ink";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	canonicalizePromptSlashCommand,
 	isRuntimeCommand,
@@ -51,6 +51,8 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 	} = useRuntimeSession(url, agentName);
 	const [cmdMenuIndex, setCmdMenuIndex] = useState(0);
 	const [cmdMenuDismissed, setCmdMenuDismissed] = useState(false);
+	const composerDraftRef = useRef(composerDraft);
+	composerDraftRef.current = composerDraft;
 	const input = composerDraft.value;
 	const draftCursor = composerDraft.cursor;
 	const ignoreTextAreaChange = useCallback((_value: string) => {}, []);
@@ -164,7 +166,9 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 				const selected = matchedCommands[cmdMenuIndex];
 				if (selected) {
 					const filled = `${selected.command} `;
-					updateComposerDraft(createPasteAwareDraft(filled, filled.length));
+					const draft = createPasteAwareDraft(filled, filled.length);
+					composerDraftRef.current = draft;
+					updateComposerDraft(draft);
 				}
 				return;
 			}
@@ -175,7 +179,7 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		}
 
 		const action = applyCollapsedPasteKeypress(
-			composerDraft,
+			composerDraftRef.current,
 			inputKey,
 			key,
 			sequence,
@@ -184,14 +188,16 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 			return;
 		}
 		if (action.type === "clear") {
+			composerDraftRef.current = createPasteAwareDraft();
 			resetComposer();
 			return;
 		}
 		if (action.type === "submit") {
-			handleSubmit(action.value ?? composerDraft.value);
+			handleSubmit(action.value ?? composerDraftRef.current.value);
 			return;
 		}
 		if (action.type === "update" && action.draft) {
+			composerDraftRef.current = action.draft;
 			updateComposerDraft(action.draft);
 		}
 	}, inputActive);

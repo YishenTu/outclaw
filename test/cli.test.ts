@@ -936,4 +936,125 @@ describe("CLI", () => {
 			].join("\n"),
 		);
 	});
+
+	test("session search prints matching turns grouped by session with agent name", () => {
+		const raillyHome = createAgentHome("railly", "agent-railly");
+		const dbPath = join(OUTCLAW_DIR, "db.sqlite");
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		store.upsert({
+			providerId: "claude",
+			sdkSessionId: "search-session-1234567890",
+			title: "Webhook thread",
+			model: "opus",
+		});
+		store.replaceTranscript("claude", "search-session-1234567890", [
+			{
+				role: "user",
+				content: "set up webhook handler",
+				timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+			},
+			{
+				role: "assistant",
+				content: "use Stripe signing secret",
+				timestamp: Date.parse("2025-01-15T14:31:00.000Z"),
+			},
+		]);
+		store.close();
+
+		const result = runCli(["session", "search", "webhook"], {
+			cwd: raillyHome,
+		});
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toBe(
+			[
+				"session: Webhook thread (search-sessi)",
+				"agent: railly",
+				"provider: claude",
+				"[user] 2025-01-15 14:30",
+				"set up webhook handler",
+			].join("\n"),
+		);
+	});
+
+	test("session search shows agent and provider metadata when spanning all agents", () => {
+		createAgentHome("railly", "agent-railly");
+		createAgentHome("mimi", "agent-mimi");
+		const dbPath = join(OUTCLAW_DIR, "db.sqlite");
+
+		let store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		store.upsert({
+			providerId: "claude",
+			sdkSessionId: "railly-search-session",
+			title: "Railly webhook thread",
+			model: "opus",
+		});
+		store.replaceTranscript("claude", "railly-search-session", [
+			{
+				role: "user",
+				content: "webhook rollout notes",
+				timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+			},
+		]);
+		store.close();
+
+		store = new SessionStore(dbPath, { agentId: "agent-mimi" });
+		store.upsert({
+			providerId: "claude",
+			sdkSessionId: "mimi-search-session",
+			title: "Mimi webhook thread",
+			model: "opus",
+		});
+		store.replaceTranscript("claude", "mimi-search-session", [
+			{
+				role: "assistant",
+				content: "webhook retry notes",
+				timestamp: Date.parse("2025-01-15T14:31:00.000Z"),
+			},
+		]);
+		store.close();
+
+		const result = runCli(["session", "search", "webhook"]);
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("session: Railly webhook thread");
+		expect(result.stdout).toContain("agent: railly");
+		expect(result.stdout).toContain("provider: claude");
+		expect(result.stdout).toContain("session: Mimi webhook thread");
+		expect(result.stdout).toContain("agent: mimi");
+	});
+
+	test("session search prints No matches when nothing matches", () => {
+		const result = runCli(["session", "search", "missing"]);
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toBe("No matches");
+	});
+
+	test("session search has no default limit when --limit is omitted", () => {
+		const raillyHome = createAgentHome("railly", "agent-railly");
+		const dbPath = join(OUTCLAW_DIR, "db.sqlite");
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+
+		for (let index = 0; index < 60; index += 1) {
+			const sdkSessionId = `search-session-${String(index).padStart(2, "0")}`;
+			store.upsert({
+				providerId: "claude",
+				sdkSessionId,
+				title: `Webhook thread ${index}`,
+				model: "opus",
+			});
+			store.replaceTranscript("claude", sdkSessionId, [
+				{
+					role: "user",
+					content: `webhook search result ${index}`,
+					timestamp: Date.parse("2025-01-15T14:30:00.000Z") + index,
+				},
+			]);
+		}
+		store.close();
+
+		const result = runCli(["session", "search", "webhook"], {
+			cwd: raillyHome,
+		});
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout.match(/^session:/gm)).toHaveLength(60);
+	});
 });

@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +8,7 @@ import type {
 	HistoryReplayEvent,
 	ImageRef,
 	ServerEvent,
+	TranscriptTurn,
 } from "../../../src/common/protocol.ts";
 import { createRuntimeController } from "../../../src/runtime/application/create-runtime-controller.ts";
 import type { RuntimeController } from "../../../src/runtime/application/runtime-controller.ts";
@@ -503,6 +505,58 @@ describe("RuntimeController", () => {
 				| undefined;
 			expect(menu).toBeDefined();
 			expect(menu?.sessions[0]?.title).toBe("What is the meaning of life?");
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
+		test("refreshes transcript search snapshots after a successful run completes", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new MockFacade();
+			(
+				facade as unknown as Facade & {
+					readTranscript: (id: string) => Promise<TranscriptTurn[]>;
+				}
+			).readTranscript = async (id: string) => {
+				expect(id).toBe("mock-session-123");
+				return [
+					{
+						role: "user",
+						content: "find the webhook notes",
+						timestamp: 100,
+					},
+				];
+			};
+			const { controller } = createController({ facade, store });
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("hello"));
+			await drain(controller, facade);
+
+			const db = new Database(TEST_DB, { readonly: true });
+			expect(
+				db
+					.query(
+						`SELECT role, body_text, timestamp
+							 FROM transcript_turns
+							 WHERE agent_id = $agentId
+							   AND provider_id = $providerId
+							   AND sdk_session_id = $id`,
+					)
+					.all({
+						$agentId: "agent-default",
+						$providerId: PROVIDER_ID,
+						$id: "mock-session-123",
+					}),
+			).toEqual([
+				{
+					role: "user",
+					body_text: "find the webhook notes",
+					timestamp: 100,
+				},
+			]);
+			db.close();
 			store.close();
 			cleanupStore(TEST_DB);
 		});

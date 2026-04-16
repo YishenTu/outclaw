@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import type { TranscriptTurn } from "../../../src/common/protocol.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-test.sqlite");
@@ -392,6 +393,207 @@ describe("SessionStore", () => {
 		expect(store.get(CLAUDE_PROVIDER, "sdk-del")).toBeUndefined();
 		expect(store.list(20, undefined, CLAUDE_PROVIDER).length).toBe(0);
 
+		store.close();
+	});
+
+	test("replaceTranscript stores searchable turn snapshots without duplicates", () => {
+		const store = createTestStore();
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-search",
+			title: "Searchable session",
+			model: "opus",
+		});
+
+		const firstSnapshot: TranscriptTurn[] = [
+			{
+				role: "user",
+				content: "set up webhook handler",
+				timestamp: 100,
+			},
+			{
+				role: "assistant",
+				content: "use Stripe signing secret",
+				timestamp: 200,
+			},
+		];
+		store.replaceTranscript(CLAUDE_PROVIDER, "sdk-search", firstSnapshot);
+
+		let db = new Database(TEST_DB, { readonly: true });
+		expect(
+			db
+				.query(
+					`SELECT turn_index, role, body_text, timestamp
+					 FROM transcript_turns
+					 WHERE agent_id = $agentId
+					   AND provider_id = $providerId
+					   AND sdk_session_id = $id
+					 ORDER BY turn_index`,
+				)
+				.all({
+					$agentId: DEFAULT_AGENT_ID,
+					$providerId: CLAUDE_PROVIDER,
+					$id: "sdk-search",
+				}),
+		).toEqual([
+			{
+				turn_index: 0,
+				role: "user",
+				body_text: "set up webhook handler",
+				timestamp: 100,
+			},
+			{
+				turn_index: 1,
+				role: "assistant",
+				body_text: "use Stripe signing secret",
+				timestamp: 200,
+			},
+		]);
+		db.close();
+
+		store.replaceTranscript(CLAUDE_PROVIDER, "sdk-search", [
+			{
+				role: "assistant",
+				content: "updated answer only",
+				timestamp: 300,
+			},
+		]);
+
+		db = new Database(TEST_DB, { readonly: true });
+		expect(
+			db
+				.query(
+					`SELECT turn_index, role, body_text, timestamp
+					 FROM transcript_turns
+					 WHERE agent_id = $agentId
+					   AND provider_id = $providerId
+					   AND sdk_session_id = $id
+					 ORDER BY turn_index`,
+				)
+				.all({
+					$agentId: DEFAULT_AGENT_ID,
+					$providerId: CLAUDE_PROVIDER,
+					$id: "sdk-search",
+				}),
+		).toEqual([
+			{
+				turn_index: 0,
+				role: "assistant",
+				body_text: "updated answer only",
+				timestamp: 300,
+			},
+		]);
+		db.close();
+		store.close();
+	});
+
+	test("replaceTranscript filters operational heartbeat noise from the search index", () => {
+		const store = createTestStore();
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-heartbeat",
+			title: "Heartbeat session",
+			model: "opus",
+		});
+
+		store.replaceTranscript(CLAUDE_PROVIDER, "sdk-heartbeat", [
+			{
+				role: "user",
+				content:
+					"Read HEARTBEAT.md and follow its instructions. Only act on what the file currently says — do not repeat tasks from earlier heartbeats or infer tasks from conversation history. If the file is missing or nothing needs attention, reply only `HEARTBEAT_OK`, no explaination.",
+				timestamp: 100,
+			},
+			{
+				role: "assistant",
+				content: "HEARTBEAT_OK",
+				timestamp: 200,
+			},
+			{
+				role: "assistant",
+				content: "`HEARTBEAT_OK`",
+				timestamp: 300,
+			},
+			{
+				role: "assistant",
+				content: "Updated daily memory with the heartbeat prompt revision.",
+				timestamp: 400,
+			},
+			{
+				role: "user",
+				content: "the heartbeat prompt still needs a wording fix",
+				timestamp: 500,
+			},
+		]);
+
+		const db = new Database(TEST_DB, { readonly: true });
+		expect(
+			db
+				.query(
+					`SELECT turn_index, role, body_text, timestamp
+					 FROM transcript_turns
+					 WHERE agent_id = $agentId
+					   AND provider_id = $providerId
+					   AND sdk_session_id = $id
+					 ORDER BY turn_index`,
+				)
+				.all({
+					$agentId: DEFAULT_AGENT_ID,
+					$providerId: CLAUDE_PROVIDER,
+					$id: "sdk-heartbeat",
+				}),
+		).toEqual([
+			{
+				turn_index: 0,
+				role: "assistant",
+				body_text: "Updated daily memory with the heartbeat prompt revision.",
+				timestamp: 400,
+			},
+			{
+				turn_index: 1,
+				role: "user",
+				body_text: "the heartbeat prompt still needs a wording fix",
+				timestamp: 500,
+			},
+		]);
+		db.close();
+		store.close();
+	});
+
+	test("delete cascades transcript snapshots for the removed session", () => {
+		const store = createTestStore();
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-search",
+			title: "Searchable session",
+			model: "opus",
+		});
+		store.replaceTranscript(CLAUDE_PROVIDER, "sdk-search", [
+			{
+				role: "user",
+				content: "search me",
+				timestamp: 100,
+			},
+		]);
+
+		store.delete(CLAUDE_PROVIDER, "sdk-search");
+
+		const db = new Database(TEST_DB, { readonly: true });
+		expect(
+			db
+				.query(
+					`SELECT COUNT(*) AS count
+					 FROM transcript_turns
+					 WHERE agent_id = $agentId
+					   AND provider_id = $providerId
+					   AND sdk_session_id = $id`,
+				)
+				.get({
+					$agentId: DEFAULT_AGENT_ID,
+					$providerId: CLAUDE_PROVIDER,
+					$id: "sdk-search",
+				}),
+		).toEqual({ count: 0 });
+		db.close();
 		store.close();
 	});
 

@@ -91,8 +91,7 @@ Invoke the `oc` skill when you need to contact another agent.
 
 ## Session Lookup
 
-Look up past sessions, read transcripts, or review cron run history through the
-`oc` CLI.
+Use the `oc` skill to retrieve chat history, read past session transcripts, or review cron run history.
 
 Invoke the `oc` skill when you need to inspect a past or different session.
 
