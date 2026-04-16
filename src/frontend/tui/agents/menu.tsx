@@ -2,6 +2,8 @@ import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
 import { theme } from "../chrome/theme.ts";
 import { useTerminalInput } from "../composer/input.ts";
+import { useLatestRef } from "../use-latest-ref.ts";
+import { clampAgentMenuCursor, reduceAgentMenuBatch } from "./state.ts";
 import type { AgentSummary } from "./types.ts";
 
 interface AgentMenuProps {
@@ -18,40 +20,37 @@ export function AgentMenu({
 	onSelect,
 }: AgentMenuProps) {
 	const [cursor, setCursor] = useState(0);
+	const cursorRef = useLatestRef(cursor);
 
 	useEffect(() => {
-		if (cursor >= agents.length && agents.length > 0) {
-			setCursor(agents.length - 1);
+		const nextCursor = clampAgentMenuCursor(cursorRef.current, agents.length);
+		if (nextCursor !== cursorRef.current) {
+			cursorRef.current = nextCursor;
+			setCursor(nextCursor);
 		}
-	}, [agents.length, cursor]);
+	}, [agents.length, cursorRef]);
 
-	useTerminalInput(({ key }) => {
-		if (agents.length === 0) {
-			if (key.escape) {
-				onDismiss();
-			}
-			return;
+	useTerminalInput((events) => {
+		const result = reduceAgentMenuBatch(
+			cursorRef.current,
+			events,
+			agents.length,
+		);
+		if (result.cursor !== cursorRef.current) {
+			cursorRef.current = result.cursor;
+			setCursor(result.cursor);
 		}
-		if (key.escape) {
+
+		if (result.effect.type === "dismiss") {
 			onDismiss();
 			return;
 		}
-		if (key.return) {
-			const agent = agents[cursor];
+
+		if (result.effect.type === "select") {
+			const agent = agents[result.effect.cursor];
 			if (agent) {
 				onSelect(agent);
 			}
-			return;
-		}
-		if (key.upArrow) {
-			setCursor((previous) =>
-				previous > 0 ? previous - 1 : agents.length - 1,
-			);
-		}
-		if (key.downArrow) {
-			setCursor((previous) =>
-				previous < agents.length - 1 ? previous + 1 : 0,
-			);
 		}
 	}, true);
 

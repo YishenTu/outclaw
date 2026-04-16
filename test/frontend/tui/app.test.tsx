@@ -131,6 +131,17 @@ async function typeText(stdin: PassThrough, value: string) {
 	await flushUpdates();
 }
 
+async function typeTextBeforeRerender(
+	stdin: PassThrough,
+	first: string,
+	second: string,
+) {
+	stdin.write(first);
+	await new Promise<void>((resolve) => setImmediate(resolve));
+	stdin.write(second);
+	await flushUpdates();
+}
+
 async function pressEnter(stdin: PassThrough) {
 	stdin.write("\r");
 	await flushUpdates();
@@ -184,6 +195,26 @@ describe("TuiApp", () => {
 			expect(socket.sent).toEqual(['{"type":"request_skills"}']);
 
 			await pressEnter(stdin);
+			expect(socket.sent).toEqual(['{"type":"request_skills"}']);
+
+			await pressEnter(stdin);
+			expect(socket.sent).toEqual([
+				'{"type":"request_skills"}',
+				'{"type":"command","command":"/session"}',
+			]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("partial slash command plus Enter in one batch only autocompletes", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			await typeText(stdin, "/s\r");
 			expect(socket.sent).toEqual(['{"type":"request_skills"}']);
 
 			await pressEnter(stdin);
@@ -279,6 +310,22 @@ describe("TuiApp", () => {
 		}
 	});
 
+	test("preserves fast typing when input arrives across separate terminal batches", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			await typeTextBeforeRerender(stdin, "f", "e");
+			await pressEnter(stdin);
+
+			expect(socket.sent).toContain('{"type":"prompt","prompt":"fe"}');
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("ignores blank submits without sending a prompt", async () => {
 		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 
@@ -305,6 +352,24 @@ describe("TuiApp", () => {
 
 			await pressUp(stdin);
 			await pressEnter(stdin);
+			await pressEnter(stdin);
+			expect(socket.sent).toContain('{"type":"command","command":"/stop"}');
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("command completion applies navigation before Enter within one batch", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			await typeText(stdin, "/s");
+			expect(socket.sent).toEqual(['{"type":"request_skills"}']);
+
+			await typeText(stdin, "\u001B[A\r");
 			await pressEnter(stdin);
 			expect(socket.sent).toContain('{"type":"command","command":"/stop"}');
 		} finally {
@@ -533,6 +598,35 @@ describe("TuiApp", () => {
 			await pressEnter(stdin);
 			expect(socket.sent).toContain(
 				'{"type":"command","command":"/agent mimi"}',
+			);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("agent menu applies navigation before Enter within one batch", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "agent_menu",
+					activeAgentId: "agent-railly",
+					activeAgentName: "railly",
+					agents: [
+						{ agentId: "agent-mimi", name: "mimi" },
+						{ agentId: "agent-railly", name: "railly" },
+					],
+				}),
+			});
+			await flushUpdates();
+
+			await typeText(stdin, "\u001B[B\r");
+			expect(socket.sent).toContain(
+				'{"type":"command","command":"/agent railly"}',
 			);
 		} finally {
 			app.unmount();

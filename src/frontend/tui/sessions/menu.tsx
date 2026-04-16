@@ -3,7 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 import { theme } from "../chrome/theme.ts";
 import { useTerminalInput } from "../composer/input.ts";
 import { TextArea } from "../composer/text-area.tsx";
+import { useLatestRef } from "../use-latest-ref.ts";
 import { formatSessionMenuItem } from "./format.ts";
+import {
+	createSessionMenuState,
+	normalizeSessionMenuState,
+	reduceSessionMenuBatch,
+} from "./menu-state.ts";
 import type { SessionMenuChoice } from "./types.ts";
 
 interface SessionMenuProps {
@@ -21,79 +27,79 @@ export function SessionMenu({
 	onRename,
 	onDismiss,
 }: SessionMenuProps) {
-	const [cursor, setCursor] = useState(0);
-	const [renaming, setRenaming] = useState(false);
-	const [renameValue, setRenameValue] = useState("");
+	const [menuState, setMenuState] = useState(() => createSessionMenuState());
+	const menuStateRef = useLatestRef(menuState);
 	const { stdout } = useStdout();
 	const columns = stdout?.columns ?? 80;
 	const labelWidth = columns - 4;
+	const { cursor, renaming, renameValue } = menuState;
 
 	useEffect(() => {
-		if (cursor >= choices.length && choices.length > 0) {
-			setCursor(choices.length - 1);
+		const nextState = normalizeSessionMenuState(menuStateRef.current, choices);
+		if (nextState !== menuStateRef.current) {
+			menuStateRef.current = nextState;
+			setMenuState(nextState);
 		}
-	}, [choices.length, cursor]);
+	}, [choices, menuStateRef]);
 
-	useTerminalInput(({ input, key }) => {
-		if (choices.length === 0) {
-			if (key.escape) {
-				onDismiss();
-			}
-			return;
+	useTerminalInput((events) => {
+		const result = reduceSessionMenuBatch(
+			menuStateRef.current,
+			events,
+			choices,
+		);
+		if (result.state !== menuStateRef.current) {
+			menuStateRef.current = result.state;
+			setMenuState(result.state);
 		}
-		if (key.escape) {
+
+		if (result.effect.type === "dismiss") {
 			onDismiss();
 			return;
 		}
-		if (key.return) {
-			const choice = choices[cursor];
-			if (choice) {
-				onSelect(choice);
-			}
+
+		if (result.effect.type === "select") {
+			onSelect(result.effect.choice);
 			return;
 		}
-		if (input === "d") {
-			const choice = choices[cursor];
-			if (choice) {
-				onDelete(choice);
-			}
-			return;
-		}
-		if (input === "r") {
-			const choice = choices[cursor];
-			if (choice) {
-				setRenameValue(choice.title);
-				setRenaming(true);
-			}
-			return;
-		}
-		if (key.upArrow) {
-			setCursor((previous) =>
-				previous > 0 ? previous - 1 : choices.length - 1,
-			);
-		}
-		if (key.downArrow) {
-			setCursor((previous) =>
-				previous < choices.length - 1 ? previous + 1 : 0,
-			);
+
+		if (result.effect.type === "delete") {
+			onDelete(result.effect.choice);
 		}
 	}, !renaming);
 
 	const handleRenameSubmit = useCallback(
 		(value: string) => {
-			const choice = choices[cursor];
+			const nextState = normalizeSessionMenuState(
+				menuStateRef.current,
+				choices,
+			);
+			const choice = choices[nextState.cursor];
 			const trimmed = value.trim();
 			if (choice && trimmed) {
 				onRename(choice, trimmed);
 			}
-			setRenaming(false);
+			const resolvedState = { ...nextState, renaming: false };
+			menuStateRef.current = resolvedState;
+			setMenuState(resolvedState);
 		},
-		[choices, cursor, onRename],
+		[choices, menuStateRef, onRename],
 	);
 
 	const handleRenameCancel = useCallback(() => {
-		setRenaming(false);
-	}, []);
+		const nextState = { ...menuStateRef.current, renaming: false };
+		menuStateRef.current = nextState;
+		setMenuState(nextState);
+	}, [menuStateRef]);
+
+	const handleRenameChange = useCallback(
+		(value: string) => {
+			const nextState = { ...menuStateRef.current, renameValue: value };
+			menuStateRef.current = nextState;
+			setMenuState(nextState);
+		},
+		[menuStateRef],
+	);
 
 	return (
 		<Box flexDirection="column">
@@ -106,7 +112,7 @@ export function SessionMenu({
 							<Text color={theme.accent}>{pointer}</Text>
 							<RenameInput
 								value={renameValue}
-								onChange={setRenameValue}
+								onChange={handleRenameChange}
 								onSubmit={handleRenameSubmit}
 								onCancel={handleRenameCancel}
 							/>
@@ -145,9 +151,12 @@ function RenameInput({
 	onSubmit: (value: string) => void;
 	onCancel: () => void;
 }) {
-	useTerminalInput(({ key }) => {
-		if (key.escape) {
-			onCancel();
+	useTerminalInput((events) => {
+		for (const { key } of events) {
+			if (key.escape) {
+				onCancel();
+				return;
+			}
 		}
 	}, true);
 

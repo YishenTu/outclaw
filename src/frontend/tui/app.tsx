@@ -1,5 +1,5 @@
 import { Box, Text, useApp } from "ink";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	canonicalizePromptSlashCommand,
 	isRuntimeCommand,
@@ -12,16 +12,17 @@ import { CommandMenu } from "./command-menu/menu.tsx";
 import { matchCommands } from "./command-menu/state.ts";
 import { useTerminalInput, useTextAreaInput } from "./composer/input.ts";
 import {
-	applyCollapsedPasteKeypress,
-	type CollapsedPasteDraft,
-	createPasteAwareDraft,
-} from "./composer/paste-draft.ts";
+	clampCommandMenuIndex,
+	createComposerState,
+	reduceComposerBatch,
+} from "./composer/state.ts";
 import { TextArea } from "./composer/text-area.tsx";
 import { sessionMenuChoices } from "./sessions/format.ts";
 import { SessionMenu } from "./sessions/menu.tsx";
 import { shouldEnableGlobalStopShortcut } from "./sessions/state.ts";
 import type { SessionMenuChoice } from "./sessions/types.ts";
 import { MessageList } from "./transcript/message-list.tsx";
+import { useLatestRef } from "./use-latest-ref.ts";
 import { useRuntimeSession } from "./use-runtime-session.ts";
 import { useTerminalSize } from "./use-terminal-size.ts";
 
@@ -33,8 +34,8 @@ interface TuiAppProps {
 export function TuiApp({ url, agentName }: TuiAppProps) {
 	const { exit } = useApp();
 	const { columns, rows: termRows } = useTerminalSize();
-	const [composerDraft, setComposerDraft] = useState(() =>
-		createPasteAwareDraft(),
+	const [composerState, setComposerState] = useState(() =>
+		createComposerState(),
 	);
 	const {
 		agentMenuData,
@@ -49,22 +50,21 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		status,
 		tuiState,
 	} = useRuntimeSession(url, agentName);
-	const [cmdMenuIndex, setCmdMenuIndex] = useState(0);
-	const [cmdMenuDismissed, setCmdMenuDismissed] = useState(false);
-	const composerDraftRef = useRef(composerDraft);
-	composerDraftRef.current = composerDraft;
-	const input = composerDraft.value;
-	const draftCursor = composerDraft.cursor;
+	const composerStateRef = useLatestRef(composerState);
+	const input = composerState.draft.value;
+	const draftCursor = composerState.draft.cursor;
 	const ignoreTextAreaChange = useCallback((_value: string) => {}, []);
 	const ignoreTextAreaSubmit = useCallback((_value: string) => {}, []);
-	const updateComposerDraft = useCallback((nextDraft: CollapsedPasteDraft) => {
-		setCmdMenuIndex(0);
-		setCmdMenuDismissed(false);
-		setComposerDraft(nextDraft);
-	}, []);
+	const syncComposerState = useCallback(
+		(nextState: typeof composerState) => {
+			composerStateRef.current = nextState;
+			setComposerState(nextState);
+		},
+		[composerStateRef],
+	);
 	const resetComposer = useCallback(() => {
-		updateComposerDraft(createPasteAwareDraft());
-	}, [updateComposerDraft]);
+		syncComposerState(createComposerState());
+	}, [syncComposerState]);
 
 	const handleSubmit = useCallback(
 		(value: string) => {
@@ -135,14 +135,20 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 	const inputActive =
 		!tuiState.running && menuData === null && agentMenuData === null;
 
-	const matchedCommands = matchCommands(composerDraft.value, skills);
+	const matchedCommands = matchCommands(composerState.draft.value, skills);
+	const cmdMenuIndex = clampCommandMenuIndex(
+		composerState.cmdMenuIndex,
+		matchedCommands.length,
+	);
 	const cmdMenuVisible =
-		matchedCommands.length > 0 && inputActive && !cmdMenuDismissed;
+		matchedCommands.length > 0 &&
+		inputActive &&
+		!composerState.cmdMenuDismissed;
 	const shouldRequestSkills =
 		status === "connected" &&
 		inputActive &&
 		skills.length === 0 &&
-		composerDraft.value.trimStart().startsWith("/");
+		composerState.draft.value.trimStart().startsWith("/");
 
 	useEffect(() => {
 		if (!shouldRequestSkills) {
@@ -152,60 +158,28 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		requestSkills();
 	}, [requestSkills, shouldRequestSkills]);
 
-	useTextAreaInput(({ input: inputKey, key, sequence }) => {
-		if (cmdMenuVisible) {
-			if (key.upArrow || (key.ctrl && inputKey === "p")) {
-				setCmdMenuIndex((i) => (i > 0 ? i - 1 : matchedCommands.length - 1));
-				return;
-			}
-			if (key.downArrow || (key.ctrl && inputKey === "n")) {
-				setCmdMenuIndex((i) => (i < matchedCommands.length - 1 ? i + 1 : 0));
-				return;
-			}
-			if (key.tab || key.return) {
-				const selected = matchedCommands[cmdMenuIndex];
-				if (selected) {
-					const filled = `${selected.command} `;
-					const draft = createPasteAwareDraft(filled, filled.length);
-					composerDraftRef.current = draft;
-					updateComposerDraft(draft);
-				}
-				return;
-			}
-			if (key.escape) {
-				setCmdMenuDismissed(true);
-				return;
-			}
+	useTextAreaInput((events) => {
+		const result = reduceComposerBatch(composerStateRef.current, events, {
+			inputActive,
+			skills,
+		});
+
+		if (result.state !== composerStateRef.current) {
+			syncComposerState(result.state);
 		}
 
-		const action = applyCollapsedPasteKeypress(
-			composerDraftRef.current,
-			inputKey,
-			key,
-			sequence,
-		);
-		if (action.type === "ignore") {
-			return;
-		}
-		if (action.type === "clear") {
-			composerDraftRef.current = createPasteAwareDraft();
-			resetComposer();
-			return;
-		}
-		if (action.type === "submit") {
-			handleSubmit(action.value ?? composerDraftRef.current.value);
-			return;
-		}
-		if (action.type === "update" && action.draft) {
-			composerDraftRef.current = action.draft;
-			updateComposerDraft(action.draft);
+		if (result.effect.type === "submit") {
+			handleSubmit(result.effect.value);
 		}
 	}, inputActive);
 
 	useTerminalInput(
-		({ key }) => {
-			if (key.escape) {
-				runCommand("/stop");
+		(events) => {
+			for (const { key } of events) {
+				if (key.escape) {
+					runCommand("/stop");
+					return;
+				}
 			}
 		},
 		shouldEnableGlobalStopShortcut(

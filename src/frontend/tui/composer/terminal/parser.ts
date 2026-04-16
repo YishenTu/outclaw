@@ -533,6 +533,24 @@ function parseEscapedCodePoint(
 	};
 }
 
+function findNextSpecialIndex(input: string, startIndex: number): number {
+	for (let index = startIndex; index < input.length; index += 1) {
+		const value = input[index];
+		if (value === ESCAPE) {
+			return index;
+		}
+		if (
+			value === "\r" &&
+			input[index + 1] !== "\n" &&
+			(input[index + 1] === undefined || input[index + 1] === ESCAPE)
+		) {
+			return index;
+		}
+	}
+
+	return -1;
+}
+
 function parseInputChunk(input: string): { events: string[]; pending: string } {
 	const events: string[] = [];
 	let index = 0;
@@ -542,21 +560,26 @@ function parseInputChunk(input: string): { events: string[]; pending: string } {
 	});
 
 	while (index < input.length) {
-		const escapeIndex = input.indexOf(ESCAPE, index);
-		if (escapeIndex === -1) {
+		const specialIndex = findNextSpecialIndex(input, index);
+		if (specialIndex === -1) {
 			events.push(input.slice(index));
 			return { events, pending: "" };
 		}
-		if (escapeIndex > index) {
-			events.push(input.slice(index, escapeIndex));
+		if (specialIndex > index) {
+			events.push(input.slice(index, specialIndex));
 		}
-		if (escapeIndex === input.length - 1) {
-			return pendingFrom(escapeIndex);
+		if (input[specialIndex] === "\r") {
+			events.push("\r");
+			index = specialIndex + 1;
+			continue;
+		}
+		if (specialIndex === input.length - 1) {
+			return pendingFrom(specialIndex);
 		}
 
-		const parsedSequence = parseControlSequence(input, escapeIndex, 1);
+		const parsedSequence = parseControlSequence(input, specialIndex, 1);
 		if (parsedSequence === "pending") {
-			return pendingFrom(escapeIndex);
+			return pendingFrom(specialIndex);
 		}
 		if (parsedSequence) {
 			events.push(parsedSequence.sequence);
@@ -564,26 +587,26 @@ function parseInputChunk(input: string): { events: string[]; pending: string } {
 			continue;
 		}
 
-		const next = input[escapeIndex + 1];
+		const next = input[specialIndex + 1];
 		if (next === ESCAPE) {
-			if (escapeIndex + 2 >= input.length) {
-				return pendingFrom(escapeIndex);
+			if (specialIndex + 2 >= input.length) {
+				return pendingFrom(specialIndex);
 			}
-			const escapedSequence = parseControlSequence(input, escapeIndex, 2);
+			const escapedSequence = parseControlSequence(input, specialIndex, 2);
 			if (escapedSequence === "pending") {
-				return pendingFrom(escapeIndex);
+				return pendingFrom(specialIndex);
 			}
 			if (escapedSequence) {
 				events.push(escapedSequence.sequence);
 				index = escapedSequence.nextIndex;
 				continue;
 			}
-			events.push(input.slice(escapeIndex, escapeIndex + 2));
-			index = escapeIndex + 2;
+			events.push(input.slice(specialIndex, specialIndex + 2));
+			index = specialIndex + 2;
 			continue;
 		}
 
-		const escapedCodePoint = parseEscapedCodePoint(input, escapeIndex);
+		const escapedCodePoint = parseEscapedCodePoint(input, specialIndex);
 		events.push(escapedCodePoint.sequence);
 		index = escapedCodePoint.nextIndex;
 	}

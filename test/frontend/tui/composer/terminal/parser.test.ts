@@ -81,6 +81,24 @@ describe("createTerminalInputParser", () => {
 		expect(parser.push("\x1b[Aa")).toEqual(["\x1b[A", "a"]);
 	});
 
+	test("splits a standalone return from preceding text in a single chunk", () => {
+		const parser = createTerminalInputParser();
+
+		expect(parser.push("/s\r")).toEqual(["/s", "\r"]);
+	});
+
+	test("preserves CRLF pasted text as a single text event", () => {
+		const parser = createTerminalInputParser();
+
+		expect(parser.push("line 1\r\nline 2")).toEqual(["line 1\r\nline 2"]);
+	});
+
+	test("preserves CR pasted text as a single text event", () => {
+		const parser = createTerminalInputParser();
+
+		expect(parser.push("line 1\rline 2")).toEqual(["line 1\rline 2"]);
+	});
+
 	test("holds a lone escape until it is flushed", () => {
 		const parser = createTerminalInputParser();
 

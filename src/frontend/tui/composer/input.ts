@@ -25,15 +25,17 @@ function killCurrentProcess(stdin: ManagedStdin) {
 	process.kill(process.pid, "SIGINT");
 }
 
+type BatchHandler = (events: TextAreaInputEvent[]) => void;
+
 class TerminalInputManager {
 	private readonly parser = createTerminalInputParser();
-	private readonly subscribers = new Set<(event: TextAreaInputEvent) => void>();
+	private readonly subscribers = new Set<BatchHandler>();
 	private flushTimer: ReturnType<typeof setImmediate> | undefined;
 	private attached = false;
 
 	constructor(private readonly stdin: ManagedStdin) {}
 
-	subscribe(handler: (event: TextAreaInputEvent) => void): () => void {
+	subscribe(handler: BatchHandler): () => void {
 		this.subscribers.add(handler);
 		if (!this.attached) {
 			this.attach();
@@ -75,15 +77,26 @@ class TerminalInputManager {
 		this.attached = false;
 	}
 
-	private emit(sequence: string) {
-		const event = normalizeTextAreaInput(sequence);
-		if (event.input === "c" && event.key.ctrl) {
-			killCurrentProcess(this.stdin);
+	private emitBatch(events: TextAreaInputEvent[]) {
+		if (events.length === 0) {
 			return;
 		}
 		for (const subscriber of this.subscribers) {
-			subscriber(event);
+			subscriber(events);
 		}
+	}
+
+	private collectEvents(sequences: string[]): TextAreaInputEvent[] {
+		const events: TextAreaInputEvent[] = [];
+		for (const sequence of sequences) {
+			const event = normalizeTextAreaInput(sequence);
+			if (event.input === "c" && event.key.ctrl) {
+				killCurrentProcess(this.stdin);
+				return events;
+			}
+			events.push(event);
+		}
+		return events;
 	}
 
 	private scheduleFlush() {
@@ -96,7 +109,7 @@ class TerminalInputManager {
 			if (!pendingEscape) {
 				return;
 			}
-			this.emit(pendingEscape);
+			this.emitBatch(this.collectEvents([pendingEscape]));
 		});
 	}
 
@@ -106,15 +119,18 @@ class TerminalInputManager {
 			this.flushTimer = undefined;
 		}
 
+		const sequences: string[] = [];
 		for (;;) {
 			const chunk = this.stdin.read() as string | Buffer | null;
 			if (chunk === null) {
 				break;
 			}
 			for (const sequence of this.parser.push(chunk)) {
-				this.emit(sequence);
+				sequences.push(sequence);
 			}
 		}
+
+		this.emitBatch(this.collectEvents(sequences));
 
 		if (this.parser.hasPendingEscape()) {
 			this.scheduleFlush();
@@ -124,7 +140,7 @@ class TerminalInputManager {
 
 const inputManagers = new WeakMap<ManagedStdin, TerminalInputManager>();
 
-function getInputManager(stdin: ManagedStdin): TerminalInputManager {
+export function getInputManager(stdin: ManagedStdin): TerminalInputManager {
 	let manager = inputManagers.get(stdin);
 	if (!manager) {
 		manager = new TerminalInputManager(stdin);
@@ -192,27 +208,27 @@ export function normalizeTextAreaInput(sequence: string): TextAreaInputEvent {
 }
 
 export function useTerminalInput(
-	onInput: (event: TextAreaInputEvent) => void,
+	onBatch: (events: TextAreaInputEvent[]) => void,
 	isActive: boolean,
 ) {
 	const { stdin } = useStdin();
-	const onInputRef = useRef(onInput);
-	onInputRef.current = onInput;
+	const onBatchRef = useRef(onBatch);
+	onBatchRef.current = onBatch;
 
 	useEffect(() => {
 		if (!isActive || !stdin || typeof stdin.read !== "function") {
 			return;
 		}
 
-		return getInputManager(stdin as ManagedStdin).subscribe((event) => {
-			onInputRef.current(event);
+		return getInputManager(stdin as ManagedStdin).subscribe((events) => {
+			onBatchRef.current(events);
 		});
 	}, [isActive, stdin]);
 }
 
 export function useTextAreaInput(
-	onInput: (event: TextAreaInputEvent) => void,
+	onBatch: (events: TextAreaInputEvent[]) => void,
 	isActive: boolean,
 ) {
-	useTerminalInput(onInput, isActive);
+	useTerminalInput(onBatch, isActive);
 }

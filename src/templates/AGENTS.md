@@ -89,11 +89,15 @@ When you see this prefix, the message is from a peer agent — not the user. Res
 
 Invoke the `oc` skill when you need to contact another agent.
 
-## Session Lookup
+## Recalling Past Context
 
-Use the `oc` skill to retrieve chat history, read past session transcripts, or review cron run history.
+When the user asks about something from a past conversation or you need prior context:
 
-Invoke the `oc` skill when you need to inspect a past or different session.
+1. **Check `daily-memories/`** first — curated notes, fastest to scan.
+2. **Fall back to `oc session search`** — searches raw conversation content when daily memories don't have the answer.
+3. **Drill into `oc session transcript`** — read the full exchange when you need exact context.
+
+Invoke the `oc` skill for session search and transcript lookup.
 
 ## Scheduled Tasks
 

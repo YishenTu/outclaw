@@ -1,4 +1,5 @@
 import { Box, Text } from "ink";
+import { memo } from "react";
 import { renderMarkdown } from "./markdown.ts";
 import { MessageItem } from "./message-item.tsx";
 import { Spinner } from "./spinner.tsx";
@@ -13,7 +14,7 @@ interface MessageListProps {
 	columns: number;
 }
 
-export function MessageList({
+export const MessageList = memo(function MessageList({
 	messages,
 	streaming,
 	streamingThinking,
@@ -49,4 +50,4 @@ export function MessageList({
 			) : null}
 		</Box>
 	);
-}
+});

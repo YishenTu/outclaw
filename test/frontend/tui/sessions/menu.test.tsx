@@ -121,6 +121,25 @@ describe("SessionMenu", () => {
 		}
 	});
 
+	test("applies navigation before Enter within one batch", async () => {
+		const selected: string[] = [];
+		const { app, stdin } = renderMenu({
+			onSelect: (choice) => {
+				selected.push(choice.sdkSessionId);
+			},
+		});
+
+		try {
+			await flushUpdates();
+			await sendInput(stdin, "\u001B[A\r");
+
+			expect(selected).toEqual(["sdk-gamma"]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("invokes delete for the currently selected session", async () => {
 		const deleted: string[] = [];
 		const { app, stdin } = renderMenu({

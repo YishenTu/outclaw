@@ -216,7 +216,7 @@ describe("agent management", () => {
 		}
 	});
 
-	test("createAgent seeds AGENTS instructions for cross-session references", () => {
+	test("createAgent seeds AGENTS instructions for recalling past context", () => {
 		const homeDir = createHomeDir();
 		try {
 			const created = createAgent({
@@ -226,12 +226,16 @@ describe("agent management", () => {
 				createAgentId: () => "agent-railly",
 			});
 
-			expect(
-				readFileSync(join(created.agentHomeDir, "AGENTS.md"), "utf-8"),
-			).toContain("Invoke the `oc` skill before proceeding");
-			expect(
-				readFileSync(join(created.agentHomeDir, "AGENTS.md"), "utf-8"),
-			).toContain("retrieve chat history");
+			const agentsTemplate = readFileSync(
+				join(created.agentHomeDir, "AGENTS.md"),
+				"utf-8",
+			);
+			expect(agentsTemplate).toContain(
+				"Invoke the `oc` skill before proceeding",
+			);
+			expect(agentsTemplate).toContain("## Recalling Past Context");
+			expect(agentsTemplate).toContain("`oc session search`");
+			expect(agentsTemplate).toContain("`oc session transcript`");
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 		}

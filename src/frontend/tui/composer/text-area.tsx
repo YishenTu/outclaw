@@ -1,5 +1,6 @@
 import { ControlledMultilineInput } from "ink-multiline-input";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useLatestRef } from "../use-latest-ref.ts";
 import { useTextAreaInput } from "./input.ts";
 import { applyTextAreaKeypress } from "./keypress.ts";
 
@@ -38,39 +39,42 @@ export function TextArea({
 	const [cursor, setCursor] = useState(cursorOverride ?? value.length);
 	const [preferredColumn, setPreferredColumn] = useState<number | null>(null);
 	const resolvedCursor = resolveTextAreaCursor(value, cursor, cursorOverride);
-
-	const stateRef = useRef({ value, cursor: resolvedCursor, preferredColumn });
-	stateRef.current = { value, cursor: resolvedCursor, preferredColumn };
+	const stateRef = useLatestRef({
+		value,
+		cursor: resolvedCursor,
+		preferredColumn,
+	});
 
 	useEffect(() => {
 		if (cursor > value.length) setCursor(value.length);
 	}, [value.length, cursor]);
 
-	const edit = (result: {
-		value: string;
-		cursor: number;
-		preferredColumn: number | null;
-	}) => {
-		onChange(result.value);
-		setCursor(result.cursor);
-		setPreferredColumn(result.preferredColumn);
-	};
+	useTextAreaInput((events) => {
+		let state = stateRef.current;
+		let changed = false;
 
-	useTextAreaInput(({ input, key, sequence }) => {
-		const current = stateRef.current;
-		const result = applyTextAreaKeypress(current, input, key, sequence);
-		if (!result.handled) return;
-		if (result.submit) {
-			onSubmit(result.value);
-			return;
+		for (const { input, key, sequence } of events) {
+			const result = applyTextAreaKeypress(state, input, key, sequence);
+			if (!result.handled) continue;
+			if (result.submit) {
+				onSubmit(result.value);
+				return;
+			}
+			if (result.value !== state.value || result.cursor !== state.cursor) {
+				state = {
+					value: result.value,
+					cursor: result.cursor,
+					preferredColumn: result.preferredColumn,
+				};
+				stateRef.current = state;
+				changed = true;
+			}
 		}
-		if (result.value !== current.value || result.cursor !== current.cursor) {
-			stateRef.current = {
-				value: result.value,
-				cursor: result.cursor,
-				preferredColumn: result.preferredColumn,
-			};
-			edit(result);
+
+		if (changed) {
+			onChange(state.value);
+			setCursor(state.cursor);
+			setPreferredColumn(state.preferredColumn);
 		}
 	}, focus && captureInput);
 
