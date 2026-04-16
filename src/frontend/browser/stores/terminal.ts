@@ -38,7 +38,7 @@ function createTerminalEntry(
 		agentId,
 		createdAt: now,
 		id: `${agentId}-terminal-${terminalNumber}-${crypto.randomUUID()}`,
-		name: `Terminal ${terminalNumber}`,
+		name: terminalNumber === 1 ? "Terminal" : `Terminal ${terminalNumber}`,
 	};
 }
 

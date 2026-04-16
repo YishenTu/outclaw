@@ -5,9 +5,8 @@ import {
 	type StateStorage,
 } from "zustand/middleware";
 import {
-	RIGHT_PANEL_TABS,
-	type RightPanelLayoutState,
-	type RightPanelTab,
+	coerceUpperRightPanelTab,
+	type UpperRightPanelTab,
 } from "../components/right-panel/right-panel-layout.ts";
 
 export const BROWSER_LAYOUT_STORAGE_KEY = "outclaw.browser.layout";
@@ -24,29 +23,22 @@ export const MIN_RIGHT_PANEL_SPLIT_RATIO = 0.2;
 export const MAX_RIGHT_PANEL_SPLIT_RATIO = 0.8;
 export const DEFAULT_RIGHT_PANEL_SPLIT_RATIO = 0.56;
 
-export const DEFAULT_RIGHT_PANEL_LAYOUT: RightPanelLayoutState = {
-	upperTabs: [...RIGHT_PANEL_TABS],
-	lowerTabs: [],
-	activeUpperTab: "files",
-	activeLowerTab: "git",
-};
-
-type LayoutUpdater<T> = T | ((current: T) => T);
-
 export interface LayoutState {
 	inspectorWidth: number;
 	leftCollapsed: boolean;
-	rightPanelLayout: RightPanelLayoutState;
+	rightPanelUpperTab: UpperRightPanelTab;
 	rightPanelSplitRatio: number;
 	rightCollapsed: boolean;
+	rightTerminalCollapsed: boolean;
 	sidebarWidth: number;
 
 	resetLayout: () => void;
 	setInspectorWidth: (width: number) => void;
 	setLeftCollapsed: (collapsed: boolean) => void;
-	setRightPanelLayout: (layout: LayoutUpdater<RightPanelLayoutState>) => void;
+	setRightPanelUpperTab: (tab: UpperRightPanelTab) => void;
 	setRightPanelSplitRatio: (ratio: number) => void;
 	setRightCollapsed: (collapsed: boolean) => void;
+	setRightTerminalCollapsed: (collapsed: boolean) => void;
 	setSidebarWidth: (width: number) => void;
 }
 
@@ -74,68 +66,15 @@ function clampSplitRatio(ratio: number): number {
 	);
 }
 
-function collectUniqueTabs(
-	tabs: RightPanelTab[],
-	seen: Set<RightPanelTab>,
-): RightPanelTab[] {
-	return tabs.filter((tab) => {
-		if (!RIGHT_PANEL_TABS.includes(tab) || seen.has(tab)) {
-			return false;
-		}
-
-		seen.add(tab);
-		return true;
-	});
-}
-
-export function sanitizeRightPanelLayout(
-	layout: RightPanelLayoutState,
-): RightPanelLayoutState {
-	const seen = new Set<RightPanelTab>();
-	let upperTabs = collectUniqueTabs(layout.upperTabs, seen);
-	let lowerTabs = collectUniqueTabs(layout.lowerTabs, seen);
-	const remainingTabs = RIGHT_PANEL_TABS.filter((tab) => !seen.has(tab));
-
-	if (upperTabs.length === 0) {
-		const promotedTab = lowerTabs[0] ?? remainingTabs[0] ?? "files";
-		upperTabs = [promotedTab];
-		lowerTabs = lowerTabs.filter((tab) => tab !== promotedTab);
-	}
-
-	upperTabs = [
-		...upperTabs,
-		...remainingTabs.filter((tab) => tab !== upperTabs[0]),
-	];
-
-	const activeUpperTab = upperTabs.includes(layout.activeUpperTab)
-		? layout.activeUpperTab
-		: (upperTabs[0] ?? DEFAULT_RIGHT_PANEL_LAYOUT.activeUpperTab);
-	const activeLowerTab =
-		lowerTabs.length === 0
-			? DEFAULT_RIGHT_PANEL_LAYOUT.activeLowerTab
-			: lowerTabs.includes(layout.activeLowerTab)
-				? layout.activeLowerTab
-				: (lowerTabs[0] ?? DEFAULT_RIGHT_PANEL_LAYOUT.activeLowerTab);
-
-	return {
-		upperTabs,
-		lowerTabs,
-		activeUpperTab,
-		activeLowerTab,
-	};
-}
-
-function sanitizeState(
-	state: Pick<
-		LayoutState,
-		| "inspectorWidth"
-		| "leftCollapsed"
-		| "rightPanelLayout"
-		| "rightPanelSplitRatio"
-		| "rightCollapsed"
-		| "sidebarWidth"
-	>,
-) {
+function sanitizeState(state: {
+	inspectorWidth: number;
+	leftCollapsed: boolean;
+	rightCollapsed: boolean;
+	rightPanelSplitRatio: number;
+	rightPanelUpperTab: string;
+	rightTerminalCollapsed: boolean;
+	sidebarWidth: number;
+}) {
 	return {
 		inspectorWidth: clampWidth(
 			state.inspectorWidth,
@@ -144,9 +83,10 @@ function sanitizeState(
 			DEFAULT_INSPECTOR_WIDTH,
 		),
 		leftCollapsed: state.leftCollapsed === true,
-		rightPanelLayout: sanitizeRightPanelLayout(state.rightPanelLayout),
+		rightPanelUpperTab: coerceUpperRightPanelTab(state.rightPanelUpperTab),
 		rightPanelSplitRatio: clampSplitRatio(state.rightPanelSplitRatio),
 		rightCollapsed: state.rightCollapsed === true,
+		rightTerminalCollapsed: state.rightTerminalCollapsed === true,
 		sidebarWidth: clampWidth(
 			state.sidebarWidth,
 			MIN_SIDEBAR_WIDTH,
@@ -172,9 +112,10 @@ function getDefaultState() {
 	return {
 		inspectorWidth: DEFAULT_INSPECTOR_WIDTH,
 		leftCollapsed: false,
-		rightPanelLayout: DEFAULT_RIGHT_PANEL_LAYOUT,
+		rightPanelUpperTab: "files" as UpperRightPanelTab,
 		rightPanelSplitRatio: DEFAULT_RIGHT_PANEL_SPLIT_RATIO,
 		rightCollapsed: false,
+		rightTerminalCollapsed: false,
 		sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
 	};
 }
@@ -195,19 +136,17 @@ export function createLayoutStore(storage?: StateStorage) {
 						),
 					}),
 				setLeftCollapsed: (leftCollapsed) => set({ leftCollapsed }),
-				setRightPanelLayout: (layout) =>
-					set((state) => ({
-						rightPanelLayout: sanitizeRightPanelLayout(
-							typeof layout === "function"
-								? layout(state.rightPanelLayout)
-								: layout,
-						),
-					})),
+				setRightPanelUpperTab: (rightPanelUpperTab) =>
+					set({
+						rightPanelUpperTab: coerceUpperRightPanelTab(rightPanelUpperTab),
+					}),
 				setRightPanelSplitRatio: (ratio) =>
 					set({
 						rightPanelSplitRatio: clampSplitRatio(ratio),
 					}),
 				setRightCollapsed: (rightCollapsed) => set({ rightCollapsed }),
+				setRightTerminalCollapsed: (rightTerminalCollapsed) =>
+					set({ rightTerminalCollapsed }),
 				setSidebarWidth: (width) =>
 					set({
 						sidebarWidth: clampWidth(
@@ -228,15 +167,33 @@ export function createLayoutStore(storage?: StateStorage) {
 						leftCollapsed:
 							(persistedState as Partial<ReturnType<typeof getDefaultState>>)
 								.leftCollapsed ?? currentState.leftCollapsed,
-						rightPanelLayout:
-							(persistedState as Partial<ReturnType<typeof getDefaultState>>)
-								.rightPanelLayout ?? currentState.rightPanelLayout,
+						rightPanelUpperTab:
+							(
+								persistedState as Partial<
+									ReturnType<typeof getDefaultState>
+								> & {
+									rightPanelLayout?: {
+										activeUpperTab?: string;
+									};
+								}
+							).rightPanelUpperTab ??
+							(
+								persistedState as Partial<{
+									rightPanelLayout?: {
+										activeUpperTab?: string;
+									};
+								}>
+							).rightPanelLayout?.activeUpperTab ??
+							currentState.rightPanelUpperTab,
 						rightPanelSplitRatio:
 							(persistedState as Partial<ReturnType<typeof getDefaultState>>)
 								.rightPanelSplitRatio ?? currentState.rightPanelSplitRatio,
 						rightCollapsed:
 							(persistedState as Partial<ReturnType<typeof getDefaultState>>)
 								.rightCollapsed ?? currentState.rightCollapsed,
+						rightTerminalCollapsed:
+							(persistedState as Partial<ReturnType<typeof getDefaultState>>)
+								.rightTerminalCollapsed ?? currentState.rightTerminalCollapsed,
 						sidebarWidth:
 							(persistedState as Partial<ReturnType<typeof getDefaultState>>)
 								.sidebarWidth ?? currentState.sidebarWidth,
@@ -246,9 +203,10 @@ export function createLayoutStore(storage?: StateStorage) {
 				partialize: (state) => ({
 					inspectorWidth: state.inspectorWidth,
 					leftCollapsed: state.leftCollapsed,
-					rightPanelLayout: state.rightPanelLayout,
+					rightPanelUpperTab: state.rightPanelUpperTab,
 					rightPanelSplitRatio: state.rightPanelSplitRatio,
 					rightCollapsed: state.rightCollapsed,
+					rightTerminalCollapsed: state.rightTerminalCollapsed,
 					sidebarWidth: state.sidebarWidth,
 				}),
 				storage: resolvePersistStorage(storage),

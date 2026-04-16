@@ -22,7 +22,7 @@ describe("browser terminal store", () => {
 		expect(secondTerminalId).toBe(firstTerminalId);
 		expect(
 			getTerminalNames(store.getState().terminalsByAgent["agent-a"]),
-		).toEqual(["Terminal 1"]);
+		).toEqual(["Terminal"]);
 		expect(store.getState().activeTerminalIdByAgent["agent-a"]).toBe(
 			firstTerminalId,
 		);
@@ -34,7 +34,7 @@ describe("browser terminal store", () => {
 
 		expect(
 			getTerminalNames(store.getState().terminalsByAgent["agent-a"]),
-		).toEqual(["Terminal 1", "Terminal 2"]);
+		).toEqual(["Terminal", "Terminal 2"]);
 		expect(store.getState().activeTerminalIdByAgent["agent-a"]).toBe(
 			nextTerminalId,
 		);
@@ -65,10 +65,10 @@ describe("browser terminal store", () => {
 
 		expect(
 			getTerminalNames(store.getState().terminalsByAgent["agent-a"]),
-		).toEqual(["Terminal 1", "Terminal 2"]);
+		).toEqual(["Terminal", "Terminal 2"]);
 		expect(
 			getTerminalNames(store.getState().terminalsByAgent["agent-b"]),
-		).toEqual(["Terminal 1"]);
+		).toEqual(["Terminal"]);
 		expect(store.getState().activeTerminalIdByAgent["agent-b"]).toBe(
 			agentBTerminalId,
 		);

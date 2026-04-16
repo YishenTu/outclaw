@@ -1,10 +1,12 @@
 import { Plus, X } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { BrowserTerminalEntry } from "../../stores/terminal.ts";
 
 interface TerminalTabsProps {
 	activeTerminalId: string | null;
 	canCloseTerminals: boolean;
+	leadingContent?: ReactNode;
 	onCloseTerminal: (terminalId: string) => void;
 	onCreateTerminal: () => void;
 	onRenameTerminal: (terminalId: string, name: string) => void;
@@ -15,6 +17,7 @@ interface TerminalTabsProps {
 export function TerminalTabs({
 	activeTerminalId,
 	canCloseTerminals,
+	leadingContent,
 	onCloseTerminal,
 	onCreateTerminal,
 	onRenameTerminal,
@@ -69,8 +72,34 @@ export function TerminalTabs({
 		setDraftName("");
 	}
 
+	if (terminals.length === 0) {
+		return (
+			<div className="flex h-8 shrink-0 items-center justify-between gap-1 border-b border-dark-800 px-2">
+				<div className="flex min-w-0 items-center gap-1">
+					{leadingContent}
+					<div className="font-mono-ui text-[11px] uppercase tracking-[0.12em] text-dark-500">
+						Terminal
+					</div>
+				</div>
+				<div className="flex items-center gap-1">
+					<button
+						type="button"
+						onClick={onCreateTerminal}
+						className="flex items-center justify-center text-dark-700 transition-colors hover:text-dark-500"
+						aria-label="Create terminal"
+					>
+						<Plus size={16} />
+					</button>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="flex h-8 shrink-0 items-stretch gap-1 border-b border-dark-800 px-2">
+			{leadingContent ? (
+				<div className="flex shrink-0 items-center">{leadingContent}</div>
+			) : null}
 			<div className="scrollbar-none flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto overflow-y-hidden">
 				{terminals.map((terminal) => {
 					const isActive = terminal.id === activeTerminalId;

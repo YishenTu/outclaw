@@ -5,7 +5,6 @@ import {
 	selectAgentTerminals,
 	useTerminalStore,
 } from "../../stores/terminal.ts";
-import { TerminalTabs } from "./terminal-tabs.tsx";
 import { TerminalView } from "./terminal-view.tsx";
 
 interface TerminalPanelProps {
@@ -21,12 +20,6 @@ export function TerminalPanel({ agentId, active }: TerminalPanelProps) {
 		selectActiveTerminalId(state, agentId),
 	);
 	const ensureTerminal = useTerminalStore((state) => state.ensureTerminal);
-	const createTerminal = useTerminalStore((state) => state.createTerminal);
-	const closeTerminal = useTerminalStore((state) => state.closeTerminal);
-	const renameTerminal = useTerminalStore((state) => state.renameTerminal);
-	const setActiveTerminal = useTerminalStore(
-		(state) => state.setActiveTerminal,
-	);
 
 	useEffect(() => {
 		if (!agentId) {
@@ -50,33 +43,15 @@ export function TerminalPanel({ agentId, active }: TerminalPanelProps) {
 	}
 
 	return (
-		<div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-dark-950">
-			<TerminalTabs
-				activeTerminalId={activeTerminalId}
-				canCloseTerminals={terminals.length > 1}
-				onCloseTerminal={(terminalId) => closeTerminal(agentId, terminalId)}
-				onCreateTerminal={() => {
-					createTerminal(agentId);
-				}}
-				onRenameTerminal={(terminalId, name) =>
-					renameTerminal(agentId, terminalId, name)
-				}
-				onSelectTerminal={(terminalId) =>
-					setActiveTerminal(agentId, terminalId)
-				}
-				terminals={terminals}
-			/>
-
-			<div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-dark-950">
-				{terminals.map((terminal) => (
-					<TerminalView
-						key={terminal.id}
-						active={active && terminal.id === activeTerminalId}
-						agentId={agentId}
-						terminalId={terminal.id}
-					/>
-				))}
-			</div>
+		<div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-dark-950">
+			{terminals.map((terminal) => (
+				<TerminalView
+					key={terminal.id}
+					active={active && terminal.id === activeTerminalId}
+					agentId={agentId}
+					terminalId={terminal.id}
+				/>
+			))}
 		</div>
 	);
 }
