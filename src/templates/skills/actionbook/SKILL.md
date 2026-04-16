@@ -44,6 +44,48 @@ The workflow:
 
 Run `actionbook <command> --help` for full usage and examples of any command.
 
+## Choosing a Browser Mode
+
+Two local modes: **local** (default) and **extension**. Pick based on whether the task needs the user's existing browser state.
+
+### Local mode (default)
+
+Launches a standalone Chromium instance. Clean profile by default, or use `--profile <name>` for persistent cookies/storage across sessions. Best for scraping, testing, and tasks that don't need existing logins.
+
+```bash
+actionbook browser start --set-session-id s1                      # clean Chromium
+actionbook browser start --set-session-id s1 --profile myprofile  # named profile with persistence
+```
+
+### Extension mode (use for authenticated / headed tasks)
+
+Connects to the user's **real Chrome** via a Chrome extension and WebSocket bridge. Gives access to all existing cookies, logins, extensions, and sessions — no re-authentication needed.
+
+```bash
+actionbook browser start --mode extension --set-session-id s1 --open-url "https://x.com/home"
+```
+
+**When to use extension mode:**
+- Task requires existing login sessions (X, Gmail, GitHub, etc.)
+- User wants to see and interact with the browser alongside automation
+- Site has strict anti-bot detection that a clean Chromium would trigger
+
+**Extension setup (one-time):**
+1. `actionbook extension install` — extracts extension to `~/Actionbook/extension/`
+2. Chrome → `chrome://extensions/` → enable Developer mode → "Load unpacked" → select `~/Actionbook/extension/`
+3. Confirm the Actionbook extension is toggled on
+
+**How the bridge works:**
+- The extension connects to the daemon at `ws://127.0.0.1:19222`
+- The bridge is **lazy** — it only starts listening when `browser start --mode extension` is run
+- `actionbook extension status` showing `bridge: not_listening` is **normal** before any extension session has started
+- Once an extension-mode session starts, the bridge activates and the extension auto-connects
+
+**Troubleshooting:**
+- `bridge: not_listening` → Expected. Just run `browser start --mode extension ...` to activate.
+- Connection fails after start → `actionbook daemon restart`, then retry the start command.
+- `bridge: listening` but `extension_connected: false` → In Chrome, toggle the Actionbook extension off/on, or remove and re-load it via "Load unpacked."
+
 ## Browser Automation
 
 Every browser command is **stateless** — pass `--session` and `--tab` explicitly. No "current tab" — you can run commands on any session/tab in parallel.
@@ -51,7 +93,11 @@ Every browser command is **stateless** — pass `--session` and `--tab` explicit
 ### Start a session
 
 ```bash
+# Local mode (default — standalone Chromium)
 actionbook browser start --set-session-id s1
+
+# Extension mode (real Chrome with existing logins)
+actionbook browser start --mode extension --set-session-id s1 --open-url "https://example.com"
 ```
 
 ### Core workflow: snapshot, act, wait

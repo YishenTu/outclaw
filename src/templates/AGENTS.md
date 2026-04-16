@@ -57,7 +57,7 @@ Three tiers:
 
 ## Skills
 
-Skills are specialized knowledge and workflows bundled as portable packages. Each skill lives in `./skills/<skill-name>/SKILL.md`. Use the `/skill-creator` skill to create or update skills — it knows the full specification and best practices.
+Skills are specialized knowledge and workflows bundled as portable packages. Each skill lives in `./skills/<skill-name>/SKILL.md`. Use the `/skill-creator` skill to create or update skills — it knows the full specification and best practices. When modifying or managing skills, always work in `./skills/` (your agent workspace root), not `.claude/skills/`.
 
 **When to create a skill:**
 - The task involves multiple steps or interactions with the user
