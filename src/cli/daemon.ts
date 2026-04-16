@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
+import { prepareAgentWorkspace } from "../backend/agent-workspace.ts";
 import { listAgents } from "../runtime/agents/list-agents.ts";
 import { onboardFirstAgent } from "../runtime/agents/onboard-first-agent.ts";
 import { stopDaemon } from "../runtime/process/daemon-stop.ts";
@@ -154,6 +155,7 @@ async function runFreshInstallOnboarding(
 				log: (message) => console.log(`\n${message}\n`),
 				prompt: (message) => rl.question(message),
 			},
+			prepareWorkspace: prepareAgentWorkspace,
 			templatesDir,
 		});
 	} finally {

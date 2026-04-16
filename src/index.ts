@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude.ts";
-import { ensureClaudeSkillsSymlink } from "./backend/adapters/claude-setup.ts";
+import { prepareAgentWorkspace } from "./backend/agent-workspace.ts";
 import { deriveTelegramBotId } from "./common/telegram.ts";
 import type { TelegramMessageFileRecord } from "./frontend/telegram/files/message-file-ref.ts";
 import { copyTelegramFile } from "./frontend/telegram/files/storage.ts";
@@ -67,7 +67,7 @@ function startMultiAgentDaemon(
 	agents: ReturnType<typeof discoverAgents>,
 ) {
 	for (const agent of agents) {
-		ensureClaudeSkillsSymlink(agent.promptHomeDir);
+		prepareAgentWorkspace(agent.promptHomeDir);
 	}
 
 	const stateStore = new SessionStore(dbPath, {

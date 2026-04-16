@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { prepareAgentWorkspace } from "../backend/agent-workspace.ts";
 import { createAgent } from "../runtime/agents/create-agent.ts";
 import { listAgents } from "../runtime/agents/list-agents.ts";
 import { removeAgent } from "../runtime/agents/remove-agent.ts";
@@ -117,6 +118,7 @@ function createAgentCommand(options: AgentCommandOptions) {
 				: undefined,
 		homeDir: options.homeDir,
 		name,
+		prepareWorkspace: prepareAgentWorkspace,
 		templatesDir: options.templatesDir,
 	});
 	ensureEnvFile(options.homeDir);

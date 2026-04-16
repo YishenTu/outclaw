@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ensureClaudeSkillsSymlink } from "../../backend/adapters/claude-setup.ts";
 import { seedTemplates } from "../prompt/seed-templates.ts";
 import { assertDefaultCronUserAllowed } from "./agent-config.ts";
 import { assertValidAgentName } from "./agent-name.ts";
@@ -14,6 +13,7 @@ interface CreateAgentOptions {
 	defaultCronUserId?: number;
 	homeDir: string;
 	name: string;
+	prepareWorkspace: (agentHomeDir: string) => void;
 	templatesDir: string;
 }
 
@@ -36,7 +36,7 @@ export function createAgent(options: CreateAgentOptions) {
 	seedTemplates(agentHomeDir, options.templatesDir, {
 		agentName: options.name,
 	});
-	ensureClaudeSkillsSymlink(agentHomeDir);
+	options.prepareWorkspace(agentHomeDir);
 	const configPath = writeAgentConfig({
 		agentId,
 		config: {

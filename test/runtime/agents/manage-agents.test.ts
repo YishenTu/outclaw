@@ -9,7 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createAgent } from "../../../src/runtime/agents/create-agent.ts";
+import { prepareAgentWorkspace } from "../../../src/backend/agent-workspace.ts";
+import { createAgent as createAgentBase } from "../../../src/runtime/agents/create-agent.ts";
 import { listAgents } from "../../../src/runtime/agents/list-agents.ts";
 import { readAgentId } from "../../../src/runtime/agents/read-agent-id.ts";
 import { removeAgent } from "../../../src/runtime/agents/remove-agent.ts";
@@ -31,6 +32,15 @@ function createTemplatesDir() {
 }
 
 const REPO_TEMPLATES_DIR = join(import.meta.dir, "../../../src/templates");
+
+function createAgent(
+	options: Omit<Parameters<typeof createAgentBase>[0], "prepareWorkspace">,
+) {
+	return createAgentBase({
+		...options,
+		prepareWorkspace: prepareAgentWorkspace,
+	});
+}
 
 describe("agent management", () => {
 	test("createAgent seeds a new agent directory, config, and Claude skills symlink", () => {

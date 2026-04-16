@@ -11,6 +11,7 @@ interface OnboardFirstAgentOptions {
 	createAgentId?: () => string;
 	homeDir: string;
 	io: OnboardingIo;
+	prepareWorkspace: (agentHomeDir: string) => void;
 	templatesDir: string;
 }
 
@@ -28,6 +29,7 @@ export async function onboardFirstAgent(options: OnboardFirstAgentOptions) {
 		createAgentId: options.createAgentId,
 		homeDir: options.homeDir,
 		name,
+		prepareWorkspace: options.prepareWorkspace,
 		templatesDir: options.templatesDir,
 	});
 	ensureEnvFile(options.homeDir);

@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { prepareAgentWorkspace } from "../../../src/backend/agent-workspace.ts";
 import { onboardFirstAgent } from "../../../src/runtime/agents/onboard-first-agent.ts";
 import { readAgentId } from "../../../src/runtime/agents/read-agent-id.ts";
 
@@ -41,6 +42,7 @@ describe("agent onboarding", () => {
 						return "2,1";
 					},
 				},
+				prepareWorkspace: prepareAgentWorkspace,
 				templatesDir,
 			});
 
