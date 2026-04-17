@@ -705,6 +705,18 @@ describe("SessionStore", () => {
 		migratedDb.close();
 	});
 
+	test("persists a shared frontend notice independently of the bound agent", () => {
+		let store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		store.setFrontendNotice({ kind: "restart_required" });
+		store.close();
+
+		store = createTestStore({ agentId: MIMI_AGENT_ID });
+		expect(store.getFrontendNotice()).toEqual({ kind: "restart_required" });
+		store.setFrontendNotice(undefined);
+		expect(store.getFrontendNotice()).toBeUndefined();
+		store.close();
+	});
+
 	test("rejects pre-migration session tables", () => {
 		const db = new Database(TEST_DB, { create: true });
 		db.exec(`CREATE TABLE sessions (

@@ -12,6 +12,7 @@ import { createAgentRuntime } from "./runtime/application/create-agent-runtime.t
 import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
 import { loadGlobalConfig } from "./runtime/config.ts";
 import { createCronTelegramChatIdResolver } from "./runtime/cron/resolve-telegram-chat-id.ts";
+import { createFrontendNoticeWatcher } from "./runtime/notice/frontend-notice-watcher.ts";
 import { SessionStore } from "./runtime/persistence/session-store.ts";
 import { TelegramFileRefStore } from "./runtime/persistence/telegram-file-ref-store.ts";
 import { TelegramRouteStore } from "./runtime/persistence/telegram-route-store.ts";
@@ -74,6 +75,7 @@ function startMultiAgentDaemon(
 	const stateStore = new SessionStore(dbPath, {
 		agentId: agents[0]?.agentId,
 	});
+	stateStore.setFrontendNotice(undefined);
 	const routeStore = new TelegramRouteStore(dbPath);
 	const agentStores = new Map(
 		agents.map((agent) => [
@@ -89,6 +91,7 @@ function startMultiAgentDaemon(
 			cwd: agent.homeDir,
 			cronDir: join(agent.homeDir, "cron"),
 			facade: new ClaudeAdapter({ autoCompact: config.autoCompact }),
+			getFrontendNotice: () => stateStore.getFrontendNotice(),
 			heartbeat: config.heartbeat,
 			name: agent.name,
 			promptHomeDir: agent.promptHomeDir,
@@ -161,11 +164,22 @@ function startMultiAgentDaemon(
 		);
 	}
 
+	const frontendNoticeWatcher = createFrontendNoticeWatcher({
+		readNotice: () => stateStore.getFrontendNotice(),
+		onChange: () => {
+			for (const runtime of runtimes) {
+				runtime.broadcastRuntimeStatus();
+			}
+		},
+	});
+	frontendNoticeWatcher.start();
+
 	console.log(`agents: ${agents.map((agent) => agent.name).join(", ")}`);
 
 	return {
 		port: supervisor.port,
 		async stop() {
+			frontendNoticeWatcher.stop();
 			await supervisor.stop();
 			botManager.stop();
 			for (const store of agentStores.values()) {

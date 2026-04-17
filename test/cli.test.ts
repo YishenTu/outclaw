@@ -117,6 +117,15 @@ function writeConfig(port: number) {
 	);
 }
 
+function readFrontendNotice() {
+	const store = new SessionStore(join(OUTCLAW_DIR, "db.sqlite"));
+	try {
+		return store.getFrontendNotice();
+	} finally {
+		store.close();
+	}
+}
+
 describe("CLI", () => {
 	afterEach(() => {
 		if (existsSync(PID_PATH)) {
@@ -319,7 +328,9 @@ describe("CLI", () => {
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("Created agent mimi");
+		expect(result.stdout).toContain("Restart required");
 		expect(readPid()).toBe(originalPid);
+		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
 	test("agent rename does not restart the daemon when it is running", () => {
@@ -332,7 +343,9 @@ describe("CLI", () => {
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("Renamed agent railly -> mimi");
+		expect(result.stdout).toContain("Restart required");
 		expect(readPid()).toBe(originalPid);
+		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
 	test("agent remove does not restart the daemon when it is running", () => {
@@ -346,7 +359,9 @@ describe("CLI", () => {
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("Removed agent mimi");
+		expect(result.stdout).toContain("Restart required");
 		expect(readPid()).toBe(originalPid);
+		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
 	test("agent remove leaves the daemon running when it removes the last agent", () => {
@@ -360,8 +375,10 @@ describe("CLI", () => {
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("Removed agent railly");
+		expect(result.stdout).toContain("Restart required");
 		expect(existsSync(PID_PATH)).toBe(true);
 		expect(readPid()).toBe(originalPid);
+		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
 	test("agent config does not restart the daemon when it is running", () => {

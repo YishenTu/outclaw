@@ -1,6 +1,14 @@
 import type { Database } from "bun:sqlite";
-import type { TranscriptTurn, UsageInfo } from "../../common/protocol.ts";
+import type {
+	FrontendNotice,
+	TranscriptTurn,
+	UsageInfo,
+} from "../../common/protocol.ts";
 import { formatSearchTranscriptTurnBody } from "../../common/transcript-turn-body.ts";
+import {
+	parseFrontendNotice,
+	serializeFrontendNotice,
+} from "./frontend-notice.ts";
 import {
 	type LastUserTarget,
 	parseLastUserTarget,
@@ -20,6 +28,7 @@ import {
 } from "./sqlite-file-lifecycle.ts";
 import {
 	activeSessionKey,
+	FRONTEND_NOTICE_KEY,
 	LAST_INTERACTIVE_AGENT_KEY,
 	LEGACY_LAST_TUI_AGENT_KEY,
 	lastUserTargetKey,
@@ -323,6 +332,19 @@ export class SessionStore {
 
 		this.setStateValue(LAST_INTERACTIVE_AGENT_KEY, agentId);
 		this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
+	}
+
+	getFrontendNotice(): FrontendNotice | undefined {
+		return parseFrontendNotice(this.getStateValue(FRONTEND_NOTICE_KEY));
+	}
+
+	setFrontendNotice(notice: FrontendNotice | undefined) {
+		if (!notice) {
+			this.deleteStateValue(FRONTEND_NOTICE_KEY);
+			return;
+		}
+
+		this.setStateValue(FRONTEND_NOTICE_KEY, serializeFrontendNotice(notice));
 	}
 
 	setUsage(providerId: string, sdkSessionId: string, usage: UsageInfo) {

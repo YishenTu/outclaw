@@ -6,6 +6,7 @@ import type {
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
 import { useChatStore } from "../../../src/frontend/browser/stores/chat.ts";
 import { useContextUsageStore } from "../../../src/frontend/browser/stores/context-usage.ts";
+import { useRuntimeStore } from "../../../src/frontend/browser/stores/runtime.ts";
 import {
 	type SessionEntry,
 	type SessionRef,
@@ -54,6 +55,7 @@ describe("browser stores", () => {
 		resetStore(useTabsStore);
 		resetStore(useChatStore);
 		resetStore(useContextUsageStore);
+		resetStore(useRuntimeStore);
 	});
 
 	test("agents store tracks agent list and active agent", () => {
@@ -234,6 +236,27 @@ describe("browser stores", () => {
 		expect(
 			useTabsStore.getState().scrollPositions["agent-a:AGENTS.md"],
 		).toBeUndefined();
+	});
+
+	test("runtime store keeps the restart notice when clearing only the session", () => {
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "claude",
+			model: "opus",
+			effort: "high",
+			sessionId: "sdk-alpha",
+			sessionTitle: "Alpha",
+			notice: { kind: "restart_required" },
+		});
+
+		useRuntimeStore.getState().clearSession();
+
+		expect(useRuntimeStore.getState().sessionId).toBeNull();
+		expect(useRuntimeStore.getState().sessionTitle).toBeNull();
+		expect(useRuntimeStore.getState().notice).toEqual({
+			kind: "restart_required",
+		});
 	});
 
 	test("chat store replays history and finalizes streamed assistant text", () => {

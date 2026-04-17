@@ -85,6 +85,33 @@ describe("createAgentRuntime", () => {
 		await runtime.stop();
 	});
 
+	test("includes a shared frontend notice in runtime_status when provided", async () => {
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: new MockFacade(),
+			getFrontendNotice: () => ({ kind: "restart_required" }),
+		});
+		const ws = mockWs();
+
+		runtime.handleOpen(ws);
+
+		expect(
+			ws.events().find((event) => event.type === "runtime_status"),
+		).toEqual({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "high",
+			notice: {
+				kind: "restart_required",
+			},
+		});
+
+		await runtime.stop();
+	});
+
 	test("creates independent runtimes without opening network ports", async () => {
 		const raillyFacade = new MockFacade();
 		const mimiFacade = new MockFacade();

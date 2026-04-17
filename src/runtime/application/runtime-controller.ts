@@ -1,4 +1,5 @@
 import type {
+	FrontendNotice,
 	HeartbeatResult,
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
@@ -17,6 +18,7 @@ interface RuntimeControllerOptions {
 		nextHeartbeatAt: number | undefined;
 		deferred: boolean;
 	};
+	noticeProvider?: () => FrontendNotice | undefined;
 	messageRouter: RuntimeMessageRouter;
 	promptDispatcher: {
 		setHeartbeatResultHandler: (
@@ -39,6 +41,9 @@ export class RuntimeController {
 	private heartbeatInfoProvider:
 		| RuntimeControllerOptions["heartbeatInfoProvider"]
 		| undefined;
+	private noticeProvider:
+		| RuntimeControllerOptions["noticeProvider"]
+		| undefined;
 	private messageRouter: RuntimeMessageRouter;
 	private promptDispatcher: RuntimeControllerOptions["promptDispatcher"];
 	private state: RuntimeState;
@@ -48,6 +53,7 @@ export class RuntimeController {
 		this.cronBroadcaster = options.cronBroadcaster;
 		this.execution = options.execution;
 		this.heartbeatInfoProvider = options.heartbeatInfoProvider;
+		this.noticeProvider = options.noticeProvider;
 		this.messageRouter = options.messageRouter;
 		this.promptDispatcher = options.promptDispatcher;
 		this.state = options.state;
@@ -135,6 +141,10 @@ export class RuntimeController {
 
 	private createStatusEvent(): RuntimeStatusEvent {
 		const event = this.state.createStatusEvent();
+		const notice = this.noticeProvider?.();
+		if (notice) {
+			event.notice = notice;
+		}
 		if (!event.sessionId) {
 			return event;
 		}

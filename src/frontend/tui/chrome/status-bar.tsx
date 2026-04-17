@@ -14,6 +14,7 @@ export interface RuntimeInfo {
 	agentName?: string;
 	model?: string;
 	effort?: string;
+	notice?: string;
 	contextTokens?: number;
 	contextWindow?: number;
 	nextHeartbeatAt?: number;
@@ -23,6 +24,7 @@ export interface RuntimeInfo {
 interface StatusBarProps {
 	status: ConnectionStatus;
 	info: RuntimeInfo;
+	notice?: string;
 }
 
 function useHeartbeatCountdown(
@@ -50,7 +52,7 @@ export function contextWarningColor(percentage: number): string | undefined {
 	return undefined;
 }
 
-export function StatusBar({ status, info }: StatusBarProps) {
+export function StatusBar({ status, info, notice }: StatusBarProps) {
 	const heartbeat = useHeartbeatCountdown(
 		info.nextHeartbeatAt,
 		info.heartbeatDeferred ?? false,
@@ -71,18 +73,25 @@ export function StatusBar({ status, info }: StatusBarProps) {
 		contextColor = contextWarningColor(pct);
 	}
 	return (
-		<Box>
-			<Text color={statusColor[status]}>● </Text>
-			<Text dimColor>{status}</Text>
-			{parts.length > 0 ? (
-				<Text dimColor>{` · ${parts.join(" · ")}`}</Text>
+		<Box width="100%" justifyContent="space-between">
+			<Box>
+				<Text color={statusColor[status]}>● </Text>
+				<Text dimColor>{status}</Text>
+				{parts.length > 0 ? (
+					<Text dimColor>{` · ${parts.join(" · ")}`}</Text>
+				) : null}
+				{contextLabel ? (
+					<Text dimColor={!contextColor} color={contextColor}>
+						{` · ${contextLabel}`}
+					</Text>
+				) : null}
+				{heartbeat ? <Text dimColor>{` · ♥ ${heartbeat}`}</Text> : null}
+			</Box>
+			{notice ? (
+				<Box marginLeft={1}>
+					<Text color="yellow">{notice}</Text>
+				</Box>
 			) : null}
-			{contextLabel ? (
-				<Text dimColor={!contextColor} color={contextColor}>
-					{` · ${contextLabel}`}
-				</Text>
-			) : null}
-			{heartbeat ? <Text dimColor>{` · ♥ ${heartbeat}`}</Text> : null}
 		</Box>
 	);
 }

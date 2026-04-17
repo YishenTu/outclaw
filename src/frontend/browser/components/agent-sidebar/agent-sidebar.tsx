@@ -1,5 +1,6 @@
 import { PanelLeftOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useWs } from "../../contexts/websocket-context.tsx";
 import type { AgentReorderPosition } from "../../stores/agents.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import { useSessionsStore } from "../../stores/sessions.ts";
@@ -16,6 +17,7 @@ interface AgentSidebarProps {
 }
 
 export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
+	const { sendCommand } = useWs();
 	const dragThreshold = 4;
 	const [expandedAgents, setExpandedAgents] = useState<Record<string, boolean>>(
 		{},
@@ -272,7 +274,7 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 				)}
 			</div>
 
-			<SidebarRuntimeStatus />
+			<SidebarRuntimeStatus onRestart={() => sendCommand("/restart")} />
 		</div>
 	);
 }

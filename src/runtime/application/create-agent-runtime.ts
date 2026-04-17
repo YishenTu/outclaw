@@ -1,5 +1,6 @@
 import type {
 	Facade,
+	FrontendNotice,
 	HeartbeatResult,
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
@@ -31,6 +32,7 @@ interface CreateAgentRuntimeOptions {
 		} & HeartbeatResult,
 	) => Promise<void> | void;
 	facade: Facade;
+	getFrontendNotice?: () => FrontendNotice | undefined;
 	heartbeat?: Config["heartbeat"];
 	name: string;
 	promptHomeDir?: string;
@@ -50,6 +52,7 @@ export interface AgentRuntime {
 	}): Promise<string>;
 	currentModel: string;
 	cwd?: string;
+	broadcastRuntimeStatus(): void;
 	getStatusEvent(): RuntimeStatusEvent;
 	handleClose(ws: WsClient): void;
 	handleMessage(ws: WsClient, message: string | Buffer): void;
@@ -90,6 +93,7 @@ export function createAgentRuntime(
 		canSendToClient: options.canSendToClient,
 		cwd: options.cwd,
 		facade,
+		getFrontendNotice: options.getFrontendNotice,
 		restart: options.restart,
 		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
@@ -152,6 +156,9 @@ export function createAgentRuntime(
 		},
 		getStatusEvent() {
 			return controller.getStatusEvent();
+		},
+		broadcastRuntimeStatus() {
+			controller.broadcastRuntimeStatus();
 		},
 		handleClose: controller.handleClose,
 		handleMessage: controller.handleMessage,

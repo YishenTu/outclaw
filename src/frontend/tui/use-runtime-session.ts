@@ -138,6 +138,10 @@ export function useRuntimeSession(url: string, agentName?: string) {
 							event.agentName ?? agentNameRef.current ?? previous.agentName,
 						model: event.model,
 						effort: event.effort,
+						notice:
+							event.notice?.kind === "restart_required"
+								? "Restart required"
+								: undefined,
 						contextTokens: event.usage?.contextTokens,
 						contextWindow: event.usage?.contextWindow,
 						nextHeartbeatAt: event.nextHeartbeatAt,

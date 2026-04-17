@@ -305,6 +305,7 @@ describe("useRuntimeSession", () => {
 					agentName: "railly",
 					model: "sonnet",
 					effort: "think",
+					notice: { kind: "restart_required" },
 					usage: { contextTokens: 1200, contextWindow: 200000 },
 					nextHeartbeatAt: 12345,
 					heartbeatDeferred: true,
@@ -315,10 +316,23 @@ describe("useRuntimeSession", () => {
 					latest?.runtimeInfo.agentName === "railly" &&
 					latest?.runtimeInfo.model === "sonnet" &&
 					latest?.runtimeInfo.effort === "think" &&
+					latest?.runtimeInfo.notice === "Restart required" &&
 					latest?.runtimeInfo.contextTokens === 1200 &&
 					latest?.runtimeInfo.nextHeartbeatAt === 12345 &&
 					latest?.runtimeInfo.heartbeatDeferred === true,
 				"runtime status info",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "runtime_status",
+					model: "sonnet",
+					effort: "think",
+				}),
+			});
+			await waitFor(
+				() => latest?.runtimeInfo.notice === undefined,
+				"runtime notice cleared",
 			);
 
 			socket.dispatch("message", {

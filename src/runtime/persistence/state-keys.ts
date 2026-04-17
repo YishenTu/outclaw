@@ -1,5 +1,6 @@
 export const LAST_INTERACTIVE_AGENT_KEY = "last_interactive_agent_id";
 export const LEGACY_LAST_TUI_AGENT_KEY = "last_tui_agent_id";
+export const FRONTEND_NOTICE_KEY = "frontend_notice";
 
 export function activeSessionKey(agentId: string, providerId: string): string {
 	return `active_session_id:${agentId}:${providerId}`;

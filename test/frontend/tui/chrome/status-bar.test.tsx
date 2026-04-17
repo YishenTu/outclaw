@@ -180,4 +180,30 @@ describe("StatusBar", () => {
 			app.cleanup();
 		}
 	});
+
+	test("renders a restart notice on the status row when provided", async () => {
+		const { app, getOutput } = renderStatusBar({
+			status: "connected",
+			info: {
+				model: "opus",
+				effort: "high",
+			},
+			notice: "Restart required",
+		});
+
+		try {
+			await flushUpdates();
+			const output = getOutput();
+			expect(output).toContain("connected");
+			expect(output).toContain("opus");
+			expect(output).toContain("high");
+			expect(output).toContain("Restart required");
+			expect(output.indexOf("high")).toBeLessThan(
+				output.indexOf("Restart required"),
+			);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
 });

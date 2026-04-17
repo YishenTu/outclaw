@@ -6,6 +6,7 @@ import { useAgentsStore } from "../../stores/agents.ts";
 import { useChatStore } from "../../stores/chat.ts";
 import { useRuntimeStore } from "../../stores/runtime.ts";
 import { useSessionsStore } from "../../stores/sessions.ts";
+import { BrowserRestartNotice } from "../browser-restart-notice.tsx";
 import { MessageInput } from "./message-input.tsx";
 import { MessageList } from "./message-list.tsx";
 
@@ -89,6 +90,7 @@ export function ChatPanel() {
 					</div>
 				</div>
 			</div>
+			<BrowserRestartNotice />
 
 			{chatSession?.error && (
 				<div className="border-b border-red-500/20 bg-red-500/10 px-6 py-3 text-sm text-red-200">

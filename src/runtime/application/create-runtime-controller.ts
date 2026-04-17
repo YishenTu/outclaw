@@ -1,4 +1,8 @@
-import type { Facade, HeartbeatResult } from "../../common/protocol.ts";
+import type {
+	Facade,
+	FrontendNotice,
+	HeartbeatResult,
+} from "../../common/protocol.ts";
 import type { WsClient } from "../transport/client-hub.ts";
 import { PromptDispatcher } from "./prompt-dispatcher.ts";
 import { PromptRunner } from "./prompt-runner.ts";
@@ -25,6 +29,7 @@ interface CreateRuntimeControllerOptions {
 		} & HeartbeatResult,
 	) => Promise<void> | void;
 	facade: Facade;
+	getFrontendNotice?: () => FrontendNotice | undefined;
 	promptHomeDir?: string;
 	restart?: () => void;
 	sessions: SessionService;
@@ -84,6 +89,7 @@ export function createRuntimeController(
 		clients,
 		cronBroadcaster,
 		execution,
+		noticeProvider: options.getFrontendNotice,
 		messageRouter,
 		promptDispatcher,
 		state: options.state,

@@ -256,7 +256,11 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 			)}
 			{!cmdMenuVisible && (
 				<Box paddingX={1}>
-					<StatusBar status={status} info={runtimeInfo} />
+					<StatusBar
+						status={status}
+						info={runtimeInfo}
+						notice={runtimeInfo.notice}
+					/>
 				</Box>
 			)}
 		</Box>

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type {
+	FrontendNotice,
 	RuntimeStatusEvent,
 	UsageInfo,
 } from "../../../common/protocol.ts";
@@ -18,6 +19,7 @@ export interface BrowserRuntimeState {
 	effort: string | null;
 	sessionId: string | null;
 	sessionTitle: string | null;
+	notice: FrontendNotice | null;
 	usage: UsageInfo | undefined;
 	nextHeartbeatAt: number | undefined;
 	heartbeatDeferred: boolean;
@@ -40,6 +42,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 	effort: null,
 	sessionId: null,
 	sessionTitle: null,
+	notice: null,
 	usage: undefined,
 	nextHeartbeatAt: undefined,
 	heartbeatDeferred: false,
@@ -53,6 +56,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 			effort: event.effort,
 			sessionId: event.sessionId ?? null,
 			sessionTitle: event.sessionTitle ?? null,
+			notice: event.notice ?? null,
 			usage: event.usage,
 			nextHeartbeatAt: event.nextHeartbeatAt,
 			heartbeatDeferred: event.heartbeatDeferred ?? false,

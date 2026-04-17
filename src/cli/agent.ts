@@ -7,6 +7,8 @@ import { removeAgent } from "../runtime/agents/remove-agent.ts";
 import { renameAgent } from "../runtime/agents/rename-agent.ts";
 import { updateAgent } from "../runtime/agents/update-agent.ts";
 import { loadGlobalConfig } from "../runtime/config.ts";
+import { SessionStore } from "../runtime/persistence/session-store.ts";
+import { PidManager } from "../runtime/process/pid-manager.ts";
 
 interface AgentCommandOptions {
 	argv: string[];
@@ -15,6 +17,9 @@ interface AgentCommandOptions {
 	templatesDir: string;
 	tui: (explicitAgentName?: string) => void;
 }
+
+const RESTART_REQUIRED_MESSAGE =
+	"Restart required. Agent changes won't update until the runtime restarts.";
 
 export async function agentCommand(options: AgentCommandOptions) {
 	const subcommand = options.argv[3];
@@ -124,6 +129,7 @@ function createAgentCommand(options: AgentCommandOptions) {
 	ensureEnvFile(options.homeDir);
 	console.log(`Created agent ${name}`);
 	console.log(created.agentHomeDir);
+	maybeMarkRestartRequired(options.homeDir);
 }
 
 function renameAgentCommand(homeDir: string, argv: string[]) {
@@ -140,6 +146,7 @@ function renameAgentCommand(homeDir: string, argv: string[]) {
 		oldName,
 	});
 	console.log(`Renamed agent ${oldName} -> ${newName}`);
+	maybeMarkRestartRequired(homeDir);
 }
 
 function configAgentCommand(homeDir: string, argv: string[]) {
@@ -175,6 +182,7 @@ function removeAgentCommand(homeDir: string, argv: string[]) {
 
 	removeAgent({ homeDir, name });
 	console.log(`Removed agent ${name}`);
+	maybeMarkRestartRequired(homeDir);
 }
 
 function ensureEnvFile(homeDir: string) {
@@ -182,6 +190,22 @@ function ensureEnvFile(homeDir: string) {
 	if (!existsSync(envPath)) {
 		writeFileSync(envPath, "");
 	}
+}
+
+function maybeMarkRestartRequired(homeDir: string) {
+	const pid = new PidManager(join(homeDir, "daemon.pid"));
+	if (!pid.isRunning()) {
+		return;
+	}
+
+	const store = new SessionStore(join(homeDir, "db.sqlite"));
+	try {
+		store.setFrontendNotice({ kind: "restart_required" });
+	} finally {
+		store.close();
+	}
+
+	console.log(RESTART_REQUIRED_MESSAGE);
 }
 
 function parseFlags(args: string[]) {

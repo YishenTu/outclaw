@@ -204,6 +204,12 @@ export interface AgentSwitchedEvent {
 	name: string;
 }
 
+export interface RestartRequiredNotice {
+	kind: "restart_required";
+}
+
+export type FrontendNotice = RestartRequiredNotice;
+
 export interface RuntimeStatusEvent {
 	type: "runtime_status";
 	agentName?: string;
@@ -215,6 +221,7 @@ export interface RuntimeStatusEvent {
 	usage?: UsageInfo;
 	nextHeartbeatAt?: number;
 	heartbeatDeferred?: boolean;
+	notice?: FrontendNotice;
 	requested?: boolean;
 }
 
