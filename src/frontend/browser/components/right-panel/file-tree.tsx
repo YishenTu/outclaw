@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import type { BrowserTreeEntry } from "../../../../common/protocol.ts";
+import { treeEntryToneClass } from "./git-status-tone.ts";
 
 interface FileTreeProps {
 	agentId: string;
@@ -66,6 +67,8 @@ export function fileKindForPath(path: string) {
 	return "default";
 }
 
+export { treeEntryToneClass } from "./git-status-tone.ts";
+
 function FileIcon({ path }: { path: string }) {
 	switch (fileKindForPath(path)) {
 		case "markdown":
@@ -79,6 +82,21 @@ function FileIcon({ path }: { path: string }) {
 		default:
 			return <FileText size={14} className="shrink-0" />;
 	}
+}
+
+export function FileTreeHeader({ agentName }: { agentName?: string | null }) {
+	const path = agentName
+		? `~/.outclaw/agents/${agentName}`
+		: "~/.outclaw/agents/";
+	return (
+		<div className="h-8 shrink-0 border-b border-dark-800 px-3">
+			<div className="flex h-full items-center px-1">
+				<div className="font-mono-ui truncate text-[11px] uppercase tracking-[0.16em] text-dark-500">
+					{path}
+				</div>
+			</div>
+		</div>
+	);
 }
 
 export function FileTree({ agentId, entries, onOpenFile }: FileTreeProps) {
@@ -131,7 +149,7 @@ function TreeNode({
 			<button
 				type="button"
 				onClick={() => onOpenFile({ agentId, path: entry.path })}
-				className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-dark-400 transition-colors hover:bg-dark-900 hover:text-dark-200"
+				className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-dark-900 ${treeEntryToneClass(entry)}`}
 				style={{ paddingLeft: fileNodePaddingLeft(depth) }}
 			>
 				<FileIcon path={entry.path} />
@@ -146,7 +164,7 @@ function TreeNode({
 			<button
 				type="button"
 				onClick={() => onToggle(entry.path)}
-				className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-dark-300 transition-colors hover:bg-dark-900 hover:text-dark-100"
+				className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-dark-900 ${treeEntryToneClass(entry)}`}
 				style={{ paddingLeft: treeNodePaddingLeft(depth) }}
 			>
 				{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

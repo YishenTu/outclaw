@@ -72,7 +72,7 @@ describe("resolveReplyAttachments", () => {
 		);
 		expect(result).toEqual({
 			images: [],
-			promptSegments: ["[voice note (oga, 12s): /tmp/note.oga]"],
+			promptSegments: ["[audio: /tmp/note.oga]"],
 		});
 	});
 
@@ -120,7 +120,7 @@ describe("formatTelegramVoicePromptRef", () => {
 				durationSeconds: 12,
 				mimeType: "audio/ogg",
 			}),
-		).toBe("[voice note (oga, 12s): /tmp/note.oga]");
+		).toBe("[audio: /tmp/note.oga]");
 	});
 
 	test("formats a generic audio file reference when not an oga voice note", () => {
@@ -130,7 +130,7 @@ describe("formatTelegramVoicePromptRef", () => {
 				durationSeconds: 95,
 				mimeType: "audio/mpeg",
 			}),
-		).toBe("[voice audio (mp3, 95s): /tmp/song.mp3]");
+		).toBe("[audio: /tmp/song.mp3]");
 	});
 });
 

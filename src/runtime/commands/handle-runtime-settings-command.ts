@@ -92,6 +92,8 @@ function handleModelCommand(
 		options.state.setEffort(DEFAULT_EFFORT);
 		options.hub.broadcast(buildEffortChangedEvent(DEFAULT_EFFORT));
 	}
+
+	options.hub.broadcast(options.state.createStatusEvent());
 }
 
 function handleThinkingCommand(

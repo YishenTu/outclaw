@@ -109,4 +109,98 @@ describe("createBrowserSidebarWatcher", () => {
 
 		watcher.stop();
 	});
+
+	test("ignores .git index churn caused by status reads", () => {
+		vi.useFakeTimers();
+		const watchers = new Map<string, FakeWatcher>();
+		const events: Array<{
+			agentId?: string;
+			sections: string[];
+			type: string;
+		}> = [];
+		const watcher = createBrowserSidebarWatcher({
+			agents: [
+				{
+					agentId: "agent-alpha",
+					rootDir: "/workspace/agents/alpha",
+				},
+			],
+			gitRoot: "/workspace",
+			onInvalidate: (event) => {
+				events.push({
+					type: event.type,
+					agentId: event.agentId,
+					sections: [...event.sections],
+				});
+			},
+			watchFactory: (path, _options, listener) => {
+				const fakeWatcher: FakeWatcher = {
+					close() {},
+					emit(filename) {
+						listener("change", filename);
+					},
+				};
+				watchers.set(path, fakeWatcher);
+				return fakeWatcher;
+			},
+		});
+
+		watcher.start();
+		watchers.get("/workspace")?.emit(".git/index");
+		watchers.get("/workspace")?.emit(".git/index.lock");
+		vi.advanceTimersByTime(100);
+
+		expect(events).toEqual([]);
+
+		watcher.stop();
+	});
+
+	test("keeps meaningful .git metadata changes observable", () => {
+		vi.useFakeTimers();
+		const watchers = new Map<string, FakeWatcher>();
+		const events: Array<{
+			agentId?: string;
+			sections: string[];
+			type: string;
+		}> = [];
+		const watcher = createBrowserSidebarWatcher({
+			agents: [
+				{
+					agentId: "agent-alpha",
+					rootDir: "/workspace/agents/alpha",
+				},
+			],
+			gitRoot: "/workspace",
+			onInvalidate: (event) => {
+				events.push({
+					type: event.type,
+					agentId: event.agentId,
+					sections: [...event.sections],
+				});
+			},
+			watchFactory: (path, _options, listener) => {
+				const fakeWatcher: FakeWatcher = {
+					close() {},
+					emit(filename) {
+						listener("change", filename);
+					},
+				};
+				watchers.set(path, fakeWatcher);
+				return fakeWatcher;
+			},
+		});
+
+		watcher.start();
+		watchers.get("/workspace")?.emit(".git/HEAD");
+		vi.advanceTimersByTime(100);
+
+		expect(events).toEqual([
+			{
+				type: "browser_sidebar_invalidated",
+				sections: ["git"],
+			},
+		]);
+
+		watcher.stop();
+	});
 });

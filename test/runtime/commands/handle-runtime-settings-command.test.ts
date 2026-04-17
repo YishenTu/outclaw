@@ -80,6 +80,53 @@ describe("handleRuntimeSettingsCommand", () => {
 			});
 		});
 
+		test("broadcasts refreshed runtime status with recalculated usage after a model switch", () => {
+			const { observer, run, state, ws } = setup();
+			state.completeRun({
+				type: "done",
+				sessionId: "sdk-big",
+				durationMs: 1,
+				usage: {
+					inputTokens: 100_000,
+					outputTokens: 5_000,
+					cacheCreationTokens: 0,
+					cacheReadTokens: 0,
+					contextWindow: 1_000_000,
+					maxOutputTokens: 64_000,
+					contextTokens: 100_000,
+					percentage: 10,
+				},
+			});
+
+			expect(run("/model sonnet")).toBe(true);
+
+			const senderStatus = ws
+				.events()
+				.find((event) => event.type === "runtime_status");
+			const observerStatus = observer
+				.events()
+				.find((event) => event.type === "runtime_status");
+
+			expect(senderStatus).toMatchObject({
+				type: "runtime_status",
+				model: "sonnet",
+				usage: {
+					contextWindow: 200_000,
+					contextTokens: 100_000,
+					percentage: 50,
+				},
+			});
+			expect(observerStatus).toMatchObject({
+				type: "runtime_status",
+				model: "sonnet",
+				usage: {
+					contextWindow: 200_000,
+					contextTokens: 100_000,
+					percentage: 50,
+				},
+			});
+		});
+
 		test("accepts model alias shortcuts", () => {
 			const { run, state } = setup();
 			expect(run("/opus")).toBe(true);

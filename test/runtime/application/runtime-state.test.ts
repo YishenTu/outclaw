@@ -30,6 +30,13 @@ function makeDoneEvent(
 	};
 }
 
+function requireUsage(event: DoneEvent) {
+	if (!event.usage) {
+		throw new Error("Expected usage in test event");
+	}
+	return event.usage;
+}
+
 describe("RuntimeState", () => {
 	test("starts with default model and effort", () => {
 		const state = new RuntimeState(PROVIDER_ID);
@@ -54,6 +61,38 @@ describe("RuntimeState", () => {
 		state.setModel("haiku");
 		expect(state.model).toBe("haiku");
 		expect(state.resolvedModel).toBe(MODELS.haiku.id);
+	});
+
+	test("setModel recalculates usage against the selected model window", () => {
+		const state = new RuntimeState(PROVIDER_ID);
+		state.completeRun(
+			makeDoneEvent("sdk-usage", {
+				usage: {
+					inputTokens: 180_000,
+					outputTokens: 5_000,
+					cacheCreationTokens: 0,
+					cacheReadTokens: 0,
+					contextWindow: 1_000_000,
+					maxOutputTokens: 64_000,
+					contextTokens: 180_000,
+					percentage: 18,
+				},
+			}),
+		);
+
+		state.setModel("sonnet");
+
+		expect(state.model).toBe("sonnet");
+		expect(state.createStatusEvent().usage).toEqual({
+			inputTokens: 180_000,
+			outputTokens: 5_000,
+			cacheCreationTokens: 0,
+			cacheReadTokens: 0,
+			contextWindow: 200_000,
+			maxOutputTokens: 64_000,
+			contextTokens: 180_000,
+			percentage: 90,
+		});
 	});
 
 	test("setEffort changes effort", () => {
@@ -269,7 +308,10 @@ describe("RuntimeState", () => {
 			expect(state.sessionId).toBe("sdk-persist");
 			expect(state.sessionTitle).toBe("Stored title");
 			expect(state.model).toBe("haiku");
-			expect(state.createStatusEvent().usage).toEqual(makeDoneEvent().usage);
+			expect(state.createStatusEvent().usage).toEqual({
+				...requireUsage(makeDoneEvent()),
+				percentage: 0,
+			});
 			expect(state.createHeartbeatDeliveryTarget()).toEqual({
 				clientType: "telegram",
 				telegramChatId: 123,

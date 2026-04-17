@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { prepareAgentWorkspace } from "../backend/agent-workspace.ts";
 import { listAgents } from "../runtime/agents/list-agents.ts";
@@ -15,10 +15,14 @@ interface DaemonCommandOptions {
 	homeDir: string;
 	logPath: string;
 	pidPath: string;
+	readyPath: string;
 	printUsage: () => void;
 	templatesDir: string;
 	tuiEntry: string;
 }
+
+const DAEMON_READY_TIMEOUT_MS = 5000;
+const DAEMON_READY_POLL_MS = 100;
 
 export function createDaemonCommands(options: DaemonCommandOptions) {
 	const pid = new PidManager(options.pidPath);
@@ -38,6 +42,9 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 			reseedMissingAgentTemplates(options.homeDir, options.templatesDir);
 
 			pid.remove();
+			if (existsSync(options.readyPath)) {
+				rmSync(options.readyPath, { force: true });
+			}
 
 			const logFile = Bun.file(options.logPath);
 			const child = Bun.spawn(["bun", options.daemonEntry], {
@@ -49,18 +56,26 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 
 			pid.write(child.pid);
 
-			setTimeout(() => {
-				if (pid.isRunning()) {
+			const deadline = Date.now() + DAEMON_READY_TIMEOUT_MS;
+			while (Date.now() < deadline) {
+				if (existsSync(options.readyPath)) {
 					console.log(`Daemon started (pid ${child.pid})`);
 					console.log(`Log: ${options.logPath}`);
-				} else {
+					process.exit(0);
+				}
+				if (!pid.isRunning()) {
 					console.log("Daemon failed to start. Check logs:");
 					console.log(`  cat ${options.logPath}`);
 					pid.remove();
 					process.exit(1);
 				}
-				process.exit(0);
-			}, 500);
+				await Bun.sleep(DAEMON_READY_POLL_MS);
+			}
+
+			console.log("Daemon failed to become ready. Check logs:");
+			console.log(`  cat ${options.logPath}`);
+			pid.remove();
+			process.exit(1);
 		},
 
 		async stop() {

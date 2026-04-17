@@ -18,7 +18,11 @@ import {
 	MIN_RIGHT_PANEL_SPLIT_RATIO,
 	useLayoutStore,
 } from "../../stores/layout.ts";
-import { useRightPanelRefreshStore } from "../../stores/right-panel-refresh.ts";
+import {
+	selectAgentTreeRevision,
+	selectGitRevision,
+	useRightPanelRefreshStore,
+} from "../../stores/right-panel-refresh.ts";
 import { useTabsStore } from "../../stores/tabs.ts";
 import {
 	selectActiveTerminalId,
@@ -26,8 +30,12 @@ import {
 	useTerminalStore,
 } from "../../stores/terminal.ts";
 import { CronPanel } from "./cron-panel.tsx";
-import { FileTree } from "./file-tree.tsx";
+import { FileTree, FileTreeHeader } from "./file-tree.tsx";
 import { GitPanel } from "./git-panel.tsx";
+import {
+	shouldFetchAgentTree,
+	shouldFetchGitStatus,
+} from "./right-panel-fetch-policy.ts";
 import {
 	UPPER_RIGHT_PANEL_TABS,
 	type UpperRightPanelTab,
@@ -57,6 +65,11 @@ function getTabIcon(tab: UpperRightPanelTab, size: number) {
 
 export function RightPanel({ onCollapse }: RightPanelProps) {
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
+	const activeAgentName = useAgentsStore(
+		(state) =>
+			state.agents.find((agent) => agent.agentId === state.activeAgentId)
+				?.name ?? null,
+	);
 	const openTab = useTabsStore((state) => state.openTab);
 	const activeUpperTab = useLayoutStore((state) => state.rightPanelUpperTab);
 	const setRightPanelUpperTab = useLayoutStore(
@@ -93,11 +106,20 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const [gitLoading, setGitLoading] = useState(false);
 	const [gitError, setGitError] = useState<string | null>(null);
 	const [isResizing, setIsResizing] = useState(false);
+	const [loadedTreeAgentId, setLoadedTreeAgentId] = useState<string | null>(
+		null,
+	);
+	const [loadedTreeRevision, setLoadedTreeRevision] = useState<number | null>(
+		null,
+	);
+	const [loadedGitRevision, setLoadedGitRevision] = useState<number | null>(
+		null,
+	);
 	const contentRef = useRef<HTMLDivElement | null>(null);
 	const treeRevision = useRightPanelRefreshStore((state) =>
-		activeAgentId ? (state.treeRevisionByAgent[activeAgentId] ?? 0) : 0,
+		selectAgentTreeRevision(state, activeAgentId),
 	);
-	const gitRevision = useRightPanelRefreshStore((state) => state.gitRevision);
+	const gitRevision = useRightPanelRefreshStore(selectGitRevision);
 
 	useEffect(() => {
 		void treeRevision;
@@ -111,6 +133,20 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			setTree([]);
 			setTreeError(null);
 			setTreeLoading(false);
+			setLoadedTreeAgentId(null);
+			setLoadedTreeRevision(null);
+			return;
+		}
+
+		if (
+			!shouldFetchAgentTree({
+				activeAgentId,
+				activeUpperTab,
+				loadedAgentId: loadedTreeAgentId,
+				loadedRevision: loadedTreeRevision,
+				treeRevision,
+			})
+		) {
 			return;
 		}
 
@@ -122,6 +158,8 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 				if (!cancelled) {
 					setTree(nextTree);
 					setTreeError(null);
+					setLoadedTreeAgentId(activeAgentId);
+					setLoadedTreeRevision(treeRevision);
 				}
 			})
 			.catch((error) => {
@@ -130,6 +168,8 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 					setTreeError(
 						error instanceof Error ? error.message : "Failed to load file tree",
 					);
+					setLoadedTreeAgentId(activeAgentId);
+					setLoadedTreeRevision(treeRevision);
 				}
 			})
 			.finally(() => {
@@ -141,13 +181,29 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		return () => {
 			cancelled = true;
 		};
-	}, [activeAgentId, activeUpperTab, treeRevision]);
+	}, [
+		activeAgentId,
+		activeUpperTab,
+		loadedTreeAgentId,
+		loadedTreeRevision,
+		treeRevision,
+	]);
 
 	useEffect(() => {
 		void gitRevision;
 
 		if (activeUpperTab !== "git") {
 			setGitLoading(false);
+			return;
+		}
+
+		if (
+			!shouldFetchGitStatus({
+				activeUpperTab,
+				gitRevision,
+				loadedRevision: loadedGitRevision,
+			})
+		) {
 			return;
 		}
 
@@ -159,6 +215,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 				if (!cancelled) {
 					setGitStatus(nextStatus);
 					setGitError(null);
+					setLoadedGitRevision(gitRevision);
 				}
 			})
 			.catch((error) => {
@@ -169,6 +226,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 							? error.message
 							: "Failed to load git status",
 					);
+					setLoadedGitRevision(gitRevision);
 				}
 			})
 			.finally(() => {
@@ -180,7 +238,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		return () => {
 			cancelled = true;
 		};
-	}, [activeUpperTab, gitRevision]);
+	}, [activeUpperTab, gitRevision, loadedGitRevision]);
 
 	const handleOpenFile = useCallback(
 		(params: { agentId: string; path: string }) => {
@@ -257,24 +315,27 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	function renderUpperContent(tab: UpperRightPanelTab) {
 		if (tab === "files") {
 			return (
-				<div className="scrollbar-none h-full overflow-y-auto">
-					{treeLoading ? (
-						<div className="px-4 py-4 text-sm text-dark-500">
-							Loading files…
-						</div>
-					) : treeError ? (
-						<div className="px-4 py-4 text-sm text-red-300">{treeError}</div>
-					) : activeAgentId ? (
-						<FileTree
-							agentId={activeAgentId}
-							entries={tree}
-							onOpenFile={handleOpenFile}
-						/>
-					) : (
-						<div className="px-4 py-4 text-sm text-dark-500">
-							No active agent.
-						</div>
-					)}
+				<div className="flex h-full min-h-0 flex-col">
+					<FileTreeHeader agentName={activeAgentName} />
+					<div className="scrollbar-none min-h-0 flex-1 overflow-y-auto">
+						{treeLoading ? (
+							<div className="px-4 py-4 text-sm text-dark-500">
+								Loading files…
+							</div>
+						) : treeError ? (
+							<div className="px-4 py-4 text-sm text-red-300">{treeError}</div>
+						) : activeAgentId ? (
+							<FileTree
+								agentId={activeAgentId}
+								entries={tree}
+								onOpenFile={handleOpenFile}
+							/>
+						) : (
+							<div className="px-4 py-4 text-sm text-dark-500">
+								No active agent.
+							</div>
+						)}
+					</div>
 				</div>
 			);
 		}

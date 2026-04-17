@@ -50,7 +50,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: "",
+					graph: { commits: [], branchHeads: [] },
 					files: [],
 				}),
 				setAgentCronEnabled: async () => {
@@ -111,7 +111,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: "",
+					graph: { commits: [], branchHeads: [] },
 					files: [],
 				}),
 				setAgentCronEnabled: async () => {
@@ -176,7 +176,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: "",
+					graph: { commits: [], branchHeads: [] },
 					files: [],
 				}),
 				setAgentCronEnabled: async (_agentId, path, enabled) => ({
@@ -240,7 +240,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: "",
+					graph: { commits: [], branchHeads: [] },
 					files: [],
 				}),
 				setAgentCronEnabled: async (_agentId, path, enabled) => ({

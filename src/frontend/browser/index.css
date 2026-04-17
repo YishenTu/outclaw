@@ -24,12 +24,13 @@
 	--dark-800: #292524;
 	--dark-900: #1c1917;
 	--dark-950: #0c0a09;
+	--font-ui-sans: "IBM Plex Sans", "Inter", "Segoe UI", sans-serif;
 }
 
 body {
 	background-color: var(--dark-950);
 	color: var(--dark-100);
-	font-family: "IBM Plex Sans", "Inter", "Segoe UI", sans-serif;
+	font-family: var(--font-ui-sans);
 }
 
 #root {
@@ -103,6 +104,27 @@ textarea {
 	font-size: 1em;
 }
 
+.prose .md-comment {
+	color: var(--dark-500);
+	font-family: "Share Tech Mono", "SFMono-Regular", monospace;
+	font-size: 0.8125rem;
+	line-height: 1.35rem;
+	white-space: pre-wrap;
+	border-left: 2px solid var(--dark-700);
+	padding: 0.25rem 0 0.25rem 0.75rem;
+	margin: 0.75rem 0;
+}
+
+.prose .md-comment::before {
+	content: "<!-- ";
+	opacity: 0.55;
+}
+
+.prose .md-comment::after {
+	content: " -->";
+	opacity: 0.55;
+}
+
 /* xterm.js */
 .xterm {
 	width: 100%;
@@ -120,4 +142,76 @@ textarea {
 .xterm .xterm-viewport::-webkit-scrollbar {
 	width: 0;
 	height: 0;
+}
+
+/* commit-graph */
+.git-graph-shell [class*="index-module_commitInfoContainer__"] {
+	min-width: 0;
+}
+
+.git-graph-shell [class*="index-module_svg__"] {
+	max-width: 36px;
+	overflow-x: visible;
+}
+
+.git-graph-shell [class*="index-module_container__wEBx3"] {
+	width: 100%;
+	max-width: none;
+	font-family: var(--font-ui-sans);
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+}
+
+.git-graph-shell [class*="index-module_details__"] {
+	height: 1.5rem;
+	min-width: 0;
+	align-items: center;
+	transform: translateY(1.25rem);
+}
+
+.git-graph-shell [class*="index-module_block__"] {
+	height: 1.5rem;
+	border-radius: 0.25rem;
+	transform: translateY(1.25rem);
+}
+
+.git-graph-shell [class*="index-module_labelAndLink__"] {
+	display: none;
+}
+
+.git-graph-shell [class*="index-module_msg__"] {
+	display: flex;
+	align-items: center;
+	height: 1.5rem;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	flex: 1 1 auto;
+	margin-top: 0;
+	padding: 0;
+	border-radius: 0.25rem;
+	color: var(--dark-400);
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: clip;
+	background: transparent;
+}
+
+.git-graph-shell [class*="index-module_msg__"]:hover {
+	background: transparent;
+	color: var(--dark-200);
+}
+
+.git-graph-shell [class*="index-module_outer__"],
+.git-graph-shell [class*="index-module_number__"] {
+	height: 1.25rem;
+	line-height: 1.25rem;
+	padding-left: 0.5rem;
+	padding-right: 0.5rem;
+	font-size: 10px;
+	color: var(--dark-300);
+	border-color: var(--dark-700);
+	background-color: rgba(28, 25, 23, 0.9);
 }

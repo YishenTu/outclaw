@@ -26,6 +26,8 @@ export function createRestartRequiredWatcher(
 	options: CreateRestartRequiredWatcherOptions,
 ) {
 	const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+	const configPath = join(options.homeDir, "config.json");
+	const envPath = join(options.homeDir, ".env");
 	const agentsDir = join(options.homeDir, "agents");
 	const handles: WatchHandle[] = [];
 	let timer: ReturnType<typeof setTimeout> | undefined;
@@ -69,6 +71,18 @@ export function createRestartRequiredWatcher(
 				}
 				trigger();
 			});
+
+			if (existsSync(configPath)) {
+				startWatching(configPath, () => {
+					trigger();
+				});
+			}
+
+			if (existsSync(envPath)) {
+				startWatching(envPath, () => {
+					trigger();
+				});
+			}
 
 			if (existsSync(agentsDir)) {
 				startWatching(agentsDir, () => {

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude.ts";
@@ -25,6 +25,7 @@ const HOME_DIR = join(homedir(), ".outclaw");
 const CLI_ENTRY = join(import.meta.dir, "cli.ts");
 const dbPath = join(HOME_DIR, "db.sqlite");
 const filesRoot = join(HOME_DIR, "files");
+const readyPath = join(HOME_DIR, "daemon.ready");
 
 mkdirSync(HOME_DIR, { recursive: true });
 
@@ -44,6 +45,7 @@ const daemon = startMultiAgentDaemon(config, discoveredAgents);
 
 console.log(`outclaw runtime listening on ws://localhost:${daemon.port}`);
 console.log(`daemon pid: ${process.pid}`);
+writeFileSync(readyPath, `${process.pid}\n`);
 
 let shuttingDown = false;
 
@@ -54,6 +56,7 @@ async function shutdown() {
 	shuttingDown = true;
 
 	await daemon.stop();
+	rmSync(readyPath, { force: true });
 	pidManager.remove();
 	process.exit(0);
 }

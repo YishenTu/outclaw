@@ -10,6 +10,7 @@ import { printUsage } from "./cli/usage.ts";
 const HOME_DIR = join(homedir(), ".outclaw");
 const PID_PATH = join(HOME_DIR, "daemon.pid");
 const LOG_PATH = join(HOME_DIR, "daemon.log");
+const READY_PATH = join(HOME_DIR, "daemon.ready");
 const DAEMON_ENTRY = join(import.meta.dir, "index.ts");
 const TEMPLATES_DIR = join(import.meta.dir, "templates");
 const TUI_ENTRY = join(import.meta.dir, "tui.ts");
@@ -22,6 +23,7 @@ const daemon = createDaemonCommands({
 	homeDir: HOME_DIR,
 	logPath: LOG_PATH,
 	pidPath: PID_PATH,
+	readyPath: READY_PATH,
 	printUsage,
 	templatesDir: TEMPLATES_DIR,
 	tuiEntry: TUI_ENTRY,

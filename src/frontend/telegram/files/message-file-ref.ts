@@ -91,14 +91,7 @@ export function formatTelegramDocumentPromptRef(
 export function formatTelegramVoicePromptRef(
 	voice: TelegramVoiceFileRef,
 ): string {
-	const extension = fileExtension(voice.path);
-	const label =
-		extension === "oga" || extension === "ogg" ? "voice note" : "voice audio";
-	const parts = [extension || "audio"];
-	if (voice.durationSeconds !== undefined) {
-		parts.push(`${voice.durationSeconds}s`);
-	}
-	return `[${label} (${parts.join(", ")}): ${voice.path}]`;
+	return `[audio: ${voice.path}]`;
 }
 
 export function appendPromptSegments(
@@ -139,12 +132,4 @@ export async function rememberOutboundImage(
 		},
 		direction: "outbound",
 	});
-}
-
-function fileExtension(path: string): string {
-	const dot = path.lastIndexOf(".");
-	if (dot === -1 || dot === path.length - 1) {
-		return "";
-	}
-	return path.slice(dot + 1).toLowerCase();
 }

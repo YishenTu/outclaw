@@ -19,6 +19,17 @@ function itemCount(popup: BrowserRuntimePopup): number {
 	}
 }
 
+function splitStatusPopupText(text: string): {
+	title: string;
+	body: string;
+} {
+	const [firstLine = "Status", ...remainingLines] = text.split("\n");
+	return {
+		title: firstLine,
+		body: remainingLines.join("\n"),
+	};
+}
+
 export function RuntimeCommandPopup({
 	popup,
 	selectedIndex,
@@ -41,11 +52,15 @@ export function RuntimeCommandPopup({
 	}, [popup, selectedIndex]);
 
 	if (popup.kind === "status") {
+		const { title, body } = splitStatusPopupText(popup.text);
 		return (
 			<div className="absolute bottom-full left-1/2 mb-2 w-4/5 max-w-full -translate-x-1/2 overflow-hidden rounded-[18px] border border-dark-800 bg-dark-900 shadow-lg">
-				<pre className="font-mono-ui whitespace-pre-wrap px-3 py-3 text-xs leading-6 text-dark-200">
-					{popup.text}
-				</pre>
+				<div className="border-b border-dark-800 px-3 py-2 text-xs uppercase tracking-[0.14em] text-dark-500">
+					{title}
+				</div>
+				<div className="whitespace-pre-wrap px-4 py-3 text-sm text-dark-300">
+					{body}
+				</div>
 			</div>
 		);
 	}

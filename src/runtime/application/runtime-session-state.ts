@@ -35,6 +35,10 @@ export class RuntimeSessionState {
 		return this.lastUsage;
 	}
 
+	setUsage(usage: UsageInfo | undefined) {
+		this.lastUsage = usage;
+	}
+
 	getLastUserTarget(): LastUserTarget | undefined {
 		return this.lastUserTarget;
 	}

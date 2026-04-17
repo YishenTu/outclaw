@@ -1,7 +1,12 @@
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { BrowserGitDiffResponse } from "../../../../common/protocol.ts";
 import { fetchGitDiff } from "../../lib/api.ts";
+import {
+	selectGitRevision,
+	useRightPanelRefreshStore,
+} from "../../stores/right-panel-refresh.ts";
+import { GitDiffContent } from "./git-diff-content.tsx";
 
 interface GitDiffViewerProps {
 	path: string;
@@ -11,22 +16,23 @@ export function GitDiffViewer({ path }: GitDiffViewerProps) {
 	const [diff, setDiff] = useState<BrowserGitDiffResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
-	const [refreshKey, setRefreshKey] = useState(0);
+	const gitRevision = useRightPanelRefreshStore(selectGitRevision);
 
 	useEffect(() => {
+		void gitRevision;
+
 		let cancelled = false;
-		const requestVersion = refreshKey;
 		setLoading(true);
 		setError(null);
 
 		void fetchGitDiff(path)
 			.then((nextDiff) => {
-				if (!cancelled && requestVersion === refreshKey) {
+				if (!cancelled) {
 					setDiff(nextDiff);
 				}
 			})
 			.catch((nextError) => {
-				if (!cancelled && requestVersion === refreshKey) {
+				if (!cancelled) {
 					setDiff(null);
 					setError(
 						nextError instanceof Error
@@ -36,7 +42,7 @@ export function GitDiffViewer({ path }: GitDiffViewerProps) {
 				}
 			})
 			.finally(() => {
-				if (!cancelled && requestVersion === refreshKey) {
+				if (!cancelled) {
 					setLoading(false);
 				}
 			});
@@ -44,25 +50,15 @@ export function GitDiffViewer({ path }: GitDiffViewerProps) {
 		return () => {
 			cancelled = true;
 		};
-	}, [path, refreshKey]);
+	}, [gitRevision, path]);
 
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-dark-950">
 			<div className="h-8 shrink-0 border-b border-dark-800 px-6">
-				<div className="mx-auto flex h-full max-w-5xl items-center justify-between gap-4">
-					<div className="min-w-0">
-						<div className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-							Git diff / {path}
-						</div>
+				<div className="mx-auto flex h-full max-w-5xl items-center gap-4">
+					<div className="min-w-0 font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
+						Git diff / {path}
 					</div>
-					<button
-						type="button"
-						onClick={() => setRefreshKey((current) => current + 1)}
-						className="font-mono-ui inline-flex items-center gap-2 rounded px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-dark-400 transition-colors hover:bg-dark-900 hover:text-dark-100"
-					>
-						<RefreshCw size={13} />
-						Refresh
-					</button>
 				</div>
 			</div>
 
@@ -78,9 +74,7 @@ export function GitDiffViewer({ path }: GitDiffViewerProps) {
 							<div className="text-sm">{error}</div>
 						</div>
 					) : (
-						<pre className="whitespace-pre-wrap border border-dark-800 bg-dark-900/40 p-4 text-xs leading-6 text-dark-100 [overflow-wrap:anywhere]">
-							<code>{diff?.diff || "No diff output."}</code>
-						</pre>
+						diff && <GitDiffContent diff={diff} />
 					)}
 				</div>
 			</div>

@@ -43,6 +43,13 @@ function requireUsage(event: DoneEvent) {
 	return event.usage;
 }
 
+function expectedRestoredUsage() {
+	return {
+		...requireUsage(makeDoneEvent()),
+		percentage: 0,
+	};
+}
+
 describe("SessionService", () => {
 	afterEach(() => {
 		if (existsSync(TEST_DB)) rmSync(TEST_DB);
@@ -72,7 +79,7 @@ describe("SessionService", () => {
 		expect(sessions.activeSessionId).toBe("sdk-456");
 		expect(state.sessionTitle).toBe("Stored title");
 		expect(state.model).toBe("haiku");
-		expect(state.createStatusEvent().usage).toEqual(makeDoneEvent().usage);
+		expect(state.createStatusEvent().usage).toEqual(expectedRestoredUsage());
 		expect(state.createHeartbeatDeliveryTarget()).toEqual({
 			clientType: "telegram",
 			telegramChatId: 123,
@@ -195,7 +202,7 @@ describe("SessionService", () => {
 
 		expect(match?.sdkSessionId).toBe("sdk-old");
 		expect(state.sessionId).toBe("sdk-old");
-		expect(state.createStatusEvent().usage).toEqual(usage);
+		expect(state.createStatusEvent().usage).toEqual(expectedRestoredUsage());
 		expect(store.getActiveSessionId(PROVIDER_ID)).toBe("sdk-old");
 
 		store.close();

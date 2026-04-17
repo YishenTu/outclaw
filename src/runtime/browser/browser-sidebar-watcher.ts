@@ -1,4 +1,4 @@
-import { resolve, sep } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import type { BrowserSidebarInvalidatedEvent } from "../../common/protocol.ts";
 import {
 	startDirectoryWatch,
@@ -48,6 +48,17 @@ function toAbsolutePath(
 
 function isCronPath(agentRoot: string, absolutePath: string): boolean {
 	return isPathWithin(resolve(agentRoot, "cron"), absolutePath);
+}
+
+function isIgnorableGitMetadataPath(
+	gitRoot: string,
+	absolutePath: string,
+): boolean {
+	const relativePath = relative(gitRoot, absolutePath);
+	return (
+		relativePath === `.git${sep}index` ||
+		relativePath === `.git${sep}index.lock`
+	);
 }
 
 function sortSections(
@@ -125,6 +136,10 @@ export function createBrowserSidebarWatcher(
 				queueSection(pendingByAgent, agent.agentId, ["tree", "cron"]);
 			}
 			scheduleFlush();
+			return;
+		}
+
+		if (isIgnorableGitMetadataPath(normalizedGitRoot, absolutePath)) {
 			return;
 		}
 

@@ -9,8 +9,8 @@ Transcribe local audio files through the bundled helper script in this skill pac
 
 ## When To Use
 
-- The user turn contains `[voice note (...): /abs/path/file.oga]`
-- The user turn contains `[voice audio (...): /abs/path/file.mp3]`
+- The user turn contains `[audio: /abs/path/file.oga]`
+- The user turn contains `[audio: /abs/path/file.mp3]`
 - You have a local audio file path and need the transcript before you can answer
 
 ## Command
@@ -39,7 +39,7 @@ node ./skills/voice-mode/scripts/transcribe.mjs <path> \
    - Surface the stderr message to the user.
    - You may attempt **one** retry only if the error looks transient (HTTP 5xx, timeout, or `state: PROCESSING`). For 4xx, auth, or quota errors, stop.
    - Never invent a transcript when the helper failed.
-5. If the helper succeeds but stdout is empty, reply: `I couldn't make out the voice note — can you resend or type it?`
+5. If the helper succeeds but stdout is empty, reply: `I couldn't make out the audio message — can you resend or type it?`
 6. Do not invent transcript content under any circumstance.
 
 ## Prerequisites

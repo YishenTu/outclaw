@@ -398,7 +398,7 @@ describe("ClaudeAdapter", () => {
 		);
 	});
 
-	test("streams text deltas and maps usage info from SDK events", async () => {
+	test("streams text deltas and merges usage from the main assistant message with result model metadata", async () => {
 		const query = mock((_params: unknown) =>
 			(async function* () {
 				yield {
@@ -416,6 +416,19 @@ describe("ClaudeAdapter", () => {
 					},
 				};
 				yield {
+					type: "assistant",
+					parent_tool_use_id: null,
+					message: {
+						content: [{ type: "text", text: "hello" }],
+						usage: {
+							input_tokens: 100,
+							output_tokens: 25,
+							cache_creation_input_tokens: 50,
+							cache_read_input_tokens: 150,
+						},
+					},
+				};
+				yield {
 					type: "result",
 					session_id: "sdk-123",
 					duration_ms: 321,
@@ -427,10 +440,10 @@ describe("ClaudeAdapter", () => {
 						},
 					},
 					usage: {
-						input_tokens: 100,
-						output_tokens: 25,
-						cache_creation_input_tokens: 50,
-						cache_read_input_tokens: 150,
+						input_tokens: 999_999,
+						output_tokens: 888_888,
+						cache_creation_input_tokens: 777_777,
+						cache_read_input_tokens: 666_666,
 					},
 				};
 			})(),
@@ -494,6 +507,137 @@ describe("ClaudeAdapter", () => {
 					contextTokens: 300,
 					percentage: 0,
 				},
+			},
+		]);
+	});
+
+	test("ignores subagent assistant usage and selects model metadata for the active model", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "assistant",
+					parent_tool_use_id: "tool-1",
+					message: {
+						content: [],
+						usage: {
+							input_tokens: 50_000,
+							output_tokens: 2_000,
+							cache_creation_input_tokens: 1_000,
+							cache_read_input_tokens: 2_000,
+						},
+					},
+				};
+				yield {
+					type: "assistant",
+					parent_tool_use_id: null,
+					message: {
+						content: [{ type: "text", text: "main answer" }],
+						usage: {
+							input_tokens: 100,
+							output_tokens: 25,
+							cache_creation_input_tokens: 50,
+							cache_read_input_tokens: 150,
+						},
+					},
+				};
+				yield {
+					type: "result",
+					session_id: "sdk-main",
+					duration_ms: 42,
+					total_cost_usd: 0.01,
+					modelUsage: {
+						sonnet: {
+							contextWindow: 200_000,
+							maxOutputTokens: 8_000,
+						},
+						"claude-opus-4-7[1m]": {
+							contextWindow: 1_000_000,
+							maxOutputTokens: 64_000,
+						},
+					},
+					usage: {
+						input_tokens: 99_999,
+						output_tokens: 9_999,
+						cache_creation_input_tokens: 8_888,
+						cache_read_input_tokens: 7_777,
+					},
+				};
+			})(),
+		);
+
+		const { adapter } = createAdapter({ query });
+		const events = [];
+
+		for await (const event of adapter.run({
+			prompt: "hello",
+			model: "claude-opus-4-7[1m]",
+			stream: false,
+		})) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{ type: "text", text: "main answer" },
+			{
+				type: "done",
+				sessionId: "sdk-main",
+				durationMs: 42,
+				costUsd: 0.01,
+				usage: {
+					inputTokens: 100,
+					outputTokens: 25,
+					cacheCreationTokens: 50,
+					cacheReadTokens: 150,
+					contextWindow: 1_000_000,
+					maxOutputTokens: 64_000,
+					contextTokens: 300,
+					percentage: 0,
+				},
+			},
+		]);
+	});
+
+	test("does not synthesize usage from result aggregates when no main assistant usage exists", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "result",
+					session_id: "sdk-result-only",
+					duration_ms: 10,
+					total_cost_usd: 0.05,
+					modelUsage: {
+						"claude-opus-4-7[1m]": {
+							contextWindow: 1_000_000,
+							maxOutputTokens: 64_000,
+						},
+					},
+					usage: {
+						input_tokens: 9_999,
+						output_tokens: 4_444,
+						cache_creation_input_tokens: 2_222,
+						cache_read_input_tokens: 1_111,
+					},
+				};
+			})(),
+		);
+
+		const { adapter } = createAdapter({ query });
+		const events = [];
+
+		for await (const event of adapter.run({
+			prompt: "hello",
+			model: "claude-opus-4-7[1m]",
+		})) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{
+				type: "done",
+				sessionId: "sdk-result-only",
+				durationMs: 10,
+				costUsd: 0.05,
+				usage: undefined,
 			},
 		]);
 	});

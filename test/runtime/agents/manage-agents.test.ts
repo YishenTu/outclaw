@@ -223,6 +223,12 @@ describe("agent management", () => {
 			).toContain("name: voice-mode");
 			expect(
 				readFileSync(
+					join(created.agentHomeDir, "skills", "voice-mode", "SKILL.md"),
+					"utf-8",
+				),
+			).toContain("[audio: /abs/path/file.oga]");
+			expect(
+				readFileSync(
 					join(
 						created.agentHomeDir,
 						"skills",

@@ -19,6 +19,17 @@ function incrementRevision(
 	};
 }
 
+export function selectAgentTreeRevision(
+	state: RightPanelRefreshState,
+	agentId: string | null,
+): number {
+	return agentId ? (state.treeRevisionByAgent[agentId] ?? 0) : 0;
+}
+
+export function selectGitRevision(state: RightPanelRefreshState): number {
+	return state.gitRevision;
+}
+
 export function createRightPanelRefreshStore() {
 	return create<RightPanelRefreshState>((set) => ({
 		cronRevisionByAgent: {},

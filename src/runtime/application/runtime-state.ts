@@ -1,11 +1,16 @@
 import type { EffortLevel } from "../../common/commands.ts";
-import { isModelAlias, type ModelAlias } from "../../common/models.ts";
+import {
+	contextWindowForAlias,
+	isModelAlias,
+	type ModelAlias,
+} from "../../common/models.ts";
 import type {
 	DoneEvent,
 	ImageRef,
 	RuntimeStatusEvent,
 	UsageInfo,
 } from "../../common/protocol.ts";
+import { recalculateUsageForContextWindow } from "../../common/usage.ts";
 import type { LastUserTarget } from "../persistence/last-user-target.ts";
 import type { SessionRow } from "../persistence/session-store.ts";
 import { RuntimeSessionState } from "./runtime-session-state.ts";
@@ -89,6 +94,7 @@ export class RuntimeState {
 
 	setModel(model: ModelAlias) {
 		this.settings.setModel(model);
+		this.sessions.setUsage(this.alignUsageToModel(this.sessions.usage, model));
 	}
 
 	setEffort(effort: EffortLevel) {
@@ -100,10 +106,15 @@ export class RuntimeState {
 		session?: SessionRow;
 		usage?: UsageInfo;
 	}) {
+		let usage = params.usage;
 		if (params.session && isModelAlias(params.session.model)) {
 			this.settings.setModel(params.session.model);
+			usage = this.alignUsageToModel(usage, params.session.model);
 		}
-		this.sessions.restorePersistedState(params);
+		this.sessions.restorePersistedState({
+			...params,
+			usage,
+		});
 	}
 
 	renameSession(sessionId: string, title: string) {
@@ -123,11 +134,28 @@ export class RuntimeState {
 
 		if (isModelAlias(session.model)) {
 			this.settings.setModel(session.model);
+			usage = this.alignUsageToModel(usage, session.model);
 		}
 		this.sessions.switchToSession(session, usage);
 	}
 
 	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
 		this.sessions.completeRun(event, source, telegramChatId);
+	}
+
+	private alignUsageToModel(
+		usage: UsageInfo | undefined,
+		model: ModelAlias,
+	): UsageInfo | undefined {
+		if (!usage) {
+			return undefined;
+		}
+
+		const contextWindow = contextWindowForAlias(model);
+		if (!contextWindow) {
+			return usage;
+		}
+
+		return recalculateUsageForContextWindow(usage, contextWindow);
 	}
 }

@@ -66,8 +66,20 @@ export function MessageInput({
 				? runtimePopup.sessions.length
 				: 0;
 
-	useRuntimePopupShortcuts(runtimePopup, closeRuntimePopup, () => {
-		textareaRef.current?.focus();
+	function focusTextarea() {
+		window.requestAnimationFrame(() => {
+			textareaRef.current?.focus();
+		});
+	}
+
+	useRuntimePopupShortcuts(runtimePopup, {
+		selectedIndex,
+		setSelectedIndex,
+		selectIndex: (index) => {
+			selectRuntimePopupItem(index);
+		},
+		closePopup: closeRuntimePopup,
+		onDismiss: focusTextarea,
 	});
 
 	useEffect(() => {
@@ -98,9 +110,7 @@ export function MessageInput({
 		closeRuntimePopup();
 		setValue(`/${name} `);
 		setSelectedIndex(0);
-		window.requestAnimationFrame(() => {
-			textareaRef.current?.focus();
-		});
+		focusTextarea();
 	}
 
 	function selectRuntimePopupItem(index: number) {
@@ -112,6 +122,7 @@ export function MessageInput({
 			const agent = runtimePopup.agents[index];
 			if (agent && sendCommand(`/agent ${agent.name}`)) {
 				closeRuntimePopup();
+				focusTextarea();
 			}
 			return;
 		}
@@ -120,11 +131,13 @@ export function MessageInput({
 			const session = runtimePopup.sessions[index];
 			if (session && sendCommand(`/session ${session.sdkSessionId}`)) {
 				closeRuntimePopup();
+				focusTextarea();
 			}
 			return;
 		}
 
 		closeRuntimePopup();
+		focusTextarea();
 	}
 
 	function submitValue() {
@@ -162,45 +175,6 @@ export function MessageInput({
 							disabled={disabled}
 							onChange={(event) => setValue(event.target.value)}
 							onKeyDown={(event) => {
-								if (
-									runtimePopup &&
-									runtimePopup.kind !== "status" &&
-									event.key === "ArrowDown"
-								) {
-									event.preventDefault();
-									setSelectedIndex((current) =>
-										Math.min(current + 1, runtimePopupItemCount - 1),
-									);
-									return;
-								}
-
-								if (
-									runtimePopup &&
-									runtimePopup.kind !== "status" &&
-									event.key === "ArrowUp"
-								) {
-									event.preventDefault();
-									setSelectedIndex((current) => Math.max(current - 1, 0));
-									return;
-								}
-
-								if (
-									runtimePopup &&
-									(event.key === "Enter" || event.key === "Tab") &&
-									!event.shiftKey
-								) {
-									event.preventDefault();
-									selectRuntimePopupItem(selectedIndex);
-									return;
-								}
-
-								if (runtimePopup && event.key === "Escape") {
-									event.preventDefault();
-									closeRuntimePopup();
-									textareaRef.current?.focus();
-									return;
-								}
-
 								if (showSlashMenu && event.key === "ArrowDown") {
 									event.preventDefault();
 									setSelectedIndex((current) =>

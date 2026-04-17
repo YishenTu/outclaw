@@ -70,9 +70,8 @@ describe("handleTelegramVoiceMessage", () => {
 			streamPrompt,
 		});
 
-		expect(receivedPrompt).toStartWith("[voice note (oga, 12s): ");
-		expect(receivedPrompt).toEndWith("]");
-		expect(receivedPrompt).toContain(filesRoot);
+		expect(receivedPrompt.startsWith(`[audio: ${filesRoot}/`)).toBeTrue();
+		expect(receivedPrompt.endsWith(".oga]")).toBeTrue();
 		expect(ctx.replyWithChatAction).toHaveBeenCalled();
 		expect(ctx.sendMessage).toHaveBeenCalled();
 	});
@@ -167,10 +166,9 @@ describe("handleTelegramVoiceMessage", () => {
 			streamPrompt,
 		});
 
-		expect(receivedPrompt).toContain(
-			"[voice note (oga, 5s): /tmp/previous.oga]",
-		);
-		expect(receivedPrompt).toContain(filesRoot);
+		expect(receivedPrompt).toContain("[audio: /tmp/previous.oga]");
+		expect(receivedPrompt).toContain(`[audio: ${filesRoot}/`);
+		expect(receivedPrompt).toContain(".oga]");
 	});
 
 	test("uses audio metadata for message:audio uploads", async () => {
@@ -210,7 +208,8 @@ describe("handleTelegramVoiceMessage", () => {
 		});
 
 		expect(receivedPrompt).toContain("summarize this");
-		expect(receivedPrompt).toContain("[voice audio (mp3, 95s):");
+		expect(receivedPrompt).toContain(`[audio: ${filesRoot}/`);
+		expect(receivedPrompt).toContain(".mp3]");
 	});
 
 	test("rejects files larger than the default limit", async () => {

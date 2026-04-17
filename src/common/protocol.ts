@@ -297,10 +297,13 @@ export interface BrowserAgentsResponse {
 	agents: BrowserAgentSummary[];
 }
 
+export type BrowserTreeEntryGitStatus = "modified" | "new";
+
 export interface BrowserTreeEntry {
 	kind: "file" | "directory";
 	name: string;
 	path: string;
+	gitStatus?: BrowserTreeEntryGitStatus;
 	children?: BrowserTreeEntry[];
 }
 
@@ -325,7 +328,38 @@ export interface BrowserGitFileStatus {
 	path: string;
 	indexStatus: string;
 	worktreeStatus: string;
+	additions: number;
+	deletions: number;
 	renamedFrom?: string;
+}
+
+export interface BrowserGitGraphCommitParent {
+	sha: string;
+}
+
+export interface BrowserGitGraphCommit {
+	sha: string;
+	commit: {
+		author: {
+			name: string;
+			date: string;
+			email?: string;
+		};
+		message: string;
+	};
+	parents: BrowserGitGraphCommitParent[];
+}
+
+export interface BrowserGitGraphBranchHead {
+	name: string;
+	commit: {
+		sha: string;
+	};
+}
+
+export interface BrowserGitGraph {
+	commits: BrowserGitGraphCommit[];
+	branchHeads: BrowserGitGraphBranchHead[];
 }
 
 export interface BrowserGitStatusResponse {
@@ -334,7 +368,7 @@ export interface BrowserGitStatusResponse {
 	ahead: number;
 	behind: number;
 	clean: boolean;
-	graph: string;
+	graph: BrowserGitGraph;
 	files: BrowserGitFileStatus[];
 }
 

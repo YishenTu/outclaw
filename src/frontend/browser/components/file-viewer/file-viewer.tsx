@@ -1,12 +1,17 @@
 import hljs from "highlight.js";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { BrowserFileResponse } from "../../../../common/protocol.ts";
 import { fetchAgentFile } from "../../lib/api.ts";
+import {
+	selectAgentTreeRevision,
+	useRightPanelRefreshStore,
+} from "../../stores/right-panel-refresh.ts";
 import { useTabsStore } from "../../stores/tabs.ts";
+import { remarkHtmlComments } from "./remark-html-comments.ts";
 
 interface FileViewerProps {
 	tabId: string;
@@ -25,6 +30,19 @@ function buildCodeFence(content: string, language?: string): string {
 	);
 	const fence = "`".repeat(Math.max(3, longestBacktickRun + 1));
 	return `${fence}${language ?? ""}\n${content}\n${fence}`;
+}
+
+export function MarkdownPreview({ content }: { content: string }) {
+	return (
+		<div className="prose prose-invert prose-sm max-w-none text-dark-100">
+			<ReactMarkdown
+				remarkPlugins={[remarkGfm, remarkHtmlComments]}
+				rehypePlugins={[rehypeHighlight]}
+			>
+				{content}
+			</ReactMarkdown>
+		</div>
+	);
 }
 
 export function CodePreview({
@@ -56,25 +74,28 @@ export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
 	const [file, setFile] = useState<BrowserFileResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
-	const [refreshKey, setRefreshKey] = useState(0);
 	const containerRef = useRef<HTMLDivElement | null>(null);
+	const treeRevision = useRightPanelRefreshStore((state) =>
+		selectAgentTreeRevision(state, agentId),
+	);
 	const scrollTop = useTabsStore((state) => state.scrollPositions[tabId] ?? 0);
 	const setScrollPosition = useTabsStore((state) => state.setScrollPosition);
 
 	useEffect(() => {
+		void treeRevision;
+
 		let cancelled = false;
-		const requestKey = refreshKey;
 		setLoading(true);
 		setError(null);
 
 		void fetchAgentFile(agentId, path)
 			.then((nextFile) => {
-				if (!cancelled && requestKey === refreshKey) {
+				if (!cancelled) {
 					setFile(nextFile);
 				}
 			})
 			.catch((nextError) => {
-				if (!cancelled && requestKey === refreshKey) {
+				if (!cancelled) {
 					setError(
 						nextError instanceof Error
 							? nextError.message
@@ -84,7 +105,7 @@ export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
 				}
 			})
 			.finally(() => {
-				if (!cancelled && requestKey === refreshKey) {
+				if (!cancelled) {
 					setLoading(false);
 				}
 			});
@@ -92,7 +113,7 @@ export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
 		return () => {
 			cancelled = true;
 		};
-	}, [agentId, path, refreshKey]);
+	}, [agentId, path, treeRevision]);
 
 	const breadcrumb = useMemo(() => path.split("/"), [path]);
 
@@ -108,20 +129,10 @@ export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-dark-950">
 			<div className="h-8 shrink-0 border-b border-dark-800 px-6">
-				<div className="mx-auto flex h-full max-w-5xl items-center justify-between gap-4">
-					<div className="min-w-0">
-						<div className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-							{breadcrumb.join(" / ")}
-						</div>
+				<div className="mx-auto flex h-full max-w-5xl items-center gap-4">
+					<div className="min-w-0 font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
+						{breadcrumb.join(" / ")}
 					</div>
-					<button
-						type="button"
-						onClick={() => setRefreshKey((current) => current + 1)}
-						className="font-mono-ui inline-flex items-center gap-2 rounded text-[11px] uppercase tracking-[0.14em] text-dark-400 transition-colors hover:text-dark-100"
-					>
-						<RefreshCw size={13} />
-						Refresh
-					</button>
 				</div>
 			</div>
 
@@ -130,7 +141,7 @@ export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
 				onScroll={(event) =>
 					setScrollPosition(tabId, event.currentTarget.scrollTop)
 				}
-				className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+				className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-6 py-6"
 			>
 				<div className="mx-auto max-w-5xl">
 					{loading ? (
@@ -147,14 +158,7 @@ export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
 							Binary file preview is not supported for `{path}`.
 						</div>
 					) : isMarkdownFile(path) ? (
-						<div className="prose prose-invert prose-sm max-w-none text-dark-100">
-							<ReactMarkdown
-								remarkPlugins={[remarkGfm]}
-								rehypePlugins={[rehypeHighlight]}
-							>
-								{file?.content ?? ""}
-							</ReactMarkdown>
-						</div>
+						<MarkdownPreview content={file?.content ?? ""} />
 					) : (
 						<CodePreview
 							content={file?.content ?? ""}
