@@ -5,6 +5,7 @@ import type {
 	BrowserTreeEntry,
 } from "../../../../common/protocol.ts";
 import { fetchAgentCron, updateAgentCronEnabled } from "../../lib/api.ts";
+import { useRightPanelRefreshStore } from "../../stores/right-panel-refresh.ts";
 
 const CRON_TABLE_COLUMNS =
 	"grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_auto]" as const;
@@ -181,6 +182,9 @@ export function CronPanel({
 	treeEntries,
 	onOpenFile,
 }: CronPanelProps) {
+	const cronRevision = useRightPanelRefreshStore(
+		(state) => state.cronRevisionByAgent[agentId] ?? 0,
+	);
 	const [entries, setEntries] = useState<BrowserCronEntry[]>([]);
 	const [pendingPaths, setPendingPaths] = useState<Record<string, boolean>>({});
 	const [loading, setLoading] = useState(true);
@@ -192,14 +196,17 @@ export function CronPanel({
 	);
 
 	useEffect(() => {
+		void cronRevision;
+
 		let cancelled = false;
+		setMutationError(null);
 		setLoading(true);
 		setError(null);
-		setMutationError(null);
 		void fetchAgentCron(agentId)
 			.then((nextEntries) => {
 				if (!cancelled) {
 					setEntries(nextEntries);
+					setError(null);
 				}
 			})
 			.catch((nextError) => {
@@ -221,7 +228,7 @@ export function CronPanel({
 		return () => {
 			cancelled = true;
 		};
-	}, [agentId, fallbackEntries]);
+	}, [agentId, cronRevision, fallbackEntries]);
 
 	if (loading) {
 		return (

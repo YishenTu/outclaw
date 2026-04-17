@@ -263,6 +263,12 @@ export interface CronResultEvent {
 	text: string;
 }
 
+export interface BrowserSidebarInvalidatedEvent {
+	type: "browser_sidebar_invalidated";
+	agentId?: string;
+	sections: Array<"tree" | "cron" | "git">;
+}
+
 export interface SkillInfo {
 	name: string;
 	description: string;
@@ -376,6 +382,7 @@ export type ServerEvent =
 	| CompactingFinishedEvent
 	| HistoryReplayEvent
 	| CronResultEvent
+	| BrowserSidebarInvalidatedEvent
 	| SkillsUpdateEvent
 	| AskResponseEvent
 	| AskErrorEvent;

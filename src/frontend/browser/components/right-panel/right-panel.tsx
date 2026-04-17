@@ -18,6 +18,7 @@ import {
 	MIN_RIGHT_PANEL_SPLIT_RATIO,
 	useLayoutStore,
 } from "../../stores/layout.ts";
+import { useRightPanelRefreshStore } from "../../stores/right-panel-refresh.ts";
 import { useTabsStore } from "../../stores/tabs.ts";
 import {
 	selectActiveTerminalId,
@@ -93,11 +94,23 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const [gitError, setGitError] = useState<string | null>(null);
 	const [isResizing, setIsResizing] = useState(false);
 	const contentRef = useRef<HTMLDivElement | null>(null);
+	const treeRevision = useRightPanelRefreshStore((state) =>
+		activeAgentId ? (state.treeRevisionByAgent[activeAgentId] ?? 0) : 0,
+	);
+	const gitRevision = useRightPanelRefreshStore((state) => state.gitRevision);
 
 	useEffect(() => {
+		void treeRevision;
+
+		if (activeUpperTab !== "files") {
+			setTreeLoading(false);
+			return;
+		}
+
 		if (!activeAgentId) {
 			setTree([]);
 			setTreeError(null);
+			setTreeLoading(false);
 			return;
 		}
 
@@ -108,6 +121,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			.then((nextTree) => {
 				if (!cancelled) {
 					setTree(nextTree);
+					setTreeError(null);
 				}
 			})
 			.catch((error) => {
@@ -127,9 +141,16 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		return () => {
 			cancelled = true;
 		};
-	}, [activeAgentId]);
+	}, [activeAgentId, activeUpperTab, treeRevision]);
 
 	useEffect(() => {
+		void gitRevision;
+
+		if (activeUpperTab !== "git") {
+			setGitLoading(false);
+			return;
+		}
+
 		let cancelled = false;
 		setGitLoading(true);
 		setGitError(null);
@@ -137,6 +158,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			.then((nextStatus) => {
 				if (!cancelled) {
 					setGitStatus(nextStatus);
+					setGitError(null);
 				}
 			})
 			.catch((error) => {
@@ -158,7 +180,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [activeUpperTab, gitRevision]);
 
 	const handleOpenFile = useCallback(
 		(params: { agentId: string; path: string }) => {

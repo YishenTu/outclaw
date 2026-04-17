@@ -13,7 +13,7 @@ import { createAgentRuntime } from "./runtime/application/create-agent-runtime.t
 import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
 import { loadGlobalConfig } from "./runtime/config.ts";
 import { createCronTelegramChatIdResolver } from "./runtime/cron/resolve-telegram-chat-id.ts";
-import { createFrontendNoticeWatcher } from "./runtime/notice/frontend-notice-watcher.ts";
+import { createRestartRequiredWatcher } from "./runtime/notice/restart-required-watcher.ts";
 import { SessionStore } from "./runtime/persistence/session-store.ts";
 import { TelegramFileRefStore } from "./runtime/persistence/telegram-file-ref-store.ts";
 import { TelegramRouteStore } from "./runtime/persistence/telegram-route-store.ts";
@@ -127,6 +127,13 @@ function startMultiAgentDaemon(
 			gitRoot: HOME_DIR,
 			storesByAgent: agentStores,
 		}),
+		browserWatch: {
+			agents: agents.map((agent) => ({
+				agentId: agent.agentId,
+				rootDir: agent.homeDir,
+			})),
+			gitRoot: HOME_DIR,
+		},
 		getDefaultAgentId: () => stateStore.getLastInteractiveAgentId(),
 		port: config.port,
 		rememberInteractiveAgentId: (agentId) =>
@@ -165,22 +172,26 @@ function startMultiAgentDaemon(
 		);
 	}
 
-	const frontendNoticeWatcher = createFrontendNoticeWatcher({
-		readNotice: () => stateStore.getFrontendNotice(),
-		onChange: () => {
+	const restartRequiredWatcher = createRestartRequiredWatcher({
+		homeDir: HOME_DIR,
+		onRestartRequired: () => {
+			if (stateStore.getFrontendNotice()?.kind === "restart_required") {
+				return;
+			}
+			stateStore.setFrontendNotice({ kind: "restart_required" });
 			for (const runtime of runtimes) {
 				runtime.broadcastRuntimeStatus();
 			}
 		},
 	});
-	frontendNoticeWatcher.start();
+	restartRequiredWatcher.start();
 
 	console.log(`agents: ${agents.map((agent) => agent.name).join(", ")}`);
 
 	return {
 		port: supervisor.port,
 		async stop() {
-			frontendNoticeWatcher.stop();
+			restartRequiredWatcher.stop();
 			await supervisor.stop();
 			botManager.stop();
 			for (const store of agentStores.values()) {

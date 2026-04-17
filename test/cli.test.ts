@@ -126,6 +126,20 @@ function readFrontendNotice() {
 	}
 }
 
+async function waitForFrontendNotice(
+	timeoutMs = 2000,
+): Promise<{ kind: "restart_required" } | undefined> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		const notice = readFrontendNotice();
+		if (notice?.kind === "restart_required") {
+			return notice;
+		}
+		await new Promise<void>((resolve) => setTimeout(resolve, 25));
+	}
+	return readFrontendNotice();
+}
+
 describe("CLI", () => {
 	afterEach(() => {
 		if (existsSync(PID_PATH)) {
@@ -318,7 +332,7 @@ describe("CLI", () => {
 		expect(config.agents[agentId].telegram.defaultCronUserId).toBe(2);
 	});
 
-	test("agent create does not restart the daemon when it is running", () => {
+	test("agent create does not restart the daemon when it is running", async () => {
 		runCli(["agent", "create", "railly"]);
 		writeConfig(0);
 		expect(runCli(["start"]).exitCode).toBe(0);
@@ -330,10 +344,10 @@ describe("CLI", () => {
 		expect(result.stdout).toContain("Created agent mimi");
 		expect(result.stdout).toContain("Restart required");
 		expect(readPid()).toBe(originalPid);
-		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
+		expect(await waitForFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
-	test("agent rename does not restart the daemon when it is running", () => {
+	test("agent rename does not restart the daemon when it is running", async () => {
 		runCli(["agent", "create", "railly"]);
 		writeConfig(0);
 		expect(runCli(["start"]).exitCode).toBe(0);
@@ -345,10 +359,10 @@ describe("CLI", () => {
 		expect(result.stdout).toContain("Renamed agent railly -> mimi");
 		expect(result.stdout).toContain("Restart required");
 		expect(readPid()).toBe(originalPid);
-		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
+		expect(await waitForFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
-	test("agent remove does not restart the daemon when it is running", () => {
+	test("agent remove does not restart the daemon when it is running", async () => {
 		runCli(["agent", "create", "railly"]);
 		runCli(["agent", "create", "mimi"]);
 		writeConfig(0);
@@ -361,10 +375,10 @@ describe("CLI", () => {
 		expect(result.stdout).toContain("Removed agent mimi");
 		expect(result.stdout).toContain("Restart required");
 		expect(readPid()).toBe(originalPid);
-		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
+		expect(await waitForFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
-	test("agent remove leaves the daemon running when it removes the last agent", () => {
+	test("agent remove leaves the daemon running when it removes the last agent", async () => {
 		runCli(["agent", "create", "railly"]);
 		writeConfig(0);
 		expect(runCli(["start"]).exitCode).toBe(0);
@@ -378,10 +392,10 @@ describe("CLI", () => {
 		expect(result.stdout).toContain("Restart required");
 		expect(existsSync(PID_PATH)).toBe(true);
 		expect(readPid()).toBe(originalPid);
-		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
+		expect(await waitForFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
-	test("agent config does not restart the daemon when it is running", () => {
+	test("agent config does not restart the daemon when it is running", async () => {
 		runCli([
 			"agent",
 			"create",
@@ -407,7 +421,7 @@ describe("CLI", () => {
 		expect(result.stdout).toContain("Configured agent railly");
 		expect(result.stdout).toContain("Restart required");
 		expect(readPid()).toBe(originalPid);
-		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
+		expect(await waitForFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
 	test("agent create rejects invalid users", () => {
@@ -834,7 +848,7 @@ describe("CLI", () => {
 		);
 	});
 
-	test("config secure does not restart the daemon when it changes config", () => {
+	test("config secure does not restart the daemon when it changes config", async () => {
 		mkdirSync(join(OUTCLAW_DIR, "agents", "railly"), { recursive: true });
 		writeFileSync(
 			join(OUTCLAW_DIR, "agents", "railly", ".agent-id"),
@@ -870,7 +884,7 @@ describe("CLI", () => {
 		expect(result.stdout).toContain("Updated .env");
 		expect(result.stdout).toContain("Restart required");
 		expect(readPid()).toBe(originalPid);
-		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
+		expect(await waitForFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
 	test("config runtime updates global runtime settings", () => {
@@ -928,7 +942,7 @@ describe("CLI", () => {
 		});
 	});
 
-	test("config runtime does not restart the daemon when it is running", () => {
+	test("config runtime does not restart the daemon when it is running", async () => {
 		runCli(["agent", "create", "railly"]);
 		writeConfig(0);
 		expect(runCli(["start"]).exitCode).toBe(0);
@@ -940,7 +954,7 @@ describe("CLI", () => {
 		expect(result.stdout).toContain("Configured runtime settings");
 		expect(result.stdout).toContain("Restart required");
 		expect(readPid()).toBe(originalPid);
-		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
+		expect(await waitForFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
 	test("config runtime rejects invalid values", () => {

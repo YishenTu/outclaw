@@ -8,6 +8,7 @@ import type {
 	RuntimeClientType,
 } from "../../common/protocol.ts";
 import type { AgentRuntime } from "../application/create-agent-runtime.ts";
+import { createBrowserSidebarWatcher } from "../browser/browser-sidebar-watcher.ts";
 import { TerminalRelay } from "../browser/terminal-relay.ts";
 import { AgentRuntimeRegistry } from "./agent-runtime-registry.ts";
 import { ClientAgentBinding } from "./client-agent-binding.ts";
@@ -38,6 +39,14 @@ interface CreateSupervisorOptions {
 			enabled: boolean,
 		): Promise<BrowserCronEntry>;
 	};
+	browserWatch?: {
+		agents: Array<{
+			agentId: string;
+			rootDir: string;
+		}>;
+		createWatcher?: typeof createBrowserSidebarWatcher;
+		gitRoot: string;
+	};
 	emitAgentEvents?: boolean;
 	getDefaultAgentId?: () => string | undefined;
 	port: number;
@@ -59,6 +68,14 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		registry,
 		telegramRouting: options.telegramRouting,
 	});
+	const browserSidebarWatcher = options.browserWatch
+		? (options.browserWatch.createWatcher ?? createBrowserSidebarWatcher)({
+				agents: options.browserWatch.agents,
+				gitRoot: options.browserWatch.gitRoot,
+				onInvalidate: (event) =>
+					controller.broadcastBrowserSidebarInvalidated(event),
+			})
+		: undefined;
 	const terminalRelay = new TerminalRelay();
 
 	const server = Bun.serve<{
@@ -149,6 +166,7 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 			},
 		},
 	});
+	browserSidebarWatcher?.start();
 
 	let stopPromise: Promise<void> | undefined;
 
@@ -157,6 +175,7 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		stop() {
 			if (!stopPromise) {
 				stopPromise = (async () => {
+					browserSidebarWatcher?.stop();
 					await registry.stopAll();
 					server.stop();
 				})();

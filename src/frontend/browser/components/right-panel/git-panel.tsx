@@ -7,6 +7,35 @@ interface GitPanelProps {
 	onOpenDiff: (path: string) => void;
 }
 
+function formatGitBranch(status: BrowserGitStatusResponse): string {
+	return status.branch ? `Branch ${status.branch}` : "Detached HEAD";
+}
+
+function formatGitSummary(status: BrowserGitStatusResponse): string {
+	return status.clean
+		? "Working tree clean"
+		: `${status.files.length} changed file${status.files.length === 1 ? "" : "s"}`;
+}
+
+export function GitPanelHeader({
+	status,
+}: {
+	status: BrowserGitStatusResponse;
+}) {
+	return (
+		<div className="h-8 shrink-0 border-b border-dark-800 px-3">
+			<div className="flex h-full items-center justify-between gap-3 px-1">
+				<div className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
+					{formatGitBranch(status)}
+				</div>
+				<div className="truncate text-xs text-dark-400">
+					{formatGitSummary(status)}
+				</div>
+			</div>
+		</div>
+	);
+}
+
 export function GitPanel({
 	status,
 	loading,
@@ -29,16 +58,7 @@ export function GitPanel({
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<div className="border-b border-dark-800 px-4 py-3">
-				<div className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-					{status.branch ? `Branch ${status.branch}` : "Detached HEAD"}
-				</div>
-				<div className="mt-1 text-xs text-dark-400">
-					{status.clean
-						? "Working tree clean"
-						: `${status.files.length} changed file${status.files.length === 1 ? "" : "s"}`}
-				</div>
-			</div>
+			<GitPanelHeader status={status} />
 			<div className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-3 py-3">
 				<div className="space-y-5">
 					<section>

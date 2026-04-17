@@ -298,6 +298,75 @@ describe("createSupervisor", () => {
 		tui.close();
 	});
 
+	test("broadcasts sidebar invalidation events only to browser clients", async () => {
+		let emitInvalidation:
+			| ((event: {
+					type: "browser_sidebar_invalidated";
+					agentId?: string;
+					sections: Array<"tree" | "cron" | "git">;
+			  }) => void)
+			| undefined;
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-alpha",
+					name: "alpha",
+					facade: new MockFacade(),
+				}),
+			],
+			browserWatch: {
+				agents: [
+					{
+						agentId: "agent-alpha",
+						rootDir: "/workspace/agents/alpha",
+					},
+				],
+				createWatcher: (options) => {
+					emitInvalidation = options.onInvalidate;
+					return {
+						start() {},
+						stop() {},
+					};
+				},
+				gitRoot: "/workspace",
+			},
+		});
+		cleanup = () => supervisor.stop();
+
+		const browser = await connectBrowserWs(supervisor.port);
+		await waitForEvent(browser, (event) => event.type === "runtime_status");
+		const tui = await connectWs(supervisor.port);
+		await waitForEvent(tui, (event) => event.type === "runtime_status");
+
+		const browserEvent = waitForEvent(
+			browser,
+			(event) =>
+				event.type === "browser_sidebar_invalidated" &&
+				event.agentId === "agent-alpha",
+		);
+		const tuiEvents = collectFor(tui, 100);
+		emitInvalidation?.({
+			type: "browser_sidebar_invalidated",
+			agentId: "agent-alpha",
+			sections: ["tree", "cron"],
+		});
+
+		expect(await browserEvent).toEqual({
+			type: "browser_sidebar_invalidated",
+			agentId: "agent-alpha",
+			sections: ["tree", "cron"],
+		});
+		expect(
+			(await tuiEvents).filter(
+				(event) => event.type === "browser_sidebar_invalidated",
+			),
+		).toEqual([]);
+
+		browser.close();
+		tui.close();
+	});
+
 	test("returns an agent menu for /agent", async () => {
 		const supervisor = createSupervisor({
 			port: 0,

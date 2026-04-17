@@ -35,6 +35,7 @@ import {
 import { useAgentsStore } from "../stores/agents.ts";
 import { useChatStore } from "../stores/chat.ts";
 import { useContextUsageStore } from "../stores/context-usage.ts";
+import { useRightPanelRefreshStore } from "../stores/right-panel-refresh.ts";
 import { useRuntimeStore } from "../stores/runtime.ts";
 import { useRuntimePopupStore } from "../stores/runtime-popup.ts";
 import {
@@ -512,6 +513,9 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					return;
 				case "status":
 					useRuntimePopupStore.getState().openStatus(event.message);
+					return;
+				case "browser_sidebar_invalidated":
+					useRightPanelRefreshStore.getState().invalidate(event);
 					return;
 				case "cron_result":
 					return;

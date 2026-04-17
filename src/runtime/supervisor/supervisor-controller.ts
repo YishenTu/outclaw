@@ -1,4 +1,5 @@
 import {
+	type BrowserSidebarInvalidatedEvent,
 	extractError,
 	parseMessage,
 	serialize,
@@ -32,6 +33,14 @@ interface IncomingMessage {
 
 export class SupervisorController {
 	constructor(private readonly options: SupervisorControllerOptions) {}
+
+	broadcastBrowserSidebarInvalidated(event: BrowserSidebarInvalidatedEvent) {
+		for (const client of this.options.bindings.listBoundClientsByTypes([
+			"browser",
+		])) {
+			client.send(serialize(event));
+		}
+	}
 
 	handleClose = (ws: WsClient) => {
 		if (ws.data.clientType === "control") {
