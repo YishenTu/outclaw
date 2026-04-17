@@ -33,6 +33,7 @@ describe("layout store", () => {
 
 		store.getState().setLeftCollapsed(true);
 		store.getState().setRightCollapsed(true);
+		store.getState().setRightGitGraphCollapsed(true);
 		store.getState().setRightTerminalCollapsed(true);
 		store.getState().setSidebarWidth(312);
 		store.getState().setInspectorWidth(418);
@@ -45,6 +46,7 @@ describe("layout store", () => {
 		const rehydratedStore = createLayoutStore(storage);
 		expect(rehydratedStore.getState().leftCollapsed).toBe(true);
 		expect(rehydratedStore.getState().rightCollapsed).toBe(true);
+		expect(rehydratedStore.getState().rightGitGraphCollapsed).toBe(true);
 		expect(rehydratedStore.getState().rightTerminalCollapsed).toBe(true);
 		expect(rehydratedStore.getState().sidebarWidth).toBe(312);
 		expect(rehydratedStore.getState().inspectorWidth).toBe(418);
@@ -59,6 +61,7 @@ describe("layout store", () => {
 					inspectorWidth: 9999,
 					rightPanelUpperTab: "missing",
 					rightPanelSplitRatio: 99,
+					rightGitGraphCollapsed: "yes",
 					sidebarWidth: -10,
 				},
 				version: 1,
@@ -69,6 +72,7 @@ describe("layout store", () => {
 
 		expect(store.getState().leftCollapsed).toBe(false);
 		expect(store.getState().rightCollapsed).toBe(false);
+		expect(store.getState().rightGitGraphCollapsed).toBe(false);
 		expect(store.getState().rightTerminalCollapsed).toBe(false);
 		expect(store.getState().sidebarWidth).toBe(MIN_SIDEBAR_WIDTH);
 		expect(store.getState().inspectorWidth).toBe(MAX_INSPECTOR_WIDTH);
@@ -101,6 +105,7 @@ describe("layout store", () => {
 
 		store.getState().setLeftCollapsed(true);
 		store.getState().setRightCollapsed(true);
+		store.getState().setRightGitGraphCollapsed(true);
 		store.getState().setRightTerminalCollapsed(true);
 		store.getState().setSidebarWidth(312);
 		store.getState().setInspectorWidth(418);
@@ -111,6 +116,7 @@ describe("layout store", () => {
 		const rehydratedStore = createLayoutStore(storage);
 		expect(rehydratedStore.getState().leftCollapsed).toBe(false);
 		expect(rehydratedStore.getState().rightCollapsed).toBe(false);
+		expect(rehydratedStore.getState().rightGitGraphCollapsed).toBe(false);
 		expect(rehydratedStore.getState().rightTerminalCollapsed).toBe(false);
 		expect(rehydratedStore.getState().sidebarWidth).toBe(DEFAULT_SIDEBAR_WIDTH);
 		expect(rehydratedStore.getState().inspectorWidth).toBe(

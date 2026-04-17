@@ -115,16 +115,6 @@ textarea {
 	margin: 0.75rem 0;
 }
 
-.prose .md-comment::before {
-	content: "<!-- ";
-	opacity: 0.55;
-}
-
-.prose .md-comment::after {
-	content: " -->";
-	opacity: 0.55;
-}
-
 /* xterm.js */
 .xterm {
 	width: 100%;

@@ -62,7 +62,7 @@ export function GitDiffViewer({ path }: GitDiffViewerProps) {
 				</div>
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+			<div className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-6 py-6">
 				<div className="mx-auto max-w-5xl">
 					{loading ? (
 						<div className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">

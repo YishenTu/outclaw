@@ -96,10 +96,13 @@ index cefe630..0000000
 });
 
 describe("GitDiffViewer", () => {
-	test("does not render a manual refresh button in the diff header", () => {
+	test("uses the shared hidden-scrollbar preview container without a manual refresh button", () => {
 		const html = renderToStaticMarkup(<GitDiffViewer path="AGENTS.md" />);
 
 		expect(html).toContain("Git diff / AGENTS.md");
+		expect(html).toContain(
+			"scrollbar-none min-h-0 flex-1 overflow-y-auto px-6 py-6",
+		);
 		expect(html).not.toContain("Refresh");
 	});
 });

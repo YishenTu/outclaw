@@ -79,6 +79,12 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const setRightPanelSplitRatio = useLayoutStore(
 		(state) => state.setRightPanelSplitRatio,
 	);
+	const rightGitGraphCollapsed = useLayoutStore(
+		(state) => state.rightGitGraphCollapsed,
+	);
+	const setRightGitGraphCollapsed = useLayoutStore(
+		(state) => state.setRightGitGraphCollapsed,
+	);
 	const rightTerminalCollapsed = useLayoutStore(
 		(state) => state.rightTerminalCollapsed,
 	);
@@ -358,14 +364,20 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			);
 		}
 
-		return (
-			<GitPanel
-				status={gitStatus}
-				loading={gitLoading}
-				error={gitError}
-				onOpenDiff={handleOpenDiff}
-			/>
-		);
+		if (tab === "git") {
+			return (
+				<GitPanel
+					graphCollapsed={rightGitGraphCollapsed}
+					status={gitStatus}
+					loading={gitLoading}
+					error={gitError}
+					onOpenDiff={handleOpenDiff}
+					onToggleGraphCollapsed={() =>
+						setRightGitGraphCollapsed(!rightGitGraphCollapsed)
+					}
+				/>
+			);
+		}
 	}
 
 	const upperHeight = `${splitRatio * 100}%`;

@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import type { BrowserGitStatusResponse } from "../../../../common/protocol.ts";
 import { GitGraph } from "./git-graph.tsx";
 import { gitFileToneClass } from "./git-status-tone.ts";
@@ -11,11 +11,12 @@ const GIT_PANEL_TOGGLE_CLASS =
 	"font-mono-ui flex w-full items-center justify-end text-[18px] leading-none text-dark-500 transition-colors hover:text-dark-100";
 
 interface GitPanelProps {
-	defaultGraphCollapsed?: boolean;
+	graphCollapsed?: boolean;
 	status: BrowserGitStatusResponse | null;
 	loading: boolean;
 	error: string | null;
 	onOpenDiff: (path: string) => void;
+	onToggleGraphCollapsed?: () => void;
 }
 
 function GitFileLineCounts({
@@ -107,14 +108,13 @@ export function GitPanelHeader({
 }
 
 export function GitPanel({
-	defaultGraphCollapsed = false,
+	graphCollapsed = false,
 	status,
 	loading,
 	error,
 	onOpenDiff,
+	onToggleGraphCollapsed,
 }: GitPanelProps) {
-	const [graphCollapsed, setGraphCollapsed] = useState(defaultGraphCollapsed);
-
 	if (loading) {
 		return (
 			<div className="px-4 py-4 text-sm text-dark-500">Loading git status…</div>
@@ -165,7 +165,7 @@ export function GitPanel({
 						<div className="flex w-8 shrink-0 justify-end">
 							<button
 								type="button"
-								onClick={() => setGraphCollapsed((current) => !current)}
+								onClick={onToggleGraphCollapsed}
 								aria-label={
 									graphCollapsed ? "Expand git graph" : "Collapse git graph"
 								}

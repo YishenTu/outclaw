@@ -302,7 +302,7 @@ describe("git panel header", () => {
 				loading: false,
 				error: null,
 				onOpenDiff() {},
-				defaultGraphCollapsed: true,
+				graphCollapsed: true,
 			}),
 		);
 
