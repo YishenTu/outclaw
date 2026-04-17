@@ -7,13 +7,29 @@ import type {
 import { fetchAgentCron, updateAgentCronEnabled } from "../../lib/api.ts";
 
 const CRON_TABLE_COLUMNS =
-	"grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]" as const;
-const CRON_ROW_COLUMNS = "grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]" as const;
+	"grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_auto]" as const;
+const CRON_ROW_COLUMNS = "grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)]" as const;
 
 interface CronPanelProps {
 	agentId: string;
 	treeEntries?: BrowserTreeEntry[];
 	onOpenFile: (params: { agentId: string; path: string }) => void;
+}
+
+export function CronPanelHeader() {
+	return (
+		<div className="h-8 shrink-0 border-b border-dark-800 px-3">
+			<div
+				className={`grid ${CRON_TABLE_COLUMNS} h-full items-center gap-3 px-2 font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500`}
+			>
+				<div className="pl-[22px]">Cron</div>
+				<div>Frequency</div>
+				<div className="w-7 -translate-x-2 justify-self-center text-center">
+					On/Off
+				</div>
+			</div>
+		</div>
+	);
 }
 
 export function humanizeCronSchedule(schedule: string): string {
@@ -229,98 +245,104 @@ export function CronPanel({
 	}
 
 	return (
-		<div className="px-3 py-3">
-			{error ? (
-				<div className="px-2 py-2 text-xs text-red-300">{error}</div>
-			) : null}
-			{mutationError ? (
-				<div className="px-2 py-2 text-xs text-red-300">{mutationError}</div>
-			) : null}
-			<div
-				className={`grid ${CRON_TABLE_COLUMNS} items-center gap-3 px-2 py-2 font-mono-ui text-[10px] uppercase tracking-[0.14em] text-dark-600`}
-			>
-				<div className="pl-[22px]">Cron</div>
-				<div>Frequency</div>
-				<div className="w-7 justify-self-center text-center">On</div>
-			</div>
-			{visibleEntries.map((entry) => (
-				<div
-					key={entry.path}
-					className="border-t border-dark-900 first:border-t-0"
-				>
+		<div className="flex h-full min-h-0 flex-col">
+			<CronPanelHeader />
+			<div className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-3 py-3">
+				{error ? (
+					<div className="px-2 py-2 text-xs text-red-300">{error}</div>
+				) : null}
+				{mutationError ? (
+					<div className="px-2 py-2 text-xs text-red-300">{mutationError}</div>
+				) : null}
+				{visibleEntries.map((entry) => (
 					<div
-						className={`grid ${CRON_TABLE_COLUMNS} items-center gap-3 rounded px-2 py-2.5 text-sm text-dark-400 transition-colors hover:bg-dark-900 hover:text-dark-200`}
+						key={entry.path}
+						className="border-t border-dark-900 first:border-t-0"
 					>
-						<button
-							type="button"
-							onClick={() => onOpenFile({ agentId, path: entry.path })}
-							className={`col-span-2 grid min-w-0 ${CRON_ROW_COLUMNS} items-center gap-3 text-left`}
+						<div
+							className={`grid ${CRON_TABLE_COLUMNS} items-center gap-3 rounded px-2 py-2.5 text-sm text-dark-400 transition-colors hover:bg-dark-900 hover:text-dark-200`}
 						>
-							<div className="flex min-w-0 items-center gap-2 text-dark-200">
-								<Clock3 size={14} className="shrink-0 text-dark-500" />
-								<span className="truncate">{entry.name}</span>
-							</div>
-							<div className="truncate text-xs text-dark-500">
-								{humanizeCronSchedule(entry.schedule)}
-							</div>
-						</button>
-						<button
-							type="button"
-							onClick={() => {
-								setMutationError(null);
-								setPendingPaths((current) => ({
-									...current,
-									[entry.path]: true,
-								}));
-								void updateAgentCronEnabled(agentId, entry.path, !entry.enabled)
-									.then((nextEntry) => {
-										setEntries((current) =>
-											current.map((currentEntry) =>
-												currentEntry.path === nextEntry.path
-													? { ...currentEntry, ...nextEntry, error: undefined }
-													: currentEntry,
-											),
-										);
-									})
-									.catch((nextError) => {
-										setMutationError(
-											nextError instanceof Error
-												? nextError.message
-												: "Failed to update cron job",
-										);
-									})
-									.finally(() => {
-										setPendingPaths((current) => ({
-											...current,
-											[entry.path]: false,
-										}));
-									});
-							}}
-							disabled={
-								pendingPaths[entry.path] === true || entry.error !== undefined
-							}
-							className="w-7 justify-self-center"
-							aria-label={`${entry.enabled ? "Disable" : "Enable"} ${entry.name}`}
-						>
-							<div
-								aria-hidden="true"
-								className={`relative h-4 w-7 rounded-full transition-colors ${
-									entry.enabled ? "bg-emerald-300/35" : "bg-white/10"
-								} ${pendingPaths[entry.path] ? "opacity-60" : ""}`}
+							<button
+								type="button"
+								onClick={() => onOpenFile({ agentId, path: entry.path })}
+								className={`col-span-2 grid min-w-0 ${CRON_ROW_COLUMNS} items-center gap-3 text-left`}
+							>
+								<div className="flex min-w-0 items-center gap-2 text-dark-200">
+									<Clock3 size={14} className="shrink-0 text-dark-500" />
+									<span className="truncate">{entry.name}</span>
+								</div>
+								<div className="truncate text-xs text-dark-500">
+									{humanizeCronSchedule(entry.schedule)}
+								</div>
+							</button>
+							<button
+								type="button"
+								onClick={() => {
+									setMutationError(null);
+									setPendingPaths((current) => ({
+										...current,
+										[entry.path]: true,
+									}));
+									void updateAgentCronEnabled(
+										agentId,
+										entry.path,
+										!entry.enabled,
+									)
+										.then((nextEntry) => {
+											setEntries((current) =>
+												current.map((currentEntry) =>
+													currentEntry.path === nextEntry.path
+														? {
+																...currentEntry,
+																...nextEntry,
+																error: undefined,
+															}
+														: currentEntry,
+												),
+											);
+										})
+										.catch((nextError) => {
+											setMutationError(
+												nextError instanceof Error
+													? nextError.message
+													: "Failed to update cron job",
+											);
+										})
+										.finally(() => {
+											setPendingPaths((current) => ({
+												...current,
+												[entry.path]: false,
+											}));
+										});
+								}}
+								disabled={
+									pendingPaths[entry.path] === true || entry.error !== undefined
+								}
+								className="w-7 justify-self-center"
+								aria-label={`${entry.enabled ? "Disable" : "Enable"} ${entry.name}`}
 							>
 								<div
-									className={`absolute top-0.5 h-3 w-3 rounded-full transition-transform ${
-										entry.enabled ? "bg-emerald-300" : "bg-white"
-									} ${entry.enabled ? "translate-x-3.5" : "translate-x-0.5"}`}
-								/>
+									aria-hidden="true"
+									className={`relative h-4 w-7 rounded-full transition-colors ${
+										entry.enabled ? "bg-emerald-300/35" : "bg-white/10"
+									} ${pendingPaths[entry.path] ? "opacity-60" : ""}`}
+								>
+									<div
+										className={`absolute top-0.5 h-3 w-3 rounded-full transition-transform ${
+											entry.enabled ? "bg-emerald-300" : "bg-white"
+										} ${entry.enabled ? "translate-x-3.5" : "translate-x-0.5"}`}
+									/>
+								</div>
+							</button>
+						</div>
+						{entry.error ? (
+							<div className="px-2 pb-2 text-xs text-red-300">
+								{entry.error}
 							</div>
-						</button>
+						) : null}
 					</div>
-					{entry.error ? (
-						<div className="px-2 pb-2 text-xs text-red-300">{entry.error}</div>
-					) : null}
-				</div>
-			))}
+				))}
+			</div>
 		</div>
 	);
 }

@@ -1,7 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { humanizeCronSchedule } from "../../../src/frontend/browser/components/right-panel/cron-panel.tsx";
+import { createElement } from "react";
+import {
+	CronPanelHeader,
+	humanizeCronSchedule,
+} from "../../../src/frontend/browser/components/right-panel/cron-panel.tsx";
+// @ts-expect-error react-dom is installed in the browser workspace.
+import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
 describe("cron panel helpers", () => {
+	test("renders cron columns in a fixed subheader strip", () => {
+		const html = renderToStaticMarkup(createElement(CronPanelHeader));
+
+		expect(html).toContain("h-8 shrink-0");
+		expect(html).toContain("border-b border-dark-800");
+		expect(html).toContain("grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_auto]");
+		expect(html).toContain(">Cron<");
+		expect(html).toContain(">Frequency<");
+		expect(html).toContain("-translate-x-2");
+		expect(html).toContain(">On/Off<");
+	});
+
 	test("humanizes daily schedules", () => {
 		expect(humanizeCronSchedule("15 6 * * *")).toBe("Daily 06:15");
 	});

@@ -259,7 +259,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 
 		if (tab === "cron") {
 			return (
-				<div className="scrollbar-none h-full overflow-y-auto">
+				<div className="h-full min-h-0 overflow-hidden">
 					{activeAgentId ? (
 						<CronPanel
 							agentId={activeAgentId}
