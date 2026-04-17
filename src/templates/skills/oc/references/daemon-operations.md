@@ -16,6 +16,6 @@ Use these commands when the user explicitly asks to control or inspect the outcl
 Guidance:
 
 - Only run these commands when the user explicitly asks for daemon control or status.
-- After significant config or prompt changes, suggest `oc restart` if the daemon needs to pick them up.
+- If `oc agent ...`, `oc config runtime`, or `oc config secure` surfaces a restart-required notice, use `oc restart` when the user wants the running daemon to pick up those changes.
 - `oc agent <name>` is a shortcut for `oc tui --agent <name>`.
 - `--watch` and `--agent` can be combined: `oc tui --agent <name> --watch`.

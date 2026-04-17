@@ -405,7 +405,9 @@ describe("CLI", () => {
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("Configured agent railly");
+		expect(result.stdout).toContain("Restart required");
 		expect(readPid()).toBe(originalPid);
+		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
 	});
 
 	test("agent create rejects invalid users", () => {
@@ -829,6 +831,124 @@ describe("CLI", () => {
 		);
 		expect(readFileSync(join(OUTCLAW_DIR, ".env"), "utf-8")).toContain(
 			"MIMI_TELEGRAM_BOT_TOKEN=token-b",
+		);
+	});
+
+	test("config secure does not restart the daemon when it changes config", () => {
+		mkdirSync(join(OUTCLAW_DIR, "agents", "railly"), { recursive: true });
+		writeFileSync(
+			join(OUTCLAW_DIR, "agents", "railly", ".agent-id"),
+			"agent-railly\n",
+		);
+		writeFileSync(
+			join(OUTCLAW_DIR, "config.json"),
+			JSON.stringify(
+				{
+					autoCompact: false,
+					heartbeat: { intervalMinutes: 60, deferMinutes: 2 },
+					port: 0,
+					agents: {
+						"agent-railly": {
+							telegram: {
+								botToken: "token-a",
+								allowedUsers: [101, 202],
+							},
+						},
+					},
+				},
+				null,
+				"\t",
+			),
+		);
+
+		expect(runCli(["start"]).exitCode).toBe(0);
+		const originalPid = readPid();
+
+		const result = runCli(["config", "secure"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Updated .env");
+		expect(result.stdout).toContain("Restart required");
+		expect(readPid()).toBe(originalPid);
+		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
+	});
+
+	test("config runtime updates global runtime settings", () => {
+		mkdirSync(OUTCLAW_DIR, { recursive: true });
+		writeFileSync(
+			join(OUTCLAW_DIR, "config.json"),
+			JSON.stringify(
+				{
+					autoCompact: true,
+					heartbeat: { intervalMinutes: 30, deferMinutes: 0 },
+					port: 4000,
+					custom: { note: "preserve me" },
+				},
+				null,
+				"\t",
+			),
+		);
+
+		const result = runCli([
+			"config",
+			"runtime",
+			"--port",
+			"4100",
+			"--auto-compact",
+			"false",
+			"--heartbeat-interval",
+			"60",
+			"--heartbeat-defer",
+			"5",
+		]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Configured runtime settings");
+		expect(
+			JSON.parse(readFileSync(join(OUTCLAW_DIR, "config.json"), "utf-8")),
+		).toEqual({
+			autoCompact: false,
+			heartbeat: { intervalMinutes: 60, deferMinutes: 5 },
+			port: 4100,
+			custom: { note: "preserve me" },
+		});
+	});
+
+	test("config runtime creates config.json when the outclaw home does not exist", () => {
+		const result = runCli(["config", "runtime", "--port", "4100"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Configured runtime settings");
+		expect(
+			JSON.parse(readFileSync(join(OUTCLAW_DIR, "config.json"), "utf-8")),
+		).toEqual({
+			autoCompact: true,
+			heartbeat: { intervalMinutes: 30, deferMinutes: 0 },
+			port: 4100,
+		});
+	});
+
+	test("config runtime does not restart the daemon when it is running", () => {
+		runCli(["agent", "create", "railly"]);
+		writeConfig(0);
+		expect(runCli(["start"]).exitCode).toBe(0);
+		const originalPid = readPid();
+
+		const result = runCli(["config", "runtime", "--heartbeat-interval", "45"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Configured runtime settings");
+		expect(result.stdout).toContain("Restart required");
+		expect(readPid()).toBe(originalPid);
+		expect(readFrontendNotice()).toEqual({ kind: "restart_required" });
+	});
+
+	test("config runtime rejects invalid values", () => {
+		const result = runCli(["config", "runtime", "--auto-compact", "maybe"]);
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain(
+			"Invalid --auto-compact value: maybe (expected true or false)",
 		);
 	});
 

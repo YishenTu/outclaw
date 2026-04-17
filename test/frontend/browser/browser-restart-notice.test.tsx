@@ -19,7 +19,7 @@ describe("BrowserRestartNotice", () => {
 
 		expect(html).toContain("Restart required");
 		expect(html).toContain(
-			"Agent changes won&#x27;t update until the runtime restarts.",
+			"Changes won&#x27;t update until the runtime restarts.",
 		);
 	});
 });

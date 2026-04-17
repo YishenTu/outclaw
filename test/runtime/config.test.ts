@@ -8,7 +8,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadGlobalConfig } from "../../src/runtime/config.ts";
+import {
+	loadGlobalConfig,
+	updateGlobalConfig,
+} from "../../src/runtime/config.ts";
 
 function tmp() {
 	return mkdtempSync(join(tmpdir(), "mis-config-"));
@@ -172,6 +175,78 @@ describe("loadGlobalConfig", () => {
 			);
 			const config = loadGlobalConfig(dir);
 			expect(config.autoCompact).toBe(false);
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
+	test("updateGlobalConfig patches runtime globals while preserving agents and unknown fields", () => {
+		const dir = tmp();
+		try {
+			writeFileSync(
+				join(dir, "config.json"),
+				JSON.stringify(
+					{
+						autoCompact: true,
+						heartbeat: {
+							intervalMinutes: 30,
+							deferMinutes: 0,
+						},
+						port: 4000,
+						custom: {
+							flag: true,
+						},
+						agents: {
+							"agent-railly": {
+								telegram: {
+									botToken: "token-a",
+									allowedUsers: [101],
+								},
+							},
+						},
+					},
+					null,
+					"\t",
+				),
+			);
+
+			const config = updateGlobalConfig(dir, {
+				autoCompact: false,
+				heartbeat: {
+					intervalMinutes: 60,
+				},
+				port: 4100,
+			});
+
+			expect(config).toEqual({
+				autoCompact: false,
+				heartbeat: {
+					intervalMinutes: 60,
+					deferMinutes: 0,
+				},
+				port: 4100,
+			});
+			expect(
+				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
+			).toEqual({
+				autoCompact: false,
+				heartbeat: {
+					intervalMinutes: 60,
+					deferMinutes: 0,
+				},
+				port: 4100,
+				custom: {
+					flag: true,
+				},
+				agents: {
+					"agent-railly": {
+						telegram: {
+							botToken: "token-a",
+							allowedUsers: [101],
+						},
+					},
+				},
+			});
 		} finally {
 			rmSync(dir, { recursive: true });
 		}

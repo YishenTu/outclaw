@@ -65,7 +65,7 @@ Agent settings are stored in `~/.outclaw/config.json` under the `agents` key, ke
 | `telegram.allowedUsers` | number[] | Telegram user IDs permitted to interact with this agent |
 | `telegram.defaultCronUserId` | number (optional) | Default Telegram user to receive cron results |
 
-Any value can be an env-var reference (e.g. `"$MY_BOT_TOKEN"`) — the runtime resolves it from `~/.outclaw/.env` at startup. Use `oc config secure` to migrate hardcoded secrets to env vars.
+Any value can be an env-var reference (e.g. `"$MY_BOT_TOKEN"`) — the runtime resolves it from `~/.outclaw/.env` at startup. Use `oc config secure` to migrate hardcoded secrets to env vars. Runtime-global config such as `port`, `autoCompact`, and `heartbeat` is separate and belongs on `oc config runtime`.
 
 ## Cron Delivery Routing
 
@@ -81,6 +81,8 @@ Set `--default-cron-user` when the agent has multiple allowed users and you want
 
 ## Runtime Note
 
-Agent create/config/rename/remove change disk state immediately, but the running daemon does not hot-reload its in-memory agent set. After making one of these changes while the daemon is running, tell the user a manual `oc restart` is needed for the runtime to pick it up.
+Agent create/config/rename/remove change disk state immediately, but the running daemon does not hot-reload its in-memory agent set. After making one of these changes while the daemon is running, tell the user a later `oc restart` is needed for the runtime to pick it up.
+
+These commands now surface a restart-required notice instead of auto-restarting the daemon.
 
 Do not restart the daemon automatically from inside an ongoing agent flow. Ask the user first so they can choose when to interrupt the current runtime session.

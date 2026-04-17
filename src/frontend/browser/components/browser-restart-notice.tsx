@@ -26,7 +26,7 @@ export function BrowserRestartNoticeContent({
 						Restart required
 					</div>
 					<div className="mt-1 text-sm leading-6 text-amber-100/80">
-						Agent changes won&apos;t update until the runtime restarts.
+						Changes won&apos;t update until the runtime restarts.
 					</div>
 				</div>
 			</div>

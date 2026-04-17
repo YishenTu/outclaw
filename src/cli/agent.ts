@@ -7,8 +7,7 @@ import { removeAgent } from "../runtime/agents/remove-agent.ts";
 import { renameAgent } from "../runtime/agents/rename-agent.ts";
 import { updateAgent } from "../runtime/agents/update-agent.ts";
 import { loadGlobalConfig } from "../runtime/config.ts";
-import { SessionStore } from "../runtime/persistence/session-store.ts";
-import { PidManager } from "../runtime/process/pid-manager.ts";
+import { maybeMarkRestartRequired } from "./restart-required.ts";
 
 interface AgentCommandOptions {
 	argv: string[];
@@ -17,9 +16,6 @@ interface AgentCommandOptions {
 	templatesDir: string;
 	tui: (explicitAgentName?: string) => void;
 }
-
-const RESTART_REQUIRED_MESSAGE =
-	"Restart required. Agent changes won't update until the runtime restarts.";
 
 export async function agentCommand(options: AgentCommandOptions) {
 	const subcommand = options.argv[3];
@@ -171,6 +167,7 @@ function configAgentCommand(homeDir: string, argv: string[]) {
 				: undefined,
 	});
 	console.log(`Configured agent ${name}`);
+	maybeMarkRestartRequired(homeDir);
 }
 
 function removeAgentCommand(homeDir: string, argv: string[]) {
@@ -190,22 +187,6 @@ function ensureEnvFile(homeDir: string) {
 	if (!existsSync(envPath)) {
 		writeFileSync(envPath, "");
 	}
-}
-
-function maybeMarkRestartRequired(homeDir: string) {
-	const pid = new PidManager(join(homeDir, "daemon.pid"));
-	if (!pid.isRunning()) {
-		return;
-	}
-
-	const store = new SessionStore(join(homeDir, "db.sqlite"));
-	try {
-		store.setFrontendNotice({ kind: "restart_required" });
-	} finally {
-		store.close();
-	}
-
-	console.log(RESTART_REQUIRED_MESSAGE);
 }
 
 function parseFlags(args: string[]) {

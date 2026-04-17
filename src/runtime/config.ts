@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	DEFAULT_STORED_AGENT_CONFIG,
@@ -18,6 +18,15 @@ export interface GlobalConfig {
 
 export type Config = GlobalConfig;
 
+export interface GlobalConfigPatch {
+	autoCompact?: boolean;
+	heartbeat?: {
+		intervalMinutes?: number;
+		deferMinutes?: number;
+	};
+	port?: number;
+}
+
 const DEFAULTS: GlobalConfig = {
 	autoCompact: true,
 	heartbeat: {
@@ -26,6 +35,10 @@ const DEFAULTS: GlobalConfig = {
 	},
 	port: 4000,
 };
+
+function ensureConfigHomeDir(homeDir: string) {
+	mkdirSync(homeDir, { recursive: true });
+}
 
 interface ConfigDocument extends Record<string, unknown> {
 	agents?: Record<string, StoredAgentConfig>;
@@ -81,6 +94,7 @@ export function loadGlobalConfig(homeDir: string): GlobalConfig {
 	const configPath = join(homeDir, "config.json");
 
 	if (!existsSync(configPath)) {
+		ensureConfigHomeDir(homeDir);
 		writeFileSync(configPath, `${JSON.stringify(DEFAULTS, null, "\t")}\n`);
 		return {
 			autoCompact: DEFAULTS.autoCompact,
@@ -109,6 +123,47 @@ export function loadGlobalConfig(homeDir: string): GlobalConfig {
 }
 
 export const loadConfig = loadGlobalConfig;
+
+export function updateGlobalConfig(
+	homeDir: string,
+	patch: GlobalConfigPatch,
+): GlobalConfig {
+	const configPath = join(homeDir, "config.json");
+	const raw = existsSync(configPath)
+		? (JSON.parse(readFileSync(configPath, "utf-8")) as unknown)
+		: {};
+	const normalized = normalizeConfigDocument(raw);
+	const nextDocument = {
+		...normalized,
+		...(patch.autoCompact !== undefined
+			? { autoCompact: patch.autoCompact }
+			: {}),
+		...(patch.port !== undefined ? { port: patch.port } : {}),
+		heartbeat: {
+			...normalized.heartbeat,
+			...(patch.heartbeat?.intervalMinutes !== undefined
+				? { intervalMinutes: patch.heartbeat.intervalMinutes }
+				: {}),
+			...(patch.heartbeat?.deferMinutes !== undefined
+				? { deferMinutes: patch.heartbeat.deferMinutes }
+				: {}),
+		},
+	};
+	ensureConfigHomeDir(homeDir);
+	writeFileSync(configPath, `${JSON.stringify(nextDocument, null, "\t")}\n`);
+
+	return {
+		autoCompact: nextDocument.autoCompact ?? DEFAULTS.autoCompact,
+		heartbeat: {
+			intervalMinutes:
+				nextDocument.heartbeat?.intervalMinutes ??
+				DEFAULTS.heartbeat.intervalMinutes,
+			deferMinutes:
+				nextDocument.heartbeat?.deferMinutes ?? DEFAULTS.heartbeat.deferMinutes,
+		},
+		port: nextDocument.port ?? DEFAULTS.port,
+	};
+}
 
 export function readStoredAgentConfig(
 	homeDir: string,
@@ -149,6 +204,7 @@ export function writeStoredAgentConfig(
 			[agentId]: nextConfig,
 		},
 	};
+	ensureConfigHomeDir(homeDir);
 	writeFileSync(configPath, `${JSON.stringify(nextDocument, null, "\t")}\n`);
 	return configPath;
 }
