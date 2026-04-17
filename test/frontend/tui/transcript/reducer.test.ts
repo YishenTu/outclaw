@@ -55,6 +55,7 @@ describe("mapEventToActions", () => {
 			type: "runtime_status",
 			model: "opus",
 			effort: "high",
+			running: false,
 			sessionId: "session-123",
 		});
 		expect(actions).toEqual([{ type: "noop" }]);
@@ -66,6 +67,7 @@ describe("mapEventToActions", () => {
 			agentName: "railly",
 			model: "opus",
 			effort: "high",
+			running: false,
 			sessionId: "session-123",
 			sessionTitle: "My chat",
 			requested: true,
@@ -101,6 +103,7 @@ describe("mapEventToActions", () => {
 			type: "runtime_status",
 			model: "haiku",
 			effort: "low",
+			running: false,
 			requested: true,
 		});
 		expect(actions).toEqual([
@@ -124,6 +127,7 @@ describe("mapEventToActions", () => {
 			type: "runtime_status",
 			model: "opus",
 			effort: "high",
+			running: false,
 			sessionTitle: "My chat",
 			nextHeartbeatAt: now + 30 * 60_000,
 			requested: true,
@@ -139,6 +143,7 @@ describe("mapEventToActions", () => {
 			type: "runtime_status",
 			model: "opus",
 			effort: "high",
+			running: false,
 			sessionTitle: longTitle,
 			requested: true,
 		});

@@ -7,6 +7,7 @@ describe("status formatting", () => {
 			type: "runtime_status" as const,
 			model: "opus",
 			effort: "high",
+			running: false,
 			sessionId: "sdk-blank",
 		};
 
@@ -20,6 +21,7 @@ describe("status formatting", () => {
 			agentName: "railly",
 			model: "opus",
 			effort: "high",
+			running: false,
 			sessionTitle: "Chat",
 		};
 

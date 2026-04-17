@@ -25,6 +25,7 @@ import {
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
+import { ensureRunningChatSession } from "../ensure-running-chat-session.ts";
 import { fetchSidebarSummary } from "../lib/api.ts";
 import { formatObservedPrompt } from "../observed-prompt.ts";
 import {
@@ -315,6 +316,12 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 								event.usage,
 							);
 					}
+					if (event.running) {
+						ensureRunningChatSession(
+							agentId,
+							event.providerId ?? useRuntimeStore.getState().providerId,
+						);
+					}
 					return;
 				}
 				case "session_menu":
@@ -392,6 +399,12 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					useChatStore
 						.getState()
 						.replaceHistory(createSessionKey(activeSession), event.messages);
+					if (useRuntimeStore.getState().running) {
+						ensureRunningChatSession(
+							agentId,
+							useRuntimeStore.getState().providerId,
+						);
+					}
 					return;
 				}
 				case "user_prompt": {

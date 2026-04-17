@@ -12,6 +12,7 @@ function createStatusEvent(): RuntimeStatusEvent {
 		type: "runtime_status",
 		model: "sonnet",
 		effort: "high",
+		running: false,
 	};
 }
 
@@ -79,6 +80,7 @@ describe("RuntimeClientGateway", () => {
 				type: "runtime_status",
 				model: "sonnet",
 				effort: "high",
+				running: false,
 				sessionId: "sdk-123",
 			},
 			{

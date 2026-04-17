@@ -3,6 +3,7 @@ import type {
 	DisplayMessage,
 	UsageInfo,
 } from "../../../src/common/protocol.ts";
+import { ensureRunningChatSession } from "../../../src/frontend/browser/ensure-running-chat-session.ts";
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
 import { useChatStore } from "../../../src/frontend/browser/stores/chat.ts";
 import { useContextUsageStore } from "../../../src/frontend/browser/stores/context-usage.ts";
@@ -245,6 +246,7 @@ describe("browser stores", () => {
 			providerId: "claude",
 			model: "opus",
 			effort: "high",
+			running: false,
 			sessionId: "sdk-alpha",
 			sessionTitle: "Alpha",
 			notice: { kind: "restart_required" },
@@ -310,6 +312,61 @@ describe("browser stores", () => {
 		});
 
 		useChatStore.getState().startAssistantTurn("agent-a:claude:sdk-alpha");
+
+		const session = useChatStore
+			.getState()
+			.getSession("agent-a:claude:sdk-alpha");
+		expect(session?.messages).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "hello",
+			},
+		]);
+		expect(session?.isStreaming).toBe(true);
+		expect(session?.isThinking).toBe(true);
+		expect(typeof session?.thinkingStartedAt).toBe("number");
+	});
+
+	test("ensureRunningChatSession starts a pending assistant turn for observed runs", () => {
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-a", name: "alpha" }]);
+		useAgentsStore.getState().setActiveAgent("agent-a");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "alpha",
+			providerId: "claude",
+			model: "sonnet",
+			effort: "think",
+			running: true,
+		});
+
+		ensureRunningChatSession("agent-a", "claude");
+
+		const session = useChatStore
+			.getState()
+			.getSession("agent-a:claude:__pending__");
+		expect(session?.isStreaming).toBe(true);
+		expect(session?.isThinking).toBe(true);
+		expect(typeof session?.thinkingStartedAt).toBe("number");
+	});
+
+	test("chat store preserves an active assistant turn across history replay", () => {
+		useChatStore.getState().pushMessage("agent-a:claude:sdk-alpha", {
+			kind: "chat",
+			role: "user",
+			content: "hello",
+		});
+		useChatStore.getState().startAssistantTurn("agent-a:claude:sdk-alpha");
+
+		useChatStore.getState().replaceHistory("agent-a:claude:sdk-alpha", [
+			{
+				kind: "chat",
+				role: "user",
+				content: "hello",
+			},
+		]);
 
 		const session = useChatStore
 			.getState()

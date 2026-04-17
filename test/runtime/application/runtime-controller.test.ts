@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
 	Facade,
+	FacadeEvent,
 	HistoryReplayEvent,
 	ImageRef,
 	ServerEvent,
@@ -159,6 +160,31 @@ function createImagePath(name: string): string {
 	const path = join(IMAGE_TMP, name);
 	writeFileSync(path, "bytes");
 	return path;
+}
+
+function createDeferred() {
+	let resolve: () => void = () => {};
+	const promise = new Promise<void>((res) => {
+		resolve = res;
+	});
+	return { promise, resolve };
+}
+
+class BlockingFacade implements Facade {
+	providerId = PROVIDER_ID;
+	started = createDeferred();
+	release = createDeferred();
+
+	async *run(): AsyncIterable<FacadeEvent> {
+		this.started.resolve();
+		await this.release.promise;
+		yield { type: "text", text: "done" };
+		yield {
+			type: "done",
+			sessionId: "blocking-session",
+			durationMs: 1,
+		};
+	}
 }
 
 describe("RuntimeController", () => {
@@ -604,6 +630,70 @@ describe("RuntimeController", () => {
 	});
 
 	describe("telegram broadcast", () => {
+		test("broadcasts running runtime_status while an observed telegram run is active", async () => {
+			const facade = new BlockingFacade();
+			const state = new RuntimeState(facade.providerId);
+			const sessions = new SessionService(state);
+			const controller = createRuntimeController({
+				facade,
+				sessions,
+				state,
+			});
+			const tui = mockWs("tui");
+			const tg = mockWs("telegram");
+
+			controller.handleOpen(tui);
+			controller.handleOpen(tg);
+			controller.handleMessage(tg, prompt("hi from tg", "telegram"));
+
+			await facade.started.promise;
+
+			const runningStatus = tui
+				.events()
+				.filter((event) => event.type === "runtime_status")
+				.at(-1) as { running?: boolean } | undefined;
+			expect(runningStatus?.running).toBe(true);
+
+			facade.release.resolve();
+			await waitForDone(tg);
+
+			const completedStatus = tui
+				.events()
+				.filter((event) => event.type === "runtime_status")
+				.at(-1) as { running?: boolean; sessionId?: string } | undefined;
+			expect(completedStatus).toMatchObject({
+				running: false,
+				sessionId: "blocking-session",
+			});
+		});
+
+		test("late tui observers receive live events from an active telegram run", async () => {
+			const facade = new BlockingFacade();
+			const state = new RuntimeState(facade.providerId);
+			const sessions = new SessionService(state);
+			const controller = createRuntimeController({
+				facade,
+				sessions,
+				state,
+			});
+			const tg = mockWs("telegram");
+			controller.handleOpen(tg);
+			controller.handleMessage(tg, prompt("hi from tg", "telegram"));
+
+			await facade.started.promise;
+
+			const tui = mockWs("tui");
+			controller.handleOpen(tui);
+			await new Promise((resolve) => setTimeout(resolve, 20));
+
+			facade.release.resolve();
+			await waitForDone(tg);
+			await new Promise((resolve) => setTimeout(resolve, 20));
+
+			expect(tui.events().some((event) => event.type === "text")).toBe(true);
+			expect(tui.events().some((event) => event.type === "done")).toBe(true);
+		});
+
 		test("broadcasts user_prompt and events to other clients", async () => {
 			const { controller, facade } = createController();
 			const tui = mockWs();
@@ -645,6 +735,28 @@ describe("RuntimeController", () => {
 				replyContext: undefined,
 			});
 			expect(browserEvents.some((event) => event.type === "text")).toBeTrue();
+		});
+
+		test("broadcasts browser prompts and events to tui observers", async () => {
+			const { controller, facade } = createController();
+			const browser = mockWs("browser");
+			const tui = mockWs("tui");
+
+			controller.handleOpen(browser);
+			controller.handleOpen(tui);
+
+			controller.handleMessage(browser, prompt("hi from browser"));
+			await drain(controller, facade);
+
+			const tuiEvents = tui.events();
+			expect(tuiEvents.find((event) => event.type === "user_prompt")).toEqual({
+				type: "user_prompt",
+				prompt: "hi from browser",
+				source: "browser",
+				images: undefined,
+				replyContext: undefined,
+			});
+			expect(tuiEvents.some((event) => event.type === "text")).toBeTrue();
 		});
 
 		test("broadcasts interactive prompts and events to browser observers", async () => {

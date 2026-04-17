@@ -12,7 +12,12 @@ import type { RuntimeClientGateway } from "./runtime-client-gateway.ts";
 import type { RuntimeState } from "./runtime-state.ts";
 import type { SessionService } from "./session-service.ts";
 
-export type PromptSource = "heartbeat" | "telegram" | "tui" | "agent";
+export type PromptSource =
+	| "heartbeat"
+	| "telegram"
+	| "tui"
+	| "browser"
+	| "agent";
 export interface AgentPromptMetadata {
 	fromAgentId: string;
 	fromAgentName: string;
@@ -42,6 +47,7 @@ interface PromptDispatcherOptions {
 	readTranscript?: (sessionId: string) => Promise<TranscriptTurn[]>;
 	sessions: SessionService;
 	state: RuntimeState;
+	onVisibleRunStarted?: () => void;
 }
 
 export class PromptDispatcher {
@@ -66,27 +72,23 @@ export class PromptDispatcher {
 		generation: number,
 		abortController: AbortController,
 	) {
-		const observers =
-			task.source === "telegram" || task.source === "heartbeat"
-				? this.options.clients.listInteractiveTargets(task.sender)
-				: task.source === "tui"
-					? this.options.clients.listBrowserTargets(task.sender)
-					: [];
 		const heartbeatBuffer: FacadeEvent[] = [];
 		let completedEvent: DoneEvent | undefined;
 
 		if (
 			task.source === "telegram" ||
 			task.source === "heartbeat" ||
-			task.source === "tui"
+			task.source === "tui" ||
+			task.source === "browser"
 		) {
-			this.options.clients.sendMany(observers, {
+			this.options.clients.sendMany(this.listObservers(task), {
 				type: "user_prompt",
 				prompt: task.prompt,
 				images: task.images,
 				replyContext: task.replyContext,
 				source: task.source,
 			});
+			this.options.onVisibleRunStarted?.();
 		}
 
 		const emit = (event: FacadeEvent) => {
@@ -97,7 +99,7 @@ export class PromptDispatcher {
 			if (task.sender) {
 				this.options.clients.send(task.sender, event);
 			}
-			this.options.clients.sendMany(observers, event);
+			this.options.clients.sendMany(this.listObservers(task), event);
 			if (event.type === "error") {
 				completedEvent = undefined;
 			}
@@ -111,7 +113,6 @@ export class PromptDispatcher {
 					task.source,
 					task.telegramChatId,
 				);
-				this.options.clients.broadcastStatus();
 			}
 		};
 
@@ -158,6 +159,22 @@ export class PromptDispatcher {
 				);
 			}
 		}
+	}
+
+	private listObservers(task: PromptExecution) {
+		if (
+			task.source === "telegram" ||
+			task.source === "heartbeat" ||
+			task.source === "browser"
+		) {
+			return this.options.clients.listInteractiveTargets(task.sender);
+		}
+
+		if (task.source === "tui") {
+			return this.options.clients.listBrowserTargets(task.sender);
+		}
+
+		return [];
 	}
 }
 

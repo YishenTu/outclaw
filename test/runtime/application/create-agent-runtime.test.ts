@@ -80,6 +80,7 @@ describe("createAgentRuntime", () => {
 			providerId: "mock",
 			model: "opus",
 			effort: "high",
+			running: false,
 		});
 
 		await runtime.stop();
@@ -104,6 +105,7 @@ describe("createAgentRuntime", () => {
 			providerId: "mock",
 			model: "opus",
 			effort: "high",
+			running: false,
 			notice: {
 				kind: "restart_required",
 			},

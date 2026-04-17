@@ -216,6 +216,7 @@ export interface RuntimeStatusEvent {
 	providerId?: string;
 	model: string;
 	effort: string;
+	running: boolean;
 	sessionId?: string;
 	sessionTitle?: string;
 	usage?: UsageInfo;

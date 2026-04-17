@@ -11,6 +11,7 @@ interface HeartbeatTask {
 }
 
 interface RuntimeExecutionCoordinatorOptions {
+	onStatusChange?: () => void;
 	promptDispatcher: Pick<PromptDispatcher, "run">;
 	sessions: Pick<SessionService, "recordAcceptedPromptTarget">;
 	state: RuntimeState;
@@ -95,9 +96,13 @@ export class RuntimeExecutionCoordinator {
 			() => {
 				this.options.state.preparePrompt(task.prompt, task.images);
 				this.heartbeatCoordinator.noteUserActivity();
-				if (task.source === "telegram" || task.source === "tui") {
+				if (
+					task.source === "telegram" ||
+					task.source === "tui" ||
+					task.source === "browser"
+				) {
 					this.options.sessions.recordAcceptedPromptTarget(
-						task.source,
+						task.source === "telegram" ? "telegram" : "tui",
 						task.telegramChatId,
 					);
 				}
@@ -197,6 +202,7 @@ export class RuntimeExecutionCoordinator {
 			);
 		} finally {
 			this.activeAbort = undefined;
+			this.options.onStatusChange?.();
 		}
 	}
 }

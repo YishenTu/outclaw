@@ -556,4 +556,170 @@ describe("useRuntimeSession", () => {
 			app.cleanup();
 		}
 	});
+
+	test("tracks running status for telegram-originated prompts", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		let latest: Snapshot | undefined;
+		const stdout = createOutputStream();
+		const stderr = createOutputStream();
+		const stdin = new PassThrough() as unknown as NodeJS.ReadStream & {
+			isTTY: boolean;
+		};
+		stdin.isTTY = false;
+
+		const app = render(
+			<SessionObserver
+				url="ws://localhost:4100"
+				onSnapshot={(snapshot) => {
+					latest = snapshot;
+				}}
+			/>,
+			{
+				exitOnCtrlC: false,
+				patchConsole: false,
+				stderr,
+				stdin,
+				stdout,
+			},
+		);
+
+		try {
+			await waitFor(
+				() => FakeWebSocket.instances.length === 1,
+				"initial socket",
+			);
+			const socket = FakeWebSocket.instances[0] as FakeWebSocket;
+			socket.dispatch("open");
+			await waitFor(() => latest?.status === "connected", "connected status");
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "user_prompt",
+					prompt: "hello from telegram",
+					source: "telegram",
+				}),
+			});
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "runtime_status",
+					model: "sonnet",
+					effort: "think",
+					running: true,
+				}),
+			});
+			await waitFor(
+				() =>
+					latest?.tuiState.running === true &&
+					latest?.tuiState.messages.at(-1)?.text ===
+						"[telegram] hello from telegram",
+				"telegram running state",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "runtime_status",
+					model: "sonnet",
+					effort: "think",
+					running: false,
+				}),
+			});
+			await waitFor(
+				() => latest?.tuiState.running === false,
+				"telegram running cleared",
+			);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("applies observed runtime transcript events while running", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		let latest: Snapshot | undefined;
+		const stdout = createOutputStream();
+		const stderr = createOutputStream();
+		const stdin = new PassThrough() as unknown as NodeJS.ReadStream & {
+			isTTY: boolean;
+		};
+		stdin.isTTY = false;
+
+		const app = render(
+			<SessionObserver
+				url="ws://localhost:4100"
+				onSnapshot={(snapshot) => {
+					latest = snapshot;
+				}}
+			/>,
+			{
+				exitOnCtrlC: false,
+				patchConsole: false,
+				stderr,
+				stdin,
+				stdout,
+			},
+		);
+
+		try {
+			await waitFor(
+				() => FakeWebSocket.instances.length === 1,
+				"initial socket",
+			);
+			const socket = FakeWebSocket.instances[0] as FakeWebSocket;
+			socket.dispatch("open");
+			await waitFor(() => latest?.status === "connected", "connected status");
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "user_prompt",
+					prompt: "hello from telegram",
+					source: "telegram",
+				}),
+			});
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "runtime_status",
+					model: "sonnet",
+					effort: "think",
+					running: true,
+				}),
+			});
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "text",
+					text: "echo: hello from telegram",
+				}),
+			});
+
+			await waitFor(
+				() =>
+					latest?.tuiState.messages.at(-1)?.text ===
+						"[telegram] hello from telegram" &&
+					latest?.tuiState.streaming === "echo: hello from telegram" &&
+					latest?.tuiState.running === true,
+				"observed streaming state",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "done",
+					sessionId: "sdk-123",
+					durationMs: 1,
+				}),
+			});
+
+			await waitFor(
+				() =>
+					latest?.tuiState.running === false &&
+					latest?.tuiState.streaming === "" &&
+					latest?.tuiState.messages.at(-1)?.text ===
+						"echo: hello from telegram",
+				"observed done state",
+			);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
 });

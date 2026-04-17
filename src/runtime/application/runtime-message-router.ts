@@ -86,10 +86,17 @@ function toPromptExecution(
 		sender: ws,
 		prompt,
 		replyContext: data.replyContext,
-		source: data.source === "telegram" ? "telegram" : "tui",
+		source:
+			ws.data.clientType === "browser"
+				? "browser"
+				: ws.data.clientType === "telegram" || data.source === "telegram"
+					? "telegram"
+					: "tui",
 		images: data.images,
 		telegramBotId:
-			data.source === "telegram" ? ws.data.telegramBotId : undefined,
+			ws.data.clientType === "telegram" || data.source === "telegram"
+				? ws.data.telegramBotId
+				: undefined,
 		telegramChatId: data.telegramChatId,
 	};
 }

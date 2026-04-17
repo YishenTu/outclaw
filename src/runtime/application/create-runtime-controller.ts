@@ -56,12 +56,14 @@ export function createRuntimeController(
 	const promptDispatcher = new PromptDispatcher({
 		clients,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
+		onVisibleRunStarted: () => clients.broadcastStatus(),
 		promptRunner,
 		readTranscript: options.facade.readTranscript?.bind(options.facade),
 		sessions: options.sessions,
 		state: options.state,
 	});
 	const execution = new RuntimeExecutionCoordinator({
+		onStatusChange: () => clients.broadcastStatus(),
 		promptDispatcher,
 		sessions: options.sessions,
 		state: options.state,

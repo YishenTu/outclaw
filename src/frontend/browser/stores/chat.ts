@@ -94,22 +94,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			};
 		}),
 	replaceHistory: (sessionKey, messages) =>
-		set((state) => ({
-			sessions: {
-				...state.sessions,
-				[sessionKey]: {
-					...getOrCreateSession(state.sessions, sessionKey),
-					messages,
-					streamingText: "",
-					streamingThinking: "",
-					streamingImages: [],
-					isThinking: false,
-					isStreaming: false,
-					error: null,
-					thinkingStartedAt: null,
+		set((state) => {
+			const session = getOrCreateSession(state.sessions, sessionKey);
+			return {
+				sessions: {
+					...state.sessions,
+					[sessionKey]: {
+						...session,
+						messages,
+						streamingText: "",
+						streamingThinking: "",
+						streamingImages: [],
+						isThinking: session.isThinking,
+						isStreaming: session.isStreaming,
+						error: null,
+						thinkingStartedAt:
+							session.isThinking || session.isStreaming
+								? session.thinkingStartedAt
+								: null,
+					},
 				},
-			},
-		})),
+			};
+		}),
 	appendText: (sessionKey, text) =>
 		set((state) => {
 			const session = getOrCreateSession(state.sessions, sessionKey);

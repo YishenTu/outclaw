@@ -124,7 +124,11 @@ export class RuntimeSessionState {
 	completeRun(event: DoneEvent, source?: string, _telegramChatId?: number) {
 		if (source === "telegram") {
 			this.activeSessionSource = "telegram";
-		} else if (source === "tui" || source === undefined) {
+		} else if (
+			source === "tui" ||
+			source === "browser" ||
+			source === undefined
+		) {
 			this.activeSessionSource = "tui";
 		} else if (source === "agent" && this.activeSessionId === undefined) {
 			this.activeSessionSource = "agent";

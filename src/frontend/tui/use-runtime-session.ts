@@ -147,6 +147,10 @@ export function useRuntimeSession(url: string, agentName?: string) {
 						nextHeartbeatAt: event.nextHeartbeatAt,
 						heartbeatDeferred: event.heartbeatDeferred,
 					}));
+					setTuiState((previous) => ({
+						...previous,
+						running: event.running,
+					}));
 				}
 				if (event.type === "model_changed") {
 					setRuntimeInfo((previous) => ({ ...previous, model: event.model }));

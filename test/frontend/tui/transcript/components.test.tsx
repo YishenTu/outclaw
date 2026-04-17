@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, setSystemTime, test, vi } from "bun:test";
 import { PassThrough } from "node:stream";
+import { stripVTControlCharacters } from "node:util";
 import { render } from "ink";
 import type { ReactElement } from "react";
 import { MessageItem } from "../../../../src/frontend/tui/transcript/message-item.tsx";
@@ -68,6 +69,31 @@ describe("transcript components", () => {
 			await flushUpdates();
 			expect(getOutput()).toContain("❯ alpha");
 			expect(getOutput()).toContain("   beta");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("MessageItem does not add an empty wrapped line for full-width user text", async () => {
+		const { app, getOutput } = renderToOutput(
+			<MessageItem
+				message={{
+					id: 1,
+					role: "user",
+					text: "哈哈哈哈，如果和google很像",
+				}}
+				columns={18}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const visibleLines = stripVTControlCharacters(getOutput())
+				.split("\n")
+				.map((line) => line.trimEnd())
+				.filter((line) => line.trim() !== "");
+			expect(visibleLines).toEqual([" ❯ 哈哈哈哈，如果", "   和google很像"]);
 		} finally {
 			app.unmount();
 			app.cleanup();
@@ -301,7 +327,7 @@ describe("transcript components", () => {
 		}
 	});
 
-	test("MessageList renders the spinner when running without streaming", async () => {
+	test("MessageList renders a stable spinner when running without streaming", async () => {
 		const now = new Date("2026-04-11T00:00:00Z");
 		setSystemTime(now);
 		vi.useFakeTimers({ now });
@@ -326,7 +352,7 @@ describe("transcript components", () => {
 			vi.advanceTimersByTime(80);
 			await flushUpdates();
 			expect(getOutput()).toContain("Thinking...");
-			expect(getOutput()).not.toBe(firstFrame);
+			expect(getOutput()).toBe(firstFrame);
 		} finally {
 			app.unmount();
 			app.cleanup();

@@ -16,7 +16,7 @@ export function formatLivePrompt(
 	images: DisplayImage[] | undefined,
 ): string {
 	const lines: string[] = [];
-	const prefix = `[${source}] `;
+	const prefix = source === "browser" ? "" : `[${source}] `;
 
 	if (prompt) {
 		lines.push(`${prefix}${prompt}`);

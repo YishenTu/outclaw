@@ -17,6 +17,7 @@ export interface BrowserRuntimeState {
 	providerId: string | null;
 	model: string | null;
 	effort: string | null;
+	running: boolean;
 	sessionId: string | null;
 	sessionTitle: string | null;
 	notice: FrontendNotice | null;
@@ -40,6 +41,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 	providerId: null,
 	model: null,
 	effort: null,
+	running: false,
 	sessionId: null,
 	sessionTitle: null,
 	notice: null,
@@ -54,6 +56,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 			providerId: event.providerId ?? state.providerId,
 			model: event.model,
 			effort: event.effort,
+			running: event.running,
 			sessionId: event.sessionId ?? null,
 			sessionTitle: event.sessionTitle ?? null,
 			notice: event.notice ?? null,
@@ -68,6 +71,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 		set({
 			sessionId: null,
 			sessionTitle: null,
+			running: false,
 			usage: undefined,
 			nextHeartbeatAt: undefined,
 			heartbeatDeferred: false,

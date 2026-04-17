@@ -62,6 +62,10 @@ describe("formatLivePrompt", () => {
 		);
 	});
 
+	test("omits the browser source prefix", () => {
+		expect(formatLivePrompt("browser", "hello", undefined)).toBe("hello\n");
+	});
+
 	test("formats prompt with images", () => {
 		expect(
 			formatLivePrompt("telegram", "what is this?", [

@@ -141,6 +141,7 @@ export class RuntimeController {
 
 	private createStatusEvent(): RuntimeStatusEvent {
 		const event = this.state.createStatusEvent();
+		event.running = this.execution.hasActiveRun;
 		const notice = this.noticeProvider?.();
 		if (notice) {
 			event.notice = notice;

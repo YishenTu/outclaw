@@ -8,6 +8,7 @@ import type { CommandEntry } from "../../stores/slash-commands.ts";
 import { useSlashCommandsStore } from "../../stores/slash-commands.ts";
 import { ContextGauge } from "./context-gauge.tsx";
 import { HeartbeatIndicator } from "./heartbeat-indicator.tsx";
+import { handleMessageInputKeydown } from "./message-input-keydown.ts";
 import { ModelSelector } from "./model-selector.tsx";
 import { RuntimeCommandPopup } from "./runtime-command-popup.tsx";
 import { useRuntimePopupShortcuts } from "./runtime-popup-shortcuts.ts";
@@ -53,6 +54,7 @@ export function MessageInput({
 	const [value, setValue] = useState("");
 	const [selectedIndex, setSelectedIndex] = useState(0);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const isComposingRef = useRef(false);
 	const commands = useSlashCommandsStore((state) => state.commands);
 	const runtimePopup = useRuntimePopupStore((state) => state.popup);
 	const closeRuntimePopup = useRuntimePopupStore((state) => state.closePopup);
@@ -174,46 +176,35 @@ export function MessageInput({
 							value={value}
 							disabled={disabled}
 							onChange={(event) => setValue(event.target.value)}
+							onCompositionStart={() => {
+								isComposingRef.current = true;
+							}}
+							onCompositionEnd={() => {
+								isComposingRef.current = false;
+							}}
 							onKeyDown={(event) => {
-								if (showSlashMenu && event.key === "ArrowDown") {
-									event.preventDefault();
-									setSelectedIndex((current) =>
-										Math.min(current + 1, filteredCommands.length - 1),
-									);
-									return;
-								}
-
-								if (showSlashMenu && event.key === "ArrowUp") {
-									event.preventDefault();
-									setSelectedIndex((current) => Math.max(current - 1, 0));
-									return;
-								}
-
-								if (
-									showSlashMenu &&
-									(event.key === "Enter" || event.key === "Tab") &&
-									!event.shiftKey
-								) {
-									event.preventDefault();
-									const selectedCommand =
-										filteredCommands[selectedIndex] ?? filteredCommands[0];
-									if (selectedCommand) {
-										applySlashCommand(selectedCommand.name);
-									}
-									return;
-								}
-
-								if (event.key === "Escape") {
-									if (interruptible && sendCommand("/stop")) {
-										event.preventDefault();
-									}
-									return;
-								}
-
-								if (event.key === "Enter" && !event.shiftKey) {
-									event.preventDefault();
-									submitValue();
-								}
+								handleMessageInputKeydown(
+									event,
+									{
+										showSlashMenu,
+										filteredCommandCount: filteredCommands.length,
+										selectedIndex,
+										interruptible,
+										isComposing: isComposingRef.current,
+									},
+									{
+										setSelectedIndex,
+										applySelectedSlashCommand: (index) => {
+											const selectedCommand =
+												filteredCommands[index] ?? filteredCommands[0];
+											if (selectedCommand) {
+												applySlashCommand(selectedCommand.name);
+											}
+										},
+										sendStopCommand: () => sendCommand("/stop"),
+										submitValue,
+									},
+								);
 							}}
 							placeholder="Type a message..."
 							className="h-full w-full resize-none bg-transparent px-2 pt-1 text-sm text-dark-100 placeholder:text-dark-500"

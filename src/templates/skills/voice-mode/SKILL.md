@@ -5,7 +5,7 @@ description: Transcribe a local audio file.
 
 # voice-mode
 
-Transcribe local audio files through the bundled helper script in this skill package.
+Transcribe a local audio file to text.
 
 ## When To Use
 
@@ -15,34 +15,39 @@ Transcribe local audio files through the bundled helper script in this skill pac
 
 ## Command
 
-Run from your agent workspace root (e.g. `~/.outclaw/agents/<name>/`):
+**Primary — call the `gemini` CLI directly** (free under the user's subscription):
 
 ```bash
-node ./skills/voice-mode/scripts/transcribe.mjs <path>
+gemini -m gemini-3.1-flash-lite-preview \
+  --include-directories <PARENT_DIR_OF_AUDIO> \
+  -p "Transcribe the audio verbatim. Output only the transcript, no commentary. @<ABSOLUTE_AUDIO_PATH>"
 ```
 
-Optional flags:
+- `<PARENT_DIR_OF_AUDIO>` is the directory containing the audio file. It MUST be passed via `--include-directories` or the CLI's workspace sandbox will reject the path.
+- `<ABSOLUTE_AUDIO_PATH>` must be the absolute path, prefixed with `@` inside the prompt string (bare paths are treated as literal text).
+- Stdout is the transcript. Nothing else.
+
+**Fallback — bundled helper script** (REST API, consumes `GEMINI_API_KEY`):
+
+Only run this if the `gemini` CLI is missing or its invocation fails. From your agent workspace root:
 
 ```bash
-node ./skills/voice-mode/scripts/transcribe.mjs <path> \
-  --model gemini-3.1-flash-lite-preview \
-  --language en \
-  --prompt "Transcribe verbatim."
+node ./skills/voice-mode/scripts/transcribe.mjs <ABSOLUTE_AUDIO_PATH>
 ```
 
 ## Rules
 
 1. Extract the absolute local file path from the prompt segment.
-2. Run the helper from the agent workspace root with that path.
-3. Respond to the user as if they had typed the transcript verbatim — never wrap it in quotes, never describe it.
-4. If the helper exits non-zero:
+2. Try the primary `gemini` CLI invocation first.
+3. Treat the captured stdout as the transcript. Respond to the user as if they had typed the transcript verbatim — never wrap it in quotes, never describe it.
+4. If the primary call fails:
    - Surface the stderr message to the user.
-   - You may attempt **one** retry only if the error looks transient (HTTP 5xx, timeout, or `state: PROCESSING`). For 4xx, auth, or quota errors, stop.
-   - Never invent a transcript when the helper failed.
-5. If the helper succeeds but stdout is empty, reply: `I couldn't make out the audio message — can you resend or type it?`
+   - Fall back once to the bundled helper script above.
+   - If the fallback also fails, surface its stderr and stop. Never invent a transcript.
+5. If the transcript is empty, reply: `I couldn't make out the audio message — can you resend or type it?`
 6. Do not invent transcript content under any circumstance.
 
 ## Prerequisites
 
-- `GEMINI_API_KEY` must already be present in the environment.
-- `node` must be available on `PATH`.
+- **Preferred:** the `gemini` CLI (`@google/gemini-cli`) on `PATH`, authenticated via the user's subscription.
+- **Fallback only:** `node` on `PATH` and `GEMINI_API_KEY` in the environment.

@@ -72,6 +72,7 @@ export class RuntimeState {
 			providerId: this.currentProviderId,
 			model: this.settings.model,
 			effort: this.settings.effort,
+			running: false,
 			sessionId: this.sessions.sessionId,
 			sessionTitle: this.sessions.sessionTitle,
 			usage: this.sessions.usage,
