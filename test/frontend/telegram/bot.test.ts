@@ -29,6 +29,7 @@ let lastHeartbeatArgs: unknown[] = [];
 let lastTextMessageArgs: unknown[] = [];
 let lastPhotoMessageArgs: unknown[] = [];
 let lastDocumentMessageArgs: unknown[] = [];
+let lastVoiceMessageArgs: unknown[] = [];
 let sendTelegramHeartbeatResult = mock(async (...args: unknown[]) => {
 	lastHeartbeatArgs = args;
 	return undefined;
@@ -43,6 +44,10 @@ let handleTelegramPhotoMessage = mock(async (...args: unknown[]) => {
 });
 let handleTelegramDocumentMessage = mock(async (...args: unknown[]) => {
 	lastDocumentMessageArgs = args;
+	return undefined;
+});
+let handleTelegramVoiceMessage = mock(async (...args: unknown[]) => {
+	lastVoiceMessageArgs = args;
 	return undefined;
 });
 let setMyCommandsImpl: (commands: unknown) => Promise<unknown> = async (
@@ -146,6 +151,7 @@ function resetFakes() {
 	lastTextMessageArgs = [];
 	lastPhotoMessageArgs = [];
 	lastDocumentMessageArgs = [];
+	lastVoiceMessageArgs = [];
 	sendTelegramHeartbeatResult = mock(async (...args: unknown[]) => {
 		lastHeartbeatArgs = args;
 		return undefined;
@@ -160,6 +166,10 @@ function resetFakes() {
 	});
 	handleTelegramDocumentMessage = mock(async (...args: unknown[]) => {
 		lastDocumentMessageArgs = args;
+		return undefined;
+	});
+	handleTelegramVoiceMessage = mock(async (...args: unknown[]) => {
+		lastVoiceMessageArgs = args;
 		return undefined;
 	});
 	setMyCommandsImpl = async (_commands: unknown) => undefined;
@@ -179,6 +189,9 @@ function createTestDependencies(params: {
 		handleDocumentMessage: (
 			...args: Parameters<typeof handleTelegramDocumentMessage>
 		) => handleTelegramDocumentMessage(...args),
+		handleVoiceMessage: (
+			...args: Parameters<typeof handleTelegramVoiceMessage>
+		) => handleTelegramVoiceMessage(...args),
 		handlePhotoMessage: (
 			...args: Parameters<typeof handleTelegramPhotoMessage>
 		) => handleTelegramPhotoMessage(...args),
@@ -544,6 +557,85 @@ describe("startTelegramBot", () => {
 				parse_mode: "HTML",
 			},
 		);
+
+		const voiceCtx = {
+			api: {
+				getFile: mock(async (_fileId: string) => ({
+					file_path: "voice/file_1.oga",
+				})),
+			},
+			chat: { id: 9 },
+			message: {
+				voice: {
+					file_id: "voice-1",
+					file_size: 1024,
+					mime_type: "audio/ogg",
+					duration: 12,
+				},
+			},
+			reply: mock(async () => undefined),
+			replyWithChatAction: mock(async () => undefined),
+			replyWithPhoto: mock(async () => undefined),
+		};
+		await bot.handlers.get("message:voice")?.(voiceCtx);
+		expect(handleTelegramVoiceMessage).toHaveBeenCalledTimes(1);
+		const voiceHandlerCtx = lastVoiceMessageArgs[0] as {
+			getFile: () => Promise<unknown>;
+		};
+		await voiceHandlerCtx.getFile();
+		expect(voiceCtx.api.getFile).toHaveBeenCalledWith("voice-1");
+		const voiceDeps = lastVoiceMessageArgs[1] as {
+			streamPrompt: (
+				prompt: string,
+				images: unknown[],
+				onImage: () => void,
+				replyContext?: { text: string },
+			) => Promise<unknown>;
+		};
+		const onVoiceImage = () => undefined;
+		await voiceDeps.streamPrompt("transcribe", [], onVoiceImage, {
+			text: "previous voice",
+		});
+		expect(bridge.stream).toHaveBeenCalledWith(
+			"transcribe",
+			[],
+			onVoiceImage,
+			9,
+			{ text: "previous voice" },
+			{
+				telegramBotId: "bot-a",
+				telegramUserId: undefined,
+			},
+		);
+
+		const audioCtx = {
+			api: {
+				getFile: mock(async (_fileId: string) => ({
+					file_path: "audio/file_1.mp3",
+				})),
+			},
+			chat: { id: 10 },
+			message: {
+				audio: {
+					file_id: "audio-1",
+					file_name: "song.mp3",
+					file_size: 2048,
+					mime_type: "audio/mpeg",
+					duration: 95,
+					caption: "summarize this",
+				},
+			},
+			reply: mock(async () => undefined),
+			replyWithChatAction: mock(async () => undefined),
+			replyWithPhoto: mock(async () => undefined),
+		};
+		await bot.handlers.get("message:audio")?.(audioCtx);
+		expect(handleTelegramVoiceMessage).toHaveBeenCalledTimes(2);
+		const audioHandlerCtx = lastVoiceMessageArgs[0] as {
+			getFile: () => Promise<unknown>;
+		};
+		await audioHandlerCtx.getFile();
+		expect(audioCtx.api.getFile).toHaveBeenCalledWith("audio-1");
 
 		await service.sendCronResult({
 			jobName: "nightly",

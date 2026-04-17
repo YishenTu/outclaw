@@ -11,6 +11,18 @@ function connectWs(port: number, agent?: string): Promise<WebSocket> {
 	});
 }
 
+function connectBrowserWs(port: number, agent?: string): Promise<WebSocket> {
+	return new Promise((resolve) => {
+		const url = new URL(`ws://localhost:${port}`);
+		url.searchParams.set("client", "browser");
+		if (agent) {
+			url.searchParams.set("agent", agent);
+		}
+		const ws = new WebSocket(url);
+		ws.onopen = () => resolve(ws);
+	});
+}
+
 function connectTelegramWs(
 	port: number,
 	params: {
@@ -223,6 +235,69 @@ describe("createSupervisor", () => {
 		ws.close();
 	});
 
+	test("switching the active interactive agent also rebinds browser clients", async () => {
+		const alphaFacade = new MockFacade();
+		alphaFacade.textChunks = ["from alpha"];
+		const zetaFacade = new MockFacade();
+		zetaFacade.textChunks = ["from zeta"];
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-alpha",
+					name: "alpha",
+					facade: alphaFacade,
+				}),
+				createAgentRuntime({
+					agentId: "agent-zeta",
+					name: "zeta",
+					facade: zetaFacade,
+				}),
+			],
+			getDefaultAgentId: () => "agent-alpha",
+		});
+		cleanup = () => supervisor.stop();
+
+		const browser = await connectBrowserWs(supervisor.port);
+		await waitForEvent(browser, (event) => event.type === "runtime_status");
+		const tui = await connectWs(supervisor.port);
+		await waitForEvent(tui, (event) => event.type === "runtime_status");
+
+		const browserSwitched = waitForEvent(
+			browser,
+			(event) =>
+				event.type === "agent_switched" &&
+				event.agentId === "agent-zeta" &&
+				event.name === "zeta",
+		);
+		tui.send(JSON.stringify({ type: "command", command: "/agent zeta" }));
+		await browserSwitched;
+		await waitForEvent(
+			browser,
+			(event) => event.type === "runtime_status" && event.agentName === "zeta",
+		);
+
+		const browserEvents = collectUntilDone(browser);
+		const tuiEvents = collectUntilDone(tui);
+		tui.send(JSON.stringify({ type: "prompt", prompt: "hello after switch" }));
+
+		expect((await tuiEvents).find((event) => event.type === "text")?.text).toBe(
+			"from zeta",
+		);
+		const mirrored = await browserEvents;
+		expect(mirrored).toContainEqual({
+			type: "user_prompt",
+			prompt: "hello after switch",
+			source: "tui",
+		});
+		expect(mirrored.find((event) => event.type === "text")?.text).toBe(
+			"from zeta",
+		);
+
+		browser.close();
+		tui.close();
+	});
+
 	test("returns an agent menu for /agent", async () => {
 		const supervisor = createSupervisor({
 			port: 0,
@@ -286,6 +361,37 @@ describe("createSupervisor", () => {
 			type: "agent_switched",
 			agentId: "agent-mimi",
 			name: "mimi",
+		});
+
+		ws.close();
+	});
+
+	test("uses the persisted interactive agent id for browser clients when no explicit agent is requested", async () => {
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-alpha",
+					name: "alpha",
+					facade: new MockFacade(),
+				}),
+				createAgentRuntime({
+					agentId: "agent-zeta",
+					name: "zeta",
+					facade: new MockFacade(),
+				}),
+			],
+			getDefaultAgentId: () => "agent-zeta",
+		});
+		cleanup = () => supervisor.stop();
+
+		const ws = await connectBrowserWs(supervisor.port);
+		expect(
+			await waitForEvent(ws, (event) => event.type === "agent_switched"),
+		).toEqual({
+			type: "agent_switched",
+			agentId: "agent-zeta",
+			name: "zeta",
 		});
 
 		ws.close();

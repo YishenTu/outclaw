@@ -21,6 +21,14 @@ export type TelegramStoredFile =
 				path: string;
 				displayName: string;
 			};
+	  }
+	| {
+			kind: "voice";
+			voice: {
+				path: string;
+				mimeType?: string;
+				durationSeconds?: number;
+			};
 	  };
 
 export interface TelegramFileRefRow {
@@ -28,9 +36,10 @@ export interface TelegramFileRefRow {
 	chatId: number;
 	messageId: number;
 	path: string;
-	kind: "image" | "document";
-	mediaType?: ImageMediaType;
+	kind: "image" | "document" | "voice";
+	mediaType?: ImageMediaType | string;
 	displayName?: string;
+	durationSeconds?: number;
 	direction: TelegramFileDirection;
 	createdAt: number;
 }
@@ -45,9 +54,10 @@ interface TelegramFileRefDbRow {
 	chat_id: number;
 	message_id: number;
 	path: string;
-	kind: "image" | "document";
+	kind: "image" | "document" | "voice";
 	media_type: string;
 	display_name: string | null;
+	duration_seconds: number | null;
 	direction: TelegramFileDirection;
 	created_at: number;
 }
@@ -99,6 +109,12 @@ export class TelegramFileRefStore {
 				throw new Error("Unsupported legacy telegram file-ref schema");
 			}
 		}
+
+		if (!columns.has("duration_seconds")) {
+			this.db.exec(
+				`ALTER TABLE ${TELEGRAM_FILE_REFS_TABLE} ADD COLUMN duration_seconds INTEGER`,
+			);
+		}
 	}
 
 	private hasTable(name: string): boolean {
@@ -126,6 +142,7 @@ export class TelegramFileRefStore {
 			kind TEXT NOT NULL,
 			media_type TEXT NOT NULL DEFAULT '',
 			display_name TEXT,
+			duration_seconds INTEGER,
 			direction TEXT NOT NULL,
 			created_at INTEGER NOT NULL,
 			PRIMARY KEY (bot_id, chat_id, message_id)
@@ -144,7 +161,7 @@ export class TelegramFileRefStore {
 		this.db
 			.query(
 				`INSERT INTO telegram_file_refs
-					(bot_id, chat_id, message_id, path, kind, media_type, display_name, direction, created_at)
+					(bot_id, chat_id, message_id, path, kind, media_type, display_name, duration_seconds, direction, created_at)
 				VALUES (
 					$botId,
 					$chatId,
@@ -153,6 +170,7 @@ export class TelegramFileRefStore {
 					$kind,
 					$mediaType,
 					$displayName,
+					$durationSeconds,
 					$direction,
 					$createdAt
 				)
@@ -161,6 +179,7 @@ export class TelegramFileRefStore {
 					kind = $kind,
 					media_type = $mediaType,
 					display_name = $displayName,
+					duration_seconds = $durationSeconds,
 					direction = $direction`,
 			)
 			.run({
@@ -171,6 +190,7 @@ export class TelegramFileRefStore {
 				$kind: metadata.kind,
 				$mediaType: metadata.mediaType,
 				$displayName: metadata.displayName,
+				$durationSeconds: metadata.durationSeconds,
 				$direction: params.direction,
 				$createdAt: now,
 			});
@@ -187,6 +207,7 @@ export class TelegramFileRefStore {
 					kind,
 					media_type,
 					display_name,
+					duration_seconds,
 					direction,
 					created_at
 				FROM telegram_file_refs
@@ -210,10 +231,9 @@ export class TelegramFileRefStore {
 			messageId: row.message_id,
 			path: row.path,
 			kind: row.kind,
-			mediaType: row.media_type
-				? (row.media_type as ImageMediaType)
-				: undefined,
+			mediaType: row.media_type ? row.media_type : undefined,
 			displayName: row.display_name ?? undefined,
+			durationSeconds: row.duration_seconds ?? undefined,
 			direction: row.direction,
 			createdAt: row.created_at,
 		};
@@ -225,15 +245,26 @@ export class TelegramFileRefStore {
 }
 
 function serializeFileMetadata(file: TelegramStoredFile): {
-	kind: "image" | "document";
+	kind: "image" | "document" | "voice";
 	mediaType: string;
 	displayName: string | null;
+	durationSeconds: number | null;
 } {
 	if (file.kind === "image") {
 		return {
 			kind: "image",
 			mediaType: file.image.mediaType,
 			displayName: null,
+			durationSeconds: null,
+		};
+	}
+
+	if (file.kind === "voice") {
+		return {
+			kind: "voice",
+			mediaType: file.voice.mimeType ?? "",
+			displayName: null,
+			durationSeconds: file.voice.durationSeconds ?? null,
 		};
 	}
 
@@ -241,5 +272,6 @@ function serializeFileMetadata(file: TelegramStoredFile): {
 		kind: "document",
 		mediaType: "",
 		displayName: file.document.displayName,
+		durationSeconds: null,
 	};
 }

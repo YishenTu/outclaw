@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude.ts";
 import { prepareAgentWorkspace } from "./backend/agent-workspace.ts";
+import type { ImageMediaType } from "./common/protocol.ts";
 import { deriveTelegramBotId } from "./common/telegram.ts";
 import type { TelegramMessageFileRecord } from "./frontend/telegram/files/message-file-ref.ts";
 import { copyTelegramFile } from "./frontend/telegram/files/storage.ts";
@@ -227,7 +228,9 @@ function createTelegramFileBindings(
 					? (await copyTelegramFile(storageRoot, file.image.path)).path
 					: file.kind === "image"
 						? file.image.path
-						: file.document.path;
+						: file.kind === "voice"
+							? file.voice.path
+							: file.document.path;
 			store.upsert({
 				chatId,
 				messageId,
@@ -241,13 +244,22 @@ function createTelegramFileBindings(
 									mediaType: file.image.mediaType,
 								},
 							}
-						: {
-								kind: "document" as const,
-								document: {
-									path: storedPath,
-									displayName: file.document.displayName,
+						: file.kind === "voice"
+							? {
+									kind: "voice" as const,
+									voice: {
+										path: storedPath,
+										mimeType: file.voice.mimeType,
+										durationSeconds: file.voice.durationSeconds,
+									},
+								}
+							: {
+									kind: "document" as const,
+									document: {
+										path: storedPath,
+										displayName: file.document.displayName,
+									},
 								},
-							},
 				direction,
 			});
 		},
@@ -261,7 +273,20 @@ function createTelegramFileBindings(
 					kind: "image" as const,
 					image: {
 						path: record.path,
-						mediaType: record.mediaType,
+						mediaType: record.mediaType as ImageMediaType,
+					},
+				};
+			}
+			if (record.kind === "voice") {
+				return {
+					kind: "voice" as const,
+					voice: {
+						path: record.path,
+						mimeType:
+							typeof record.mediaType === "string"
+								? record.mediaType
+								: undefined,
+						durationSeconds: record.durationSeconds,
 					},
 				};
 			}

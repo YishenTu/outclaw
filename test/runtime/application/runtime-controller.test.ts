@@ -647,6 +647,30 @@ describe("RuntimeController", () => {
 			expect(browserEvents.some((event) => event.type === "text")).toBeTrue();
 		});
 
+		test("broadcasts interactive prompts and events to browser observers", async () => {
+			const { controller, facade } = createController();
+			const browser = mockWs("browser");
+			const tui = mockWs("tui");
+
+			controller.handleOpen(browser);
+			controller.handleOpen(tui);
+
+			controller.handleMessage(tui, prompt("hi from tui"));
+			await drain(controller, facade);
+
+			const browserEvents = browser.events();
+			expect(
+				browserEvents.find((event) => event.type === "user_prompt"),
+			).toEqual({
+				type: "user_prompt",
+				prompt: "hi from tui",
+				source: "tui",
+				images: undefined,
+				replyContext: undefined,
+			});
+			expect(browserEvents.some((event) => event.type === "text")).toBeTrue();
+		});
+
 		test("broadcasts image prompts to observers", async () => {
 			const { controller, facade } = createController();
 			const tui = mockWs();

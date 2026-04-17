@@ -26,6 +26,7 @@ import {
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
 import { fetchSidebarSummary } from "../lib/api.ts";
+import { formatObservedPrompt } from "../observed-prompt.ts";
 import {
 	createBrowserSessionRef,
 	createSessionKey,
@@ -139,18 +140,6 @@ function applySidebarSummary(summary: BrowserAgentsResponse) {
 				: null,
 		);
 	}
-}
-
-function formatObservedPrompt(
-	event: Extract<ServerEvent, { type: "user_prompt" }>,
-) {
-	const prefix =
-		event.source === "telegram"
-			? "[telegram]"
-			: event.source === "heartbeat"
-				? "[heartbeat]"
-				: `[${event.source}]`;
-	return event.prompt ? `${prefix}\n${event.prompt}` : prefix;
 }
 
 function formatSessionListSummary(

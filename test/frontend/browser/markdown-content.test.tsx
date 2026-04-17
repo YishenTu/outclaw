@@ -13,4 +13,22 @@ describe("MarkdownContent", () => {
 		expect(html).toContain("[&amp;_pre]:overflow-x-hidden");
 		expect(html).toContain("[&amp;_pre_code]:whitespace-pre-wrap");
 	});
+
+	test("highlights fenced code blocks with explicit languages", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownContent content={"```ts\nconst value = 1;\n```"} />,
+		);
+
+		expect(html).toContain("hljs language-ts");
+		expect(html).toContain("hljs-keyword");
+	});
+
+	test("leaves fenced code blocks without explicit languages unhighlighted", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownContent content={"```\nconst value = 1;\n```"} />,
+		);
+
+		expect(html).not.toContain('class="hljs');
+		expect(html).not.toContain("hljs-keyword");
+	});
 });

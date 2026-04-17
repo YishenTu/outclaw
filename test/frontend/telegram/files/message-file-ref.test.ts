@@ -3,6 +3,7 @@ import type { ImageRef } from "../../../../src/common/protocol.ts";
 import {
 	appendPromptSegments,
 	formatTelegramDocumentPromptRef,
+	formatTelegramVoicePromptRef,
 	rememberOutboundImage,
 	resolveReplyAttachments,
 	type TelegramMessageFileRecord,
@@ -54,6 +55,27 @@ describe("resolveReplyAttachments", () => {
 		});
 	});
 
+	test("returns a prompt segment for a replied-to voice note", async () => {
+		const resolver = async (_chatId: number, _msgId: number) => ({
+			kind: "voice" as const,
+			voice: {
+				path: "/tmp/note.oga",
+				durationSeconds: 12,
+				mimeType: "audio/ogg",
+			},
+		});
+
+		const result = await resolveReplyAttachments(
+			123,
+			{ message_id: 42 },
+			resolver,
+		);
+		expect(result).toEqual({
+			images: [],
+			promptSegments: ["[voice note (oga, 12s): /tmp/note.oga]"],
+		});
+	});
+
 	test("returns empty when resolver returns undefined", async () => {
 		const resolver = async () => undefined;
 		const result = await resolveReplyAttachments(
@@ -87,6 +109,28 @@ describe("formatTelegramDocumentPromptRef", () => {
 				displayName: "report.pdf",
 			}),
 		).toBe("[file: report.pdf -> /tmp/report.pdf]");
+	});
+});
+
+describe("formatTelegramVoicePromptRef", () => {
+	test("formats a Telegram voice note reference for prompt delivery", () => {
+		expect(
+			formatTelegramVoicePromptRef({
+				path: "/tmp/note.oga",
+				durationSeconds: 12,
+				mimeType: "audio/ogg",
+			}),
+		).toBe("[voice note (oga, 12s): /tmp/note.oga]");
+	});
+
+	test("formats a generic audio file reference when not an oga voice note", () => {
+		expect(
+			formatTelegramVoicePromptRef({
+				path: "/tmp/song.mp3",
+				durationSeconds: 95,
+				mimeType: "audio/mpeg",
+			}),
+		).toBe("[voice audio (mp3, 95s): /tmp/song.mp3]");
 	});
 });
 

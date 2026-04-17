@@ -69,11 +69,17 @@ export class PromptDispatcher {
 		const observers =
 			task.source === "telegram" || task.source === "heartbeat"
 				? this.options.clients.listInteractiveTargets(task.sender)
-				: [];
+				: task.source === "tui"
+					? this.options.clients.listBrowserTargets(task.sender)
+					: [];
 		const heartbeatBuffer: FacadeEvent[] = [];
 		let completedEvent: DoneEvent | undefined;
 
-		if (task.source === "telegram" || task.source === "heartbeat") {
+		if (
+			task.source === "telegram" ||
+			task.source === "heartbeat" ||
+			task.source === "tui"
+		) {
 			this.options.clients.sendMany(observers, {
 				type: "user_prompt",
 				prompt: task.prompt,

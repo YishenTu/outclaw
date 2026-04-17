@@ -179,6 +179,7 @@ export class SupervisorController {
 		}
 		this.rememberAgentSelection(ws, switched.next.agentId);
 		switched.next.handleOpen(ws);
+		this.syncInteractiveClients(ws, switched.next);
 		return true;
 	}
 
@@ -227,7 +228,7 @@ export class SupervisorController {
 	}
 
 	private rememberAgentSelection(ws: WsClient, agentId: string) {
-		if (ws.data.clientType === "tui") {
+		if (ws.data.clientType === "tui" || ws.data.clientType === "browser") {
 			this.options.rememberInteractiveAgentId?.(agentId);
 			return;
 		}
@@ -247,10 +248,28 @@ export class SupervisorController {
 	}
 
 	private rememberInteractiveAgentId(ws: WsClient, agentId: string) {
-		if (ws.data.clientType !== "tui") {
+		if (ws.data.clientType !== "tui" && ws.data.clientType !== "browser") {
 			return;
 		}
 		this.options.rememberInteractiveAgentId?.(agentId);
+	}
+
+	private syncInteractiveClients(ws: WsClient, runtime: AgentRuntime) {
+		for (const client of this.options.bindings.listBoundClientsByTypes(
+			["tui", "browser"],
+			ws,
+		)) {
+			const switched = this.options.bindings.switchToName(client, runtime.name);
+			if (!switched || switched.previous?.agentId === switched.next.agentId) {
+				continue;
+			}
+
+			switched.previous?.handleClose(client);
+			if (this.options.emitAgentEvents !== false) {
+				this.sendAgentSwitched(client, switched.next);
+			}
+			switched.next.handleOpen(client);
+		}
 	}
 
 	private tryParseMessage(

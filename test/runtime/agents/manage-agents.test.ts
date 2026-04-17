@@ -205,6 +205,39 @@ describe("agent management", () => {
 		}
 	});
 
+	test("createAgent seeds the voice-mode skill package from the default templates", () => {
+		const homeDir = createHomeDir();
+		try {
+			const created = createAgent({
+				homeDir,
+				name: "railly",
+				templatesDir: REPO_TEMPLATES_DIR,
+				createAgentId: () => "agent-railly",
+			});
+
+			expect(
+				readFileSync(
+					join(created.agentHomeDir, "skills", "voice-mode", "SKILL.md"),
+					"utf-8",
+				),
+			).toContain("name: voice-mode");
+			expect(
+				readFileSync(
+					join(
+						created.agentHomeDir,
+						"skills",
+						"voice-mode",
+						"scripts",
+						"transcribe.mjs",
+					),
+					"utf-8",
+				),
+			).toContain("GEMINI_API_KEY");
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+		}
+	});
+
 	test("createAgent renders the current agent selector into seeded templates", () => {
 		const homeDir = createHomeDir();
 		try {

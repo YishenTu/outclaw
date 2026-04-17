@@ -83,6 +83,40 @@ describe("TelegramFileRefStore", () => {
 		store.close();
 	});
 
+	test("stores and retrieves telegram voice refs", () => {
+		const store = new TelegramFileRefStore(TEST_DB);
+
+		store.upsert({
+			chatId: 123,
+			messageId: 790,
+			path: "/tmp/note.oga",
+			file: {
+				kind: "voice",
+				voice: {
+					path: "/tmp/note.oga",
+					mimeType: "audio/ogg",
+					durationSeconds: 12,
+				},
+			},
+			direction: "inbound",
+		});
+
+		expect(store.get(123, 790)).toEqual({
+			botId: "bot-default",
+			chatId: 123,
+			messageId: 790,
+			path: "/tmp/note.oga",
+			kind: "voice",
+			mediaType: "audio/ogg",
+			displayName: undefined,
+			durationSeconds: 12,
+			direction: "inbound",
+			createdAt: expect.any(Number),
+		});
+
+		store.close();
+	});
+
 	test("uses the same sqlite file cleanly alongside SessionStore", () => {
 		const sessionStore = new SessionStore(TEST_DB);
 		const fileRefStore = new TelegramFileRefStore(TEST_DB);
@@ -246,5 +280,60 @@ describe("TelegramFileRefStore", () => {
 
 		botAStore.close();
 		botBStore.close();
+	});
+
+	test("upgrades an existing telegram_file_refs table without duration_seconds", () => {
+		const db = new Database(TEST_DB, { create: true });
+		db.exec(`CREATE TABLE telegram_file_refs (
+			bot_id TEXT NOT NULL,
+			chat_id INTEGER NOT NULL,
+			message_id INTEGER NOT NULL,
+			path TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			media_type TEXT NOT NULL DEFAULT '',
+			display_name TEXT,
+			direction TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			PRIMARY KEY (bot_id, chat_id, message_id)
+		)`);
+		db.close();
+
+		const store = new TelegramFileRefStore(TEST_DB);
+		const schema = new Database(TEST_DB);
+		const columns = schema
+			.query("PRAGMA table_info(telegram_file_refs)")
+			.all() as Array<{ name: string }>;
+		schema.close();
+
+		expect(columns.map((column) => column.name)).toContain("duration_seconds");
+
+		store.upsert({
+			chatId: 10,
+			messageId: 20,
+			path: "/tmp/voice.ogg",
+			file: {
+				kind: "voice",
+				voice: {
+					path: "/tmp/voice.ogg",
+					mimeType: "audio/ogg",
+				},
+			},
+			direction: "outbound",
+		});
+
+		expect(store.get(10, 20)).toEqual({
+			botId: "bot-default",
+			chatId: 10,
+			messageId: 20,
+			path: "/tmp/voice.ogg",
+			kind: "voice",
+			mediaType: "audio/ogg",
+			displayName: undefined,
+			durationSeconds: undefined,
+			direction: "outbound",
+			createdAt: expect.any(Number),
+		});
+
+		store.close();
 	});
 });

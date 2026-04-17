@@ -40,6 +40,10 @@ export class RuntimeClientGateway {
 		return this.hub.listByTypes(["tui", "browser"], exclude);
 	}
 
+	listBrowserTargets(exclude?: WsClient): WsClient[] {
+		return this.hub.listByType("browser", exclude);
+	}
+
 	replayHistory(
 		targets: Iterable<WsClient>,
 		sessionId = this.options.getStatusEvent().sessionId,

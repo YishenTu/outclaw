@@ -31,6 +31,15 @@ function connectWs(port: number): Promise<WebSocket> {
 	});
 }
 
+function connectBrowserWs(port: number): Promise<WebSocket> {
+	return new Promise((resolve) => {
+		const url = new URL(`ws://localhost:${port}`);
+		url.searchParams.set("client", "browser");
+		const ws = new WebSocket(url);
+		ws.onopen = () => resolve(ws);
+	});
+}
+
 function waitForEvent(
 	ws: WebSocket,
 	predicate: (e: { type: string; [key: string]: unknown }) => boolean,
@@ -343,6 +352,38 @@ describe("Runtime server", () => {
 		expect(observerEvents.length).toBe(0);
 
 		observer.close();
+		tui.close();
+	});
+
+	test("broadcasts tui messages to browser clients", async () => {
+		const browser = await connectBrowserWs(port);
+		const browserEvents: Array<{ type: string; [key: string]: unknown }> = [];
+		browser.onmessage = (msg) => {
+			const event = JSON.parse(String(msg.data));
+			if (event.type !== "history_replay" && event.type !== "runtime_status") {
+				browserEvents.push(event);
+			}
+		};
+
+		const tui = await connectWs(port);
+		await new Promise((r) => setTimeout(r, 50));
+		const collecting = collectUntilDone(tui);
+		tui.send(JSON.stringify({ type: "prompt", prompt: "mirror me" }));
+		await collecting;
+
+		await new Promise((r) => setTimeout(r, 50));
+
+		expect(browserEvents).toContainEqual({
+			type: "user_prompt",
+			prompt: "mirror me",
+			source: "tui",
+			images: undefined,
+			replyContext: undefined,
+		});
+		expect(browserEvents.some((event) => event.type === "text")).toBe(true);
+		expect(browserEvents.some((event) => event.type === "done")).toBe(true);
+
+		browser.close();
 		tui.close();
 	});
 

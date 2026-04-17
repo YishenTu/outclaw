@@ -8,6 +8,12 @@ export interface TelegramDocumentFileRef {
 	displayName: string;
 }
 
+export interface TelegramVoiceFileRef {
+	path: string;
+	durationSeconds?: number;
+	mimeType?: string;
+}
+
 export type TelegramMessageFile =
 	| {
 			kind: "image";
@@ -16,6 +22,10 @@ export type TelegramMessageFile =
 	| {
 			kind: "document";
 			document: TelegramDocumentFileRef;
+	  }
+	| {
+			kind: "voice";
+			voice: TelegramVoiceFileRef;
 	  };
 
 export interface TelegramMessageFileRecord {
@@ -59,6 +69,13 @@ export async function resolveReplyAttachments(
 		return { images: [file.image], promptSegments: [] };
 	}
 
+	if (file.kind === "voice") {
+		return {
+			images: [],
+			promptSegments: [formatTelegramVoicePromptRef(file.voice)],
+		};
+	}
+
 	return {
 		images: [],
 		promptSegments: [formatTelegramDocumentPromptRef(file.document)],
@@ -69,6 +86,19 @@ export function formatTelegramDocumentPromptRef(
 	document: TelegramDocumentFileRef,
 ): string {
 	return `[file: ${document.displayName} -> ${document.path}]`;
+}
+
+export function formatTelegramVoicePromptRef(
+	voice: TelegramVoiceFileRef,
+): string {
+	const extension = fileExtension(voice.path);
+	const label =
+		extension === "oga" || extension === "ogg" ? "voice note" : "voice audio";
+	const parts = [extension || "audio"];
+	if (voice.durationSeconds !== undefined) {
+		parts.push(`${voice.durationSeconds}s`);
+	}
+	return `[${label} (${parts.join(", ")}): ${voice.path}]`;
 }
 
 export function appendPromptSegments(
@@ -109,4 +139,12 @@ export async function rememberOutboundImage(
 		},
 		direction: "outbound",
 	});
+}
+
+function fileExtension(path: string): string {
+	const dot = path.lastIndexOf(".");
+	if (dot === -1 || dot === path.length - 1) {
+		return "";
+	}
+	return path.slice(dot + 1).toLowerCase();
 }

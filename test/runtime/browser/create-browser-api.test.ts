@@ -153,8 +153,116 @@ describe("createBrowserApi", () => {
 		});
 
 		await expect(
+			api.readAgentFile("agent-railly", "cron/daily.yaml"),
+		).resolves.toEqual({
+			content:
+				"name: Daily\nschedule: 15 6 * * *\nmodel: haiku\nenabled: true\nprompt: Check inbox\n",
+			kind: "text",
+			language: "yaml",
+			path: "cron/daily.yaml",
+			truncated: false,
+		});
+
+		await expect(
 			api.readAgentFile("agent-railly", "../outside.txt"),
 		).rejects.toThrow("Path escapes agent home");
+
+		store.close();
+	});
+
+	test("detects common code file languages for browser previews", async () => {
+		const root = createTempDir("outclaw-browser-language-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+		writeFileSync(join(agentHomeDir, "main.py"), "print('hi')\n");
+		writeFileSync(join(agentHomeDir, "lib.rs"), "fn main() {}\n");
+		writeFileSync(join(agentHomeDir, "server.go"), "package main\n");
+		writeFileSync(join(agentHomeDir, "config.toml"), "port = 4000\n");
+		writeFileSync(join(agentHomeDir, "layout.xml"), "<root />\n");
+		writeFileSync(join(agentHomeDir, "Dockerfile"), "FROM alpine:latest\n");
+		writeFileSync(join(agentHomeDir, "settings.ini"), "[app]\nname=test\n");
+		writeFileSync(join(agentHomeDir, "Main.java"), "class Main {}\n");
+		writeFileSync(join(agentHomeDir, "main.c"), "int main() { return 0; }\n");
+		writeFileSync(join(agentHomeDir, "main.cpp"), "int main() { return 0; }\n");
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.readAgentFile("agent-railly", "main.py"),
+		).resolves.toMatchObject({
+			kind: "text",
+			language: "python",
+		});
+		await expect(
+			api.readAgentFile("agent-railly", "lib.rs"),
+		).resolves.toMatchObject({
+			kind: "text",
+			language: "rust",
+		});
+		await expect(
+			api.readAgentFile("agent-railly", "server.go"),
+		).resolves.toMatchObject({
+			kind: "text",
+			language: "go",
+		});
+		await expect(
+			api.readAgentFile("agent-railly", "config.toml"),
+		).resolves.toMatchObject({
+			kind: "text",
+			language: "toml",
+		});
+		await expect(
+			api.readAgentFile("agent-railly", "layout.xml"),
+		).resolves.toMatchObject({
+			kind: "text",
+			language: "xml",
+		});
+		await expect(
+			api.readAgentFile("agent-railly", "Dockerfile"),
+		).resolves.toMatchObject({
+			kind: "text",
+			language: "dockerfile",
+		});
+		await expect(
+			api.readAgentFile("agent-railly", "settings.ini"),
+		).resolves.toMatchObject({
+			kind: "text",
+			language: "ini",
+		});
+		await expect(
+			api.readAgentFile("agent-railly", "Main.java"),
+		).resolves.toMatchObject({
+			kind: "text",
+			language: "java",
+		});
+		await expect(
+			api.readAgentFile("agent-railly", "main.c"),
+		).resolves.toMatchObject({
+			kind: "text",
+			language: "c",
+		});
+		await expect(
+			api.readAgentFile("agent-railly", "main.cpp"),
+		).resolves.toMatchObject({
+			kind: "text",
+			language: "cpp",
+		});
 
 		store.close();
 	});

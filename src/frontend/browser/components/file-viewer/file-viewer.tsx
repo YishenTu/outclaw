@@ -1,3 +1,4 @@
+import hljs from "highlight.js";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -15,6 +16,40 @@ interface FileViewerProps {
 
 function isMarkdownFile(path: string): boolean {
 	return path.toLowerCase().endsWith(".md");
+}
+
+function buildCodeFence(content: string, language?: string): string {
+	const longestBacktickRun = Math.max(
+		0,
+		...Array.from(content.matchAll(/`+/g), (match) => match[0].length),
+	);
+	const fence = "`".repeat(Math.max(3, longestBacktickRun + 1));
+	return `${fence}${language ?? ""}\n${content}\n${fence}`;
+}
+
+export function CodePreview({
+	content,
+	language,
+}: {
+	content: string;
+	language?: string;
+}) {
+	const markdown = useMemo(() => {
+		const supportedLanguage =
+			language && hljs.getLanguage(language) ? language : undefined;
+		return buildCodeFence(content, supportedLanguage);
+	}, [content, language]);
+
+	return (
+		<div className="prose prose-invert max-w-none text-dark-100 [&_pre]:m-0 [&_pre]:overflow-x-hidden [&_pre]:whitespace-pre-wrap [&_pre]:border-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-[12px] [&_pre]:leading-5 [&_pre]:[overflow-wrap:anywhere] [&_pre_code]:bg-transparent [&_pre_code]:whitespace-pre-wrap">
+			<ReactMarkdown
+				remarkPlugins={[remarkGfm]}
+				rehypePlugins={[rehypeHighlight]}
+			>
+				{markdown}
+			</ReactMarkdown>
+		</div>
+	);
 }
 
 export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
@@ -121,9 +156,10 @@ export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
 							</ReactMarkdown>
 						</div>
 					) : (
-						<pre className="whitespace-pre-wrap border border-dark-800 bg-dark-900/40 p-4 text-sm text-dark-100 [overflow-wrap:anywhere]">
-							<code>{file?.content ?? ""}</code>
-						</pre>
+						<CodePreview
+							content={file?.content ?? ""}
+							language={file?.language}
+						/>
 					)}
 
 					{file?.truncated && (

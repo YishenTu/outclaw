@@ -38,6 +38,16 @@ export class ClientAgentBinding {
 		return agentId ? this.registry.getById(agentId) : undefined;
 	}
 
+	listBoundClientsByTypes(
+		types: Array<WsClient["data"]["clientType"]>,
+		exclude?: WsClient,
+	): WsClient[] {
+		const allowedTypes = new Set(types);
+		return [...this.bindings.keys()].filter(
+			(ws) => ws !== exclude && allowedTypes.has(ws.data.clientType),
+		);
+	}
+
 	listAvailableRuntimes(ws: WsClient) {
 		if (ws.data.clientType !== "telegram") {
 			return this.registry.list();
@@ -115,7 +125,10 @@ export class ClientAgentBinding {
 			return available[0];
 		}
 
-		if (ws.data.clientType === "tui" && this.getDefaultAgentId) {
+		if (
+			(ws.data.clientType === "tui" || ws.data.clientType === "browser") &&
+			this.getDefaultAgentId
+		) {
 			const rememberedAgentId = this.getDefaultAgentId();
 			if (rememberedAgentId) {
 				return (

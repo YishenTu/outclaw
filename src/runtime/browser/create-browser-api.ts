@@ -1,6 +1,6 @@
 import type { Dirent } from "node:fs";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { extname, relative, resolve, sep } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import type {
 	BrowserAgentsResponse,
 	BrowserCronEntry,
@@ -11,6 +11,7 @@ import type {
 } from "../../common/protocol.ts";
 import { parseJobConfig, serializeJobConfig } from "../cron/job-config.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
+import { detectFileLanguage } from "./detect-file-language.ts";
 
 const MAX_FILE_PREVIEW_BYTES = 512 * 1024;
 const TREE_IGNORED_NAMES = new Set([".git", ".DS_Store"]);
@@ -125,7 +126,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				return {
 					path,
 					kind: "binary",
-					language: detectLanguage(path),
+					language: detectFileLanguage(path),
 					truncated,
 				};
 			}
@@ -134,7 +135,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				path,
 				kind: "text",
 				content: new TextDecoder().decode(previewBuffer),
-				language: detectLanguage(path),
+				language: detectFileLanguage(path),
 				truncated,
 			};
 		},
@@ -324,36 +325,6 @@ function looksBinary(buffer: Uint8Array): boolean {
 		}
 	}
 	return false;
-}
-
-function detectLanguage(path: string): string | undefined {
-	switch (extname(path).toLowerCase()) {
-		case ".md":
-			return "markdown";
-		case ".ts":
-			return "typescript";
-		case ".tsx":
-			return "tsx";
-		case ".js":
-			return "javascript";
-		case ".jsx":
-			return "jsx";
-		case ".json":
-			return "json";
-		case ".yml":
-		case ".yaml":
-			return "yaml";
-		case ".sh":
-			return "bash";
-		case ".css":
-			return "css";
-		case ".html":
-			return "html";
-		case ".sql":
-			return "sql";
-		default:
-			return undefined;
-	}
 }
 
 function runGit(

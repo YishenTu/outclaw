@@ -24,6 +24,7 @@ import { handleTelegramDocumentMessage } from "./messages/document.ts";
 import { sendTelegramHeartbeatResult } from "./messages/heartbeat-result.ts";
 import { handleTelegramPhotoMessage } from "./messages/photo.ts";
 import { handleTelegramTextMessage } from "./messages/text.ts";
+import { handleTelegramVoiceMessage } from "./messages/voice.ts";
 import { registerTelegramSessionHandlers } from "./sessions/register.ts";
 
 type MyContext = Context;
@@ -35,6 +36,9 @@ type TelegramPhotoHandlerContext = Parameters<
 >[0];
 type TelegramDocumentHandlerContext = Parameters<
 	typeof handleTelegramDocumentMessage
+>[0];
+type TelegramVoiceHandlerContext = Parameters<
+	typeof handleTelegramVoiceMessage
 >[0];
 type TelegramPromptStream = Parameters<
 	typeof handleTelegramTextMessage
@@ -86,6 +90,20 @@ interface TelegramIncomingDocumentContext {
 	replyWithPhoto: TelegramDocumentHandlerContext["replyWithPhoto"];
 	sendMessage: TelegramDocumentHandlerContext["sendMessage"];
 	editMessageText: TelegramDocumentHandlerContext["editMessageText"];
+}
+
+interface TelegramIncomingVoiceContext {
+	api: {
+		getFile(fileId: string): Promise<{ file_path?: string }>;
+	};
+	chat: TelegramVoiceHandlerContext["chat"];
+	from?: { id: number };
+	message: TelegramVoiceHandlerContext["message"];
+	reply: TelegramVoiceHandlerContext["reply"];
+	replyWithChatAction: TelegramVoiceHandlerContext["replyWithChatAction"];
+	replyWithPhoto: TelegramVoiceHandlerContext["replyWithPhoto"];
+	sendMessage: TelegramVoiceHandlerContext["sendMessage"];
+	editMessageText: TelegramVoiceHandlerContext["editMessageText"];
 }
 
 interface TelegramBridgeLike {
@@ -158,6 +176,14 @@ interface TelegramBotLike {
 		event: "message:document",
 		handler: (ctx: TelegramIncomingDocumentContext) => Promise<void>,
 	): unknown;
+	on(
+		event: "message:voice",
+		handler: (ctx: TelegramIncomingVoiceContext) => Promise<void>,
+	): unknown;
+	on(
+		event: "message:audio",
+		handler: (ctx: TelegramIncomingVoiceContext) => Promise<void>,
+	): unknown;
 	start(): unknown;
 	stop(): unknown;
 }
@@ -170,6 +196,7 @@ interface TelegramBotDependencies {
 	handleDocumentMessage: typeof handleTelegramDocumentMessage;
 	handlePhotoMessage: typeof handleTelegramPhotoMessage;
 	handleTextMessage: typeof handleTelegramTextMessage;
+	handleVoiceMessage: typeof handleTelegramVoiceMessage;
 	logError(message: string): void;
 	logInfo(message: string): void;
 	registerModelShortcuts(
@@ -201,6 +228,8 @@ const DEFAULT_TELEGRAM_BOT_DEPENDENCIES: TelegramBotDependencies = {
 	handlePhotoMessage: (ctx, options) =>
 		handleTelegramPhotoMessage(ctx, options),
 	handleTextMessage: (ctx, options) => handleTelegramTextMessage(ctx, options),
+	handleVoiceMessage: (ctx, options) =>
+		handleTelegramVoiceMessage(ctx, options),
 	logError: (message) => console.error(message),
 	logInfo: (message) => console.log(message),
 	registerModelShortcuts: (registrar, bridge) =>
@@ -404,6 +433,84 @@ export function startTelegramBot(
 			{
 				chat: ctx.chat,
 				getFile: () => ctx.api.getFile(ctx.message.document.file_id),
+				message: ctx.message,
+				reply: (text) => ctx.reply(text),
+				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
+				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
+				sendMessage: (text, options) =>
+					bot.api.sendMessage(ctx.chat.id, text, options),
+				editMessageText: (messageId, text, options) =>
+					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
+			},
+			{
+				resolveMessageFile,
+				rememberMessageFile,
+				token,
+				filesRoot,
+				streamPrompt: (prompt, images, onImage, replyContext) =>
+					createContextBridge(ctx).stream(
+						prompt,
+						images,
+						onImage,
+						ctx.chat.id,
+						replyContext,
+					),
+			},
+		);
+	});
+
+	bot.on("message:voice", async (ctx) => {
+		const voice = ctx.message.voice;
+		if (!voice) {
+			await ctx.reply(
+				"[error] Telegram voice message is missing audio payload",
+			);
+			return;
+		}
+
+		await dependencies.handleVoiceMessage(
+			{
+				chat: ctx.chat,
+				getFile: () => ctx.api.getFile(voice.file_id),
+				message: ctx.message,
+				reply: (text) => ctx.reply(text),
+				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
+				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
+				sendMessage: (text, options) =>
+					bot.api.sendMessage(ctx.chat.id, text, options),
+				editMessageText: (messageId, text, options) =>
+					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
+			},
+			{
+				resolveMessageFile,
+				rememberMessageFile,
+				token,
+				filesRoot,
+				streamPrompt: (prompt, images, onImage, replyContext) =>
+					createContextBridge(ctx).stream(
+						prompt,
+						images,
+						onImage,
+						ctx.chat.id,
+						replyContext,
+					),
+			},
+		);
+	});
+
+	bot.on("message:audio", async (ctx) => {
+		const audio = ctx.message.audio;
+		if (!audio) {
+			await ctx.reply(
+				"[error] Telegram audio message is missing audio payload",
+			);
+			return;
+		}
+
+		await dependencies.handleVoiceMessage(
+			{
+				chat: ctx.chat,
+				getFile: () => ctx.api.getFile(audio.file_id),
 				message: ctx.message,
 				reply: (text) => ctx.reply(text),
 				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
