@@ -3,9 +3,15 @@ import { MODEL_ALIAS_LIST } from "./models.ts";
 export const DEFAULT_MODEL = "opus";
 export const DEFAULT_EFFORT = "high";
 
-export const EFFORT_LEVELS = ["low", "medium", "high", "max"] as const;
+export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
+
+export const OPUS_ONLY_EFFORT_LEVELS = new Set<EffortLevel>(["xhigh"]);
+
+export function isOpusOnlyEffort(effort: EffortLevel): boolean {
+	return OPUS_ONLY_EFFORT_LEVELS.has(effort);
+}
 
 export type SlashCommandTransport = "runtime" | "prompt";
 
@@ -33,7 +39,8 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
 	},
 	{
 		command: "thinking",
-		description: "Set thinking effort (low/medium/high/max)",
+		description:
+			"Set thinking effort (low/medium/high/xhigh/max; xhigh requires opus)",
 		transport: "runtime",
 	},
 	{

@@ -1,4 +1,9 @@
-import { EFFORT_LEVELS, isEffortLevel } from "../../common/commands.ts";
+import {
+	DEFAULT_EFFORT,
+	EFFORT_LEVELS,
+	isEffortLevel,
+	isOpusOnlyEffort,
+} from "../../common/commands.ts";
 import {
 	isModelAlias,
 	MODEL_ALIAS_LIST,
@@ -82,6 +87,11 @@ function handleModelCommand(
 
 	options.state.setModel(modelArg as ModelAlias);
 	options.hub.broadcast(buildModelChangedEvent(modelArg));
+
+	if (modelArg !== "opus" && isOpusOnlyEffort(options.state.effort)) {
+		options.state.setEffort(DEFAULT_EFFORT);
+		options.hub.broadcast(buildEffortChangedEvent(DEFAULT_EFFORT));
+	}
 }
 
 function handleThinkingCommand(
@@ -98,6 +108,15 @@ function handleThinkingCommand(
 			options.hub,
 			options.ws,
 			`Invalid effort: ${effortArg}. Valid: ${EFFORT_LEVELS.join(", ")}`,
+		);
+		return;
+	}
+
+	if (isOpusOnlyEffort(effortArg) && options.state.model !== "opus") {
+		sendError(
+			options.hub,
+			options.ws,
+			`Effort '${effortArg}' requires the opus model (current: ${options.state.model})`,
 		);
 		return;
 	}

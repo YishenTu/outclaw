@@ -504,7 +504,7 @@ describe("Runtime server", () => {
 		ws.send(JSON.stringify({ type: "prompt", prompt: "hi" }));
 		await collecting;
 
-		expect(shortFacade.lastParams?.model).toBe("claude-opus-4-6[1m]");
+		expect(shortFacade.lastParams?.model).toBe("claude-opus-4-7[1m]");
 
 		ws.close();
 		shortServer.stop();
@@ -959,7 +959,7 @@ describe("Runtime server", () => {
 				text: "echo: say hello",
 			});
 			expect(cronFacade.lastParams?.prompt).toBe("say hello");
-			expect(cronFacade.lastParams?.model).toBe("claude-opus-4-6[1m]");
+			expect(cronFacade.lastParams?.model).toBe("claude-opus-4-7[1m]");
 
 			ws.close();
 		} finally {

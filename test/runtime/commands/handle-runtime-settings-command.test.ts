@@ -183,6 +183,51 @@ describe("handleRuntimeSettingsCommand", () => {
 			});
 		});
 
+		test("accepts xhigh when current model is opus", () => {
+			const { observer, run, state, ws } = setup();
+			expect(state.model).toBe("opus");
+
+			expect(run("/thinking xhigh")).toBe(true);
+			expect(state.effort).toBe("xhigh");
+			expect(
+				ws.events().find((event) => event.type === "effort_changed"),
+			).toEqual({ type: "effort_changed", effort: "xhigh" });
+			expect(
+				observer.events().find((event) => event.type === "effort_changed"),
+			).toEqual({ type: "effort_changed", effort: "xhigh" });
+		});
+
+		test("rejects xhigh when current model is not opus", () => {
+			const { run, state, ws } = setup();
+			run("/model haiku");
+			const before = state.effort;
+
+			expect(run("/thinking xhigh")).toBe(true);
+			expect(state.effort).toBe(before);
+			expect(ws.events().find((event) => event.type === "error")).toEqual({
+				type: "error",
+				message: "Effort 'xhigh' requires the opus model (current: haiku)",
+			});
+		});
+
+		test("downgrades xhigh to high when switching off opus", () => {
+			const { observer, run, state } = setup();
+			expect(run("/thinking xhigh")).toBe(true);
+			expect(state.effort).toBe("xhigh");
+
+			expect(run("/model haiku")).toBe(true);
+			expect(state.model).toBe("haiku");
+			expect(state.effort).toBe("high");
+
+			const effortEvents = observer
+				.events()
+				.filter((event) => event.type === "effort_changed");
+			expect(effortEvents.at(-1)).toEqual({
+				type: "effort_changed",
+				effort: "high",
+			});
+		});
+
 		test("sends error for invalid effort values", () => {
 			const { run, state, ws } = setup();
 			const initialEffort = state.effort;
@@ -191,7 +236,8 @@ describe("handleRuntimeSettingsCommand", () => {
 			expect(state.effort).toBe(initialEffort);
 			expect(ws.events().find((event) => event.type === "error")).toEqual({
 				type: "error",
-				message: "Invalid effort: extreme. Valid: low, medium, high, max",
+				message:
+					"Invalid effort: extreme. Valid: low, medium, high, xhigh, max",
 			});
 		});
 	});

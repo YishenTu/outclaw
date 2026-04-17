@@ -174,6 +174,7 @@ export class ClaudeAdapter implements Facade {
 						| "low"
 						| "medium"
 						| "high"
+						| "xhigh"
 						| "max"
 						| undefined,
 					permissionMode: "bypassPermissions",

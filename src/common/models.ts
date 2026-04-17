@@ -1,5 +1,5 @@
 export const MODELS = {
-	opus: { id: "claude-opus-4-6[1m]", contextWindow: 1_000_000 },
+	opus: { id: "claude-opus-4-7[1m]", contextWindow: 1_000_000 },
 	sonnet: { id: "sonnet", contextWindow: 200_000 },
 	haiku: { id: "haiku", contextWindow: 200_000 },
 } as const;

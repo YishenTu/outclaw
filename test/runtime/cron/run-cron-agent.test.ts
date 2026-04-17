@@ -77,7 +77,7 @@ describe("createCronAgentRunner", () => {
 			systemPrompt:
 				"<agents>\nAgent instructions\n</agents>\n\n<user>\nUser context\n</user>",
 			cwd: "/workspace/project",
-			model: "claude-opus-4-6[1m]",
+			model: "claude-opus-4-7[1m]",
 			effort: "max",
 			stream: false,
 		});

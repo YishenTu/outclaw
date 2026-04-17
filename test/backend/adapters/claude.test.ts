@@ -421,7 +421,7 @@ describe("ClaudeAdapter", () => {
 					duration_ms: 321,
 					total_cost_usd: 0.12,
 					modelUsage: {
-						"claude-opus-4-6[1m]": {
+						"claude-opus-4-7[1m]": {
 							contextWindow: 1_000_000,
 							maxOutputTokens: 64_000,
 						},
@@ -444,7 +444,7 @@ describe("ClaudeAdapter", () => {
 			systemPrompt: "system",
 			resume: "sdk-123",
 			cwd: "/tmp/outclaw",
-			model: "claude-opus-4-6[1m]",
+			model: "claude-opus-4-7[1m]",
 			effort: "max",
 		})) {
 			events.push(event);
@@ -469,7 +469,7 @@ describe("ClaudeAdapter", () => {
 		expect(args.options.systemPrompt).toBe("system");
 		expect(args.options.resume).toBe("sdk-123");
 		expect(args.options.cwd).toBe("/tmp/outclaw");
-		expect(args.options.model).toBe("claude-opus-4-6[1m]");
+		expect(args.options.model).toBe("claude-opus-4-7[1m]");
 		expect(args.options.effort).toBe("max");
 		expect(args.options.permissionMode).toBe("bypassPermissions");
 		expect(args.options.allowDangerouslySkipPermissions).toBe(true);
@@ -993,7 +993,7 @@ describe("ClaudeAdapter", () => {
 
 		for await (const _event of adapter.run({
 			prompt: "hello",
-			model: "claude-opus-4-6[1m]",
+			model: "claude-opus-4-7[1m]",
 		})) {
 			// Drain
 		}
@@ -1027,7 +1027,7 @@ describe("ClaudeAdapter", () => {
 
 		for await (const _event of adapter.run({
 			prompt: "hello",
-			model: "claude-opus-4-6[1m]",
+			model: "claude-opus-4-7[1m]",
 		})) {
 			// Drain
 		}

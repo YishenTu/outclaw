@@ -4,6 +4,7 @@ import {
 	DEFAULT_MODEL,
 	type EffortLevel,
 	isEffortLevel,
+	isOpusOnlyEffort,
 } from "../../../../common/commands.ts";
 import {
 	MODEL_ALIAS_LIST,
@@ -13,10 +14,19 @@ import {
 
 const EFFORT_MENU_LEVELS: readonly EffortLevel[] = [
 	"max",
+	"xhigh",
 	"high",
 	"medium",
 	"low",
 ];
+
+const EFFORT_LABELS: Record<EffortLevel, string> = {
+	low: "Low",
+	medium: "Medium",
+	high: "High",
+	xhigh: "XHigh",
+	max: "Max",
+};
 
 const MODEL_LABELS: Record<ModelAlias, string> = {
 	opus: "Opus",
@@ -43,7 +53,7 @@ function resolveCurrentEffort(effort: string | null): EffortLevel {
 }
 
 function formatEffortLabel(effort: EffortLevel): string {
-	return effort.charAt(0).toUpperCase() + effort.slice(1);
+	return EFFORT_LABELS[effort];
 }
 
 interface ModelSelectorProps {
@@ -67,6 +77,9 @@ export function ModelSelector({
 	const effortRef = useRef<HTMLDivElement | null>(null);
 	const currentModel = resolveCurrentModelAlias(model);
 	const currentEffort = resolveCurrentEffort(effort);
+	const visibleEffortLevels = EFFORT_MENU_LEVELS.filter(
+		(level) => currentModel === "opus" || !isOpusOnlyEffort(level),
+	);
 
 	useEffect(() => {
 		function handlePointerDown(event: MouseEvent) {
@@ -142,7 +155,7 @@ export function ModelSelector({
 				</button>
 				{effortOpen && (
 					<div className="absolute bottom-full left-0 z-50 mb-2 min-w-[8.5rem] overflow-hidden rounded-[16px] border border-dark-800 bg-dark-900 shadow-lg">
-						{EFFORT_MENU_LEVELS.map((level) => (
+						{visibleEffortLevels.map((level) => (
 							<button
 								key={level}
 								type="button"
