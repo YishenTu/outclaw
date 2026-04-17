@@ -17,13 +17,6 @@ bun link
 
 Then ask your agent to run `oc -h`.
 
-## Stack
-
-- [Bun](https://bun.sh) — runtime & package manager
-- [@anthropic-ai/claude-agent-sdk](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) — agent backend
-- [Ink](https://github.com/vadimdemedes/ink) — terminal UI
-- [grammY](https://grammy.dev) — Telegram bot
-
 ## License
 
 MIT
