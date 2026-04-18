@@ -44,12 +44,12 @@ export function TabBar({
 					return (
 						<div
 							key={tab.id}
-							className={`font-mono-ui group relative flex shrink-0 items-center gap-2 px-2 text-[12px] uppercase tracking-[0.12em] transition-colors ${
-								active ? "text-dark-100" : "text-dark-500 hover:text-dark-200"
+							className={`font-mono-ui group relative flex shrink-0 items-center gap-2 px-2 pt-px text-[12px] uppercase tracking-[0.12em] transition-colors ${
+								active ? "text-dark-50" : "text-dark-500 hover:text-dark-200"
 							}`}
 						>
 							{active && (
-								<span className="absolute bottom-0 left-0 right-0 -mb-px h-0.5 bg-dark-100" />
+								<span className="absolute bottom-0 left-0 right-0 -mb-px h-0.5 bg-brand" />
 							)}
 							<button
 								type="button"

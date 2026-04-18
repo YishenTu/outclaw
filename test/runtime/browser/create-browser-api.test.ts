@@ -4,6 +4,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -580,6 +581,58 @@ describe("createBrowserApi", () => {
 		]);
 
 		store.close();
+	});
+
+	test("ignores managed skills symlink paths in git status", async () => {
+		const root = createTempDir("outclaw-browser-git-symlink-");
+		cleanupPaths.push(root);
+
+		const agentHomeDir = join(root, "agents", "railly");
+		const skillsDir = join(agentHomeDir, "skills");
+		const claudeDir = join(agentHomeDir, ".claude");
+		const ignoredGitPath = "agents/railly/.claude/skills";
+		mkdirSync(skillsDir, { recursive: true });
+		mkdirSync(claudeDir, { recursive: true });
+
+		runGit(root, ["init", "--initial-branch=main"]);
+		runGit(root, ["config", "user.email", "test@example.com"]);
+		runGit(root, ["config", "user.name", "Test User"]);
+		writeFileSync(join(root, "README.md"), "seed\n");
+		runGit(root, ["add", "README.md"]);
+		runGit(root, ["commit", "-m", "Initial commit"]);
+
+		symlinkSync("../skills", join(claudeDir, "skills"));
+		mkdirSync(join(skillsDir, "oc"), { recursive: true });
+		writeFileSync(join(skillsDir, "oc", "SKILL.md"), "name: oc\n");
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			ignoredGitPaths: [ignoredGitPath],
+			storesByAgent: new Map(),
+		});
+
+		const status = await api.readGitStatus();
+		expect(status.files).toEqual([
+			expect.objectContaining({
+				path: "agents/railly/skills/oc/SKILL.md",
+			}),
+		]);
+		expect(status.files).not.toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					path: ignoredGitPath,
+				}),
+			]),
+		);
 	});
 });
 

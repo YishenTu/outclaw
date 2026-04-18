@@ -190,7 +190,7 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 	return (
 		<div className="flex h-full flex-col bg-dark-950">
 			<div className="flex h-12 items-center border-b border-dark-800 px-3">
-				<div className="font-display self-center text-[14px] font-semibold uppercase leading-none tracking-[0.32em] text-dark-100">
+				<div className="font-display text-[14px] font-semibold uppercase leading-tight tracking-[0.32em] text-parchment">
 					OUTCLAW
 				</div>
 				<div className="flex-1" />

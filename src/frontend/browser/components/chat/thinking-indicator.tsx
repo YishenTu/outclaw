@@ -28,7 +28,7 @@ export function ThinkingIndicator({
 
 	return (
 		<div className="px-3 py-1.5 text-sm text-dark-500">
-			<span className="text-[#fba34e]">{SPINNER_FRAMES[frameIndex]}</span>
+			<span className="text-ember">{SPINNER_FRAMES[frameIndex]}</span>
 			<span className="ml-2">
 				{isCompacting
 					? "Compacting..."

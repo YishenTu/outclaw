@@ -64,7 +64,7 @@ describe("file tree helpers", () => {
 				path: "notes/todo.md",
 				gitStatus: "new",
 			}),
-		).toContain("text-emerald-300");
+		).toContain("text-success");
 		expect(
 			treeEntryToneClass({
 				kind: "directory",
@@ -72,7 +72,7 @@ describe("file tree helpers", () => {
 				path: "notes",
 				gitStatus: "new",
 			}),
-		).toContain("text-emerald-300");
+		).toContain("text-success");
 		expect(
 			treeEntryToneClass({
 				kind: "file",

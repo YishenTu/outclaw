@@ -13,17 +13,32 @@
 @tailwind utilities;
 
 :root {
-	--dark-50: #ececec;
-	--dark-100: #e0e0e0;
-	--dark-200: #cccccc;
-	--dark-300: #b8b8b8;
-	--dark-400: #909090;
-	--dark-500: #6a6a6a;
-	--dark-600: #57534a;
-	--dark-700: #44403a;
-	--dark-800: #292524;
-	--dark-900: #1c1917;
+	/* Surface ramp — warm leather. Bright at the top, scorched at the bottom. */
+	--dark-50: #ebe7df;
+	--dark-100: #d8d4cc;
+	--dark-200: #beb9b1;
+	--dark-300: #9d9892;
+	--dark-400: #777269;
+	--dark-500: #5b554f;
+	--dark-600: #443e38;
+	--dark-700: #322923;
+	--dark-800: #251d18;
+	--dark-900: #1a140f;
 	--dark-950: #120e0b;
+
+	/* Brand identity — keep in sync with src/frontend/tui/chrome/theme.ts.
+	   rgb tuples so Tailwind alpha modifiers work (text-brand/40, bg-brand/10). */
+	--brand: 251 140 48; /* #fb8c30 — primary identity, ember */
+	--ember: 232 154 69; /* #e89a45 — deeper glow, hover lift */
+	--spark: 255 179 71; /* #ffb347 — bright accent, rare */
+	--parchment: 232 222 196; /* #e8dec4 — headline cream, scarce */
+
+	/* Semantic — tonally compatible with the leather palette. */
+	--info: 143 180 201; /* #8fb4c9 — circuit-trace teal */
+	--success: 134 196 133; /* #86c485 — aged moss */
+	--warning: 222 171 81; /* #deab51 — amber, distinct from brand */
+	--danger: 224 122 101; /* #e07a65 — rust red */
+
 	--font-ui-sans: "IBM Plex Sans", "Inter", "Segoe UI", sans-serif;
 }
 
@@ -67,17 +82,17 @@ textarea {
 
 .panel-surface {
 	background:
-		linear-gradient(180deg, rgba(38, 38, 38, 0.72), rgba(10, 10, 10, 0.92)),
-		radial-gradient(circle at top, rgba(251, 146, 60, 0.08), transparent 40%);
+		linear-gradient(180deg, rgba(38, 28, 22, 0.55), rgba(15, 12, 10, 0.92)),
+		radial-gradient(circle at top, rgba(251, 140, 48, 0.1), transparent 45%);
 }
 
 /* Pull prose-invert defaults onto the dark-* palette so headings/bold
-   don't render as pure white. */
+   don't render as pure white inside markdown content. */
 .prose-invert {
 	--tw-prose-invert-body: var(--dark-100);
 	--tw-prose-invert-headings: var(--dark-100);
 	--tw-prose-invert-lead: var(--dark-200);
-	--tw-prose-invert-links: var(--dark-100);
+	--tw-prose-invert-links: rgb(var(--info));
 	--tw-prose-invert-bold: var(--dark-100);
 	--tw-prose-invert-counters: var(--dark-400);
 	--tw-prose-invert-bullets: var(--dark-500);
@@ -224,5 +239,5 @@ textarea {
 	font-size: 10px;
 	color: var(--dark-300);
 	border-color: var(--dark-700);
-	background-color: rgba(28, 25, 23, 0.9);
+	background-color: rgba(26, 20, 15, 0.9);
 }

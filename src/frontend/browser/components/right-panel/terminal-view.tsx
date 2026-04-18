@@ -53,13 +53,17 @@ export function TerminalView({
 		}
 
 		const container = containerRef.current;
+		const rootStyle = getComputedStyle(document.documentElement);
 		const terminal = new Terminal({
 			cursorBlink: true,
 			fontFamily: '"Share Tech Mono", monospace',
 			fontSize: 12,
 			theme: {
-				background: "#0c0a09",
-				foreground: "#f5f4f0",
+				background:
+					rootStyle.getPropertyValue("--dark-950").trim() || "#120e0b",
+				foreground:
+					rootStyle.getPropertyValue("--dark-100").trim() || "#e0e0e0",
+				cursor: "#ffffff",
 			},
 		});
 		terminalRef.current = terminal;

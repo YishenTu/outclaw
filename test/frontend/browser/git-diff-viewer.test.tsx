@@ -27,8 +27,8 @@ index cefe630..1111111 100644
 		expect(html).toContain("agents/john-doe/AGENTS.md");
 		expect(html).toContain("Modified");
 		expect(html).not.toContain("@@ -1,3 +1,2 @@");
-		expect(html).toContain("bg-emerald-500/10");
-		expect(html).toContain("bg-red-500/10");
+		expect(html).toContain("bg-success/10");
+		expect(html).toContain("bg-danger/10");
 		expect(html).toContain("tabular-nums");
 		expect(html).toContain("grid-cols-[2.75rem_2.75rem_1rem_minmax(0,1fr)]");
 		expect(html).not.toContain("grid-cols-[3rem_3rem_1.25rem_minmax(0,1fr)]");
@@ -61,10 +61,10 @@ index cefe630..0000000
 		expect(html).not.toContain("border-b border-dark-800");
 		expect(html).not.toContain("divide-y");
 		expect(html).not.toContain("border-r border-dark-950/70");
-		expect(html).not.toContain("border-emerald-500/30");
-		expect(html).not.toContain("border-red-500/30");
-		expect(html).not.toContain("bg-emerald-500/10 px-2 py-1");
-		expect(html).not.toContain("bg-red-500/10 px-2 py-1");
+		expect(html).not.toContain("border-success/30 px-2");
+		expect(html).not.toContain("border-danger/30 px-2");
+		expect(html).not.toContain("bg-success/10 px-2 py-1");
+		expect(html).not.toContain("bg-danger/10 px-2 py-1");
 	});
 
 	test("falls back to raw diff output when the payload has no structured hunks", () => {

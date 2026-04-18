@@ -29,6 +29,7 @@ import {
 	selectAgentTerminals,
 	useTerminalStore,
 } from "../../stores/terminal.ts";
+import { ActiveTabUnderline } from "../active-tab-underline.tsx";
 import { CronPanel } from "./cron-panel.tsx";
 import { FileTree, FileTreeHeader } from "./file-tree.tsx";
 import { GitPanel } from "./git-panel.tsx";
@@ -61,6 +62,53 @@ function getTabIcon(tab: UpperRightPanelTab, size: number) {
 		return <Clock3 size={size} />;
 	}
 	return <GitBranch size={size} />;
+}
+
+export function RightPanelUpperTabs({
+	activeTab,
+	onCollapse,
+	onSelectTab,
+}: {
+	activeTab: UpperRightPanelTab;
+	onCollapse?: () => void;
+	onSelectTab: (tab: UpperRightPanelTab) => void;
+}) {
+	return (
+		<div className="flex h-12 items-stretch gap-2 border-b border-dark-800 px-3">
+			{onCollapse ? (
+				<button
+					type="button"
+					onClick={onCollapse}
+					className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
+					aria-label="Collapse right sidebar"
+				>
+					<PanelRightOpen size={15} />
+				</button>
+			) : null}
+			<div className="flex min-w-0 flex-1 items-stretch gap-2">
+				{UPPER_RIGHT_PANEL_TABS.map((tab) => (
+					<div
+						key={tab}
+						className={`font-mono-ui relative flex shrink-0 items-center pt-px text-[11px] uppercase tracking-[0.12em] transition-colors ${
+							activeTab === tab
+								? "text-dark-50"
+								: "text-dark-500 hover:text-dark-200"
+						}`}
+					>
+						{activeTab === tab ? <ActiveTabUnderline /> : null}
+						<button
+							type="button"
+							onClick={() => onSelectTab(tab)}
+							className="flex h-full items-center gap-1.5 pl-2 pr-3"
+						>
+							{getTabIcon(tab, 14)}
+							{TAB_LABELS[tab]}
+						</button>
+					</div>
+				))}
+			</div>
+		</div>
+	);
 }
 
 export function RightPanel({ onCollapse }: RightPanelProps) {
@@ -329,7 +377,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 								Loading files…
 							</div>
 						) : treeError ? (
-							<div className="px-4 py-4 text-sm text-red-300">{treeError}</div>
+							<div className="px-4 py-4 text-sm text-danger">{treeError}</div>
 						) : activeAgentId ? (
 							<FileTree
 								agentId={activeAgentId}
@@ -385,38 +433,11 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 
 	return (
 		<div className="flex h-full flex-col bg-dark-950">
-			<div className="flex h-12 items-stretch gap-2 border-b border-dark-800 px-3">
-				{onCollapse && (
-					<button
-						type="button"
-						onClick={onCollapse}
-						className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
-						aria-label="Collapse right sidebar"
-					>
-						<PanelRightOpen size={15} />
-					</button>
-				)}
-				<div className="flex min-w-0 flex-1 items-stretch gap-2">
-					{UPPER_RIGHT_PANEL_TABS.map((tab) => (
-						<button
-							key={tab}
-							type="button"
-							onClick={() => setRightPanelUpperTab(tab)}
-							className={`relative flex items-center gap-1.5 pl-2 pr-3 font-mono-ui text-[11px] uppercase tracking-[0.12em] transition-colors ${
-								activeUpperTab === tab
-									? "text-dark-100"
-									: "text-dark-500 hover:text-dark-200"
-							}`}
-						>
-							{activeUpperTab === tab ? (
-								<span className="absolute bottom-0 left-0 right-0 -mb-px h-0.5 bg-dark-100" />
-							) : null}
-							{getTabIcon(tab, 14)}
-							{TAB_LABELS[tab]}
-						</button>
-					))}
-				</div>
-			</div>
+			<RightPanelUpperTabs
+				activeTab={activeUpperTab}
+				onCollapse={onCollapse}
+				onSelectTab={setRightPanelUpperTab}
+			/>
 
 			<div
 				ref={contentRef}

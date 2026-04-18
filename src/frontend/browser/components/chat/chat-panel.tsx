@@ -90,7 +90,7 @@ export function ChatPanel() {
 			<div className="h-8 shrink-0 border-b border-dark-800 px-6">
 				<div className="mx-auto flex h-full max-w-4xl items-center gap-4">
 					<div className="min-w-0 font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-						<span className="truncate text-dark-300">{activeAgent.name}</span>
+						<span className="truncate text-parchment">{activeAgent.name}</span>
 						<span className="px-2 text-dark-700">/</span>
 						<span className="truncate">{sessionTitle}</span>
 					</div>
@@ -99,7 +99,7 @@ export function ChatPanel() {
 			<BrowserRestartNotice />
 
 			{chatSession?.error && (
-				<div className="border-b border-red-500/20 bg-red-500/10 px-6 py-3 text-sm text-red-200">
+				<div className="border-b border-danger/30 bg-danger/10 px-6 py-3 text-sm text-danger">
 					<div className="mx-auto max-w-4xl">{chatSession.error}</div>
 				</div>
 			)}

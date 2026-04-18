@@ -87,7 +87,7 @@ export function ContextGauge({ sessionKey }: ContextGaugeProps) {
 				<path
 					d={describeArc(CENTER, CENTER, RADIUS, ARC_START, ARC_END)}
 					fill="none"
-					stroke={warning ? "#fca5a5" : "#78746b"}
+					stroke={warning ? "rgb(var(--danger))" : "var(--dark-500)"}
 					strokeLinecap="round"
 					strokeWidth={2}
 					opacity={0.35}
@@ -95,7 +95,7 @@ export function ContextGauge({ sessionKey }: ContextGaugeProps) {
 				<path
 					d={describeArc(CENTER, CENTER, RADIUS, ARC_START, fillAngle)}
 					fill="none"
-					stroke={warning ? "#ef4444" : "#60a5fa"}
+					stroke={warning ? "rgb(var(--danger))" : "rgb(var(--brand))"}
 					strokeLinecap="round"
 					strokeWidth={2}
 				/>

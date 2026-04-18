@@ -13,17 +13,17 @@ export function describeRuntimeConnectionStatus(
 	switch (status) {
 		case "connected":
 			return {
-				dotClassName: "bg-emerald-400",
+				dotClassName: "bg-success",
 				label: "Connected",
 			};
 		case "disconnected":
 			return {
-				dotClassName: "bg-red-300",
+				dotClassName: "bg-danger",
 				label: "Offline",
 			};
 		case "connecting":
 			return {
-				dotClassName: "bg-amber-300",
+				dotClassName: "bg-warning",
 				label: "Connecting",
 			};
 	}

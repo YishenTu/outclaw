@@ -8,11 +8,11 @@ function App() {
 		<RenderErrorBoundary
 			fallback={
 				<div className="flex min-h-screen items-center justify-center bg-dark-950 px-6 text-dark-100">
-					<div className="max-w-lg rounded-[28px] border border-red-500/20 bg-red-500/10 px-6 py-5">
-						<div className="text-sm font-semibold uppercase tracking-[0.22em] text-red-200">
+					<div className="max-w-lg rounded-[28px] border border-danger/30 bg-danger/10 px-6 py-5">
+						<div className="text-sm font-semibold uppercase tracking-[0.22em] text-danger">
 							Browser Render Error
 						</div>
-						<p className="mt-3 text-sm leading-7 text-red-100/90">
+						<p className="mt-3 text-sm leading-7 text-danger/90">
 							The browser UI crashed during render. Check the dev console for
 							the actual exception.
 						</p>

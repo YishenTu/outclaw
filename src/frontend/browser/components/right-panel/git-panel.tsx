@@ -33,11 +33,9 @@ function GitFileLineCounts({
 	return (
 		<span className={GIT_PANEL_META_CLASS}>
 			{additions > 0 ? (
-				<span className="text-emerald-300">+{additions}</span>
+				<span className="text-success">+{additions}</span>
 			) : null}
-			{deletions > 0 ? (
-				<span className="text-red-300">-{deletions}</span>
-			) : null}
+			{deletions > 0 ? <span className="text-danger">-{deletions}</span> : null}
 		</span>
 	);
 }
@@ -99,7 +97,11 @@ export function GitPanelHeader({
 				<div className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
 					{formatGitBranch(status)}
 				</div>
-				<div className="truncate text-xs text-dark-400">
+				<div
+					className={`truncate text-xs ${
+						status.clean ? "text-success" : "text-dark-400"
+					}`}
+				>
 					{formatGitSummary(status)}
 				</div>
 			</div>
@@ -122,7 +124,7 @@ export function GitPanel({
 	}
 
 	if (error) {
-		return <div className="px-4 py-4 text-sm text-red-300">{error}</div>;
+		return <div className="px-4 py-4 text-sm text-danger">{error}</div>;
 	}
 
 	if (!status) {

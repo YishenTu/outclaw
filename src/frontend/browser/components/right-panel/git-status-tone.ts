@@ -11,13 +11,13 @@ function gitChangeToneClass(
 	fallbackClassName: string,
 ): string {
 	if (status === "new") {
-		return "text-emerald-300 hover:text-emerald-200";
+		return "text-success hover:text-success/80";
 	}
 	if (status === "deleted") {
-		return "text-red-300 hover:text-red-200";
+		return "text-danger hover:text-danger/80";
 	}
 	if (status === "modified") {
-		return "text-orange-400 hover:text-orange-300";
+		return "text-brand hover:text-ember";
 	}
 	return fallbackClassName;
 }

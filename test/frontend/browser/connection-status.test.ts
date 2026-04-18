@@ -4,21 +4,21 @@ import { describeRuntimeConnectionStatus } from "../../../src/frontend/browser/c
 describe("describeRuntimeConnectionStatus", () => {
 	test("returns the connected presentation", () => {
 		expect(describeRuntimeConnectionStatus("connected")).toEqual({
-			dotClassName: "bg-emerald-400",
+			dotClassName: "bg-success",
 			label: "Connected",
 		});
 	});
 
 	test("returns the connecting presentation", () => {
 		expect(describeRuntimeConnectionStatus("connecting")).toEqual({
-			dotClassName: "bg-amber-300",
+			dotClassName: "bg-warning",
 			label: "Connecting",
 		});
 	});
 
 	test("returns the disconnected presentation", () => {
 		expect(describeRuntimeConnectionStatus("disconnected")).toEqual({
-			dotClassName: "bg-red-300",
+			dotClassName: "bg-danger",
 			label: "Offline",
 		});
 	});

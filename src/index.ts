@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, relative, sep } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude.ts";
 import { prepareAgentWorkspace } from "./backend/agent-workspace.ts";
 import type { ImageMediaType } from "./common/protocol.ts";
@@ -128,6 +128,11 @@ function startMultiAgentDaemon(
 			}),
 			getRememberedAgentId: () => stateStore.getLastInteractiveAgentId(),
 			gitRoot: HOME_DIR,
+			ignoredGitPaths: agents.map((agent) =>
+				relative(HOME_DIR, join(agent.promptHomeDir, ".claude", "skills"))
+					.split(sep)
+					.join("/"),
+			),
 			storesByAgent: agentStores,
 		}),
 		browserWatch: {

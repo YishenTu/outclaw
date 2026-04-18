@@ -110,12 +110,12 @@ export function TerminalTabs({
 							key={terminal.id}
 							className={`group relative flex shrink-0 items-stretch text-[11px] uppercase tracking-[0.12em] ${
 								isActive
-									? "text-dark-100"
+									? "text-dark-50"
 									: "text-dark-500 transition-colors hover:text-dark-200"
 							}`}
 						>
 							{isActive ? (
-								<span className="absolute inset-x-0 bottom-0 -mb-px h-px bg-dark-100" />
+								<span className="absolute inset-x-0 bottom-0 -mb-px h-0.5 bg-brand" />
 							) : null}
 
 							{isEditing ? (

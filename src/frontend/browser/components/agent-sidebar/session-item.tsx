@@ -182,7 +182,7 @@ export function SessionItem({
 								event.stopPropagation();
 								handleDelete();
 							}}
-							className="font-mono-ui hidden w-8 shrink-0 text-right text-[18px] leading-none text-dark-500 transition-colors hover:text-red-300 group-hover:block"
+							className="font-mono-ui hidden w-8 shrink-0 text-right text-[18px] leading-none text-dark-500 transition-colors hover:text-danger group-hover:block"
 						>
 							×
 						</button>
@@ -209,7 +209,7 @@ export function SessionItem({
 					<button
 						type="button"
 						onClick={handleDelete}
-						className="block w-full px-3 py-2 text-left text-sm text-red-300 transition-colors hover:bg-dark-800/70"
+						className="block w-full px-3 py-2 text-left text-sm text-danger transition-colors hover:bg-dark-800/70"
 					>
 						Delete
 					</button>

@@ -26,11 +26,11 @@ function statusLabel(status: GitDiffFileStatus): string {
 function lineClasses(line: ParsedGitDiffLine): string {
 	switch (line.kind) {
 		case "addition":
-			return "bg-emerald-500/10 text-emerald-50";
+			return "bg-success/10 text-success";
 		case "deletion":
-			return "bg-red-500/10 text-red-50";
+			return "bg-danger/10 text-danger";
 		case "meta":
-			return "bg-amber-500/10 text-amber-100";
+			return "bg-warning/10 text-warning";
 		default:
 			return "bg-dark-950/40 text-dark-200";
 	}
@@ -39,11 +39,11 @@ function lineClasses(line: ParsedGitDiffLine): string {
 function markerClasses(line: ParsedGitDiffLine): string {
 	switch (line.kind) {
 		case "addition":
-			return "text-emerald-300";
+			return "text-success";
 		case "deletion":
-			return "text-red-300";
+			return "text-danger";
 		case "meta":
-			return "text-amber-300";
+			return "text-warning";
 		default:
 			return "text-dark-500";
 	}
@@ -104,8 +104,8 @@ export function GitDiffContent({ diff }: GitDiffContentProps) {
 							)}
 						</div>
 						<div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] tabular-nums">
-							<span className="text-emerald-300">+{file.additions}</span>
-							<span className="text-red-300">-{file.deletions}</span>
+							<span className="text-success">+{file.additions}</span>
+							<span className="text-danger">-{file.deletions}</span>
 						</div>
 					</div>
 

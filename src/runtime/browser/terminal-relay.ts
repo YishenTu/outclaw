@@ -120,7 +120,6 @@ export class TerminalRelay {
 			terminal,
 		});
 
-		ws.send(`Connected to ${cwd}\r\n`);
 		void subprocess.exited.finally(() => {
 			this.finalizeSession(ws);
 			if (ws.readyState === WebSocket.OPEN) {

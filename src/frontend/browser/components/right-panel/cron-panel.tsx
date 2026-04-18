@@ -237,7 +237,7 @@ export function CronPanel({
 	}
 
 	if (error && fallbackEntries.length === 0) {
-		return <div className="px-4 py-4 text-sm text-red-300">{error}</div>;
+		return <div className="px-4 py-4 text-sm text-danger">{error}</div>;
 	}
 
 	const visibleEntries =
@@ -256,10 +256,10 @@ export function CronPanel({
 			<CronPanelHeader />
 			<div className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-3 py-3">
 				{error ? (
-					<div className="px-2 py-2 text-xs text-red-300">{error}</div>
+					<div className="px-2 py-2 text-xs text-danger">{error}</div>
 				) : null}
 				{mutationError ? (
-					<div className="px-2 py-2 text-xs text-red-300">{mutationError}</div>
+					<div className="px-2 py-2 text-xs text-danger">{mutationError}</div>
 				) : null}
 				{visibleEntries.map((entry) => (
 					<div
@@ -331,21 +331,19 @@ export function CronPanel({
 								<div
 									aria-hidden="true"
 									className={`relative h-4 w-7 rounded-full transition-colors ${
-										entry.enabled ? "bg-emerald-300/35" : "bg-white/10"
+										entry.enabled ? "bg-success/30" : "bg-dark-700"
 									} ${pendingPaths[entry.path] ? "opacity-60" : ""}`}
 								>
 									<div
 										className={`absolute top-0.5 h-3 w-3 rounded-full transition-transform ${
-											entry.enabled ? "bg-emerald-300" : "bg-white"
+											entry.enabled ? "bg-success" : "bg-dark-300"
 										} ${entry.enabled ? "translate-x-3.5" : "translate-x-0.5"}`}
 									/>
 								</div>
 							</button>
 						</div>
 						{entry.error ? (
-							<div className="px-2 pb-2 text-xs text-red-300">
-								{entry.error}
-							</div>
+							<div className="px-2 pb-2 text-xs text-danger">{entry.error}</div>
 						) : null}
 					</div>
 				))}

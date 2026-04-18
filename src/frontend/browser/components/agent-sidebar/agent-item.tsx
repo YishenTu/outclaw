@@ -37,13 +37,19 @@ export function AgentItem({
 			{dropIndicator === "before" && (
 				<div className="pointer-events-none absolute inset-x-2 top-0 z-10 border-t border-dark-300/90" />
 			)}
+			{isActive && (
+				<span
+					aria-hidden="true"
+					className="pointer-events-none absolute inset-y-1 left-0 w-px rounded-full bg-brand"
+				/>
+			)}
 			<div
 				role="treeitem"
 				aria-expanded={isExpanded}
 				tabIndex={-1}
 				onPointerDown={onRowPointerDown}
 				className={`flex items-center gap-2 rounded px-2 py-1 text-sm transition-colors ${
-					isActive ? "text-dark-100" : "text-dark-500 hover:text-dark-300"
+					isActive ? "text-dark-50" : "text-dark-500 hover:text-dark-300"
 				} ${isDragging ? "opacity-60" : ""}`}
 				style={{ paddingLeft: "12px" }}
 			>

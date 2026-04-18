@@ -149,7 +149,7 @@ export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
 							Loading file…
 						</div>
 					) : error ? (
-						<div className="flex items-start gap-3 border border-red-500/20 bg-red-500/10 px-4 py-4 text-red-200">
+						<div className="flex items-start gap-3 border border-danger/30 bg-danger/10 px-4 py-4 text-danger">
 							<AlertCircle size={16} className="mt-0.5 shrink-0" />
 							<div className="text-sm">{error}</div>
 						</div>

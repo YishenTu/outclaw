@@ -59,7 +59,6 @@ describe("TerminalRelay", () => {
 		expect(terminalWrite).toHaveBeenCalledWith("echo hi");
 		expect(terminalResize).toHaveBeenCalledWith(120, 40);
 		expect(procKill).toHaveBeenCalledWith("SIGWINCH");
-		expect(sent).toContain("Connected to /tmp/agent\r\n");
 		expect(sent).toContain("prompt> ");
 	});
 });

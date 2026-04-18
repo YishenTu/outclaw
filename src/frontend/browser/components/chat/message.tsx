@@ -34,10 +34,15 @@ export function Message({ message }: MessageProps) {
 	if (message.role === "user") {
 		return (
 			<div className="flex flex-col items-end">
-				<div className="max-w-[80%] rounded-lg bg-dark-800 px-4 py-2 text-dark-100">
+				<div className="max-w-[80%] rounded-lg border border-dark-700 bg-dark-800/80 px-4 py-2 text-dark-100">
 					{message.replyContext && (
-						<div className="font-mono-ui mb-2 rounded bg-dark-900/80 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-dark-400">
-							Replying to: {message.replyContext.text}
+						<div className="mb-2 rounded-md border border-dark-700 bg-dark-900/80 px-3 py-2">
+							<div className="font-mono-ui mb-1 text-[10px] uppercase tracking-[0.12em] text-dark-500">
+								Replying to
+							</div>
+							<div className="text-sm leading-snug text-dark-300">
+								{message.replyContext.text}
+							</div>
 						</div>
 					)}
 					{message.images && message.images.length > 0 && (

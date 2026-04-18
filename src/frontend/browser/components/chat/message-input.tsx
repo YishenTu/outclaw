@@ -155,7 +155,7 @@ export function MessageInput({
 			<div className="mx-auto max-w-4xl">
 				<section
 					aria-label="Message input"
-					className="relative rounded-lg border-2 border-transparent bg-dark-900 p-2 transition-colors"
+					className="relative rounded-lg border border-dark-700 bg-dark-900 p-2 transition-colors focus-within:border-brand/60 focus-within:shadow-[0_0_0_1px_rgb(var(--brand)/0.3)]"
 				>
 					{runtimePopup ? (
 						<RuntimeCommandPopup
@@ -228,7 +228,11 @@ export function MessageInput({
 							tabIndex={-1}
 							onMouseDown={(event) => event.preventDefault()}
 							onClick={submitValue}
-							className="p-2 text-dark-400 transition-colors hover:text-dark-200 disabled:cursor-not-allowed disabled:opacity-40"
+							className={`p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+								canSend
+									? "text-brand hover:text-ember"
+									: "text-dark-400 hover:text-dark-200"
+							}`}
 						>
 							<Send size={18} />
 						</button>

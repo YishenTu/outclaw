@@ -33,6 +33,7 @@ interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
 	getRememberedAgentId: () => string | undefined;
 	gitRoot: string;
+	ignoredGitPaths?: readonly string[];
 	storesByAgent: Map<string, SessionStore | undefined>;
 }
 
@@ -58,6 +59,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 	const agentsById = new Map(
 		options.agents.map((agent) => [agent.agentId, agent] as const),
 	);
+	const ignoredGitPaths = normalizeGitPaths(options.ignoredGitPaths ?? []);
 
 	return {
 		getAgentTerminalCwd(agentId) {
@@ -115,6 +117,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const gitStatuses = readAgentTreeGitStatuses(
 				options.gitRoot,
 				agent.homeDir,
+				ignoredGitPaths,
 			);
 			return await listTreeEntries(agent.homeDir, agent.homeDir, gitStatuses);
 		},
@@ -159,6 +162,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				output,
 				options.gitRoot,
 				readGitGraphData(options.gitRoot),
+				ignoredGitPaths,
 			);
 		},
 		async readGitDiff(path) {
@@ -304,6 +308,7 @@ async function listTreeEntries(
 function readAgentTreeGitStatuses(
 	gitRoot: string,
 	agentHomeDir: string,
+	ignoredGitPaths: readonly string[],
 ): Map<string, BrowserTreeEntryGitStatus> {
 	const relativeAgentRoot = toRelativeDescendantPath(gitRoot, agentHomeDir);
 	if (relativeAgentRoot === undefined) {
@@ -322,7 +327,7 @@ function readAgentTreeGitStatuses(
 			],
 			false,
 		);
-		return toAgentTreeGitStatuses(output, relativeAgentRoot);
+		return toAgentTreeGitStatuses(output, relativeAgentRoot, ignoredGitPaths);
 	} catch {
 		return new Map();
 	}
@@ -331,6 +336,7 @@ function readAgentTreeGitStatuses(
 function toAgentTreeGitStatuses(
 	output: string,
 	relativeAgentRoot: string,
+	ignoredGitPaths: readonly string[],
 ): Map<string, BrowserTreeEntryGitStatus> {
 	const statuses = new Map<string, BrowserTreeEntryGitStatus>();
 	const fileLines = output
@@ -341,6 +347,9 @@ function toAgentTreeGitStatuses(
 	for (const line of fileLines) {
 		const fileStatus = parseGitFileStatusLine(line);
 		if (!fileStatus) {
+			continue;
+		}
+		if (isIgnoredGitPath(fileStatus.path, ignoredGitPaths)) {
 			continue;
 		}
 		const gitStatus = classifyTreeEntryGitStatus(fileStatus);
@@ -506,6 +515,7 @@ function parseGitStatus(
 	output: string,
 	root: string,
 	graph: BrowserGitGraph,
+	ignoredGitPaths: readonly string[],
 ): BrowserGitStatusResponse {
 	const lines = output
 		.split(/\r?\n/)
@@ -529,6 +539,7 @@ function parseGitStatus(
 	const files = fileLines
 		.map((line) => parseGitFileStatusLine(line))
 		.filter((file): file is BrowserGitFileStatus => file !== undefined)
+		.filter((file) => !isIgnoredGitPath(file.path, ignoredGitPaths))
 		.map((file) => ({
 			...file,
 			...readGitFileLineCounts(root, file),
@@ -630,6 +641,28 @@ function parseGitNumstatCount(value: string | undefined): number {
 	}
 	const count = Number.parseInt(value, 10);
 	return Number.isFinite(count) ? count : 0;
+}
+
+function normalizeGitPaths(paths: readonly string[]): string[] {
+	return paths
+		.map((path) => path.split(sep).join("/").replace(/\/+$/, ""))
+		.filter((path) => path !== "");
+}
+
+function isIgnoredGitPath(
+	path: string,
+	ignoredGitPaths: readonly string[],
+): boolean {
+	const normalizedPath = normalizeGitPaths([path])[0];
+	if (!normalizedPath) {
+		return false;
+	}
+
+	return ignoredGitPaths.some(
+		(ignoredPath) =>
+			normalizedPath === ignoredPath ||
+			normalizedPath.startsWith(`${ignoredPath}/`),
+	);
 }
 
 function readGitGraphData(root: string): BrowserGitGraph {
