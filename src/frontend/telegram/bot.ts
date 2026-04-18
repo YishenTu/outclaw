@@ -148,6 +148,7 @@ interface TelegramBotLike {
 			photo: unknown,
 			options?: object,
 		): Promise<{ message_id: number }>;
+		leaveChat(chatId: number): Promise<unknown>;
 		setMyCommands(commands: typeof TELEGRAM_COMMANDS): Promise<unknown>;
 	};
 	use(middleware: unknown): unknown;
@@ -299,6 +300,27 @@ export function startTelegramBot(
 	};
 	const bot = dependencies.createBot(token);
 	bot.api.config.use(dependencies.createAutoRetryMiddleware());
+
+	bot.use(
+		async (
+			ctx: {
+				chat?: { id: number; type: string };
+			},
+			next: () => Promise<unknown>,
+		) => {
+			if (ctx.chat && ctx.chat.type !== "private") {
+				try {
+					await bot.api.leaveChat(ctx.chat.id);
+				} catch (err) {
+					dependencies.logError(
+						`Failed to leave non-private Telegram chat ${ctx.chat.id}: ${extractError(err)}`,
+					);
+				}
+				return;
+			}
+			return next();
+		},
+	);
 
 	const allowed = new Set(allowedUsers);
 	bot.use(

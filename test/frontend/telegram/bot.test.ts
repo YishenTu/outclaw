@@ -92,6 +92,7 @@ class FakeBot {
 				message_id: 2,
 			}),
 		),
+		leaveChat: mock(async (_chatId: number) => undefined),
 		setMyCommands: mock(async (commands: unknown) =>
 			setMyCommandsImpl(commands),
 		),
@@ -262,7 +263,54 @@ describe("startTelegramBot", () => {
 		expect(bot.start).toHaveBeenCalledTimes(1);
 		expect(log).toHaveBeenCalledWith("Telegram bot started");
 
-		const authMiddleware = bot.middleware[0] as (
+		const groupBlockerMiddleware = bot.middleware[0] as (
+			ctx: { chat?: { id: number; type: string } },
+			next: () => Promise<unknown>,
+		) => Promise<unknown>;
+		const privateNext = mock(async () => "private");
+		await expect(
+			groupBlockerMiddleware(
+				{ chat: { id: 100, type: "private" } },
+				privateNext,
+			),
+		).resolves.toBe("private");
+		expect(privateNext).toHaveBeenCalledTimes(1);
+		expect(bot.api.leaveChat).not.toHaveBeenCalled();
+
+		const groupNext = mock(async () => "group");
+		await expect(
+			groupBlockerMiddleware({ chat: { id: -200, type: "group" } }, groupNext),
+		).resolves.toBeUndefined();
+		expect(groupNext).not.toHaveBeenCalled();
+		expect(bot.api.leaveChat).toHaveBeenCalledWith(-200);
+
+		const supergroupNext = mock(async () => "supergroup");
+		await expect(
+			groupBlockerMiddleware(
+				{ chat: { id: -300, type: "supergroup" } },
+				supergroupNext,
+			),
+		).resolves.toBeUndefined();
+		expect(supergroupNext).not.toHaveBeenCalled();
+		expect(bot.api.leaveChat).toHaveBeenCalledWith(-300);
+
+		const channelNext = mock(async () => "channel");
+		await expect(
+			groupBlockerMiddleware(
+				{ chat: { id: -400, type: "channel" } },
+				channelNext,
+			),
+		).resolves.toBeUndefined();
+		expect(channelNext).not.toHaveBeenCalled();
+		expect(bot.api.leaveChat).toHaveBeenCalledWith(-400);
+
+		const noChatNext = mock(async () => "no-chat");
+		await expect(groupBlockerMiddleware({}, noChatNext)).resolves.toBe(
+			"no-chat",
+		);
+		expect(noChatNext).toHaveBeenCalledTimes(1);
+
+		const authMiddleware = bot.middleware[1] as (
 			ctx: { from?: { id: number }; message?: { text?: string } },
 			next: () => Promise<unknown>,
 		) => Promise<unknown>;
@@ -698,6 +746,40 @@ describe("startTelegramBot", () => {
 		service.stop();
 		expect(bot.stop).toHaveBeenCalledTimes(1);
 		expect(bridge.close).toHaveBeenCalledTimes(1);
+	});
+
+	test("logs failure to leave a non-private chat but still skips processing", async () => {
+		const error = mock(() => undefined);
+		const service = startTelegramBot(
+			{
+				botId: "bot-a",
+				token: "telegram-token",
+				runtimeUrl: "ws://runtime",
+				allowedUsers: [],
+				filesRoot: "/tmp/files",
+			},
+			createTestDependencies({ logError: error }),
+		);
+
+		const bot = FakeBot.lastInstance as FakeBot;
+		bot.api.leaveChat = mock(async () => {
+			throw new Error("forbidden");
+		});
+
+		const groupBlockerMiddleware = bot.middleware[0] as (
+			ctx: { chat?: { id: number; type: string } },
+			next: () => Promise<unknown>,
+		) => Promise<unknown>;
+		const next = mock(async () => "should-not-run");
+		await expect(
+			groupBlockerMiddleware({ chat: { id: -500, type: "group" } }, next),
+		).resolves.toBeUndefined();
+		expect(next).not.toHaveBeenCalled();
+		expect(error).toHaveBeenCalledWith(
+			"Failed to leave non-private Telegram chat -500: forbidden",
+		);
+
+		service.stop();
 	});
 
 	test("logs command registration failures", async () => {
