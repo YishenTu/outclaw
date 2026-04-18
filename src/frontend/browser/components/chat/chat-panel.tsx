@@ -18,7 +18,13 @@ export function ChatPanel() {
 	const activeSession = useSessionsStore((state) =>
 		activeAgentId ? (state.activeSessionByAgent[activeAgentId] ?? null) : null,
 	);
-	const runtime = useRuntimeStore((state) => state);
+	const providerId = useRuntimeStore((state) => state.providerId);
+	const sessionTitleFromRuntime = useRuntimeStore(
+		(state) => state.sessionTitle,
+	);
+	const model = useRuntimeStore((state) => state.model);
+	const effort = useRuntimeStore((state) => state.effort);
+	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
 	const activeAgent = agents.find((agent) => agent.agentId === activeAgentId);
 	const sessionKey =
 		activeAgentId === null
@@ -26,7 +32,7 @@ export function ChatPanel() {
 			: resolveBrowserSessionKey({
 					agentId: activeAgentId,
 					activeSession,
-					providerId: runtime.providerId,
+					providerId,
 				});
 	const chatSession = useChatStore((state) =>
 		sessionKey ? state.sessions[sessionKey] : undefined,
@@ -40,7 +46,7 @@ export function ChatPanel() {
 				)
 			: undefined;
 	const sessionTitle =
-		runtime.sessionTitle ??
+		sessionTitleFromRuntime ??
 		activeSessionEntry?.title ??
 		(activeSession ? activeSession.sdkSessionId : "New conversation");
 
@@ -70,8 +76,8 @@ export function ChatPanel() {
 					onSend={sendPrompt}
 					disabled
 					interruptible={false}
-					model={runtime.model}
-					effort={runtime.effort}
+					model={model}
+					effort={effort}
 					onModelChange={handleModelChange}
 					onEffortChange={handleEffortChange}
 				/>
@@ -104,6 +110,7 @@ export function ChatPanel() {
 				<div className="flex-1" />
 			) : (
 				<MessageList
+					sessionKey={sessionKey}
 					messages={chatSession?.messages ?? []}
 					streamingText={chatSession?.streamingText ?? ""}
 					streamingThinking={chatSession?.streamingThinking ?? ""}
@@ -121,9 +128,9 @@ export function ChatPanel() {
 					(chatSession?.isCompacting ?? false)
 				}
 				sessionKey={sessionKey}
-				disabled={runtime.connectionStatus !== "connected"}
-				model={runtime.model}
-				effort={runtime.effort}
+				disabled={connectionStatus !== "connected"}
+				model={model}
+				effort={effort}
 				onModelChange={handleModelChange}
 				onEffortChange={handleEffortChange}
 			/>

@@ -206,6 +206,22 @@ describe("mapEventToActions", () => {
 		]);
 	});
 
+	test("user_prompt from heartbeat → push heartbeat indicator", () => {
+		const actions = mapEventToActions({
+			type: "user_prompt",
+			prompt: "check tasks",
+			source: "heartbeat",
+		});
+		expect(actions).toEqual([
+			{
+				type: "push",
+				role: "info",
+				text: "Heartbeat",
+				variant: "heartbeat",
+			},
+		]);
+	});
+
 	test("image event → push info", () => {
 		expect(
 			mapEventToActions({ type: "image", path: "/tmp/chart.png" }),
@@ -425,6 +441,25 @@ describe("mapEventToActions", () => {
 		]);
 	});
 
+	test("history_replay keeps heartbeat indicators compact", () => {
+		const actions = mapEventToActions({
+			type: "history_replay",
+			messages: [
+				{ kind: "system", event: "heartbeat", text: "Heartbeat" },
+				{ kind: "chat", role: "assistant", content: "HEARTBEAT_OK" },
+			],
+		});
+		expect(actions).toEqual([
+			{
+				type: "replay",
+				messages: [
+					{ id: 1, role: "info", text: "Heartbeat", variant: "heartbeat" },
+					{ id: 2, role: "assistant", text: "HEARTBEAT_OK" },
+				],
+			},
+		]);
+	});
+
 	test("session_menu → session_menu action", () => {
 		const actions = mapEventToActions({
 			type: "session_menu",
@@ -477,6 +512,72 @@ describe("mapEventToActions", () => {
 });
 
 describe("applyAction", () => {
+	test("heartbeat rows disappear when the final heartbeat result is only HEARTBEAT_OK", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "push",
+			role: "info",
+			text: "Heartbeat",
+			variant: "heartbeat",
+		});
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: " `HEARTBEAT_OK` ",
+		});
+		state = applyAction(state, { type: "commit_streaming" });
+
+		expect(state.messages).toEqual([]);
+		expect(state.running).toBe(false);
+	});
+
+	test("heartbeat rows keep buffered output when the heartbeat produced content", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "push",
+			role: "info",
+			text: "Heartbeat",
+			variant: "heartbeat",
+		});
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "checking tasks",
+		});
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: "Updated inbox triage notes.",
+		});
+		state = applyAction(state, { type: "commit_streaming" });
+
+		expect(state.messages).toEqual([
+			{ id: 1, role: "info", text: "Heartbeat", variant: "heartbeat" },
+			{ id: 2, role: "thinking", text: "checking tasks" },
+			{ id: 3, role: "assistant", text: "Updated inbox triage notes." },
+		]);
+		expect(state.running).toBe(false);
+	});
+
+	test("heartbeat rows disappear when HEARTBEAT_OK is accompanied only by hidden thinking", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "push",
+			role: "info",
+			text: "Heartbeat",
+			variant: "heartbeat",
+		});
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "checking tasks",
+		});
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: "`HEARTBEAT_OK`",
+		});
+		state = applyAction(state, { type: "commit_streaming" });
+
+		expect(state.messages).toEqual([]);
+		expect(state.running).toBe(false);
+	});
+
 	test("append_thinking accumulates thinking text", () => {
 		const state = initialTuiState();
 		const next = applyAction(state, {

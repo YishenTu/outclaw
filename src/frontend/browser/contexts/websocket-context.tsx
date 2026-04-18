@@ -27,7 +27,7 @@ import {
 } from "../../runtime-client/index.ts";
 import { ensureRunningChatSession } from "../ensure-running-chat-session.ts";
 import { fetchSidebarSummary } from "../lib/api.ts";
-import { formatObservedPrompt } from "../observed-prompt.ts";
+import { toObservedDisplayMessage } from "../observed-prompt.ts";
 import {
 	createBrowserSessionRef,
 	createSessionKey,
@@ -413,13 +413,12 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 						return;
 					}
 
-					useChatStore.getState().pushMessage(getCurrentSessionKey(agentId), {
-						kind: "chat",
-						role: "user",
-						content: formatObservedPrompt(event),
-						images: event.images,
-						replyContext: event.replyContext,
-					});
+					useChatStore
+						.getState()
+						.pushMessage(
+							getCurrentSessionKey(agentId),
+							toObservedDisplayMessage(event),
+						);
 					return;
 				}
 				case "thinking": {

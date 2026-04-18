@@ -1,4 +1,4 @@
-import { INDEX_FILTERED_HEARTBEAT_PROMPTS } from "./heartbeat-prompt.ts";
+import { isOperationalHeartbeatPrompt } from "./heartbeat-prompt.ts";
 import type { TranscriptTurn } from "./protocol.ts";
 
 interface FormatTranscriptTurnBodyOptions {
@@ -29,21 +29,16 @@ export function formatSearchTranscriptTurnBody(turn: TranscriptTurn): string {
 	if (bodyText === "") {
 		return "";
 	}
-	if (isOperationalHeartbeatPrompt(turn.content)) {
+	if (
+		turn.source === "heartbeat" ||
+		isOperationalHeartbeatPrompt(turn.content)
+	) {
 		return "";
 	}
 	if (turn.role === "assistant" && isExactHeartbeatOk(bodyText)) {
 		return "";
 	}
 	return bodyText;
-}
-
-const normalizedHeartbeatPrompts = new Set(
-	INDEX_FILTERED_HEARTBEAT_PROMPTS.map(normalizeWhitespace),
-);
-
-function isOperationalHeartbeatPrompt(content: string): boolean {
-	return normalizedHeartbeatPrompts.has(normalizeWhitespace(content));
 }
 
 function isExactHeartbeatOk(bodyText: string): boolean {
@@ -53,8 +48,4 @@ function isExactHeartbeatOk(bodyText: string): boolean {
 		.replace(/`+$/, "")
 		.trim();
 	return withoutWrappingBackticks === "HEARTBEAT_OK";
-}
-
-function normalizeWhitespace(value: string): string {
-	return value.replace(/\s+/g, " ").trim();
 }

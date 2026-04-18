@@ -175,7 +175,7 @@ describe("git panel header", () => {
 			}),
 		);
 
-		expect(html).toContain("text-orange-400");
+		expect(html).toContain("text-brand");
 		expect(html).toContain("text-emerald-300");
 		expect(html).not.toContain(">-0<");
 	});

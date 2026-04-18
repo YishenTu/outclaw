@@ -1,4 +1,5 @@
 import { clsx } from "clsx";
+import { Heart } from "lucide-react";
 import type { DisplayMessage } from "../../../../common/protocol.ts";
 import { MarkdownContent } from "./markdown-content.tsx";
 import { ThinkingBlock } from "./thinking-block.tsx";
@@ -9,6 +10,20 @@ interface MessageProps {
 
 export function Message({ message }: MessageProps) {
 	if (message.kind === "system") {
+		if (message.event === "heartbeat") {
+			return (
+				<div className="font-mono-ui flex items-center gap-2 px-3 py-1 text-[12px] uppercase tracking-[0.12em] text-dark-500">
+					<Heart
+						size={12}
+						className="text-pink-300"
+						strokeWidth={1.8}
+						aria-hidden="true"
+					/>
+					<span>{message.text}</span>
+				</div>
+			);
+		}
+
 		return (
 			<div className="font-mono-ui px-3 py-1 text-[12px] uppercase tracking-[0.12em] text-dark-500">
 				{message.text}

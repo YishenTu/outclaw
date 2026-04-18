@@ -1,44 +1,66 @@
 import { describe, expect, test } from "bun:test";
-import { formatObservedPrompt } from "../../../src/frontend/browser/observed-prompt.ts";
+import { toObservedDisplayMessage } from "../../../src/frontend/browser/observed-prompt.ts";
 
-describe("formatObservedPrompt", () => {
+describe("toObservedDisplayMessage", () => {
 	test("keeps tui prompts untagged in the browser", () => {
 		expect(
-			formatObservedPrompt({
+			toObservedDisplayMessage({
 				type: "user_prompt",
 				prompt: "hello from tui",
 				source: "tui",
 			}),
-		).toBe("hello from tui");
+		).toEqual({
+			kind: "chat",
+			role: "user",
+			content: "hello from tui",
+			images: undefined,
+			replyContext: undefined,
+		});
 	});
 
 	test("keeps image-only tui prompts untagged in the browser", () => {
 		expect(
-			formatObservedPrompt({
+			toObservedDisplayMessage({
 				type: "user_prompt",
 				prompt: "",
 				source: "tui",
 			}),
-		).toBe("");
+		).toEqual({
+			kind: "chat",
+			role: "user",
+			content: "",
+			images: undefined,
+			replyContext: undefined,
+		});
 	});
 
 	test("keeps telegram prompts tagged", () => {
 		expect(
-			formatObservedPrompt({
+			toObservedDisplayMessage({
 				type: "user_prompt",
 				prompt: "hello from telegram",
 				source: "telegram",
 			}),
-		).toBe("[telegram]\nhello from telegram");
+		).toEqual({
+			kind: "chat",
+			role: "user",
+			content: "[telegram]\nhello from telegram",
+			images: undefined,
+			replyContext: undefined,
+		});
 	});
 
-	test("keeps heartbeat prompts tagged", () => {
+	test("converts heartbeat prompts into a heartbeat system message", () => {
 		expect(
-			formatObservedPrompt({
+			toObservedDisplayMessage({
 				type: "user_prompt",
-				prompt: "",
+				prompt: "check heartbeat",
 				source: "heartbeat",
 			}),
-		).toBe("[heartbeat]");
+		).toEqual({
+			kind: "system",
+			event: "heartbeat",
+			text: "Heartbeat",
+		});
 	});
 });

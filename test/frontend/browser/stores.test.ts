@@ -417,6 +417,55 @@ describe("browser stores", () => {
 		).toBeUndefined();
 	});
 
+	test("chat store drops a heartbeat indicator when the final heartbeat result is only HEARTBEAT_OK", () => {
+		useChatStore.getState().pushMessage("agent-a:claude:sdk-alpha", {
+			kind: "system",
+			event: "heartbeat",
+			text: "Heartbeat",
+		});
+		useChatStore
+			.getState()
+			.appendText("agent-a:claude:sdk-alpha", "  `HEARTBEAT_OK`  ");
+
+		useChatStore.getState().finalizeMessage("agent-a:claude:sdk-alpha");
+
+		expect(
+			useChatStore.getState().getMessages("agent-a:claude:sdk-alpha"),
+		).toEqual([]);
+	});
+
+	test("chat store keeps heartbeat indicator and result when the heartbeat produced content", () => {
+		useChatStore.getState().pushMessage("agent-a:claude:sdk-alpha", {
+			kind: "system",
+			event: "heartbeat",
+			text: "Heartbeat",
+		});
+		useChatStore
+			.getState()
+			.appendThinking("agent-a:claude:sdk-alpha", "checking tasks");
+		useChatStore
+			.getState()
+			.appendText("agent-a:claude:sdk-alpha", "Updated inbox triage notes.");
+
+		useChatStore.getState().finalizeMessage("agent-a:claude:sdk-alpha");
+
+		expect(
+			useChatStore.getState().getMessages("agent-a:claude:sdk-alpha"),
+		).toEqual([
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Updated inbox triage notes.",
+				thinking: "checking tasks",
+			},
+		]);
+	});
+
 	test("context usage store returns the latest usage per session", () => {
 		const usage: UsageInfo = {
 			inputTokens: 1,

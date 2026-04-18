@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
 import type { DisplayImage, DisplayMessage } from "../../../common/protocol.ts";
 
 export interface ChatSession {
@@ -6,6 +7,10 @@ export interface ChatSession {
 	streamingText: string;
 	streamingThinking: string;
 	streamingImages: DisplayImage[];
+	heartbeatPending: boolean;
+	heartbeatStreamingText: string;
+	heartbeatStreamingThinking: string;
+	heartbeatStreamingImages: DisplayImage[];
 	isThinking: boolean;
 	isStreaming: boolean;
 	isCompacting: boolean;
@@ -41,6 +46,10 @@ function createEmptySession(): ChatSession {
 		streamingText: "",
 		streamingThinking: "",
 		streamingImages: [],
+		heartbeatPending: false,
+		heartbeatStreamingText: "",
+		heartbeatStreamingThinking: "",
+		heartbeatStreamingImages: [],
 		isThinking: false,
 		isStreaming: false,
 		isCompacting: false,
@@ -72,6 +81,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 					[sessionKey]: {
 						...session,
 						messages: [...session.messages, message],
+						heartbeatPending:
+							message.kind === "system" && message.event === "heartbeat"
+								? true
+								: session.heartbeatPending,
 						error: null,
 					},
 				},
@@ -105,6 +118,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						streamingText: "",
 						streamingThinking: "",
 						streamingImages: [],
+						heartbeatPending: false,
+						heartbeatStreamingText: "",
+						heartbeatStreamingThinking: "",
+						heartbeatStreamingImages: [],
 						isThinking: session.isThinking,
 						isStreaming: session.isStreaming,
 						error: null,
@@ -124,7 +141,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 					...state.sessions,
 					[sessionKey]: {
 						...session,
-						streamingText: `${session.streamingText}${text}`,
+						streamingText: session.heartbeatPending
+							? session.streamingText
+							: `${session.streamingText}${text}`,
+						heartbeatStreamingText: session.heartbeatPending
+							? `${session.heartbeatStreamingText}${text}`
+							: session.heartbeatStreamingText,
 						isStreaming: true,
 					},
 				},
@@ -138,7 +160,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 					...state.sessions,
 					[sessionKey]: {
 						...session,
-						streamingThinking: `${session.streamingThinking}${text}`,
+						streamingThinking: session.heartbeatPending
+							? session.streamingThinking
+							: `${session.streamingThinking}${text}`,
+						heartbeatStreamingThinking: session.heartbeatPending
+							? `${session.heartbeatStreamingThinking}${text}`
+							: session.heartbeatStreamingThinking,
 						isThinking: true,
 						thinkingStartedAt: session.thinkingStartedAt ?? Date.now(),
 					},
@@ -153,7 +180,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 					...state.sessions,
 					[sessionKey]: {
 						...session,
-						streamingImages: [...session.streamingImages, image],
+						streamingImages: session.heartbeatPending
+							? session.streamingImages
+							: [...session.streamingImages, image],
+						heartbeatStreamingImages: session.heartbeatPending
+							? [...session.heartbeatStreamingImages, image]
+							: session.heartbeatStreamingImages,
 						isStreaming: true,
 					},
 				},
@@ -212,6 +244,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						error,
 						isThinking: error ? false : session.isThinking,
 						isStreaming: error ? false : session.isStreaming,
+						heartbeatPending: error ? false : session.heartbeatPending,
+						heartbeatStreamingText: error ? "" : session.heartbeatStreamingText,
+						heartbeatStreamingThinking: error
+							? ""
+							: session.heartbeatStreamingThinking,
+						heartbeatStreamingImages: error
+							? []
+							: session.heartbeatStreamingImages,
 						thinkingStartedAt: error ? null : session.thinkingStartedAt,
 					},
 				},
@@ -220,28 +260,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	finalizeMessage: (sessionKey) =>
 		set((state) => {
 			const session = getOrCreateSession(state.sessions, sessionKey);
-			const hasStreamingContent =
-				session.streamingText !== "" ||
-				session.streamingThinking !== "" ||
-				session.streamingImages.length > 0;
-			const messages = hasStreamingContent
-				? [
-						...session.messages,
-						{
-							kind: "chat" as const,
-							role: "assistant" as const,
-							content: session.streamingText,
-							thinking:
-								session.streamingThinking === ""
-									? undefined
-									: session.streamingThinking,
-							images:
-								session.streamingImages.length > 0
-									? session.streamingImages
-									: undefined,
-						},
-					]
-				: session.messages;
+			const messages = finalizeSessionMessages(session);
 			return {
 				sessions: {
 					...state.sessions,
@@ -251,6 +270,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						streamingText: "",
 						streamingThinking: "",
 						streamingImages: [],
+						heartbeatPending: false,
+						heartbeatStreamingText: "",
+						heartbeatStreamingThinking: "",
+						heartbeatStreamingImages: [],
 						isThinking: false,
 						isStreaming: false,
 						error: null,
@@ -285,3 +308,67 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			return { sessions };
 		}),
 }));
+
+function finalizeSessionMessages(session: ChatSession): DisplayMessage[] {
+	if (session.heartbeatPending) {
+		const content = isHeartbeatNoopResult(session.heartbeatStreamingText)
+			? ""
+			: session.heartbeatStreamingText;
+		const hasVisibleHeartbeatContent =
+			content !== "" || session.heartbeatStreamingImages.length > 0;
+		if (!hasVisibleHeartbeatContent) {
+			return dropPendingHeartbeatIndicator(session.messages);
+		}
+
+		return [
+			...session.messages,
+			{
+				kind: "chat" as const,
+				role: "assistant" as const,
+				content,
+				thinking:
+					session.heartbeatStreamingThinking === ""
+						? undefined
+						: session.heartbeatStreamingThinking,
+				images:
+					session.heartbeatStreamingImages.length > 0
+						? session.heartbeatStreamingImages
+						: undefined,
+			},
+		];
+	}
+
+	const hasStreamingContent =
+		session.streamingText !== "" ||
+		session.streamingThinking !== "" ||
+		session.streamingImages.length > 0;
+	return hasStreamingContent
+		? [
+				...session.messages,
+				{
+					kind: "chat" as const,
+					role: "assistant" as const,
+					content: session.streamingText,
+					thinking:
+						session.streamingThinking === ""
+							? undefined
+							: session.streamingThinking,
+					images:
+						session.streamingImages.length > 0
+							? session.streamingImages
+							: undefined,
+				},
+			]
+		: session.messages;
+}
+
+function dropPendingHeartbeatIndicator(
+	messages: DisplayMessage[],
+): DisplayMessage[] {
+	const lastMessage = messages.at(-1);
+	if (lastMessage?.kind === "system" && lastMessage.event === "heartbeat") {
+		return messages.slice(0, -1);
+	}
+
+	return messages;
+}

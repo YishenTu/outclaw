@@ -42,6 +42,12 @@ export interface AskMessage {
 }
 
 export type RuntimeClientType = "telegram" | "tui" | "browser" | "control";
+export type PromptSource =
+	| "telegram"
+	| "heartbeat"
+	| "tui"
+	| "browser"
+	| "agent";
 
 export interface HeartbeatDeliveryTarget {
 	clientType: RuntimeClientType;
@@ -118,7 +124,7 @@ export interface UserPromptEvent {
 	prompt: string;
 	images?: DisplayImage[];
 	replyContext?: ReplyContext;
-	source: string;
+	source: PromptSource;
 }
 
 export interface CompactingStartedEvent {
@@ -235,13 +241,23 @@ export interface DisplayChatMessage {
 	replyContext?: ReplyContext;
 }
 
-export interface DisplaySystemMessage {
+export interface DisplayCompactBoundaryMessage {
 	kind: "system";
 	event: "compact_boundary";
 	text: string;
 	trigger: "manual" | "auto";
 	preTokens: number;
 }
+
+export interface DisplayHeartbeatMessage {
+	kind: "system";
+	event: "heartbeat";
+	text: string;
+}
+
+export type DisplaySystemMessage =
+	| DisplayCompactBoundaryMessage
+	| DisplayHeartbeatMessage;
 
 export type DisplayMessage = DisplayChatMessage | DisplaySystemMessage;
 
@@ -251,6 +267,7 @@ export interface TranscriptTurn {
 	timestamp: number;
 	images?: DisplayImage[];
 	replyContext?: ReplyContext;
+	source?: PromptSource;
 }
 
 export interface HistoryReplayEvent {

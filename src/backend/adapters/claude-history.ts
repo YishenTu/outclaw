@@ -1,5 +1,10 @@
 import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+	HEARTBEAT_DISPLAY_LABEL,
+	isHeartbeatNoopResult,
+	isOperationalHeartbeatPrompt,
+} from "../../common/heartbeat-prompt.ts";
 import type {
 	DisplayChatMessage,
 	DisplayImage,
@@ -98,6 +103,7 @@ export function normalizeClaudeHistory(
 ): DisplayMessage[] {
 	const result: DisplayMessage[] = [];
 	let pendingThinking = "";
+	let pendingHeartbeat = false;
 
 	for (let index = 0; index < messages.length; index++) {
 		const msg = messages[index];
@@ -148,6 +154,10 @@ export function normalizeClaudeHistory(
 			const parsed = parsePromptWithReplyContext(
 				stripTaskNotifications(content),
 			);
+			if (isOperationalHeartbeatTurn(parsed.prompt, parsed.replyContext)) {
+				pendingHeartbeat = true;
+				continue;
+			}
 			if (parsed.prompt || parsed.replyContext) {
 				result.push({
 					kind: "chat",
@@ -163,6 +173,12 @@ export function normalizeClaudeHistory(
 				stripTaskNotifications(extractText(content)),
 			);
 			const images = extractImages(content);
+			if (
+				isOperationalHeartbeatTurn(parsed.prompt, parsed.replyContext, images)
+			) {
+				pendingHeartbeat = true;
+				continue;
+			}
 			if (parsed.prompt || parsed.replyContext || images.length > 0) {
 				result.push({
 					kind: "chat",
@@ -179,6 +195,7 @@ export function normalizeClaudeHistory(
 			const thinking = extractThinking(content);
 			if (isSyntheticNoResponseReply(text, msg, messages, index)) {
 				pendingThinking = "";
+				pendingHeartbeat = false;
 				continue;
 			}
 
@@ -190,6 +207,13 @@ export function normalizeClaudeHistory(
 			if (text) {
 				const merged = [pendingThinking, thinking].join("") || undefined;
 				pendingThinking = "";
+				if (pendingHeartbeat) {
+					pendingHeartbeat = false;
+					if (isHeartbeatNoopResult(text)) {
+						continue;
+					}
+					result.push(createHeartbeatMessage());
+				}
 				const entry: DisplayChatMessage = {
 					kind: "chat",
 					role: "assistant",
@@ -260,6 +284,10 @@ export function normalizeClaudeTranscript(
 						role: "user",
 						content: parsed.prompt,
 						replyContext: parsed.replyContext,
+						source: resolveTranscriptPromptSource(
+							parsed.prompt,
+							parsed.replyContext,
+						),
 						timestamp,
 					});
 				}
@@ -276,6 +304,11 @@ export function normalizeClaudeTranscript(
 					content: parsed.prompt,
 					images: images.length > 0 ? images : undefined,
 					replyContext: parsed.replyContext,
+					source: resolveTranscriptPromptSource(
+						parsed.prompt,
+						parsed.replyContext,
+						images,
+					),
 					timestamp,
 				});
 			}
@@ -337,6 +370,37 @@ function createCompactBoundaryMessage(metadata: {
 		trigger: metadata.trigger === "manual" ? "manual" : "auto",
 		preTokens: metadata.preTokens ?? 0,
 	};
+}
+
+function createHeartbeatMessage(): DisplaySystemMessage {
+	return {
+		kind: "system",
+		event: "heartbeat",
+		text: HEARTBEAT_DISPLAY_LABEL,
+	};
+}
+
+function isOperationalHeartbeatTurn(
+	prompt: string,
+	replyContext?: { text: string },
+	images: DisplayImage[] = [],
+): boolean {
+	return (
+		prompt !== "" &&
+		replyContext === undefined &&
+		images.length === 0 &&
+		isOperationalHeartbeatPrompt(prompt)
+	);
+}
+
+function resolveTranscriptPromptSource(
+	prompt: string,
+	replyContext?: { text: string },
+	images: DisplayImage[] = [],
+): "heartbeat" | undefined {
+	return isOperationalHeartbeatTurn(prompt, replyContext, images)
+		? "heartbeat"
+		: undefined;
 }
 
 function pushCompactBoundary(result: DisplayMessage[]): void {

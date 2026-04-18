@@ -1,14 +1,31 @@
-import type { ServerEvent } from "../../common/protocol.ts";
+import { HEARTBEAT_DISPLAY_LABEL } from "../../common/heartbeat-prompt.ts";
+import type { DisplayMessage, ServerEvent } from "../../common/protocol.ts";
 
-export function formatObservedPrompt(
+export function toObservedDisplayMessage(
 	event: Extract<ServerEvent, { type: "user_prompt" }>,
-) {
-	if (event.source === "telegram") {
-		return event.prompt ? `[telegram]\n${event.prompt}` : "[telegram]";
+): DisplayMessage {
+	if (event.source === "heartbeat") {
+		return {
+			kind: "system",
+			event: "heartbeat",
+			text: HEARTBEAT_DISPLAY_LABEL,
+		};
 	}
 
-	if (event.source === "heartbeat") {
-		return event.prompt ? `[heartbeat]\n${event.prompt}` : "[heartbeat]";
+	return {
+		kind: "chat",
+		role: "user",
+		content: formatObservedPrompt(event),
+		images: event.images,
+		replyContext: event.replyContext,
+	};
+}
+
+function formatObservedPrompt(
+	event: Extract<ServerEvent, { type: "user_prompt" }>,
+): string {
+	if (event.source === "telegram") {
+		return event.prompt ? `[telegram]\n${event.prompt}` : "[telegram]";
 	}
 
 	return event.prompt;

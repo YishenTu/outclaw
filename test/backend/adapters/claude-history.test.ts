@@ -7,6 +7,7 @@ import {
 	readClaudeHistory,
 	readClaudeTranscript,
 } from "../../../src/backend/adapters/claude-history.ts";
+import { CURRENT_HEARTBEAT_PROMPT } from "../../../src/common/heartbeat-prompt.ts";
 
 const MISSING_PROJECTS_DIR = join(tmpdir(), "outclaw-no-history-here");
 
@@ -452,6 +453,51 @@ describe("readClaudeHistory", () => {
 			},
 		]);
 	});
+
+	test("substitutes operational heartbeat prompts with a heartbeat system message", async () => {
+		const { result } = readSdkHistory([
+			{
+				type: "user",
+				message: { content: CURRENT_HEARTBEAT_PROMPT },
+			},
+			{
+				type: "assistant",
+				message: {
+					content: [{ type: "text", text: "HEARTBEAT_OK" }],
+				},
+			},
+		]);
+
+		expect(await result).toEqual([]);
+	});
+
+	test("keeps heartbeat indicator when the heartbeat produced a substantive result", async () => {
+		const { result } = readSdkHistory([
+			{
+				type: "user",
+				message: { content: CURRENT_HEARTBEAT_PROMPT },
+			},
+			{
+				type: "assistant",
+				message: {
+					content: [{ type: "text", text: "Updated inbox triage notes." }],
+				},
+			},
+		]);
+
+		expect(await result).toEqual([
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Updated inbox triage notes.",
+			},
+		]);
+	});
 });
 
 describe("readClaudeTranscript", () => {
@@ -586,6 +632,43 @@ describe("readClaudeTranscript", () => {
 			{
 				role: "assistant",
 				content: "sdk-only answer",
+				timestamp: Date.parse("2025-01-15T14:31:00.000Z"),
+			},
+		]);
+	});
+
+	test("tags operational heartbeat turns with heartbeat source metadata", async () => {
+		const loadHistory = mock(async () => [
+			{
+				type: "user",
+				timestamp: "2025-01-15T14:30:00.000Z",
+				message: { content: CURRENT_HEARTBEAT_PROMPT },
+			},
+			{
+				type: "assistant",
+				timestamp: "2025-01-15T14:31:00.000Z",
+				message: {
+					content: [{ type: "text", text: "HEARTBEAT_OK" }],
+				},
+			},
+		]);
+
+		const turns = await readClaudeTranscript({
+			sessionId: "missing-session",
+			loadHistory,
+			claudeProjectsDir: MISSING_PROJECTS_DIR,
+		});
+
+		expect(turns).toEqual([
+			{
+				role: "user",
+				content: CURRENT_HEARTBEAT_PROMPT,
+				source: "heartbeat",
+				timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+			},
+			{
+				role: "assistant",
+				content: "HEARTBEAT_OK",
 				timestamp: Date.parse("2025-01-15T14:31:00.000Z"),
 			},
 		]);

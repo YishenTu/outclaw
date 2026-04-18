@@ -56,7 +56,7 @@ describe("file tree helpers", () => {
 				path: "AGENTS.md",
 				gitStatus: "modified",
 			}),
-		).toContain("text-orange-400");
+		).toContain("text-brand");
 		expect(
 			treeEntryToneClass({
 				kind: "file",

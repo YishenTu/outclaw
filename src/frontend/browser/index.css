@@ -13,17 +13,17 @@
 @tailwind utilities;
 
 :root {
-	--dark-50: #faf9f7;
-	--dark-100: #f5f4f0;
-	--dark-200: #e6e4df;
-	--dark-300: #d5d2cb;
-	--dark-400: #a8a49b;
-	--dark-500: #78746b;
+	--dark-50: #ececec;
+	--dark-100: #e0e0e0;
+	--dark-200: #cccccc;
+	--dark-300: #b8b8b8;
+	--dark-400: #909090;
+	--dark-500: #6a6a6a;
 	--dark-600: #57534a;
 	--dark-700: #44403a;
 	--dark-800: #292524;
 	--dark-900: #1c1917;
-	--dark-950: #0c0a09;
+	--dark-950: #120e0b;
 	--font-ui-sans: "IBM Plex Sans", "Inter", "Segoe UI", sans-serif;
 }
 
@@ -69,6 +69,27 @@ textarea {
 	background:
 		linear-gradient(180deg, rgba(38, 38, 38, 0.72), rgba(10, 10, 10, 0.92)),
 		radial-gradient(circle at top, rgba(251, 146, 60, 0.08), transparent 40%);
+}
+
+/* Pull prose-invert defaults onto the dark-* palette so headings/bold
+   don't render as pure white. */
+.prose-invert {
+	--tw-prose-invert-body: var(--dark-100);
+	--tw-prose-invert-headings: var(--dark-100);
+	--tw-prose-invert-lead: var(--dark-200);
+	--tw-prose-invert-links: var(--dark-100);
+	--tw-prose-invert-bold: var(--dark-100);
+	--tw-prose-invert-counters: var(--dark-400);
+	--tw-prose-invert-bullets: var(--dark-500);
+	--tw-prose-invert-hr: var(--dark-700);
+	--tw-prose-invert-quotes: var(--dark-200);
+	--tw-prose-invert-quote-borders: var(--dark-700);
+	--tw-prose-invert-captions: var(--dark-400);
+	--tw-prose-invert-code: var(--dark-100);
+	--tw-prose-invert-pre-code: var(--dark-100);
+	--tw-prose-invert-pre-bg: transparent;
+	--tw-prose-invert-th-borders: var(--dark-400);
+	--tw-prose-invert-td-borders: var(--dark-700);
 }
 
 /* Academic 3-line table (booktabs style) */

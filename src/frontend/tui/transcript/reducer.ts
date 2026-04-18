@@ -1,3 +1,4 @@
+import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
 import type { SessionMenuData } from "../sessions/types.ts";
 import type { TuiMessage, TuiMessageRole, TuiState } from "./state.ts";
 
@@ -50,35 +51,80 @@ function flushStreamingBuffers(
 	return { messages, nextId };
 }
 
+function dropPendingHeartbeatIndicator(messages: TuiMessage[]): TuiMessage[] {
+	const lastMessage = messages.at(-1);
+	if (lastMessage?.variant === "heartbeat") {
+		return messages.slice(0, -1);
+	}
+	return messages;
+}
+
+function flushHeartbeatBuffers(state: TuiState): {
+	messages: TuiMessage[];
+	nextId: number;
+} {
+	if (
+		state.heartbeatStreaming === "" ||
+		isHeartbeatNoopResult(state.heartbeatStreaming)
+	) {
+		return {
+			messages: dropPendingHeartbeatIndicator(state.messages),
+			nextId: state.nextId,
+		};
+	}
+
+	return flushStreamingBuffers([...state.messages], state.nextId, {
+		...state,
+		streaming: state.heartbeatStreaming,
+		streamingThinking: state.heartbeatStreamingThinking,
+	});
+}
+
 export function applyAction(state: TuiState, action: TuiAction): TuiState {
 	switch (action.type) {
 		case "append_streaming":
 			return {
 				...state,
-				streaming: state.streaming + action.text,
+				streaming: state.heartbeatPending
+					? state.streaming
+					: state.streaming + action.text,
+				heartbeatStreaming: state.heartbeatPending
+					? state.heartbeatStreaming + action.text
+					: state.heartbeatStreaming,
 				running: true,
 			};
 		case "append_thinking":
 			return {
 				...state,
-				streamingThinking: state.streamingThinking + action.text,
+				streamingThinking: state.heartbeatPending
+					? state.streamingThinking
+					: state.streamingThinking + action.text,
+				heartbeatStreamingThinking: state.heartbeatPending
+					? state.heartbeatStreamingThinking + action.text
+					: state.heartbeatStreamingThinking,
 				running: true,
 			};
 		case "commit_streaming": {
-			if (!state.streaming && !state.streamingThinking) {
+			if (
+				!state.streaming &&
+				!state.streamingThinking &&
+				!state.heartbeatStreaming &&
+				!state.heartbeatStreamingThinking
+			) {
 				return { ...state, compacting: false, running: false };
 			}
-			const flushed = flushStreamingBuffers(
-				[...state.messages],
-				state.nextId,
-				state,
-			);
+			const flushed = state.heartbeatPending
+				? flushHeartbeatBuffers(state)
+				: flushStreamingBuffers([...state.messages], state.nextId, state);
 			return {
 				...state,
 				compacting: false,
 				messages: flushed.messages,
 				streaming: "",
 				streamingThinking: "",
+				heartbeatPending: false,
+				heartbeatStreaming: "",
+				heartbeatStreamingThinking: "",
 				running: false,
 				nextId: flushed.nextId,
 			};
@@ -96,14 +142,19 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 						variant: action.variant,
 					},
 				],
+				heartbeatPending: action.variant === "heartbeat",
+				heartbeatStreaming:
+					action.variant === "heartbeat" ? "" : state.heartbeatStreaming,
+				heartbeatStreamingThinking:
+					action.variant === "heartbeat"
+						? ""
+						: state.heartbeatStreamingThinking,
 				nextId: state.nextId + 1,
 			};
 		case "push_and_stop": {
-			const flushed = flushStreamingBuffers(
-				[...state.messages],
-				state.nextId,
-				state,
-			);
+			const flushed = state.heartbeatPending
+				? flushHeartbeatBuffers(state)
+				: flushStreamingBuffers([...state.messages], state.nextId, state);
 			flushed.messages.push({
 				id: flushed.nextId,
 				role: action.role,
@@ -117,6 +168,9 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				messages: flushed.messages,
 				streaming: "",
 				streamingThinking: "",
+				heartbeatPending: false,
+				heartbeatStreaming: "",
+				heartbeatStreamingThinking: "",
 				running: false,
 				nextId: flushed.nextId + 1,
 			};
@@ -128,6 +182,9 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				messages: [],
 				streaming: "",
 				streamingThinking: "",
+				heartbeatPending: false,
+				heartbeatStreaming: "",
+				heartbeatStreamingThinking: "",
 				running: false,
 			};
 		case "replay": {
@@ -138,6 +195,9 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				...state,
 				compacting: false,
 				messages: action.messages,
+				heartbeatPending: false,
+				heartbeatStreaming: "",
+				heartbeatStreamingThinking: "",
 				nextId: maxId + 1,
 			};
 		}

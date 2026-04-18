@@ -4,6 +4,15 @@ import { MarkdownContent } from "../../../src/frontend/browser/components/chat/m
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
 describe("MarkdownContent", () => {
+	test("removes typography backticks from inline code", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownContent content={"Use `code` inline"} />,
+		);
+
+		expect(html).toContain("[&amp;_code::before]:content-none");
+		expect(html).toContain("[&amp;_code::after]:content-none");
+	});
+
 	test("applies wrapping classes to code blocks", () => {
 		const html = renderToStaticMarkup(
 			<MarkdownContent content={"```ts\nconst value = 1;\n```"} />,

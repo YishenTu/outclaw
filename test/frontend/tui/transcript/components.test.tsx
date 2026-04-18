@@ -182,6 +182,30 @@ describe("transcript components", () => {
 		}
 	});
 
+	test("MessageItem renders heartbeat info as a compact heartbeat indicator", async () => {
+		const { app, getOutput } = renderToOutput(
+			<MessageItem
+				message={{
+					id: 1,
+					role: "info",
+					text: "Heartbeat",
+					variant: "heartbeat",
+				}}
+				columns={40}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const output = getOutput();
+			expect(output).toContain("♥ Heartbeat");
+			expect(output).not.toContain("Read HEARTBEAT.md");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("MessageItem renders aligned status messages", async () => {
 		const { app, getOutput } = renderToOutput(
 			<MessageItem

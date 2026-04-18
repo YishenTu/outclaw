@@ -1,3 +1,4 @@
+import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
 import { getImageInfo } from "../files/image-info.ts";
 import type { TelegramMessageFileRecord } from "../files/message-file-ref.ts";
 import {
@@ -36,8 +37,7 @@ interface TelegramHeartbeatResultParams {
 }
 
 function shouldSendHeartbeatText(text: string): boolean {
-	const normalized = text.trim().replace(/`/g, "");
-	return normalized !== "" && normalized !== "HEARTBEAT_OK";
+	return text.trim() !== "" && !isHeartbeatNoopResult(text);
 }
 
 export async function sendTelegramHeartbeatResult(

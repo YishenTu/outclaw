@@ -1,3 +1,4 @@
+import { HEARTBEAT_DISPLAY_LABEL } from "../../../common/heartbeat-prompt.ts";
 import type { ServerEvent } from "../../../common/protocol.ts";
 import { formatLivePrompt, formatReplyText, formatStatus } from "./format.ts";
 import type { TuiAction } from "./reducer.ts";
@@ -31,6 +32,16 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 		case "user_prompt":
 			if (event.source === "tui") {
 				return [{ type: "noop" }];
+			}
+			if (event.source === "heartbeat") {
+				return [
+					{
+						type: "push",
+						role: "info",
+						text: HEARTBEAT_DISPLAY_LABEL,
+						variant: "heartbeat",
+					},
+				];
 			}
 			return [
 				{
@@ -74,7 +85,8 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 						id: id++,
 						role: "info",
 						text: message.text,
-						variant: "compact_boundary",
+						variant:
+							message.event === "heartbeat" ? "heartbeat" : "compact_boundary",
 					});
 					continue;
 				}
