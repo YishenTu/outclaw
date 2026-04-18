@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import type { AgentEntry, AgentReorderPosition } from "../../stores/agents.ts";
 import type { SessionEntry, SessionRef } from "../../stores/sessions.ts";
+import { useWorkspaceViewStore } from "../../stores/workspace-view.ts";
 import { SessionItem } from "./session-item.tsx";
 
 interface AgentItemProps {
@@ -31,6 +32,7 @@ export function AgentItem({
 	onToggle,
 }: AgentItemProps) {
 	const { sendCommand, switchSession } = useWs();
+	const openWorkspace = useWorkspaceViewStore((state) => state.openWorkspace);
 
 	return (
 		<div ref={onAttachRow} className="relative space-y-0.5">
@@ -78,7 +80,9 @@ export function AgentItem({
 							if (!isActive && !sendCommand(`/agent ${agent.name}`)) {
 								return;
 							}
-							sendCommand("/new");
+							if (sendCommand("/new")) {
+								openWorkspace();
+							}
 						}}
 						className="font-mono-ui flex w-full items-center justify-end text-[18px] leading-none text-dark-500 transition-colors hover:text-dark-100"
 					>
@@ -102,7 +106,11 @@ export function AgentItem({
 									activeSession?.providerId === session.providerId &&
 									activeSession.sdkSessionId === session.sdkSessionId
 								}
-								onSelect={() => switchSession(agent.name, session)}
+								onSelect={() => {
+									if (switchSession(agent.name, session)) {
+										openWorkspace();
+									}
+								}}
 								onRename={(title) =>
 									sendCommand(
 										`/session rename ${session.sdkSessionId} ${title}`,

@@ -23,6 +23,8 @@ interface MessageInputProps {
 	effort: string | null;
 	onModelChange: (model: ModelAlias) => boolean;
 	onEffortChange: (effort: EffortLevel) => boolean;
+	headerSlot?: React.ReactNode;
+	compact?: boolean;
 }
 
 function isSlashAutocompleteInput(value: string): boolean {
@@ -49,6 +51,8 @@ export function MessageInput({
 	effort,
 	onModelChange,
 	onEffortChange,
+	headerSlot,
+	compact = false,
 }: MessageInputProps) {
 	const { sendCommand } = useWs();
 	const [value, setValue] = useState("");
@@ -170,7 +174,12 @@ export function MessageInput({
 							onSelect={(command) => applySlashCommand(command.name)}
 						/>
 					) : null}
-					<div className="relative h-[115px]">
+					{headerSlot ? (
+						<div className="-mx-2 -mt-2 mb-2 border-b border-dark-700 px-3 py-1.5">
+							{headerSlot}
+						</div>
+					) : null}
+					<div className={`relative ${compact ? "h-[64px]" : "h-[115px]"}`}>
 						<textarea
 							ref={textareaRef}
 							value={value}

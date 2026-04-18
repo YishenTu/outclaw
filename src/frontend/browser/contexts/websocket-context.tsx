@@ -28,11 +28,13 @@ import {
 import { ensureRunningChatSession } from "../ensure-running-chat-session.ts";
 import { fetchSidebarSummary } from "../lib/api.ts";
 import { toObservedDisplayMessage } from "../observed-prompt.ts";
+import { sendPromptToAgent as dispatchPromptToAgent } from "../send-prompt-to-agent.ts";
 import {
 	createBrowserSessionRef,
 	createSessionKey,
 	resolveBrowserSessionKey,
 } from "../session.ts";
+import type { AgentEntry } from "../stores/agents.ts";
 import { useAgentsStore } from "../stores/agents.ts";
 import { useChatStore } from "../stores/chat.ts";
 import { useContextUsageStore } from "../stores/context-usage.ts";
@@ -51,6 +53,7 @@ export interface WebSocketContextValue {
 	connected: boolean;
 	connectionStatus: "connecting" | "connected" | "disconnected";
 	sendPrompt: (prompt: string) => boolean;
+	sendPromptToAgent: (agent: AgentEntry, prompt: string) => boolean;
 	sendCommand: (command: string) => boolean;
 	switchAgent: (agentName: string) => boolean;
 	switchSession: (agentName: string, session: SessionEntry) => boolean;
@@ -62,6 +65,7 @@ const WebSocketContext = createContext<WebSocketContextValue>({
 	connected: false,
 	connectionStatus: "connecting",
 	sendPrompt: () => false,
+	sendPromptToAgent: () => false,
 	sendCommand: () => false,
 	switchAgent: () => false,
 	switchSession: () => false,
@@ -241,6 +245,21 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			return true;
 		},
 		[sendCommand],
+	);
+
+	const sendPromptToAgent = useCallback(
+		(agent: AgentEntry, prompt: string): boolean =>
+			dispatchPromptToAgent({
+				agent,
+				activeAgentId: useAgentsStore.getState().activeAgentId,
+				clearRuntimeSession: useRuntimeStore.getState().clearSession,
+				prompt,
+				sendCommand,
+				sendPrompt,
+				setActiveAgent: useAgentsStore.getState().setActiveAgent,
+				setAgentName: useRuntimeStore.getState().setAgentName,
+			}),
+		[sendCommand, sendPrompt],
 	);
 
 	const switchAgent = useCallback(
@@ -621,6 +640,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			connected: connectionStatus === "connected",
 			connectionStatus,
 			sendPrompt,
+			sendPromptToAgent,
 			sendCommand,
 			switchAgent,
 			switchSession,
@@ -632,6 +652,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			connectionStatus,
 			sendCommand,
 			sendPrompt,
+			sendPromptToAgent,
 			switchAgent,
 			switchSession,
 			value,

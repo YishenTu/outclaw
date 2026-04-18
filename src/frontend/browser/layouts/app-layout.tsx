@@ -1,7 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AgentSidebar } from "../components/agent-sidebar/agent-sidebar";
-import { CenterPanel } from "../components/center/center-panel";
-import { RightPanel } from "../components/right-panel/right-panel";
 import {
 	MAX_INSPECTOR_WIDTH,
 	MAX_SIDEBAR_WIDTH,
@@ -9,17 +6,20 @@ import {
 	MIN_SIDEBAR_WIDTH,
 	useLayoutStore,
 } from "../stores/layout.ts";
+import { useWorkspaceViewStore } from "../stores/workspace-view.ts";
+import { AppLayoutView, type ResizeSide } from "./app-layout-view.tsx";
 
 const MIN_CENTER_WIDTH = 560;
 const MIN_VISIBLE_INSPECTOR_WIDTH = 400;
-
-type ResizeSide = "left" | "right" | null;
 
 export function AppLayout() {
 	const sidebarWidth = useLayoutStore((state) => state.sidebarWidth);
 	const inspectorWidth = useLayoutStore((state) => state.inspectorWidth);
 	const leftCollapsed = useLayoutStore((state) => state.leftCollapsed);
 	const rightCollapsed = useLayoutStore((state) => state.rightCollapsed);
+	const showWelcomePage = useWorkspaceViewStore(
+		(state) => state.showWelcomePage,
+	);
 	const setSidebarWidth = useLayoutStore((state) => state.setSidebarWidth);
 	const setInspectorWidth = useLayoutStore((state) => state.setInspectorWidth);
 	const setLeftCollapsed = useLayoutStore((state) => state.setLeftCollapsed);
@@ -40,9 +40,11 @@ export function AppLayout() {
 		(containerWidth = getContainerWidth()) =>
 			Math.max(
 				MIN_INSPECTOR_WIDTH,
-				containerWidth - (leftCollapsed ? 0 : sidebarWidth) - MIN_CENTER_WIDTH,
+				containerWidth -
+					(showWelcomePage || !leftCollapsed ? sidebarWidth : 0) -
+					MIN_CENTER_WIDTH,
 			),
-		[getContainerWidth, leftCollapsed, sidebarWidth],
+		[getContainerWidth, leftCollapsed, showWelcomePage, sidebarWidth],
 	);
 
 	const handleMouseMove = useCallback(
@@ -125,6 +127,10 @@ export function AppLayout() {
 	}, [handleMouseMove, resizingSide, stopResize]);
 
 	useEffect(() => {
+		if (showWelcomePage) {
+			return;
+		}
+
 		const fitOrCollapseRightPanel = () => {
 			if (rightCollapsed) {
 				return;
@@ -153,62 +159,27 @@ export function AppLayout() {
 		rightCollapsed,
 		setInspectorWidth,
 		setRightCollapsed,
+		showWelcomePage,
 	]);
-
-	const leftWidth = leftCollapsed ? 0 : sidebarWidth;
-	const rightWidth = rightCollapsed ? 0 : inspectorWidth;
 
 	return (
 		<div ref={containerRef} className="flex h-screen bg-dark-950">
-			<div
-				style={{ width: leftWidth }}
-				className={`flex-shrink-0 overflow-hidden border-r border-dark-800 ${
-					resizingSide ? "" : "transition-[width] duration-200"
-				}`}
-			>
-				<div style={{ width: sidebarWidth }} className="h-full">
-					<AgentSidebar onCollapse={() => setLeftCollapsed(true)} />
-				</div>
-			</div>
-			{!leftCollapsed && (
-				<button
-					type="button"
-					aria-label="Resize left sidebar"
-					onMouseDown={handleLeftMouseDown}
-					className="relative -ml-1 w-1 flex-shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-dark-600"
-				>
-					<span className="absolute left-0 right-0 top-12 -mt-px h-px bg-dark-800" />
-				</button>
-			)}
-			<div className="min-w-0 flex-1 overflow-hidden">
-				<CenterPanel
-					leftCollapsed={leftCollapsed}
-					rightCollapsed={rightCollapsed}
-					onExpandLeft={handleExpandLeft}
-					onExpandRight={handleExpandRight}
-				/>
-			</div>
-			{!rightCollapsed && (
-				<button
-					type="button"
-					aria-label="Resize right sidebar"
-					onMouseDown={handleRightMouseDown}
-					className="relative w-1 flex-shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-dark-600"
-				>
-					<span className="absolute left-0 right-0 top-12 -mt-px h-px bg-dark-800" />
-					<span className="absolute left-0 right-0 top-20 -mt-px h-px bg-dark-800" />
-				</button>
-			)}
-			<div
-				style={{ width: rightWidth }}
-				className={`flex-shrink-0 overflow-hidden border-l border-dark-800 ${
-					resizingSide ? "" : "transition-[width] duration-200"
-				}`}
-			>
-				<div style={{ width: inspectorWidth }} className="h-full">
-					<RightPanel onCollapse={() => setRightCollapsed(true)} />
-				</div>
-			</div>
+			<AppLayoutView
+				inspectorWidth={inspectorWidth}
+				leftCollapsed={leftCollapsed}
+				onCollapseLeft={
+					showWelcomePage ? undefined : () => setLeftCollapsed(true)
+				}
+				onCollapseRight={() => setRightCollapsed(true)}
+				onExpandLeft={handleExpandLeft}
+				onExpandRight={handleExpandRight}
+				onLeftResizeMouseDown={handleLeftMouseDown}
+				onRightResizeMouseDown={handleRightMouseDown}
+				resizingSide={resizingSide}
+				rightCollapsed={rightCollapsed}
+				showWelcomePage={showWelcomePage}
+				sidebarWidth={sidebarWidth}
+			/>
 		</div>
 	);
 }
