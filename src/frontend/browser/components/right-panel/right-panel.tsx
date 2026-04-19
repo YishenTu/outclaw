@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+	BrowserGitGraphCommit,
 	BrowserGitStatusResponse,
 	BrowserTreeEntry,
 } from "../../../../common/protocol.ts";
@@ -160,6 +161,9 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const [gitLoading, setGitLoading] = useState(false);
 	const [gitError, setGitError] = useState<string | null>(null);
 	const [isResizing, setIsResizing] = useState(false);
+	const [selectedGitCommitSha, setSelectedGitCommitSha] = useState<
+		string | null
+	>(null);
 	const [loadedTreeAgentId, setLoadedTreeAgentId] = useState<string | null>(
 		null,
 	);
@@ -294,6 +298,17 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		};
 	}, [activeUpperTab, gitRevision, loadedGitRevision]);
 
+	useEffect(() => {
+		if (
+			selectedGitCommitSha !== null &&
+			!gitStatus?.graph.commits.some(
+				(commit) => commit.sha === selectedGitCommitSha,
+			)
+		) {
+			setSelectedGitCommitSha(null);
+		}
+	}, [gitStatus, selectedGitCommitSha]);
+
 	const handleOpenFile = useCallback(
 		(params: { agentId: string; path: string }) => {
 			openTab({
@@ -312,6 +327,18 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 				type: "git-diff",
 				id: `git-diff:${path}`,
 				path,
+			});
+		},
+		[openTab],
+	);
+
+	const handleOpenCommit = useCallback(
+		(commit: BrowserGitGraphCommit) => {
+			openTab({
+				type: "git-commit",
+				id: `git-commit:${commit.sha}`,
+				sha: commit.sha,
+				title: commit.commit.message,
 			});
 		},
 		[openTab],
@@ -416,13 +443,16 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			return (
 				<GitPanel
 					graphCollapsed={rightGitGraphCollapsed}
+					onOpenCommit={handleOpenCommit}
 					status={gitStatus}
 					loading={gitLoading}
 					error={gitError}
 					onOpenDiff={handleOpenDiff}
+					onSelectCommit={setSelectedGitCommitSha}
 					onToggleGraphCollapsed={() =>
 						setRightGitGraphCollapsed(!rightGitGraphCollapsed)
 					}
+					selectedCommitSha={selectedGitCommitSha}
 				/>
 			);
 		}

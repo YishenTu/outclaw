@@ -216,6 +216,40 @@ describe("browser stores", () => {
 			},
 		]);
 
+		useTabsStore.getState().openTab({
+			type: "git-commit",
+			id: "git-commit:abc1234",
+			sha: "abc1234",
+			title: "Second commit",
+		});
+		useTabsStore.getState().openTab({
+			type: "git-commit",
+			id: "git-commit:abc1234",
+			sha: "abc1234",
+			title: "Second commit",
+		});
+
+		expect(useTabsStore.getState().tabs).toEqual([
+			{ type: "chat", id: "chat" },
+			{
+				type: "file",
+				id: "agent-a:AGENTS.md",
+				agentId: "agent-a",
+				path: "AGENTS.md",
+			},
+			{
+				type: "git-diff",
+				id: "git-diff:AGENTS.md",
+				path: "AGENTS.md",
+			},
+			{
+				type: "git-commit",
+				id: "git-commit:abc1234",
+				sha: "abc1234",
+				title: "Second commit",
+			},
+		]);
+
 		useTabsStore.getState().closeTab("chat");
 		expect(useTabsStore.getState().tabs[0]).toEqual({
 			type: "chat",

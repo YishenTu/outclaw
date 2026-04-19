@@ -34,7 +34,7 @@ function buildCodeFence(content: string, language?: string): string {
 
 export function MarkdownPreview({ content }: { content: string }) {
 	return (
-		<div className="prose prose-invert prose-sm max-w-none text-dark-100">
+		<div className="prose prose-invert prose-sm max-w-none text-dark-100 [&_code::before]:content-none [&_code::after]:content-none">
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm, remarkHtmlComments]}
 				rehypePlugins={[rehypeHighlight]}

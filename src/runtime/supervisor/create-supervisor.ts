@@ -2,6 +2,7 @@ import type {
 	BrowserAgentsResponse,
 	BrowserCronEntry,
 	BrowserFileResponse,
+	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
 	BrowserTreeEntry,
@@ -33,6 +34,7 @@ interface CreateSupervisorOptions {
 			agentId: string,
 			relativePath: string,
 		): Promise<BrowserFileResponse>;
+		readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
 		readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
 		readGitStatus(): Promise<BrowserGitStatusResponse>;
 		setAgentCronEnabled(
@@ -234,6 +236,14 @@ async function handleBrowserApiRequest(
 			return Response.json(await browserApi.readGitDiff(path));
 		}
 
+		if (url.pathname === "/api/git/commit") {
+			const sha = url.searchParams.get("sha");
+			if (!sha) {
+				return jsonError("Missing sha query parameter", 400);
+			}
+			return Response.json(await browserApi.readGitCommit(sha));
+		}
+
 		const agentMatch = url.pathname.match(
 			/^\/api\/agents\/([^/]+)\/(tree|files|cron)$/,
 		);
@@ -273,15 +283,17 @@ async function handleBrowserApiRequest(
 		return Response.json(await browserApi.readAgentFile(agentId, path));
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "Unexpected error";
-		const status = message.startsWith("Unknown agent:")
-			? 404
-			: message === "Path is required"
-				? 400
-				: message.startsWith("Path escapes") ||
-						message === "Path escapes cron directory" ||
-						message === "Path does not reference a file"
+		const status =
+			message.startsWith("Unknown agent:") ||
+			message.startsWith("Unknown commit:")
+				? 404
+				: message === "Path is required"
 					? 400
-					: 500;
+					: message.startsWith("Path escapes") ||
+							message === "Path escapes cron directory" ||
+							message === "Path does not reference a file"
+						? 400
+						: 500;
 		return jsonError(message, status);
 	}
 }

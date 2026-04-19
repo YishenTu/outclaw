@@ -52,6 +52,17 @@ describe("createSupervisor browser routes", () => {
 					path: "config.json",
 					diff: "diff --git a/config.json b/config.json",
 				}),
+				readGitCommit: async () => ({
+					sha: "abc1234",
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
 				readGitStatus: async () => ({
 					root: "/tmp/.outclaw",
 					branch: "main",
@@ -112,6 +123,17 @@ describe("createSupervisor browser routes", () => {
 				readGitDiff: async () => ({
 					path: "config.json",
 					diff: "",
+				}),
+				readGitCommit: async () => ({
+					sha: "abc1234",
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
 				}),
 				readGitStatus: async () => ({
 					root: "/tmp/.outclaw",
@@ -178,6 +200,17 @@ describe("createSupervisor browser routes", () => {
 					path: "config.json",
 					diff: "",
 				}),
+				readGitCommit: async () => ({
+					sha: "abc1234",
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
 				readGitStatus: async () => ({
 					root: "/tmp/.outclaw",
 					branch: "main",
@@ -242,6 +275,17 @@ describe("createSupervisor browser routes", () => {
 					path: "config.json",
 					diff: "",
 				}),
+				readGitCommit: async () => ({
+					sha: "abc1234",
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
 				readGitStatus: async () => ({
 					root: "/tmp/.outclaw",
 					branch: "main",
@@ -284,6 +328,79 @@ describe("createSupervisor browser routes", () => {
 			schedule: "0 9 * * *",
 			model: "haiku",
 			enabled: false,
+		});
+	});
+
+	test("serves browser git commit details over HTTP", async () => {
+		const supervisor = createSupervisor({
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+				}),
+			],
+			browserApi: {
+				getAgentTerminalCwd: () => undefined,
+				listAgentCron: async () => [],
+				listAgentTree: async () => [],
+				listAgents: () => ({
+					activeAgentId: "agent-railly",
+					agents: [],
+				}),
+				readAgentFile: async (_agentId, path) => ({
+					path,
+					kind: "text",
+					content: "# Agent\n",
+					truncated: false,
+				}),
+				readGitCommit: async (sha) => ({
+					sha,
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit\n\nExpanded body",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
+				readGitDiff: async () => ({
+					path: "config.json",
+					diff: "",
+				}),
+				readGitStatus: async () => ({
+					root: "/tmp/.outclaw",
+					branch: "main",
+					ahead: 0,
+					behind: 0,
+					clean: true,
+					graph: { commits: [], branchHeads: [] },
+					files: [],
+				}),
+				setAgentCronEnabled: async () => {
+					throw new Error("Not implemented");
+				},
+			},
+			port: 0,
+		});
+		cleanup = () => supervisor.stop();
+
+		const response = await fetch(
+			`http://localhost:${supervisor.port}/api/git/commit?sha=abc1234`,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			sha: "abc1234",
+			author: {
+				name: "Test User",
+				email: "test@example.com",
+				date: "2026-04-18T00:00:00.000Z",
+			},
+			message: "Second commit\n\nExpanded body",
+			parents: [{ sha: "def5678" }],
+			diff: "diff --git a/README.md b/README.md",
 		});
 	});
 

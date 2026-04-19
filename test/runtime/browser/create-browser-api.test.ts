@@ -423,6 +423,65 @@ describe("createBrowserApi", () => {
 		}
 	});
 
+	test("reads full commit details and patch by sha", async () => {
+		const root = createTempDir("outclaw-browser-git-commit-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		runGit(root, ["init", "--initial-branch=main"]);
+		runGit(root, ["config", "user.email", "test@example.com"]);
+		runGit(root, ["config", "user.name", "Test User"]);
+		writeFileSync(join(root, "README.md"), "first\n");
+		runGit(root, ["add", "README.md"]);
+		runGit(root, ["commit", "-m", "Initial commit"]);
+		writeFileSync(join(root, "README.md"), "second\nthird\n");
+		runGit(root, ["add", "README.md"]);
+		runGit(root, [
+			"commit",
+			"-m",
+			"Second commit",
+			"-m",
+			"Explain the new changes.",
+		]);
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		const sha = runGit(root, ["rev-parse", "HEAD"]).trim();
+		await expect(api.readGitCommit(sha)).resolves.toEqual({
+			sha,
+			author: {
+				name: "Test User",
+				email: "test@example.com",
+				date: expect.any(String),
+			},
+			message: "Second commit\n\nExplain the new changes.",
+			parents: [
+				{
+					sha: expect.any(String),
+				},
+			],
+			diff: expect.stringContaining("diff --git a/README.md b/README.md"),
+		});
+
+		store.close();
+	});
+
 	test("reads git status with per-file line change counts", async () => {
 		const root = createTempDir("outclaw-browser-git-counts-");
 		cleanupPaths.push(root);
@@ -650,6 +709,7 @@ function runGit(cwd: string, args: string[]) {
 	if (result.exitCode !== 0) {
 		throw new Error(result.stderr.toString().trim() || "git command failed");
 	}
+	return result.stdout.toString();
 }
 
 function restoreProcessEnvValue(key: string, value: string | undefined) {

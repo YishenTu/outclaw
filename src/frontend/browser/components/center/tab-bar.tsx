@@ -1,6 +1,7 @@
 import {
 	FileText,
 	GitBranch,
+	GitCommitHorizontal,
 	MessageSquareText,
 	PanelLeftClose,
 	PanelRightClose,
@@ -61,6 +62,11 @@ export function TabBar({
 										<MessageSquareText size={14} />
 										Chat
 									</span>
+								) : tab.type === "git-commit" ? (
+									<span className="inline-flex max-w-52 items-center gap-2 leading-none">
+										<GitCommitHorizontal size={14} />
+										<span className="truncate">{tab.title}</span>
+									</span>
 								) : tab.type === "git-diff" ? (
 									<span className="inline-flex items-center gap-2 leading-none">
 										<GitBranch size={14} />
@@ -78,7 +84,7 @@ export function TabBar({
 									type="button"
 									onClick={() => closeTab(tab.id)}
 									className="rounded p-0.5 text-dark-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-dark-100"
-									aria-label={`Close ${tab.path}`}
+									aria-label={`Close ${tab.type === "git-commit" ? tab.title : tab.path}`}
 								>
 									<X size={13} />
 								</button>

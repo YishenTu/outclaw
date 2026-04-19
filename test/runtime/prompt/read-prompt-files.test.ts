@@ -60,6 +60,36 @@ describe("readPromptFiles", () => {
 		expect(result).toBe("<agents>\nagents\n</agents>\n\n<user>\nuser\n</user>");
 	});
 
+	test("strips known template footer notes from prompt content", async () => {
+		writeFileSync(
+			join(tmp, "AGENTS.md"),
+			[
+				"# AGENTS.md",
+				"",
+				"Core instructions.",
+				"",
+				"_This file defines how you operate. The user may modify it to change your behavior._",
+			].join("\n"),
+		);
+		writeFileSync(
+			join(tmp, "SOUL.md"),
+			[
+				"# SOUL.md",
+				"",
+				"Identity notes.",
+				"",
+				"_This file is yours to evolve. As you learn who you are, update it. If you change it, tell the user - it's your soul, and they should know._",
+			].join("\n"),
+		);
+
+		const result = await readPromptFiles(tmp);
+
+		expect(result).toContain("Core instructions.");
+		expect(result).toContain("Identity notes.");
+		expect(result).not.toContain("This file defines how you operate");
+		expect(result).not.toContain("This file is yours to evolve");
+	});
+
 	test("throws on unexpected filesystem errors", async () => {
 		await expect(readPromptFiles("/dev/null")).rejects.toThrow(/ENOTDIR/);
 	});

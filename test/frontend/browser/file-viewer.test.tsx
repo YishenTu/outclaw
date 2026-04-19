@@ -63,6 +63,15 @@ describe("MarkdownPreview", () => {
 		expect(html).not.toContain("md-comment");
 		expect(html).toContain("Just a paragraph.");
 	});
+
+	test("removes typography backticks from inline code", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownPreview content={"Use `code` inline"} />,
+		);
+
+		expect(html).toContain("[&amp;_code::before]:content-none");
+		expect(html).toContain("[&amp;_code::after]:content-none");
+	});
 });
 
 describe("FileViewer", () => {

@@ -312,4 +312,54 @@ describe("git panel header", () => {
 		expect(html).toContain('<section class="flex shrink-0 flex-col">');
 		expect(html).not.toContain("git-graph-shell");
 	});
+
+	test("renders the selected commit card inside the git graph shell", () => {
+		const html = renderToStaticMarkup(
+			createElement(GitPanel, {
+				status: {
+					root: "/tmp/outclaw",
+					branch: "main",
+					ahead: 0,
+					behind: 0,
+					clean: false,
+					graph: {
+						commits: [
+							{
+								sha: "bbbbbbb1234567",
+								commit: {
+									author: {
+										name: "Test User",
+										date: "2026-04-17T12:34:56.000Z",
+									},
+									message: "Second commit",
+								},
+								parents: [{ sha: "aaaaaaa7654321" }],
+							},
+						],
+						branchHeads: [],
+					},
+					files: [],
+				} as never,
+				loading: false,
+				error: null,
+				onOpenDiff() {},
+				onOpenCommit() {},
+				selectedCommitSha: "bbbbbbb1234567",
+			}),
+		);
+
+		expect(html).toContain("Selected commit");
+		expect(html).toContain("Second commit");
+		expect(html).toContain("bbbbbbb");
+		expect(html).toContain("Parents");
+		expect(html).toContain("aaaaaaa");
+		expect(html).toContain("Open commit");
+		expect(html).toContain("git-graph-expansion");
+		expect(html.indexOf("git-graph-shell")).toBeLessThan(
+			html.indexOf("git-graph-expansion"),
+		);
+		expect(html.indexOf("git-graph-canvas")).toBeLessThan(
+			html.indexOf("Selected commit"),
+		);
+	});
 });

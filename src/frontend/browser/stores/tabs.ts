@@ -3,7 +3,8 @@ import { create } from "zustand";
 export type Tab =
 	| { type: "chat"; id: "chat" }
 	| { type: "file"; id: string; path: string; agentId: string }
-	| { type: "git-diff"; id: string; path: string };
+	| { type: "git-diff"; id: string; path: string }
+	| { type: "git-commit"; id: string; sha: string; title: string };
 
 export interface TabsState {
 	tabs: Tab[];

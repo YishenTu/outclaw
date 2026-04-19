@@ -171,6 +171,15 @@ textarea {
 }
 
 /* commit-graph */
+.git-graph-shell {
+	--git-graph-library-row-height: 4rem;
+	--git-graph-row-height: 1.25rem;
+	--git-graph-row-offset: calc(
+		(var(--git-graph-library-row-height) - var(--git-graph-row-height)) /
+		2
+	);
+}
+
 .git-graph-shell [class*="index-module_commitInfoContainer__"] {
 	min-width: 0;
 }
@@ -189,16 +198,17 @@ textarea {
 }
 
 .git-graph-shell [class*="index-module_details__"] {
-	height: 1.25rem;
+	height: var(--git-graph-row-height);
 	min-width: 0;
 	align-items: center;
-	transform: translateY(1rem);
+	cursor: pointer;
+	transform: translateY(var(--git-graph-row-offset));
 }
 
 .git-graph-shell [class*="index-module_block__"] {
-	height: 1.25rem;
+	height: var(--git-graph-row-height);
 	border-radius: 0.25rem;
-	transform: translateY(1rem);
+	transform: translateY(var(--git-graph-row-offset));
 }
 
 .git-graph-shell [class*="index-module_labelAndLink__"] {
@@ -223,6 +233,7 @@ textarea {
 	overflow: hidden;
 	text-overflow: clip;
 	background: transparent;
+	cursor: pointer;
 }
 
 .git-graph-shell [class*="index-module_msg__"]:hover {

@@ -5,6 +5,7 @@ import type {
 	BrowserAgentsResponse,
 	BrowserCronEntry,
 	BrowserFileResponse,
+	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitFileStatus,
 	BrowserGitGraph,
@@ -46,6 +47,7 @@ export interface BrowserApi {
 		agentId: string,
 		relativePath: string,
 	): Promise<BrowserFileResponse>;
+	readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
 	readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
 	readGitStatus(): Promise<BrowserGitStatusResponse>;
 	setAgentCronEnabled(
@@ -164,6 +166,9 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				readGitGraphData(options.gitRoot),
 				ignoredGitPaths,
 			);
+		},
+		async readGitCommit(sha) {
+			return readGitCommit(options.gitRoot, sha);
 		},
 		async readGitDiff(path) {
 			const absolutePath = resolveWithinRoot(options.gitRoot, path);
@@ -509,6 +514,75 @@ function runProcess(
 	throw new Error(
 		result.stderr.toString().trim() || `Command failed: ${cmd[0]}`,
 	);
+}
+
+function readGitCommit(root: string, sha: string): BrowserGitCommitResponse {
+	const resolvedSha = resolveGitCommitSha(root, sha);
+	const metadata = runGit(
+		root,
+		[
+			"show",
+			"--no-patch",
+			`--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%B`,
+			resolvedSha,
+		],
+		false,
+	).trimEnd();
+	const [resolved, parentsValue, authorName, authorEmail, authorDate, message] =
+		metadata.split("\x1f");
+	if (
+		resolved === undefined ||
+		parentsValue === undefined ||
+		authorName === undefined ||
+		authorEmail === undefined ||
+		authorDate === undefined ||
+		message === undefined
+	) {
+		throw new Error(`Failed to parse commit metadata: ${resolvedSha}`);
+	}
+
+	const parents = parentsValue
+		.split(" ")
+		.filter((parent) => parent !== "")
+		.map((parentSha) => ({
+			sha: parentSha,
+		}));
+	const diff =
+		parents[0] === undefined
+			? runGit(
+					root,
+					["show", "--format=", "--no-ext-diff", "--binary", resolvedSha],
+					false,
+				)
+			: runGit(
+					root,
+					["diff", "--no-ext-diff", "--binary", parents[0].sha, resolvedSha],
+					false,
+				);
+
+	return {
+		sha: resolved,
+		author: {
+			name: authorName,
+			email: authorEmail,
+			date: authorDate,
+		},
+		message: message.trimEnd(),
+		parents,
+		diff,
+	};
+}
+
+function resolveGitCommitSha(root: string, sha: string): string {
+	try {
+		return runGit(
+			root,
+			["rev-parse", "--verify", `${sha}^{commit}`],
+			false,
+		).trim();
+	} catch {
+		throw new Error(`Unknown commit: ${sha}`);
+	}
 }
 
 function parseGitStatus(

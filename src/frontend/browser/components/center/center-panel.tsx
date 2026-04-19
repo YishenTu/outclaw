@@ -1,6 +1,7 @@
 import { useTabsStore } from "../../stores/tabs.ts";
 import { ChatPanel } from "../chat/chat-panel.tsx";
 import { FileViewer } from "../file-viewer/file-viewer.tsx";
+import { GitCommitViewer } from "../git-commit-viewer/git-commit-viewer.tsx";
 import { GitDiffViewer } from "../git-diff-viewer/git-diff-viewer.tsx";
 import { TabBar } from "./tab-bar.tsx";
 
@@ -36,6 +37,8 @@ export function CenterPanel({
 						path={activeTab.path}
 						agentId={activeTab.agentId}
 					/>
+				) : activeTab?.type === "git-commit" ? (
+					<GitCommitViewer sha={activeTab.sha} title={activeTab.title} />
 				) : activeTab?.type === "git-diff" ? (
 					<GitDiffViewer path={activeTab.path} />
 				) : (

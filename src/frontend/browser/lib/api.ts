@@ -2,6 +2,7 @@ import type {
 	BrowserAgentsResponse,
 	BrowserCronEntry,
 	BrowserFileResponse,
+	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
 	BrowserTreeEntry,
@@ -78,5 +79,13 @@ export async function fetchGitDiff(
 ): Promise<BrowserGitDiffResponse> {
 	const url = new URL("/api/git/diff", window.location.origin);
 	url.searchParams.set("path", path);
+	return parseJsonResponse(await fetch(url));
+}
+
+export async function fetchGitCommit(
+	sha: string,
+): Promise<BrowserGitCommitResponse> {
+	const url = new URL("/api/git/commit", window.location.origin);
+	url.searchParams.set("sha", sha);
 	return parseJsonResponse(await fetch(url));
 }

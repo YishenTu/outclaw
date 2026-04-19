@@ -395,6 +395,18 @@ export interface BrowserGitDiffResponse {
 	diff: string;
 }
 
+export interface BrowserGitCommitResponse {
+	sha: string;
+	author: {
+		name: string;
+		email: string;
+		date: string;
+	};
+	message: string;
+	parents: BrowserGitGraphCommitParent[];
+	diff: string;
+}
+
 export interface SkillsUpdateEvent {
 	type: "skills_update";
 	skills: SkillInfo[];

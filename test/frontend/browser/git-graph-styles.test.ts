@@ -8,6 +8,18 @@ const browserCss = readFileSync(
 );
 
 describe("git graph styles", () => {
+	test("centers compact rows on the library commit coordinates", () => {
+		expect(browserCss).toMatch(
+			/\.git-graph-shell\s*{[^}]*--git-graph-library-row-height:\s*4rem;[^}]*--git-graph-row-height:\s*1\.25rem;[^}]*--git-graph-row-offset:\s*calc\(\s*\(var\(--git-graph-library-row-height\)\s*-\s*var\(--git-graph-row-height\)\)\s*\/\s*2\s*\);/s,
+		);
+		expect(browserCss).toMatch(
+			/\.git-graph-shell \[class\*="index-module_details__"\]\s*{[^}]*height:\s*var\(--git-graph-row-height\);[^}]*transform:\s*translateY\(var\(--git-graph-row-offset\)\);/s,
+		);
+		expect(browserCss).toMatch(
+			/\.git-graph-shell \[class\*="index-module_block__"\]\s*{[^}]*height:\s*var\(--git-graph-row-height\);[^}]*transform:\s*translateY\(var\(--git-graph-row-offset\)\);/s,
+		);
+	});
+
 	test("uses the same sans font stack and text-sm sizing as changed files", () => {
 		expect(browserCss).toMatch(/--font-ui-sans:\s*"IBM Plex Sans"/);
 		expect(browserCss).toMatch(
@@ -26,10 +38,10 @@ describe("git graph styles", () => {
 
 	test("keeps git graph rows vertically compact", () => {
 		expect(browserCss).toMatch(
-			/\.git-graph-shell \[class\*="index-module_details__"\]\s*{[^}]*height:\s*1\.25rem;[^}]*transform:\s*translateY\(1rem\);/s,
+			/\.git-graph-shell \[class\*="index-module_details__"\]\s*{[^}]*height:\s*var\(--git-graph-row-height\);/s,
 		);
 		expect(browserCss).toMatch(
-			/\.git-graph-shell \[class\*="index-module_block__"\]\s*{[^}]*height:\s*1\.25rem;[^}]*transform:\s*translateY\(1rem\);/s,
+			/\.git-graph-shell \[class\*="index-module_block__"\]\s*{[^}]*height:\s*var\(--git-graph-row-height\);/s,
 		);
 		expect(browserCss).toMatch(
 			/\.git-graph-shell \[class\*="index-module_msg__"\]\s*{[^}]*height:\s*1\.25rem;/s,

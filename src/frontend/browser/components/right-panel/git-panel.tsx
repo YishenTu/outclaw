@@ -1,6 +1,9 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ReactNode } from "react";
-import type { BrowserGitStatusResponse } from "../../../../common/protocol.ts";
+import type {
+	BrowserGitGraphCommit,
+	BrowserGitStatusResponse,
+} from "../../../../common/protocol.ts";
 import { GitGraph } from "./git-graph.tsx";
 import { gitPanelFileToneClass } from "./git-status-tone.ts";
 
@@ -13,11 +16,14 @@ const GIT_PANEL_TOGGLE_CLASS =
 
 interface GitPanelProps {
 	graphCollapsed?: boolean;
+	onOpenCommit?: (commit: BrowserGitGraphCommit) => void;
 	status: BrowserGitStatusResponse | null;
 	loading: boolean;
 	error: string | null;
 	onOpenDiff: (path: string) => void;
+	onSelectCommit?: (sha: string | null) => void;
 	onToggleGraphCollapsed?: () => void;
+	selectedCommitSha?: string | null;
 }
 
 function GitFileLineCounts({
@@ -112,11 +118,14 @@ export function GitPanelHeader({
 
 export function GitPanel({
 	graphCollapsed = false,
+	onOpenCommit,
 	status,
 	loading,
 	error,
 	onOpenDiff,
+	onSelectCommit,
 	onToggleGraphCollapsed,
+	selectedCommitSha = null,
 }: GitPanelProps) {
 	if (loading) {
 		return (
@@ -183,7 +192,13 @@ export function GitPanel({
 						</div>
 					}
 				>
-					<GitGraph currentBranch={status.branch} graph={status.graph} />
+					<GitGraph
+						currentBranch={status.branch}
+						graph={status.graph}
+						onOpenCommit={onOpenCommit}
+						onSelectCommit={onSelectCommit}
+						selectedCommitSha={selectedCommitSha}
+					/>
 				</GitPanelSection>
 			</div>
 		</div>
