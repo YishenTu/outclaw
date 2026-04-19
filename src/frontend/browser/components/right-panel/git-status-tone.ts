@@ -49,6 +49,14 @@ export function gitFileToneClass(file: BrowserGitFileStatus): string {
 	);
 }
 
+export function gitPanelFileToneClass(file: BrowserGitFileStatus): string {
+	const status = gitFileChangeStatus(file);
+	if (status === "modified") {
+		return "text-warning hover:text-warning/80";
+	}
+	return gitFileToneClass(file);
+}
+
 export function treeEntryToneClass(entry: BrowserTreeEntry): string {
 	return gitChangeToneClass(
 		entry.gitStatus,

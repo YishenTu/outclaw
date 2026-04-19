@@ -3,21 +3,8 @@ import { useEffect, useRef } from "react";
 import type { BrowserGitGraph } from "../../../../common/protocol.ts";
 import { formatGitGraphTooltip } from "./git-graph-format.ts";
 import { measureGitGraphCompactHeight } from "./git-graph-layout.ts";
+import { GIT_GRAPH_STYLE } from "./git-graph-style.ts";
 import { truncateGitGraphMessage } from "./git-graph-truncate.ts";
-
-const GRAPH_STYLE = {
-	commitSpacing: 32,
-	branchSpacing: 12,
-	nodeRadius: 2,
-	branchColors: [
-		"#f59e0b",
-		"#5eead4",
-		"#60a5fa",
-		"#f472b6",
-		"#a78bfa",
-		"#f87171",
-	],
-};
 
 const graphDateFormatter = new Intl.DateTimeFormat("en-US", {
 	month: "short",
@@ -115,7 +102,7 @@ export function GitGraph({ currentBranch, graph }: GitGraphProps) {
 	return (
 		<div
 			ref={rootRef}
-			className="git-graph-shell overflow-hidden rounded bg-dark-950/60 px-2 py-2 text-dark-200"
+			className="git-graph-shell overflow-hidden rounded bg-dark-950/60 px-2 py-1.5 text-dark-200"
 		>
 			<div className="git-graph-canvas w-full min-w-0">
 				<CommitGraph
@@ -123,7 +110,7 @@ export function GitGraph({ currentBranch, graph }: GitGraphProps) {
 					branchHeads={graph.branchHeads}
 					currentBranch={currentBranch ?? undefined}
 					dateFormatFn={formatGitGraphDate}
-					graphStyle={GRAPH_STYLE}
+					graphStyle={GIT_GRAPH_STYLE}
 				/>
 			</div>
 		</div>

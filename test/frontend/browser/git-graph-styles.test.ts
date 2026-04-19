@@ -23,4 +23,16 @@ describe("git graph styles", () => {
 			/\.git-graph-shell \[class\*="index-module_msg__"\]\s*{[^}]*text-overflow:\s*clip;/s,
 		);
 	});
+
+	test("keeps git graph rows vertically compact", () => {
+		expect(browserCss).toMatch(
+			/\.git-graph-shell \[class\*="index-module_details__"\]\s*{[^}]*height:\s*1\.25rem;[^}]*transform:\s*translateY\(1rem\);/s,
+		);
+		expect(browserCss).toMatch(
+			/\.git-graph-shell \[class\*="index-module_block__"\]\s*{[^}]*height:\s*1\.25rem;[^}]*transform:\s*translateY\(1rem\);/s,
+		);
+		expect(browserCss).toMatch(
+			/\.git-graph-shell \[class\*="index-module_msg__"\]\s*{[^}]*height:\s*1\.25rem;/s,
+		);
+	});
 });

@@ -142,7 +142,7 @@ describe("git panel header", () => {
 		).toHaveLength(2);
 	});
 
-	test("colors changed files by git status like the file tree", () => {
+	test("colors modified changed files with a pale yellow tone", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanel, {
 				status: {
@@ -175,8 +175,9 @@ describe("git panel header", () => {
 			}),
 		);
 
-		expect(html).toContain("text-brand");
+		expect(html).toContain("text-warning");
 		expect(html).toContain("text-success");
+		expect(html).not.toContain("text-brand");
 		expect(html).not.toContain(">-0<");
 	});
 
@@ -266,10 +267,9 @@ describe("git panel header", () => {
 		);
 		expect(html).toContain(">Git graph</div><div");
 		expect(html).toContain("flex w-8 shrink-0 justify-end");
-		expect(html).toContain(
-			"flex w-full items-center justify-end text-[18px] leading-none",
-		);
-		expect(html).toContain(">-</button>");
+		expect(html).toContain("flex items-center justify-end text-dark-500");
+		expect(html).toContain("lucide-chevron-down");
+		expect(html).not.toContain(">^</button>");
 	});
 
 	test("can render the git graph collapsed to a header-only strip", () => {
@@ -307,7 +307,8 @@ describe("git panel header", () => {
 		);
 
 		expect(html).toContain('aria-label="Expand git graph"');
-		expect(html).toContain(">+</button>");
+		expect(html).toContain("lucide-chevron-up");
+		expect(html).not.toContain(">v</button>");
 		expect(html).toContain('<section class="flex shrink-0 flex-col">');
 		expect(html).not.toContain("git-graph-shell");
 	});

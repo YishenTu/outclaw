@@ -189,16 +189,16 @@ textarea {
 }
 
 .git-graph-shell [class*="index-module_details__"] {
-	height: 1.5rem;
+	height: 1.25rem;
 	min-width: 0;
 	align-items: center;
-	transform: translateY(1.25rem);
+	transform: translateY(1rem);
 }
 
 .git-graph-shell [class*="index-module_block__"] {
-	height: 1.5rem;
+	height: 1.25rem;
 	border-radius: 0.25rem;
-	transform: translateY(1.25rem);
+	transform: translateY(1rem);
 }
 
 .git-graph-shell [class*="index-module_labelAndLink__"] {
@@ -208,7 +208,7 @@ textarea {
 .git-graph-shell [class*="index-module_msg__"] {
 	display: flex;
 	align-items: center;
-	height: 1.5rem;
+	height: 1.25rem;
 	width: 100%;
 	max-width: 100%;
 	min-width: 0;

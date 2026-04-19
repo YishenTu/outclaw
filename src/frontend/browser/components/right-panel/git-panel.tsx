@@ -1,14 +1,15 @@
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ReactNode } from "react";
 import type { BrowserGitStatusResponse } from "../../../../common/protocol.ts";
 import { GitGraph } from "./git-graph.tsx";
-import { gitFileToneClass } from "./git-status-tone.ts";
+import { gitPanelFileToneClass } from "./git-status-tone.ts";
 
 const GIT_PANEL_SECTION_HEADER_CLASS =
 	"mb-2 flex shrink-0 items-center justify-between gap-3 px-2";
 const GIT_PANEL_META_CLASS =
 	"font-mono-ui flex shrink-0 items-center gap-2 text-xs tabular-nums";
 const GIT_PANEL_TOGGLE_CLASS =
-	"font-mono-ui flex w-full items-center justify-end text-[18px] leading-none text-dark-500 transition-colors hover:text-dark-100";
+	"flex items-center justify-end text-dark-500 transition-colors hover:text-dark-100";
 
 interface GitPanelProps {
 	graphCollapsed?: boolean;
@@ -145,7 +146,7 @@ export function GitPanel({
 									key={`${file.path}:${file.indexStatus}:${file.worktreeStatus}`}
 									type="button"
 									onClick={() => onOpenDiff(file.path)}
-									className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm transition-colors hover:bg-dark-900 ${gitFileToneClass(file)}`}
+									className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm transition-colors hover:bg-dark-900 ${gitPanelFileToneClass(file)}`}
 								>
 									<span className="truncate">{file.path}</span>
 									<span className="ml-2 shrink-0">
@@ -173,7 +174,11 @@ export function GitPanel({
 								}
 								className={GIT_PANEL_TOGGLE_CLASS}
 							>
-								{graphCollapsed ? "+" : "-"}
+								{graphCollapsed ? (
+									<ChevronUp size={14} />
+								) : (
+									<ChevronDown size={14} />
+								)}
 							</button>
 						</div>
 					}
