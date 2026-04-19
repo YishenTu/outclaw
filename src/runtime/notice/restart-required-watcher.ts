@@ -6,6 +6,10 @@ import {
 	type WatchFactory,
 	type WatchHandle,
 } from "../filesystem/directory-watch.ts";
+import {
+	didRestartRequiredSnapshotChange,
+	readRestartRequiredSnapshot,
+} from "./restart-required-snapshot.ts";
 
 interface CreateRestartRequiredWatcherOptions {
 	debounceMs?: number;
@@ -31,6 +35,7 @@ export function createRestartRequiredWatcher(
 	const agentsDir = join(options.homeDir, "agents");
 	const handles: WatchHandle[] = [];
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	let snapshot = readRestartRequiredSnapshot(options.homeDir);
 
 	const trigger = () => {
 		if (timer) {
@@ -38,6 +43,11 @@ export function createRestartRequiredWatcher(
 		}
 		timer = setTimeout(() => {
 			timer = undefined;
+			const nextSnapshot = readRestartRequiredSnapshot(options.homeDir);
+			if (!didRestartRequiredSnapshotChange(snapshot, nextSnapshot)) {
+				return;
+			}
+			snapshot = nextSnapshot;
 			options.onRestartRequired();
 		}, debounceMs);
 	};
@@ -64,6 +74,7 @@ export function createRestartRequiredWatcher(
 			if (handles.length > 0) {
 				return;
 			}
+			snapshot = readRestartRequiredSnapshot(options.homeDir);
 
 			startWatching(options.homeDir, (filename) => {
 				if (!isRelevantHomeChange(filename)) {

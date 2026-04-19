@@ -68,6 +68,9 @@ describe("agent management", () => {
 			expect(JSON.parse(readFileSync(created.configPath, "utf-8"))).toEqual({
 				agents: {
 					"agent-railly": {
+						rollover: {
+							idleMinutes: 480,
+						},
 						telegram: {
 							allowedUsers: [2, 1],
 							botToken: "token-a",
@@ -110,6 +113,9 @@ describe("agent management", () => {
 			).toEqual({
 				agents: {
 					"agent-railly": {
+						rollover: {
+							idleMinutes: 480,
+						},
 						telegram: {
 							allowedUsers: [2, 1],
 							botToken: "token-a",
@@ -378,6 +384,9 @@ describe("agent management", () => {
 			).toEqual({
 				agents: {
 					"agent-railly": {
+						rollover: {
+							idleMinutes: 480,
+						},
 						telegram: {
 							allowedUsers: [],
 							botToken: "",
@@ -420,6 +429,7 @@ describe("agent management", () => {
 				botToken: "token-b",
 				allowedUsers: [3, 4],
 				defaultCronUserId: 3,
+				rolloverIdleMinutes: 120,
 			});
 
 			const config = JSON.parse(
@@ -430,6 +440,29 @@ describe("agent management", () => {
 				3, 4,
 			]);
 			expect(config.agents["agent-railly"].telegram.defaultCronUserId).toBe(3);
+			expect(config.agents["agent-railly"].rollover.idleMinutes).toBe(120);
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+			rmSync(templatesDir, { force: true, recursive: true });
+		}
+	});
+
+	test("createAgent persists rollover idle minutes when configured", () => {
+		const homeDir = createHomeDir();
+		const templatesDir = createTemplatesDir();
+		try {
+			createAgent({
+				homeDir,
+				name: "railly",
+				templatesDir,
+				createAgentId: () => "agent-railly",
+				rolloverIdleMinutes: 90,
+			});
+
+			const config = JSON.parse(
+				readFileSync(join(homeDir, "config.json"), "utf-8"),
+			);
+			expect(config.agents["agent-railly"].rollover.idleMinutes).toBe(90);
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 			rmSync(templatesDir, { force: true, recursive: true });

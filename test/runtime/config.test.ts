@@ -188,6 +188,52 @@ describe("loadGlobalConfig", () => {
 		}
 	});
 
+	test("materializes default rollover config for stored agents missing it", () => {
+		const dir = tmp();
+		try {
+			writeFileSync(
+				join(dir, "config.json"),
+				JSON.stringify({
+					agents: {
+						"agent-railly": {
+							telegram: {
+								botToken: "token-a",
+								allowedUsers: [101],
+							},
+						},
+					},
+				}),
+			);
+
+			loadGlobalConfig(dir);
+
+			expect(
+				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
+			).toEqual({
+				autoCompact: true,
+				host: "127.0.0.1",
+				heartbeat: {
+					intervalMinutes: 30,
+					deferMinutes: 0,
+				},
+				port: 4000,
+				agents: {
+					"agent-railly": {
+						rollover: {
+							idleMinutes: 480,
+						},
+						telegram: {
+							botToken: "token-a",
+							allowedUsers: [101],
+						},
+					},
+				},
+			});
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
 	test("updateGlobalConfig patches runtime globals while preserving agents and unknown fields", () => {
 		const dir = tmp();
 		try {
@@ -252,6 +298,9 @@ describe("loadGlobalConfig", () => {
 				},
 				agents: {
 					"agent-railly": {
+						rollover: {
+							idleMinutes: 480,
+						},
 						telegram: {
 							botToken: "token-a",
 							allowedUsers: [101],

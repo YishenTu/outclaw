@@ -45,6 +45,7 @@ export type RuntimeClientType = "telegram" | "tui" | "browser" | "control";
 export type PromptSource =
 	| "telegram"
 	| "heartbeat"
+	| "rollover"
 	| "tui"
 	| "browser"
 	| "agent";
@@ -214,7 +215,12 @@ export interface RestartRequiredNotice {
 	kind: "restart_required";
 }
 
-export type FrontendNotice = RestartRequiredNotice;
+export interface RolloverNotice {
+	kind: "rollover";
+	message: string;
+}
+
+export type FrontendNotice = RestartRequiredNotice | RolloverNotice;
 
 export interface RuntimeStatusEvent {
 	type: "runtime_status";
@@ -255,9 +261,16 @@ export interface DisplayHeartbeatMessage {
 	text: string;
 }
 
+export interface DisplayRolloverMessage {
+	kind: "system";
+	event: "rollover";
+	text: string;
+}
+
 export type DisplaySystemMessage =
 	| DisplayCompactBoundaryMessage
-	| DisplayHeartbeatMessage;
+	| DisplayHeartbeatMessage
+	| DisplayRolloverMessage;
 
 export type DisplayMessage = DisplayChatMessage | DisplaySystemMessage;
 
@@ -340,6 +353,36 @@ export interface BrowserFileResponse {
 	content?: string;
 	language?: string;
 	truncated: boolean;
+}
+
+export type BrowserConfigSchemaEditorKind =
+	| "array"
+	| "boolean"
+	| "number"
+	| "object"
+	| "string";
+
+export type BrowserConfigSchemaStringFormat = "env_ref";
+
+export interface BrowserConfigSchemaLeafNode {
+	kind: "leaf";
+	editorKinds: readonly BrowserConfigSchemaEditorKind[];
+	stringFormat?: BrowserConfigSchemaStringFormat;
+	typeLabel: string;
+}
+
+export interface BrowserConfigSchemaObjectNode {
+	kind: "object";
+	properties?: Record<string, BrowserConfigSchemaNode>;
+	additionalProperties?: BrowserConfigSchemaNode;
+}
+
+export type BrowserConfigSchemaNode =
+	| BrowserConfigSchemaLeafNode
+	| BrowserConfigSchemaObjectNode;
+
+export interface BrowserConfigResponse extends BrowserFileResponse {
+	schema: BrowserConfigSchemaNode;
 }
 
 export interface BrowserGitFileStatus {

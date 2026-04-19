@@ -145,6 +145,10 @@ function createAgentCommand(options: AgentCommandOptions) {
 		homeDir: options.homeDir,
 		name,
 		prepareWorkspace: prepareAgentWorkspace,
+		rolloverIdleMinutes:
+			flags["rollover-idle"] !== undefined
+				? parseRolloverIdleMinutes(flags["rollover-idle"])
+				: undefined,
 		templatesDir: options.templatesDir,
 	});
 	ensureEnvFile(options.homeDir);
@@ -195,6 +199,10 @@ function configAgentCommand(homeDir: string, argv: string[]) {
 		defaultCronUserId:
 			flags["default-cron-user"] !== undefined
 				? parseDefaultCronUser(flags["default-cron-user"])
+				: undefined,
+		rolloverIdleMinutes:
+			flags["rollover-idle"] !== undefined
+				? parseRolloverIdleMinutes(flags["rollover-idle"])
 				: undefined,
 	});
 	console.log(`Configured agent ${name}`);
@@ -262,6 +270,19 @@ function parseDefaultCronUser(value: string | undefined): number {
 	const parsed = Number(value);
 	if (!Number.isFinite(parsed) || parsed <= 0) {
 		console.error(`Invalid default cron user: ${value}`);
+		process.exit(1);
+	}
+	return parsed;
+}
+
+function parseRolloverIdleMinutes(value: string | undefined): number {
+	if (value === undefined || value === "" || !/^\d+$/.test(value)) {
+		console.error(`Invalid rollover idle minutes: ${value ?? ""}`);
+		process.exit(1);
+	}
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed) || parsed < 0) {
+		console.error(`Invalid rollover idle minutes: ${value}`);
 		process.exit(1);
 	}
 	return parsed;

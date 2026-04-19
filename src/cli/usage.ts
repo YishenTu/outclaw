@@ -56,8 +56,8 @@ export function printStartUsage() {
 export function formatAgentUsage() {
 	return joinLines([
 		"Usage: oc agent <list|create|config|rename|remove|ask|name>",
-		"       oc agent create <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>]",
-		"       oc agent config <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>]",
+		"       oc agent create <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]",
+		"       oc agent config <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]",
 		"       oc agent rename <old-name> <new-name>",
 		"       oc agent remove <name>",
 		'       oc agent ask --to <target> [--timeout <seconds>] "<message>"',
@@ -91,7 +91,7 @@ export function printAgentListUsage() {
 
 export function formatAgentCreateUsage() {
 	return joinLines([
-		"Usage: oc agent create <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>]",
+		"Usage: oc agent create <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]",
 		"",
 		"Creates an agent workspace under ~/.outclaw/agents/<name> and registers it in config.json.",
 	]);
@@ -103,7 +103,7 @@ export function printAgentCreateUsage() {
 
 export function formatAgentConfigUsage() {
 	return joinLines([
-		"Usage: oc agent config <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>]",
+		"Usage: oc agent config <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]",
 		"",
 		"Updates telegram settings for an existing agent. Omitted flags are preserved.",
 	]);

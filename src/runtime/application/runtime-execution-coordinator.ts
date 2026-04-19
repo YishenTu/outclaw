@@ -13,7 +13,10 @@ interface HeartbeatTask {
 interface RuntimeExecutionCoordinatorOptions {
 	onStatusChange?: () => void;
 	promptDispatcher: Pick<PromptDispatcher, "run">;
-	sessions: Pick<SessionService, "recordAcceptedPromptTarget">;
+	sessions: Pick<
+		SessionService,
+		"finishRolloverAttempt" | "recordAcceptedPromptTarget"
+	>;
 	state: RuntimeState;
 }
 
@@ -21,6 +24,7 @@ export class RuntimeExecutionCoordinator {
 	private activeAbort: AbortController | undefined;
 	private heartbeatCoordinator = new HeartbeatCoordinator();
 	private queue = new MessageQueue();
+	private rolloverQueued = false;
 	private shuttingDown = false;
 
 	constructor(private readonly options: RuntimeExecutionCoordinatorOptions) {}
@@ -110,6 +114,26 @@ export class RuntimeExecutionCoordinator {
 		);
 	}
 
+	enqueueRollover(prompt: string, idleMinutes: number): boolean {
+		if (
+			this.shuttingDown ||
+			this.rolloverQueued ||
+			this.activeAbort !== undefined ||
+			this.options.state.sessionId === undefined
+		) {
+			return false;
+		}
+
+		this.rolloverQueued = true;
+		const queued = this.queue.enqueue(() =>
+			this.runRollover({ idleMinutes, prompt }),
+		);
+		if (!queued) {
+			this.rolloverQueued = false;
+		}
+		return queued;
+	}
+
 	enqueueAgentPrompt(task: PromptExecution): Promise<string> {
 		return new Promise((resolve, reject) => {
 			if (this.shuttingDown) {
@@ -187,6 +211,37 @@ export class RuntimeExecutionCoordinator {
 			});
 		} finally {
 			this.heartbeatCoordinator.completeHeartbeat();
+		}
+	}
+
+	private async runRollover(task: { idleMinutes: number; prompt: string }) {
+		let failed = true;
+		let started = false;
+
+		try {
+			if (this.options.state.sessionId === undefined) {
+				return;
+			}
+
+			started = true;
+			await this.runPrompt({
+				onEvent: (event) => {
+					if (event.type === "done") {
+						failed = false;
+					}
+				},
+				prompt: task.prompt,
+				source: "rollover",
+			});
+		} finally {
+			this.rolloverQueued = false;
+			if (started) {
+				this.options.sessions.finishRolloverAttempt({
+					failed,
+					idleMinutes: task.idleMinutes,
+				});
+			}
+			this.options.onStatusChange?.();
 		}
 	}
 

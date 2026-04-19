@@ -1,4 +1,4 @@
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Settings2 } from "lucide-react";
 import type { BrowserConnectionStatus } from "../../stores/runtime.ts";
 import { useRuntimeStore } from "../../stores/runtime.ts";
 
@@ -30,10 +30,14 @@ export function describeRuntimeConnectionStatus(
 }
 
 interface SidebarRuntimeStatusProps {
+	configOpen?: boolean;
+	onToggleConfig?: () => void;
 	onRestart?: () => void;
 }
 
 export function SidebarRuntimeStatus({
+	configOpen = false,
+	onToggleConfig = () => {},
 	onRestart = () => {},
 }: SidebarRuntimeStatusProps) {
 	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
@@ -55,15 +59,29 @@ export function SidebarRuntimeStatus({
 						{presentation.label}
 					</span>
 				</div>
-				<button
-					type="button"
-					onClick={onRestart}
-					title="Restart"
-					aria-label="Restart runtime"
-					className="inline-flex shrink-0 items-center text-dark-500 transition-colors hover:text-dark-100"
-				>
-					<RotateCcw size={12} />
-				</button>
+				<div className="flex items-center gap-2">
+					<button
+						type="button"
+						onClick={onToggleConfig}
+						title={configOpen ? "Close config" : "Config"}
+						aria-label={configOpen ? "Close config panel" : "Open config panel"}
+						aria-pressed={configOpen}
+						className={`inline-flex shrink-0 items-center transition-colors ${
+							configOpen ? "text-dark-50" : "text-dark-500 hover:text-dark-100"
+						}`}
+					>
+						<Settings2 size={12} />
+					</button>
+					<button
+						type="button"
+						onClick={onRestart}
+						title="Restart"
+						aria-label="Restart runtime"
+						className="inline-flex shrink-0 items-center text-dark-500 transition-colors hover:text-dark-100"
+					>
+						<RotateCcw size={12} />
+					</button>
+				</div>
 			</div>
 		</div>
 	);

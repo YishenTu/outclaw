@@ -20,6 +20,7 @@ interface UpdateAgentOptions {
 	botToken?: string;
 	allowedUsers?: number[];
 	defaultCronUserId?: number;
+	rolloverIdleMinutes?: number;
 }
 
 export function updateAgent(options: UpdateAgentOptions) {
@@ -50,6 +51,14 @@ export function updateAgent(options: UpdateAgentOptions) {
 
 	const merged = {
 		...stored,
+		...(options.rolloverIdleMinutes !== undefined
+			? {
+					rollover: {
+						...(stored.rollover ?? {}),
+						idleMinutes: options.rolloverIdleMinutes,
+					},
+				}
+			: {}),
 		telegram: {
 			...currentTelegram,
 			...(options.botToken !== undefined

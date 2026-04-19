@@ -3,6 +3,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -55,6 +56,7 @@ describe("createBrowserApi", () => {
 			],
 			getRememberedAgentId: () => "agent-railly",
 			gitRoot: root,
+			homeDir: root,
 			storesByAgent: new Map([["agent-railly", store]]),
 		});
 
@@ -110,6 +112,7 @@ describe("createBrowserApi", () => {
 			],
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
+			homeDir: root,
 			storesByAgent: new Map([["agent-railly", store]]),
 		});
 
@@ -171,6 +174,120 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("reads the runtime root config file", async () => {
+		const root = createTempDir("outclaw-browser-config-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+		writeFileSync(
+			join(root, "config.json"),
+			'{\n\t"host": "127.0.0.1",\n\t"port": 4000\n}\n',
+		);
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(api.readConfigFile()).resolves.toEqual({
+			content: '{\n\t"host": "127.0.0.1",\n\t"port": 4000\n}\n',
+			kind: "text",
+			language: "json",
+			path: "config.json",
+			schema: expect.objectContaining({
+				kind: "object",
+				properties: expect.objectContaining({
+					port: {
+						editorKinds: ["number"],
+						kind: "leaf",
+						typeLabel: "number",
+					},
+				}),
+			}),
+			truncated: false,
+		});
+
+		store.close();
+	});
+
+	test("writes the runtime root config file", async () => {
+		const root = createTempDir("outclaw-browser-config-write-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+		writeFileSync(join(root, "config.json"), '{\n\t"port": 4000\n}\n');
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.writeConfigFile({
+				host: "127.0.0.1",
+				port: 4100,
+			}),
+		).resolves.toEqual({
+			content: '{\n\t"host": "127.0.0.1",\n\t"port": 4100\n}\n',
+			kind: "text",
+			language: "json",
+			path: "config.json",
+			schema: expect.objectContaining({
+				kind: "object",
+				properties: expect.objectContaining({
+					agents: expect.objectContaining({
+						additionalProperties: expect.objectContaining({
+							properties: expect.objectContaining({
+								telegram: expect.objectContaining({
+									properties: expect.objectContaining({
+										allowedUsers: {
+											editorKinds: ["array", "string"],
+											kind: "leaf",
+											stringFormat: "env_ref",
+											typeLabel: "number[] | string",
+										},
+									}),
+								}),
+							}),
+						}),
+					}),
+				}),
+			}),
+			truncated: false,
+		});
+		expect(readFileSync(join(root, "config.json"), "utf-8")).toBe(
+			'{\n\t"host": "127.0.0.1",\n\t"port": 4100\n}\n',
+		);
+
+		store.close();
+	});
+
 	test("lists agent tree entries with git status for modified and new files", async () => {
 		const root = createTempDir("outclaw-browser-tree-git-");
 		cleanupPaths.push(root);
@@ -211,6 +328,7 @@ describe("createBrowserApi", () => {
 			],
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
+			homeDir: root,
 			storesByAgent: new Map([["agent-railly", store]]),
 		});
 
@@ -282,6 +400,7 @@ describe("createBrowserApi", () => {
 			],
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
+			homeDir: root,
 			storesByAgent: new Map([["agent-railly", store]]),
 		});
 
@@ -390,6 +509,7 @@ describe("createBrowserApi", () => {
 				],
 				getRememberedAgentId: () => undefined,
 				gitRoot: root,
+				homeDir: root,
 				storesByAgent: new Map([["agent-railly", store]]),
 			});
 
@@ -459,6 +579,7 @@ describe("createBrowserApi", () => {
 			],
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
+			homeDir: root,
 			storesByAgent: new Map([["agent-railly", store]]),
 		});
 
@@ -514,6 +635,7 @@ describe("createBrowserApi", () => {
 			],
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
+			homeDir: root,
 			storesByAgent: new Map([["agent-railly", store]]),
 		});
 
@@ -570,6 +692,7 @@ describe("createBrowserApi", () => {
 			],
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
+			homeDir: root,
 			storesByAgent: new Map(),
 		});
 
@@ -616,6 +739,7 @@ describe("createBrowserApi", () => {
 			],
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
+			homeDir: root,
 			storesByAgent: new Map([["agent-railly", store]]),
 		});
 
@@ -675,6 +799,7 @@ describe("createBrowserApi", () => {
 			],
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
+			homeDir: root,
 			ignoredGitPaths: [ignoredGitPath],
 			storesByAgent: new Map(),
 		});

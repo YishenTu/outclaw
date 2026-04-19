@@ -14,6 +14,7 @@ import type { SessionService } from "./session-service.ts";
 
 export type PromptSource =
 	| "heartbeat"
+	| "rollover"
 	| "telegram"
 	| "tui"
 	| "browser"
@@ -78,6 +79,7 @@ export class PromptDispatcher {
 		if (
 			task.source === "telegram" ||
 			task.source === "heartbeat" ||
+			task.source === "rollover" ||
 			task.source === "tui" ||
 			task.source === "browser"
 		) {
@@ -165,6 +167,7 @@ export class PromptDispatcher {
 		if (
 			task.source === "telegram" ||
 			task.source === "heartbeat" ||
+			task.source === "rollover" ||
 			task.source === "browser"
 		) {
 			return this.options.clients.listInteractiveTargets(task.sender);

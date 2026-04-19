@@ -31,7 +31,10 @@ import {
 	FRONTEND_NOTICE_KEY,
 	LAST_INTERACTIVE_AGENT_KEY,
 	LEGACY_LAST_TUI_AGENT_KEY,
+	lastHandledRolloverInteractiveAtKey,
+	lastInteractiveAtKey,
 	lastUserTargetKey,
+	rolloverNoticeKey,
 } from "./state-keys.ts";
 
 interface SessionStoreOptions {
@@ -262,6 +265,9 @@ export class SessionStore {
 					$activeSessionPrefix: `${activeSessionKey(agentId, "")}%`,
 					$lastUserTargetKey: lastUserTargetKey(agentId),
 				});
+			this.deleteStateValue(lastInteractiveAtKey(agentId));
+			this.deleteStateValue(lastHandledRolloverInteractiveAtKey(agentId));
+			this.deleteStateValue(rolloverNoticeKey(agentId));
 
 			if (this.getLastInteractiveAgentId() === agentId) {
 				this.deleteStateValue(LAST_INTERACTIVE_AGENT_KEY);
@@ -317,6 +323,52 @@ export class SessionStore {
 			lastUserTargetKey(this.agentId),
 			serializeLastUserTarget(target),
 		);
+	}
+
+	getLastInteractiveAt(): number | undefined {
+		return parseStoredNumber(
+			this.getStateValue(lastInteractiveAtKey(this.agentId)),
+		);
+	}
+
+	setLastInteractiveAt(timestamp: number | undefined) {
+		if (timestamp === undefined) {
+			this.deleteStateValue(lastInteractiveAtKey(this.agentId));
+			return;
+		}
+
+		this.setStateValue(lastInteractiveAtKey(this.agentId), String(timestamp));
+	}
+
+	getLastHandledRolloverInteractiveAt(): number | undefined {
+		return parseStoredNumber(
+			this.getStateValue(lastHandledRolloverInteractiveAtKey(this.agentId)),
+		);
+	}
+
+	setLastHandledRolloverInteractiveAt(timestamp: number | undefined) {
+		if (timestamp === undefined) {
+			this.deleteStateValue(lastHandledRolloverInteractiveAtKey(this.agentId));
+			return;
+		}
+
+		this.setStateValue(
+			lastHandledRolloverInteractiveAtKey(this.agentId),
+			String(timestamp),
+		);
+	}
+
+	getRolloverNotice(): string | undefined {
+		return this.getStateValue(rolloverNoticeKey(this.agentId));
+	}
+
+	setRolloverNotice(message: string | undefined) {
+		if (!message) {
+			this.deleteStateValue(rolloverNoticeKey(this.agentId));
+			return;
+		}
+
+		this.setStateValue(rolloverNoticeKey(this.agentId), message);
 	}
 
 	getLastInteractiveAgentId(): string | undefined {
@@ -526,6 +578,15 @@ export class SessionStore {
 		this.dbFileKey = sqlite.fileKey;
 		ensureSessionStoreSchema(this.db);
 	}
+}
+
+function parseStoredNumber(value: string | undefined): number | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function isRetryableSqliteIoError(error: unknown): boolean {

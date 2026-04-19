@@ -139,10 +139,47 @@ describe("SessionService", () => {
 			kind: "telegram",
 			chatId: 123,
 		});
+		expect(store.getLastInteractiveAt()).toBeGreaterThan(0);
 		expect(state.createHeartbeatDeliveryTarget()).toEqual({
 			clientType: "telegram",
 			telegramChatId: 123,
 		});
+
+		store.close();
+	});
+
+	test("accepted interactive prompts clear a pending rollover notice", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+		store.setRolloverNotice("Previous session auto-finalized after 8h idle.");
+
+		sessions.recordAcceptedPromptTarget("tui");
+
+		expect(store.getRolloverNotice()).toBeUndefined();
+		store.close();
+	});
+
+	test("finishRolloverAttempt marks the idle epoch handled, clears the active session, and stores a notice", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		store.setLastInteractiveAt(123);
+		state.preparePrompt("Current chat");
+		sessions.completeRun(makeDoneEvent("sdk-active"));
+
+		sessions.finishRolloverAttempt({
+			failed: false,
+			idleMinutes: 480,
+		});
+
+		expect(store.getLastHandledRolloverInteractiveAt()).toBe(123);
+		expect(store.getActiveSessionId(PROVIDER_ID)).toBeUndefined();
+		expect(state.sessionId).toBeUndefined();
+		expect(store.getRolloverNotice()).toBe(
+			"Previous session auto-finalized after 8h idle. Use /session to resume.",
+		);
 
 		store.close();
 	});

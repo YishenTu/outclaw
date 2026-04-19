@@ -6,6 +6,27 @@ import { createAgentRuntime } from "../../../src/runtime/application/create-agen
 import { createSupervisor } from "../../../src/runtime/supervisor/create-supervisor.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
 
+const TEST_CONFIG_SCHEMA = {
+	kind: "object" as const,
+	properties: {
+		port: {
+			kind: "leaf" as const,
+			editorKinds: ["number"] as const,
+			typeLabel: "number",
+		},
+	},
+};
+
+function createConfigResponse(content: string) {
+	return {
+		path: "config.json",
+		kind: "text" as const,
+		content,
+		schema: TEST_CONFIG_SCHEMA,
+		truncated: false,
+	};
+}
+
 describe("createSupervisor browser routes", () => {
 	let cleanup: (() => Promise<void>) | undefined;
 	let tempDir: string | undefined;
@@ -42,6 +63,11 @@ describe("createSupervisor browser routes", () => {
 						},
 					],
 				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async () => {
+					throw new Error("Not implemented");
+				},
 				readAgentFile: async () => ({
 					path: "AGENTS.md",
 					kind: "text",
@@ -114,6 +140,11 @@ describe("createSupervisor browser routes", () => {
 					activeAgentId: "agent-railly",
 					agents: [],
 				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async () => {
+					throw new Error("Not implemented");
+				},
 				readAgentFile: async (_agentId, path) => ({
 					path,
 					kind: "text",
@@ -165,6 +196,156 @@ describe("createSupervisor browser routes", () => {
 		});
 	});
 
+	test("serves the runtime config file over HTTP", async () => {
+		const supervisor = createSupervisor({
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+				}),
+			],
+			browserApi: {
+				getAgentTerminalCwd: () => undefined,
+				listAgentCron: async () => [],
+				listAgentTree: async () => [],
+				listAgents: () => ({
+					activeAgentId: "agent-railly",
+					agents: [],
+				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async (document) =>
+					createConfigResponse(`${JSON.stringify(document, null, "\t")}\n`),
+				readAgentFile: async (_agentId, path) => ({
+					path,
+					kind: "text",
+					content: "# Agent\n",
+					truncated: false,
+				}),
+				readGitDiff: async () => ({
+					path: "config.json",
+					diff: "",
+				}),
+				readGitCommit: async () => ({
+					sha: "abc1234",
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
+				readGitStatus: async () => ({
+					root: "/tmp/.outclaw",
+					branch: "main",
+					ahead: 0,
+					behind: 0,
+					clean: true,
+					graph: { commits: [], branchHeads: [] },
+					files: [],
+				}),
+				setAgentCronEnabled: async () => {
+					throw new Error("Not implemented");
+				},
+			},
+			port: 0,
+		});
+		cleanup = () => supervisor.stop();
+
+		const response = await fetch(
+			`http://localhost:${supervisor.port}/api/config`,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual(
+			createConfigResponse('{\n\t"port": 4000\n}\n'),
+		);
+	});
+
+	test("updates the runtime config file over HTTP", async () => {
+		const supervisor = createSupervisor({
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+				}),
+			],
+			browserApi: {
+				getAgentTerminalCwd: () => undefined,
+				listAgentCron: async () => [],
+				listAgentTree: async () => [],
+				listAgents: () => ({
+					activeAgentId: "agent-railly",
+					agents: [],
+				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async (document) =>
+					createConfigResponse(`${JSON.stringify(document, null, "\t")}\n`),
+				readAgentFile: async (_agentId, path) => ({
+					path,
+					kind: "text",
+					content: "# Agent\n",
+					truncated: false,
+				}),
+				readGitDiff: async () => ({
+					path: "config.json",
+					diff: "",
+				}),
+				readGitCommit: async () => ({
+					sha: "abc1234",
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
+				readGitStatus: async () => ({
+					root: "/tmp/.outclaw",
+					branch: "main",
+					ahead: 0,
+					behind: 0,
+					clean: true,
+					graph: { commits: [], branchHeads: [] },
+					files: [],
+				}),
+				setAgentCronEnabled: async () => {
+					throw new Error("Not implemented");
+				},
+			},
+			port: 0,
+		});
+		cleanup = () => supervisor.stop();
+
+		const response = await fetch(
+			`http://localhost:${supervisor.port}/api/config`,
+			{
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+				},
+				body: JSON.stringify({
+					document: {
+						host: "127.0.0.1",
+						port: 4100,
+					},
+				}),
+			},
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual(
+			createConfigResponse('{\n\t"host": "127.0.0.1",\n\t"port": 4100\n}\n'),
+		);
+	});
+
 	test("serves browser cron summaries over HTTP", async () => {
 		const supervisor = createSupervisor({
 			agents: [
@@ -190,6 +371,11 @@ describe("createSupervisor browser routes", () => {
 					activeAgentId: "agent-railly",
 					agents: [],
 				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async () => {
+					throw new Error("Not implemented");
+				},
 				readAgentFile: async (_agentId, path) => ({
 					path,
 					kind: "text",
@@ -265,6 +451,11 @@ describe("createSupervisor browser routes", () => {
 					activeAgentId: "agent-railly",
 					agents: [],
 				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async () => {
+					throw new Error("Not implemented");
+				},
 				readAgentFile: async (_agentId, path) => ({
 					path,
 					kind: "text",
@@ -348,6 +539,11 @@ describe("createSupervisor browser routes", () => {
 					activeAgentId: "agent-railly",
 					agents: [],
 				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async () => {
+					throw new Error("Not implemented");
+				},
 				readAgentFile: async (_agentId, path) => ({
 					path,
 					kind: "text",

@@ -14,10 +14,16 @@ export interface SessionListEntry {
 	lastActive: number;
 }
 
+interface SessionServiceCallbacks {
+	onAcceptedInteractivePrompt?: () => void;
+	onSessionStateChange?: () => void;
+}
+
 export class SessionService {
 	constructor(
 		private readonly state: RuntimeState,
 		private readonly store?: SessionStore,
+		private readonly callbacks: SessionServiceCallbacks = {},
 	) {
 		this.restorePersistedState();
 	}
@@ -54,6 +60,7 @@ export class SessionService {
 	clearActiveSession() {
 		this.state.clearSession();
 		this.store?.setActiveSessionId(this.state.providerId, undefined);
+		this.callbacks.onSessionStateChange?.();
 	}
 
 	deleteSession(sessionId: string): { clearedActiveSession: boolean } {
@@ -90,12 +97,25 @@ export class SessionService {
 						kind: "tui",
 					};
 
-		if (!target) {
-			return;
+		if (target) {
+			this.state.setLastUserTarget(target);
+			this.store?.setLastUserTarget(target);
 		}
+		this.store?.setLastInteractiveAt(Date.now());
+		this.store?.setRolloverNotice(undefined);
+		this.callbacks.onAcceptedInteractivePrompt?.();
+	}
 
-		this.state.setLastUserTarget(target);
-		this.store?.setLastUserTarget(target);
+	getLastInteractiveAt(): number | undefined {
+		return this.store?.getLastInteractiveAt();
+	}
+
+	getLastHandledRolloverInteractiveAt(): number | undefined {
+		return this.store?.getLastHandledRolloverInteractiveAt();
+	}
+
+	getRolloverNotice(): string | undefined {
+		return this.store?.getRolloverNotice();
 	}
 
 	renameSession(sessionId: string, title: string) {
@@ -114,7 +134,26 @@ export class SessionService {
 			this.store?.getUsage(this.state.providerId, session.sdkSessionId),
 		);
 		this.store?.setActiveSessionId(this.state.providerId, session.sdkSessionId);
+		this.callbacks.onSessionStateChange?.();
 		return session;
+	}
+
+	finishRolloverAttempt(params: { failed: boolean; idleMinutes: number }) {
+		const lastInteractiveAt = this.store?.getLastInteractiveAt();
+		if (lastInteractiveAt !== undefined) {
+			this.store?.setLastHandledRolloverInteractiveAt(lastInteractiveAt);
+		}
+
+		const message = params.failed
+			? `Previous session auto-finalized after ${formatIdleWindow(
+					params.idleMinutes,
+				)} idle. Final check failed. Use /session to resume.`
+			: `Previous session auto-finalized after ${formatIdleWindow(
+					params.idleMinutes,
+				)} idle. Use /session to resume.`;
+
+		this.clearActiveSession();
+		this.store?.setRolloverNotice(message);
 	}
 
 	recordCronRun(params: { sessionId: string; jobName: string; model: string }) {
@@ -203,4 +242,12 @@ export class SessionService {
 			lastActive: 0,
 		};
 	}
+}
+
+function formatIdleWindow(idleMinutes: number): string {
+	if (idleMinutes % 60 === 0) {
+		return `${idleMinutes / 60}h`;
+	}
+
+	return `${idleMinutes}m`;
 }

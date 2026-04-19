@@ -1,15 +1,25 @@
 import { PanelLeftOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWs } from "../../contexts/websocket-context.tsx";
+import { fetchConfigFile, updateConfigFile } from "../../lib/api.ts";
 import type { AgentReorderPosition } from "../../stores/agents.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import { useSessionsStore } from "../../stores/sessions.ts";
 import { AgentItem } from "./agent-item.tsx";
 import {
+	applyConfigEntryEdits,
+	type ConfigDocument,
+	type ConfigEntry,
+	parseConfigDocument,
+	parseConfigEntries,
+} from "./config-editor.ts";
+import { ConfigModalContent } from "./config-panel.tsx";
+import {
 	type AgentDropIndicator,
 	type AgentRowBounds,
 	resolveAgentDropIndicator,
 } from "./resolve-agent-drop-indicator.ts";
+import { SidebarNotifications } from "./sidebar-notifications.tsx";
 import { SidebarRuntimeStatus } from "./sidebar-runtime-status.tsx";
 
 interface AgentSidebarProps {
@@ -24,6 +34,17 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 	);
 	const [trackingAgentId, setTrackingAgentId] = useState<string | null>(null);
 	const [draggingAgentId, setDraggingAgentId] = useState<string | null>(null);
+	const [configOpen, setConfigOpen] = useState(false);
+	const [configLoading, setConfigLoading] = useState(false);
+	const [configSaving, setConfigSaving] = useState(false);
+	const [configError, setConfigError] = useState<string | null>(null);
+	const [configErrorMode, setConfigErrorMode] = useState<"load" | "save">(
+		"load",
+	);
+	const [configDocument, setConfigDocument] = useState<ConfigDocument | null>(
+		null,
+	);
+	const [configEntries, setConfigEntries] = useState<ConfigEntry[]>([]);
 	const [dropIndicator, setDropIndicator] = useState<{
 		agentId: string;
 		position: AgentReorderPosition;
@@ -187,8 +208,131 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 		};
 	}, [draggingAgentId]);
 
+	useEffect(() => {
+		if (!configOpen) {
+			return;
+		}
+
+		let cancelled = false;
+		setConfigLoading(true);
+		setConfigError(null);
+		setConfigErrorMode("load");
+
+		void fetchConfigFile()
+			.then((configFile) => {
+				if (configFile.kind !== "text" || configFile.content === undefined) {
+					throw new Error("Config file is not readable text");
+				}
+				const document = parseConfigDocument(configFile.content);
+				const agentNamesById = Object.fromEntries(
+					agents.map((agent) => [agent.agentId, agent.name] as const),
+				);
+				const parsed = parseConfigEntries(document, {
+					agentNamesById,
+					schema: configFile.schema,
+				});
+				if (!cancelled) {
+					setConfigDocument(document);
+					setConfigEntries(parsed);
+					setConfigError(null);
+					setConfigErrorMode("load");
+				}
+			})
+			.catch((error) => {
+				if (!cancelled) {
+					setConfigDocument(null);
+					setConfigEntries([]);
+					setConfigErrorMode("load");
+					setConfigError(
+						error instanceof Error ? error.message : "Failed to load config",
+					);
+				}
+			})
+			.finally(() => {
+				if (!cancelled) {
+					setConfigLoading(false);
+				}
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [agents, configOpen]);
+
+	const handleConfigEntryChange = useCallback((item: string, value: string) => {
+		setConfigEntries((current) =>
+			current.map((entry) =>
+				entry.item === item ? { ...entry, value } : entry,
+			),
+		);
+	}, []);
+
+	const handleConfigSave = useCallback(() => {
+		if (!configDocument) {
+			setConfigErrorMode("save");
+			setConfigError("Config is not loaded");
+			return;
+		}
+
+		let nextDocument: ConfigDocument;
+		try {
+			nextDocument = applyConfigEntryEdits(configDocument, configEntries);
+		} catch (error) {
+			setConfigErrorMode("save");
+			setConfigError(
+				error instanceof Error ? error.message : "Failed to update config",
+			);
+			return;
+		}
+
+		setConfigSaving(true);
+		setConfigError(null);
+		setConfigErrorMode("save");
+		void updateConfigFile(nextDocument)
+			.then((configFile) => {
+				if (configFile.kind !== "text" || configFile.content === undefined) {
+					throw new Error("Config file is not readable text");
+				}
+				const document = parseConfigDocument(configFile.content);
+				const agentNamesById = Object.fromEntries(
+					agents.map((agent) => [agent.agentId, agent.name] as const),
+				);
+				setConfigDocument(document);
+				setConfigEntries(
+					parseConfigEntries(document, {
+						agentNamesById,
+						schema: configFile.schema,
+					}),
+				);
+				setConfigError(null);
+				setConfigErrorMode("load");
+				setConfigOpen(false);
+			})
+			.catch((error) => {
+				setConfigErrorMode("save");
+				setConfigError(
+					error instanceof Error ? error.message : "Failed to save config",
+				);
+			})
+			.finally(() => {
+				setConfigSaving(false);
+			});
+	}, [agents, configDocument, configEntries]);
+
 	return (
-		<div className="flex h-full flex-col bg-dark-950">
+		<div className="relative flex h-full flex-col bg-dark-950">
+			{configOpen ? (
+				<ConfigModalContent
+					entries={configEntries}
+					error={configError}
+					errorMode={configErrorMode}
+					isLoading={configLoading}
+					isSaving={configSaving}
+					onClose={() => setConfigOpen(false)}
+					onEntryChange={handleConfigEntryChange}
+					onSave={handleConfigSave}
+				/>
+			) : null}
 			<div className="flex h-12 items-center border-b border-dark-800 px-3">
 				<img
 					src="/logo.png"
@@ -280,7 +424,12 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 				)}
 			</div>
 
-			<SidebarRuntimeStatus onRestart={() => sendCommand("/restart")} />
+			<SidebarNotifications />
+			<SidebarRuntimeStatus
+				configOpen={configOpen}
+				onToggleConfig={() => setConfigOpen((current) => !current)}
+				onRestart={() => sendCommand("/restart")}
+			/>
 		</div>
 	);
 }

@@ -1,5 +1,6 @@
 import type {
 	BrowserAgentsResponse,
+	BrowserConfigResponse,
 	BrowserCronEntry,
 	BrowserFileResponse,
 	BrowserGitCommitResponse,
@@ -21,6 +22,26 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 
 export async function fetchSidebarSummary(): Promise<BrowserAgentsResponse> {
 	return parseJsonResponse(await fetch("/api/agents"));
+}
+
+export async function fetchConfigFile(): Promise<BrowserConfigResponse> {
+	return parseJsonResponse(await fetch("/api/config"));
+}
+
+export async function updateConfigFile(
+	document: Record<string, unknown>,
+): Promise<BrowserConfigResponse> {
+	return parseJsonResponse(
+		await fetch("/api/config", {
+			method: "PATCH",
+			headers: {
+				"content-type": "application/json",
+			},
+			body: JSON.stringify({
+				document,
+			}),
+		}),
+	);
 }
 
 export async function fetchAgentTree(

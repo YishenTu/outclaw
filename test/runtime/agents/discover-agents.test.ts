@@ -66,6 +66,9 @@ describe("agent discovery", () => {
 					promptHomeDir: mimiDir,
 					configPath: join(homeDir, "config.json"),
 					config: {
+						rollover: {
+							idleMinutes: 480,
+						},
 						telegram: {
 							botToken: "",
 							allowedUsers: [33],
@@ -80,6 +83,9 @@ describe("agent discovery", () => {
 					promptHomeDir: raillyDir,
 					configPath: join(homeDir, "config.json"),
 					config: {
+						rollover: {
+							idleMinutes: 480,
+						},
 						telegram: {
 							botToken: "railly-token",
 							allowedUsers: [11, 22],
@@ -154,6 +160,9 @@ describe("agent config", () => {
 			);
 
 			expect(readAgentConfig({ agentId: "agent-railly", homeDir })).toEqual({
+				rollover: {
+					idleMinutes: 480,
+				},
 				telegram: {
 					botToken: "bot-token",
 					allowedUsers: [101, 202],
@@ -185,6 +194,9 @@ describe("agent config", () => {
 			);
 
 			expect(readAgentConfig({ agentId: "agent-railly", homeDir })).toEqual({
+				rollover: {
+					idleMinutes: 480,
+				},
 				telegram: {
 					botToken: "",
 					allowedUsers: [101, 202],
@@ -204,6 +216,9 @@ describe("agent config", () => {
 			const config = readAgentConfig({ agentId: "agent-railly", homeDir });
 
 			expect(config).toEqual({
+				rollover: {
+					idleMinutes: 480,
+				},
 				telegram: {
 					botToken: "",
 					allowedUsers: [],
@@ -215,6 +230,9 @@ describe("agent config", () => {
 			).toEqual({
 				agents: {
 					"agent-railly": {
+						rollover: {
+							idleMinutes: 480,
+						},
 						telegram: {
 							botToken: "",
 							allowedUsers: [],
@@ -228,6 +246,42 @@ describe("agent config", () => {
 					deferMinutes: 0,
 				},
 				port: 4000,
+			});
+		} finally {
+			rmSync(homeDir, { recursive: true });
+		}
+	});
+
+	test("reads per-agent rollover idle override from shared agent config", () => {
+		const homeDir = tmp();
+		try {
+			createAgent(homeDir, "railly", "agent-railly");
+			writeFileSync(
+				join(homeDir, "config.json"),
+				JSON.stringify({
+					agents: {
+						"agent-railly": {
+							rollover: {
+								idleMinutes: 90,
+							},
+							telegram: {
+								botToken: "",
+								allowedUsers: [],
+							},
+						},
+					},
+				}),
+			);
+
+			expect(readAgentConfig({ agentId: "agent-railly", homeDir })).toEqual({
+				rollover: {
+					idleMinutes: 90,
+				},
+				telegram: {
+					botToken: "",
+					allowedUsers: [],
+					defaultCronUserId: undefined,
+				},
 			});
 		} finally {
 			rmSync(homeDir, { recursive: true });
@@ -256,6 +310,9 @@ describe("agent config", () => {
 			).toEqual({
 				agents: {
 					"agent-railly": {
+						rollover: {
+							idleMinutes: 480,
+						},
 						telegram: {
 							botToken: "$BOT_TOKEN",
 							allowedUsers: "$ALLOWED_USERS",

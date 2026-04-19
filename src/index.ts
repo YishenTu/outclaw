@@ -97,10 +97,22 @@ function startMultiAgentDaemon(
 			cwd: agent.homeDir,
 			cronDir: join(agent.homeDir, "cron"),
 			facade: new ClaudeAdapter({ autoCompact: config.autoCompact }),
-			getFrontendNotice: () => stateStore.getFrontendNotice(),
+			getFrontendNotice: () => {
+				const rolloverNotice = agentStores
+					.get(agent.agentId)
+					?.getRolloverNotice();
+				if (rolloverNotice) {
+					return {
+						kind: "rollover",
+						message: rolloverNotice,
+					} as const;
+				}
+				return stateStore.getFrontendNotice();
+			},
 			heartbeat: config.heartbeat,
 			name: agent.name,
 			promptHomeDir: agent.promptHomeDir,
+			rollover: agent.config.rollover,
 			resolveCronTelegramChatId: createCronTelegramChatIdResolver(
 				agent.config.telegram,
 			),
@@ -133,6 +145,7 @@ function startMultiAgentDaemon(
 			}),
 			getRememberedAgentId: () => stateStore.getLastInteractiveAgentId(),
 			gitRoot: HOME_DIR,
+			homeDir: HOME_DIR,
 			ignoredGitPaths: agents.map((agent) =>
 				relative(HOME_DIR, join(agent.promptHomeDir, ".claude", "skills"))
 					.split(sep)

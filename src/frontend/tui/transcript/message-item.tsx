@@ -90,6 +90,13 @@ export const MessageItem = memo(function MessageItem({
 					</Box>
 				);
 			}
+			if (message.variant === "rollover") {
+				return (
+					<Box marginTop={1} paddingLeft={3} paddingRight={1}>
+						<Text dimColor>{`↺ ${message.text}`}</Text>
+					</Box>
+				);
+			}
 			return (
 				<Box marginTop={1} paddingLeft={3} paddingRight={1}>
 					<Text dimColor>{message.text}</Text>

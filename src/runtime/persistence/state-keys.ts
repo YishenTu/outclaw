@@ -9,3 +9,15 @@ export function activeSessionKey(agentId: string, providerId: string): string {
 export function lastUserTargetKey(agentId: string): string {
 	return `last_user_target:${agentId}`;
 }
+
+export function lastInteractiveAtKey(agentId: string): string {
+	return `last_interactive_at:${agentId}`;
+}
+
+export function lastHandledRolloverInteractiveAtKey(agentId: string): string {
+	return `last_handled_rollover_interactive_at:${agentId}`;
+}
+
+export function rolloverNoticeKey(agentId: string): string {
+	return `rollover_notice:${agentId}`;
+}

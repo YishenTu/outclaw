@@ -12,6 +12,7 @@ import {
 	hasHeartbeatContent,
 } from "../heartbeat/scheduler.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
+import { RolloverScheduler } from "../rollover/scheduler.ts";
 import type { WsClient } from "../transport/client-hub.ts";
 import { createRuntimeController } from "./create-runtime-controller.ts";
 import { RuntimeState } from "./runtime-state.ts";
@@ -36,6 +37,9 @@ interface CreateAgentRuntimeOptions {
 	heartbeat?: Config["heartbeat"];
 	name: string;
 	promptHomeDir?: string;
+	rollover?: {
+		idleMinutes: number;
+	};
 	resolveCronTelegramChatId?: (config: CronJobConfig) => number | undefined;
 	restart?: () => void;
 	cronDir?: string;
@@ -88,12 +92,17 @@ export function createAgentRuntime(
 		facade.providerId,
 		options.statusAgentName ?? options.name,
 	);
-	const sessions = new SessionService(state, options.store);
+	let noteRolloverStateChange = () => {};
+	const sessions = new SessionService(state, options.store, {
+		onAcceptedInteractivePrompt: () => noteRolloverStateChange(),
+		onSessionStateChange: () => noteRolloverStateChange(),
+	});
 	const controller = createRuntimeController({
 		canSendToClient: options.canSendToClient,
 		cwd: options.cwd,
 		facade,
 		getFrontendNotice: options.getFrontendNotice,
+		onExecutionStateChange: () => noteRolloverStateChange(),
 		restart: options.restart,
 		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
@@ -124,6 +133,22 @@ export function createAgentRuntime(
 		}));
 		controller.setFireDeferredHeartbeat(() => heartbeat.fireDeferred());
 	}
+	const rollover = options.rollover
+		? new RolloverScheduler({
+				config: options.rollover,
+				getLastHandledInteractiveAt: () =>
+					sessions.getLastHandledRolloverInteractiveAt(),
+				getLastInteractiveAt: () => sessions.getLastInteractiveAt(),
+				hasActiveRun: () => controller.hasActiveRun,
+				hasActiveSession: () => sessions.activeSessionId !== undefined,
+				requestRollover: (prompt) =>
+					controller.enqueueRollover(
+						prompt,
+						options.rollover?.idleMinutes ?? 0,
+					),
+			})
+		: undefined;
+	noteRolloverStateChange = () => rollover?.noteStateChanged();
 
 	const cronScheduler =
 		options.cronDir && options.promptHomeDir
@@ -141,6 +166,7 @@ export function createAgentRuntime(
 			: undefined;
 
 	heartbeat?.start();
+	rollover?.start();
 	cronScheduler?.start();
 	let stopPromise: Promise<void> | undefined;
 
@@ -175,6 +201,7 @@ export function createAgentRuntime(
 				stopPromise = (async () => {
 					cronScheduler?.stop();
 					heartbeat?.stop();
+					rollover?.stop();
 					controller.beginShutdown();
 					await controller.drain();
 				})();

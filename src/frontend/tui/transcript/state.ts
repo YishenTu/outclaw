@@ -6,7 +6,7 @@ export type TuiMessageRole =
 	| "error"
 	| "status";
 
-export type TuiMessageVariant = "compact_boundary" | "heartbeat";
+export type TuiMessageVariant = "compact_boundary" | "heartbeat" | "rollover";
 
 export interface TuiMessage {
 	readonly id: number;

@@ -158,6 +158,34 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("persists last interactive timestamps and handled rollover epoch", () => {
+		let store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		store.setLastInteractiveAt(123);
+		store.setLastHandledRolloverInteractiveAt(123);
+		store.close();
+
+		store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		expect(store.getLastInteractiveAt()).toBe(123);
+		expect(store.getLastHandledRolloverInteractiveAt()).toBe(123);
+
+		store.close();
+	});
+
+	test("persists agent-scoped rollover notice independently of global frontend notice", () => {
+		let store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		store.setRolloverNotice("auto-finalized after 8h idle");
+		store.setFrontendNotice({ kind: "restart_required" });
+		store.close();
+
+		store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		expect(store.getRolloverNotice()).toBe("auto-finalized after 8h idle");
+		expect(store.getFrontendNotice()).toEqual({ kind: "restart_required" });
+		store.setRolloverNotice(undefined);
+		expect(store.getRolloverNotice()).toBeUndefined();
+
+		store.close();
+	});
+
 	test("scopes sessions by the bound agent id", () => {
 		const raillyStore = createTestStore({ agentId: RAILLY_AGENT_ID });
 		const mimiStore = createTestStore({ agentId: MIMI_AGENT_ID });

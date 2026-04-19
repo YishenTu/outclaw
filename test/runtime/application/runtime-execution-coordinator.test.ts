@@ -1,9 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import type { DoneEvent, FacadeEvent } from "../../../src/common/protocol.ts";
 import type { PromptDispatcher } from "../../../src/runtime/application/prompt-dispatcher.ts";
 import { RuntimeExecutionCoordinator } from "../../../src/runtime/application/runtime-execution-coordinator.ts";
 import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
 import { SessionService } from "../../../src/runtime/application/session-service.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
+
+const TEST_DB = join(
+	import.meta.dir,
+	".tmp-runtime-execution-coordinator.sqlite",
+);
 
 function createDeferred() {
 	let resolve: () => void = () => {};
@@ -33,6 +41,12 @@ function makeDoneEvent(sessionId = "sdk-active"): DoneEvent {
 }
 
 describe("RuntimeExecutionCoordinator", () => {
+	afterEach(() => {
+		if (existsSync(TEST_DB)) rmSync(TEST_DB);
+		if (existsSync(`${TEST_DB}-wal`)) rmSync(`${TEST_DB}-wal`);
+		if (existsSync(`${TEST_DB}-shm`)) rmSync(`${TEST_DB}-shm`);
+	});
+
 	test("accepted user prompts update the last user target immediately", async () => {
 		const state = new RuntimeState("mock");
 		const sessions = new SessionService(state);
@@ -124,5 +138,45 @@ describe("RuntimeExecutionCoordinator", () => {
 		} finally {
 			Date.now = originalNow;
 		}
+	});
+
+	test("rollover prompts mark the idle epoch handled and clear the active session after completion", async () => {
+		const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+		const state = new RuntimeState("mock");
+		const sessions = new SessionService(state, store);
+		store.setLastInteractiveAt(123);
+		state.preparePrompt("Old session");
+		sessions.completeRun(makeDoneEvent("sdk-old"));
+		let source: string | undefined;
+
+		const coordinator = new RuntimeExecutionCoordinator({
+			promptDispatcher: {
+				run: async (task) => {
+					source = task.source;
+					task.onEvent?.({
+						type: "done",
+						sessionId: "sdk-old",
+						durationMs: 1,
+					});
+				},
+			} as Pick<PromptDispatcher, "run">,
+			sessions,
+			state,
+		});
+
+		expect(coordinator.enqueueRollover("finalize the old session", 480)).toBe(
+			true,
+		);
+		await coordinator.drain();
+
+		expect(source).toBe("rollover");
+		expect(state.sessionId).toBeUndefined();
+		expect(store.getActiveSessionId("mock")).toBeUndefined();
+		expect(store.getLastHandledRolloverInteractiveAt()).toBe(123);
+		expect(store.getRolloverNotice()).toBe(
+			"Previous session auto-finalized after 8h idle. Use /session to resume.",
+		);
+
+		store.close();
 	});
 });

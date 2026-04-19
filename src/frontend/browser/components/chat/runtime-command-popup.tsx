@@ -1,3 +1,4 @@
+import { LoaderCircle } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { BrowserRuntimePopup } from "../../stores/runtime-popup.ts";
 import { formatLastActive } from "../agent-sidebar/format-last-active.ts";
@@ -53,14 +54,31 @@ export function RuntimeCommandPopup({
 
 	if (popup.kind === "status") {
 		const { title, body } = splitStatusPopupText(popup.text);
+		const inProgress = title.endsWith("...");
+		const hasBody = body.length > 0;
 		return (
 			<div className="absolute bottom-full left-1/2 mb-2 w-4/5 max-w-full -translate-x-1/2 overflow-hidden rounded-[18px] border border-dark-800 bg-dark-900 shadow-lg">
-				<div className="border-b border-dark-800 px-3 py-2 text-xs uppercase tracking-[0.14em] text-dark-500">
-					{title}
+				<div
+					className={`flex items-center gap-2 ${
+						hasBody ? "border-b border-dark-800 " : ""
+					}px-3 py-2 text-xs uppercase tracking-[0.14em] text-dark-500`}
+				>
+					{inProgress ? (
+						<LoaderCircle
+							size={12}
+							className="shrink-0 animate-spin text-info"
+							aria-hidden="true"
+						/>
+					) : null}
+					<span className="min-w-0 truncate normal-case tracking-normal text-dark-100">
+						{title}
+					</span>
 				</div>
-				<div className="whitespace-pre-wrap px-4 py-3 text-sm text-dark-300">
-					{body}
-				</div>
+				{hasBody ? (
+					<div className="whitespace-pre-wrap px-4 py-3 text-sm text-dark-300">
+						{body}
+					</div>
+				) : null}
 			</div>
 		);
 	}

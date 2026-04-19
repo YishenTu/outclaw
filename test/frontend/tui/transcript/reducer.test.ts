@@ -222,6 +222,22 @@ describe("mapEventToActions", () => {
 		]);
 	});
 
+	test("user_prompt from rollover → push rollover indicator", () => {
+		const actions = mapEventToActions({
+			type: "user_prompt",
+			prompt: "finalize old session",
+			source: "rollover",
+		});
+		expect(actions).toEqual([
+			{
+				type: "push",
+				role: "info",
+				text: "Rollover",
+				variant: "rollover",
+			},
+		]);
+	});
+
 	test("image event → push info", () => {
 		expect(
 			mapEventToActions({ type: "image", path: "/tmp/chart.png" }),

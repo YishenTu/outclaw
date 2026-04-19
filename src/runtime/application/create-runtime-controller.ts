@@ -30,6 +30,7 @@ interface CreateRuntimeControllerOptions {
 	) => Promise<void> | void;
 	facade: Facade;
 	getFrontendNotice?: () => FrontendNotice | undefined;
+	onExecutionStateChange?: () => void;
 	promptHomeDir?: string;
 	restart?: () => void;
 	sessions: SessionService;
@@ -63,7 +64,10 @@ export function createRuntimeController(
 		state: options.state,
 	});
 	const execution = new RuntimeExecutionCoordinator({
-		onStatusChange: () => clients.broadcastStatus(),
+		onStatusChange: () => {
+			clients.broadcastStatus();
+			options.onExecutionStateChange?.();
+		},
 		promptDispatcher,
 		sessions: options.sessions,
 		state: options.state,

@@ -1,5 +1,6 @@
 import { HEARTBEAT_DISPLAY_LABEL } from "../../../common/heartbeat-prompt.ts";
 import type { ServerEvent } from "../../../common/protocol.ts";
+import { ROLLOVER_DISPLAY_LABEL } from "../../../common/rollover-prompt.ts";
 import { formatLivePrompt, formatReplyText, formatStatus } from "./format.ts";
 import type { TuiAction } from "./reducer.ts";
 import type { TuiMessage } from "./state.ts";
@@ -40,6 +41,16 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 						role: "info",
 						text: HEARTBEAT_DISPLAY_LABEL,
 						variant: "heartbeat",
+					},
+				];
+			}
+			if (event.source === "rollover") {
+				return [
+					{
+						type: "push",
+						role: "info",
+						text: ROLLOVER_DISPLAY_LABEL,
+						variant: "rollover",
 					},
 				];
 			}
@@ -86,7 +97,11 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 						role: "info",
 						text: message.text,
 						variant:
-							message.event === "heartbeat" ? "heartbeat" : "compact_boundary",
+							message.event === "heartbeat"
+								? "heartbeat"
+								: message.event === "rollover"
+									? "rollover"
+									: "compact_boundary",
 					});
 					continue;
 				}

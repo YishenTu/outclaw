@@ -1,8 +1,9 @@
 import type { Dirent } from "node:fs";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import type {
 	BrowserAgentsResponse,
+	BrowserConfigResponse,
 	BrowserCronEntry,
 	BrowserFileResponse,
 	BrowserGitCommitResponse,
@@ -17,9 +18,9 @@ import type {
 } from "../../common/protocol.ts";
 import { parseJobConfig, serializeJobConfig } from "../cron/job-config.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
-import { detectFileLanguage } from "./detect-file-language.ts";
+import { BROWSER_CONFIG_SCHEMA } from "./config-schema.ts";
+import { readBrowserFile } from "./read-browser-file.ts";
 
-const MAX_FILE_PREVIEW_BYTES = 512 * 1024;
 const MAX_GIT_GRAPH_COMMITS = 30;
 const TREE_IGNORED_NAMES = new Set([".git", ".DS_Store"]);
 
@@ -34,6 +35,7 @@ interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
 	getRememberedAgentId: () => string | undefined;
 	gitRoot: string;
+	homeDir: string;
 	ignoredGitPaths?: readonly string[];
 	storesByAgent: Map<string, SessionStore | undefined>;
 }
@@ -43,6 +45,10 @@ export interface BrowserApi {
 	listAgents(): BrowserAgentsResponse;
 	listAgentCron(agentId: string): Promise<BrowserCronEntry[]>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
+	readConfigFile(): Promise<BrowserConfigResponse>;
+	writeConfigFile(
+		document: Record<string, unknown>,
+	): Promise<BrowserConfigResponse>;
 	readAgentFile(
 		agentId: string,
 		relativePath: string,
@@ -123,36 +129,32 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			);
 			return await listTreeEntries(agent.homeDir, agent.homeDir, gitStatuses);
 		},
+		async readConfigFile() {
+			const absolutePath = resolveWithinRoot(options.homeDir, "config.json");
+			return {
+				...(await readBrowserFile(options.homeDir, absolutePath)),
+				schema: BROWSER_CONFIG_SCHEMA,
+			};
+		},
+		async writeConfigFile(document) {
+			if (!isPlainObject(document)) {
+				throw new Error("Config document must be a JSON object");
+			}
+			const absolutePath = resolveWithinRoot(options.homeDir, "config.json");
+			await writeFile(
+				absolutePath,
+				`${JSON.stringify(document, null, "\t")}\n`,
+				"utf8",
+			);
+			return {
+				...(await readBrowserFile(options.homeDir, absolutePath)),
+				schema: BROWSER_CONFIG_SCHEMA,
+			};
+		},
 		async readAgentFile(agentId, relativePath) {
 			const agent = requireAgent(agentsById, agentId);
 			const absolutePath = resolveWithinRoot(agent.homeDir, relativePath);
-			const info = await stat(absolutePath);
-			if (!info.isFile()) {
-				throw new Error("Path does not reference a file");
-			}
-
-			const fileBuffer = await readFile(absolutePath);
-			const truncated = fileBuffer.byteLength > MAX_FILE_PREVIEW_BYTES;
-			const previewBuffer = truncated
-				? fileBuffer.subarray(0, MAX_FILE_PREVIEW_BYTES)
-				: fileBuffer;
-			const path = toRelativePath(agent.homeDir, absolutePath);
-			if (looksBinary(previewBuffer)) {
-				return {
-					path,
-					kind: "binary",
-					language: detectFileLanguage(path),
-					truncated,
-				};
-			}
-
-			return {
-				path,
-				kind: "text",
-				content: new TextDecoder().decode(previewBuffer),
-				language: detectFileLanguage(path),
-				truncated,
-			};
+			return await readBrowserFile(agent.homeDir, absolutePath);
 		},
 		async readGitStatus() {
 			const output = runGit(
@@ -259,6 +261,10 @@ function requireAgent(
 		throw new Error(`Unknown agent: ${agentId}`);
 	}
 	return agent;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function listTreeEntries(
@@ -477,16 +483,6 @@ function toRelativeDescendantPath(
 		return undefined;
 	}
 	return relative(resolvedRoot, resolvedTarget).split(sep).join("/");
-}
-
-function looksBinary(buffer: Uint8Array): boolean {
-	const sampleSize = Math.min(buffer.byteLength, 1024);
-	for (let index = 0; index < sampleSize; index += 1) {
-		if (buffer[index] === 0) {
-			return true;
-		}
-	}
-	return false;
 }
 
 function runGit(

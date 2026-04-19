@@ -17,6 +17,7 @@ describe("BrowserRestartNotice", () => {
 			<BrowserRestartNoticeContent notice={{ kind: "restart_required" }} />,
 		);
 
+		expect(html).toContain("max-w-4xl");
 		expect(html).toContain("Restart required");
 		expect(html).toContain(
 			"Changes won&#x27;t update until the runtime restarts.",

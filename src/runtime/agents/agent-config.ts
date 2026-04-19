@@ -1,4 +1,7 @@
 export interface StoredAgentConfig {
+	rollover?: {
+		idleMinutes?: number;
+	};
 	telegram?: {
 		botToken?: string;
 		allowedUsers?: number[] | string;
@@ -7,6 +10,9 @@ export interface StoredAgentConfig {
 }
 
 export interface AgentConfig {
+	rollover: {
+		idleMinutes: number;
+	};
 	telegram: {
 		botToken: string;
 		allowedUsers: number[];
@@ -15,6 +21,9 @@ export interface AgentConfig {
 }
 
 export const DEFAULT_STORED_AGENT_CONFIG: StoredAgentConfig = {
+	rollover: {
+		idleMinutes: 480,
+	},
 	telegram: {
 		botToken: "",
 		allowedUsers: [],
@@ -29,10 +38,18 @@ export function normalizeStoredAgentConfig(
 	raw: unknown,
 ): StoredAgentConfig & Record<string, unknown> {
 	const document = isObject(raw) ? raw : {};
+	const rollover = isObject(document.rollover) ? document.rollover : undefined;
 	const telegram = isObject(document.telegram) ? document.telegram : {};
 
 	return {
 		...document,
+		rollover: {
+			...rollover,
+			idleMinutes:
+				typeof rollover?.idleMinutes === "number"
+					? rollover.idleMinutes
+					: (DEFAULT_STORED_AGENT_CONFIG.rollover?.idleMinutes ?? 480),
+		},
 		telegram: {
 			...telegram,
 			botToken:

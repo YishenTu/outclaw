@@ -1,4 +1,3 @@
-import { ConnectionToast } from "./components/connection-toast";
 import { RenderErrorBoundary } from "./components/render-error-boundary";
 import { WebSocketProvider } from "./contexts/websocket-context";
 import { AppLayout } from "./layouts/app-layout";
@@ -22,7 +21,6 @@ function App() {
 		>
 			<WebSocketProvider>
 				<AppLayout />
-				<ConnectionToast />
 			</WebSocketProvider>
 		</RenderErrorBoundary>
 	);

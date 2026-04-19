@@ -14,6 +14,7 @@ interface CreateAgentOptions {
 	homeDir: string;
 	name: string;
 	prepareWorkspace: (agentHomeDir: string) => void;
+	rolloverIdleMinutes?: number;
 	templatesDir: string;
 }
 
@@ -40,6 +41,13 @@ export function createAgent(options: CreateAgentOptions) {
 	const configPath = writeAgentConfig({
 		agentId,
 		config: {
+			...(options.rolloverIdleMinutes !== undefined
+				? {
+						rollover: {
+							idleMinutes: options.rolloverIdleMinutes,
+						},
+					}
+				: {}),
 			telegram: {
 				botToken: options.botToken ?? "",
 				allowedUsers: options.allowedUsers ?? [],

@@ -139,9 +139,11 @@ export function useRuntimeSession(url: string, agentName?: string) {
 						model: event.model,
 						effort: event.effort,
 						notice:
-							event.notice?.kind === "restart_required"
-								? "Restart required"
-								: undefined,
+							event.notice?.kind === "rollover"
+								? event.notice.message
+								: event.notice?.kind === "restart_required"
+									? "Restart required"
+									: undefined,
 						contextTokens: event.usage?.contextTokens,
 						contextWindow: event.usage?.contextWindow,
 						nextHeartbeatAt: event.nextHeartbeatAt,

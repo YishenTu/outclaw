@@ -59,6 +59,9 @@ describe("agent onboarding", () => {
 			).toEqual({
 				agents: {
 					"agent-railly": {
+						rollover: {
+							idleMinutes: 480,
+						},
 						telegram: {
 							allowedUsers: [2, 1],
 							botToken: "token-a",

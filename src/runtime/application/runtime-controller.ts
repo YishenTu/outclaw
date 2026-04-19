@@ -63,6 +63,10 @@ export class RuntimeController {
 		return this.state.model;
 	}
 
+	get hasActiveRun(): boolean {
+		return this.execution.hasActiveRun;
+	}
+
 	getStatusEvent(): RuntimeStatusEvent {
 		return this.createStatusEvent();
 	}
@@ -166,6 +170,10 @@ export class RuntimeController {
 		deferMinutes: number,
 	): boolean {
 		return this.execution.enqueueHeartbeat(prompt, scheduledAt, deferMinutes);
+	}
+
+	enqueueRollover(prompt: string, idleMinutes: number): boolean {
+		return this.execution.enqueueRollover(prompt, idleMinutes);
 	}
 
 	shouldAttemptHeartbeat(

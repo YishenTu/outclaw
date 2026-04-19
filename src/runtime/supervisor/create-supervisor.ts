@@ -1,5 +1,6 @@
 import type {
 	BrowserAgentsResponse,
+	BrowserConfigResponse,
 	BrowserCronEntry,
 	BrowserFileResponse,
 	BrowserGitCommitResponse,
@@ -30,6 +31,10 @@ interface CreateSupervisorOptions {
 		listAgents(): BrowserAgentsResponse;
 		listAgentCron(agentId: string): Promise<BrowserCronEntry[]>;
 		listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
+		readConfigFile(): Promise<BrowserConfigResponse>;
+		writeConfigFile(
+			document: Record<string, unknown>,
+		): Promise<BrowserConfigResponse>;
 		readAgentFile(
 			agentId: string,
 			relativePath: string,
@@ -222,6 +227,19 @@ async function handleBrowserApiRequest(
 	try {
 		if (url.pathname === "/api/agents") {
 			return Response.json(browserApi.listAgents());
+		}
+
+		if (url.pathname === "/api/config") {
+			if (req.method === "PATCH") {
+				const body = (await req.json().catch(() => undefined)) as
+					| { document?: Record<string, unknown> }
+					| undefined;
+				if (!body?.document) {
+					return jsonError("Missing config document", 400);
+				}
+				return Response.json(await browserApi.writeConfigFile(body.document));
+			}
+			return Response.json(await browserApi.readConfigFile());
 		}
 
 		if (url.pathname === "/api/git/status") {

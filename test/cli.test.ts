@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { parseAskArgs } from "../src/cli/agent.ts";
+import type { FrontendNotice } from "../src/common/protocol.ts";
 import { SessionStore } from "../src/runtime/persistence/session-store.ts";
 
 const TEST_HOME = join(import.meta.dir, ".tmp-cli-test");
@@ -132,7 +133,7 @@ function readFrontendNotice() {
 
 async function waitForFrontendNotice(
 	timeoutMs = 2000,
-): Promise<{ kind: "restart_required" } | undefined> {
+): Promise<FrontendNotice | undefined> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		const notice = readFrontendNotice();
@@ -441,6 +442,8 @@ describe("CLI", () => {
 			"token-b",
 			"--default-cron-user",
 			"2",
+			"--rollover-idle",
+			"90",
 		]);
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("Configured agent railly");
@@ -455,6 +458,7 @@ describe("CLI", () => {
 		expect(config.agents[agentId].telegram.botToken).toBe("token-b");
 		expect(config.agents[agentId].telegram.allowedUsers).toEqual([1, 2]);
 		expect(config.agents[agentId].telegram.defaultCronUserId).toBe(2);
+		expect(config.agents[agentId].rollover.idleMinutes).toBe(90);
 	});
 
 	test("agent create persists a default cron user when provided", () => {
@@ -480,6 +484,27 @@ describe("CLI", () => {
 			"utf-8",
 		).trim();
 		expect(config.agents[agentId].telegram.defaultCronUserId).toBe(2);
+	});
+
+	test("agent create persists rollover idle minutes when provided", () => {
+		const result = runCli([
+			"agent",
+			"create",
+			"railly",
+			"--rollover-idle",
+			"120",
+		]);
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("Created agent railly");
+
+		const config = JSON.parse(
+			readFileSync(join(OUTCLAW_DIR, "config.json"), "utf-8"),
+		);
+		const agentId = readFileSync(
+			join(OUTCLAW_DIR, "agents", "railly", ".agent-id"),
+			"utf-8",
+		).trim();
+		expect(config.agents[agentId].rollover.idleMinutes).toBe(120);
 	});
 
 	test("agent create does not restart the daemon when it is running", async () => {
@@ -975,12 +1000,18 @@ describe("CLI", () => {
 			port: 4100,
 			agents: {
 				"agent-railly": {
+					rollover: {
+						idleMinutes: 480,
+					},
 					telegram: {
 						botToken: "$RAILLY_TELEGRAM_BOT_TOKEN",
 						allowedUsers: "$RAILLY_TELEGRAM_USERS",
 					},
 				},
 				"agent-mimi": {
+					rollover: {
+						idleMinutes: 480,
+					},
 					telegram: {
 						botToken: "$MIMI_TELEGRAM_BOT_TOKEN",
 						allowedUsers: "$MIMI_TELEGRAM_USERS",

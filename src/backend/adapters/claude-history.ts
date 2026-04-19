@@ -15,6 +15,10 @@ import type {
 } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import { parsePromptWithReplyContext } from "../../common/reply-context.ts";
+import {
+	isOperationalRolloverPrompt,
+	ROLLOVER_DISPLAY_LABEL,
+} from "../../common/rollover-prompt.ts";
 
 interface HistoryBlock {
 	type: string;
@@ -103,7 +107,7 @@ export function normalizeClaudeHistory(
 ): DisplayMessage[] {
 	const result: DisplayMessage[] = [];
 	let pendingThinking = "";
-	let pendingHeartbeat = false;
+	let pendingSystemPrompt: "heartbeat" | "rollover" | undefined;
 
 	for (let index = 0; index < messages.length; index++) {
 		const msg = messages[index];
@@ -155,7 +159,11 @@ export function normalizeClaudeHistory(
 				stripTaskNotifications(content),
 			);
 			if (isOperationalHeartbeatTurn(parsed.prompt, parsed.replyContext)) {
-				pendingHeartbeat = true;
+				pendingSystemPrompt = "heartbeat";
+				continue;
+			}
+			if (isOperationalRolloverTurn(parsed.prompt, parsed.replyContext)) {
+				pendingSystemPrompt = "rollover";
 				continue;
 			}
 			if (parsed.prompt || parsed.replyContext) {
@@ -176,7 +184,13 @@ export function normalizeClaudeHistory(
 			if (
 				isOperationalHeartbeatTurn(parsed.prompt, parsed.replyContext, images)
 			) {
-				pendingHeartbeat = true;
+				pendingSystemPrompt = "heartbeat";
+				continue;
+			}
+			if (
+				isOperationalRolloverTurn(parsed.prompt, parsed.replyContext, images)
+			) {
+				pendingSystemPrompt = "rollover";
 				continue;
 			}
 			if (parsed.prompt || parsed.replyContext || images.length > 0) {
@@ -195,7 +209,7 @@ export function normalizeClaudeHistory(
 			const thinking = extractThinking(content);
 			if (isSyntheticNoResponseReply(text, msg, messages, index)) {
 				pendingThinking = "";
-				pendingHeartbeat = false;
+				pendingSystemPrompt = undefined;
 				continue;
 			}
 
@@ -207,12 +221,15 @@ export function normalizeClaudeHistory(
 			if (text) {
 				const merged = [pendingThinking, thinking].join("") || undefined;
 				pendingThinking = "";
-				if (pendingHeartbeat) {
-					pendingHeartbeat = false;
+				if (pendingSystemPrompt === "heartbeat") {
+					pendingSystemPrompt = undefined;
 					if (isHeartbeatNoopResult(text)) {
 						continue;
 					}
 					result.push(createHeartbeatMessage());
+				} else if (pendingSystemPrompt === "rollover") {
+					pendingSystemPrompt = undefined;
+					result.push(createRolloverMessage());
 				}
 				const entry: DisplayChatMessage = {
 					kind: "chat",
@@ -380,6 +397,14 @@ function createHeartbeatMessage(): DisplaySystemMessage {
 	};
 }
 
+function createRolloverMessage(): DisplaySystemMessage {
+	return {
+		kind: "system",
+		event: "rollover",
+		text: ROLLOVER_DISPLAY_LABEL,
+	};
+}
+
 function isOperationalHeartbeatTurn(
 	prompt: string,
 	replyContext?: { text: string },
@@ -393,14 +418,31 @@ function isOperationalHeartbeatTurn(
 	);
 }
 
+function isOperationalRolloverTurn(
+	prompt: string,
+	replyContext?: { text: string },
+	images: DisplayImage[] = [],
+): boolean {
+	return (
+		prompt !== "" &&
+		replyContext === undefined &&
+		images.length === 0 &&
+		isOperationalRolloverPrompt(prompt)
+	);
+}
+
 function resolveTranscriptPromptSource(
 	prompt: string,
 	replyContext?: { text: string },
 	images: DisplayImage[] = [],
-): "heartbeat" | undefined {
-	return isOperationalHeartbeatTurn(prompt, replyContext, images)
-		? "heartbeat"
-		: undefined;
+): "heartbeat" | "rollover" | undefined {
+	if (isOperationalHeartbeatTurn(prompt, replyContext, images)) {
+		return "heartbeat";
+	}
+	if (isOperationalRolloverTurn(prompt, replyContext, images)) {
+		return "rollover";
+	}
+	return undefined;
 }
 
 function pushCompactBoundary(result: DisplayMessage[]): void {

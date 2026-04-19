@@ -63,4 +63,18 @@ describe("toObservedDisplayMessage", () => {
 			text: "Heartbeat",
 		});
 	});
+
+	test("converts rollover prompts into a rollover system message", () => {
+		expect(
+			toObservedDisplayMessage({
+				type: "user_prompt",
+				prompt: "finalize old session",
+				source: "rollover",
+			}),
+		).toEqual({
+			kind: "system",
+			event: "rollover",
+			text: "Rollover",
+		});
+	});
 });

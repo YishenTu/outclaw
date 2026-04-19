@@ -17,6 +17,9 @@ export function readAgentConfig(options: {
 	const stored = readStoredAgentConfig(options.homeDir, options.agentId);
 
 	return {
+		rollover: {
+			idleMinutes: stored.rollover?.idleMinutes ?? 480,
+		},
 		telegram: {
 			botToken: resolveEnvString(stored.telegram?.botToken ?? ""),
 			allowedUsers: resolveAllowedUsers(stored.telegram?.allowedUsers ?? []),

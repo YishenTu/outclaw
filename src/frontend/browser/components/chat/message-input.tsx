@@ -161,7 +161,7 @@ export function MessageInput({
 					aria-label="Message input"
 					className="relative rounded-lg border border-dark-700 bg-dark-900 p-2 transition-colors focus-within:border-brand/60 focus-within:shadow-[0_0_0_1px_rgb(var(--brand)/0.3)]"
 				>
-					{runtimePopup ? (
+					{runtimePopup && runtimePopup.kind !== "status" ? (
 						<RuntimeCommandPopup
 							popup={runtimePopup}
 							selectedIndex={selectedIndex}
