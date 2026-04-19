@@ -12,7 +12,9 @@ import type {
 	BrowserGitStatusResponse,
 	BrowserTreeEntry,
 } from "../../../../common/protocol.ts";
+import { useWs } from "../../contexts/websocket-context.tsx";
 import { fetchAgentTree, fetchGitStatus } from "../../lib/api.ts";
+import { sendGitCommitPrompt } from "../../send-git-commit-prompt.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import {
 	MAX_RIGHT_PANEL_SPLIT_RATIO,
@@ -113,12 +115,14 @@ export function RightPanelUpperTabs({
 }
 
 export function RightPanel({ onCollapse }: RightPanelProps) {
+	const { sendPromptToAgent } = useWs();
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
-	const activeAgentName = useAgentsStore(
+	const activeAgent = useAgentsStore(
 		(state) =>
-			state.agents.find((agent) => agent.agentId === state.activeAgentId)
-				?.name ?? null,
+			state.agents.find((agent) => agent.agentId === state.activeAgentId) ??
+			null,
 	);
+	const activeAgentName = activeAgent?.name ?? null;
 	const openTab = useTabsStore((state) => state.openTab);
 	const activeUpperTab = useLayoutStore((state) => state.rightPanelUpperTab);
 	const setRightPanelUpperTab = useLayoutStore(
@@ -344,6 +348,15 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		[openTab],
 	);
 
+	const handleCommit = useCallback(
+		() =>
+			sendGitCommitPrompt({
+				agent: activeAgent,
+				sendPromptToAgent,
+			}),
+		[activeAgent, sendPromptToAgent],
+	);
+
 	const handleResizeMouseDown = useCallback(
 		(event: React.MouseEvent<HTMLButtonElement>) => {
 			event.preventDefault();
@@ -443,6 +456,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			return (
 				<GitPanel
 					graphCollapsed={rightGitGraphCollapsed}
+					onCommit={handleCommit}
 					onOpenCommit={handleOpenCommit}
 					status={gitStatus}
 					loading={gitLoading}

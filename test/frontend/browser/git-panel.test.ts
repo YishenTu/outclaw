@@ -47,6 +47,59 @@ describe("git panel header", () => {
 		);
 	});
 
+	test("renders a commit button in the subheader when the working tree is dirty", () => {
+		const html = renderToStaticMarkup(
+			createElement(GitPanelHeader, {
+				status: {
+					root: "/tmp/outclaw",
+					branch: "main",
+					ahead: 0,
+					behind: 0,
+					clean: false,
+					graph: { commits: [], branchHeads: [] },
+					files: [
+						{
+							path: "src/app.ts",
+							indexStatus: "M",
+							worktreeStatus: "M",
+							additions: 1,
+							deletions: 0,
+						},
+					],
+				},
+				onCommit() {},
+			}),
+		);
+
+		expect(html).toContain(">Commit and push<");
+		expect(html).toContain(
+			'aria-label="Send commit and push prompt to active agent"',
+		);
+	});
+
+	test("omits the clean summary and commit button from the subheader when the working tree is clean", () => {
+		const html = renderToStaticMarkup(
+			createElement(GitPanelHeader, {
+				status: {
+					root: "/tmp/outclaw",
+					branch: "main",
+					ahead: 0,
+					behind: 0,
+					clean: true,
+					graph: { commits: [], branchHeads: [] },
+					files: [],
+				},
+				onCommit() {},
+			}),
+		);
+
+		expect(html).not.toContain(">clean<");
+		expect(html).not.toContain(">Commit and push<");
+		expect(html).not.toContain(
+			'aria-label="Send commit and push prompt to active agent"',
+		);
+	});
+
 	test("renders a lightweight structured git graph instead of raw preformatted text", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanel, {

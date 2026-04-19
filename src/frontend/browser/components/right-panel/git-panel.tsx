@@ -16,6 +16,7 @@ const GIT_PANEL_TOGGLE_CLASS =
 
 interface GitPanelProps {
 	graphCollapsed?: boolean;
+	onCommit?: () => void;
 	onOpenCommit?: (commit: BrowserGitGraphCommit) => void;
 	status: BrowserGitStatusResponse | null;
 	loading: boolean;
@@ -87,29 +88,43 @@ function formatGitBranch(status: BrowserGitStatusResponse): string {
 	return status.branch ? `Branch ${status.branch}` : "Detached HEAD";
 }
 
-function formatGitSummary(status: BrowserGitStatusResponse): string {
-	return status.clean
-		? "Working tree clean"
-		: `${status.files.length} changed file${status.files.length === 1 ? "" : "s"}`;
+function formatGitSummary(status: BrowserGitStatusResponse): string | null {
+	if (status.clean) {
+		return null;
+	}
+
+	return `${status.files.length} changed file${status.files.length === 1 ? "" : "s"}`;
 }
 
 export function GitPanelHeader({
 	status,
+	onCommit,
 }: {
 	status: BrowserGitStatusResponse;
+	onCommit?: () => void;
 }) {
+	const summary = formatGitSummary(status);
+
 	return (
 		<div className="h-8 shrink-0 border-b border-dark-800 px-3">
 			<div className="flex h-full items-center justify-between gap-3 px-1">
 				<div className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
 					{formatGitBranch(status)}
 				</div>
-				<div
-					className={`truncate text-xs ${
-						status.clean ? "text-success" : "text-dark-400"
-					}`}
-				>
-					{formatGitSummary(status)}
+				<div className="flex min-w-0 items-center justify-end gap-3">
+					{summary ? (
+						<div className="truncate text-xs text-dark-400">{summary}</div>
+					) : null}
+					{!status.clean && onCommit ? (
+						<button
+							type="button"
+							onClick={onCommit}
+							aria-label="Send commit and push prompt to active agent"
+							className="font-mono-ui inline-flex h-6 shrink-0 items-center rounded border border-dark-800 px-2 text-[11px] uppercase tracking-[0.12em] text-dark-300 transition-colors hover:border-dark-600 hover:text-dark-50"
+						>
+							Commit and push
+						</button>
+					) : null}
 				</div>
 			</div>
 		</div>
@@ -118,6 +133,7 @@ export function GitPanelHeader({
 
 export function GitPanel({
 	graphCollapsed = false,
+	onCommit,
 	onOpenCommit,
 	status,
 	loading,
@@ -143,7 +159,7 @@ export function GitPanel({
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<GitPanelHeader status={status} />
+			<GitPanelHeader status={status} onCommit={onCommit} />
 			<div className="flex min-h-0 flex-1 flex-col gap-4 px-3 py-3">
 				<GitPanelSection title="Changed files">
 					<div className="space-y-0.5">
