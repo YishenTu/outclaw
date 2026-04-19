@@ -7,6 +7,8 @@ import { stopDaemon } from "../runtime/process/daemon-stop.ts";
 import { PidManager } from "../runtime/process/pid-manager.ts";
 import { seedTemplates } from "../runtime/prompt/seed-templates.ts";
 import { launchBrowserFrontend } from "./browser.ts";
+import { buildBrowserFrontend, ensureBrowserBuild } from "./browser-build.ts";
+import { applyStartRuntimeFlags } from "./start-runtime-flags.ts";
 
 interface DaemonCommandOptions {
 	argv: string[];
@@ -16,7 +18,6 @@ interface DaemonCommandOptions {
 	logPath: string;
 	pidPath: string;
 	readyPath: string;
-	printUsage: () => void;
 	templatesDir: string;
 	tuiEntry: string;
 }
@@ -36,10 +37,15 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 				process.exit(1);
 			}
 
+			applyStartRuntimeFlags(options.homeDir, options.argv.slice(3));
+
 			if (listAgents(options.homeDir).length === 0) {
 				await runFreshInstallOnboarding(options.homeDir, options.templatesDir);
 			}
 			reseedMissingAgentTemplates(options.homeDir, options.templatesDir);
+			ensureBrowserBuild({
+				browserDir: options.browserDir,
+			});
 
 			pid.remove();
 			if (existsSync(options.readyPath)) {
@@ -53,6 +59,7 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 				stdin: "ignore",
 				env: { ...process.env },
 			});
+			child.unref();
 
 			pid.write(child.pid);
 
@@ -76,6 +83,12 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 			console.log(`  cat ${options.logPath}`);
 			pid.remove();
 			process.exit(1);
+		},
+
+		build() {
+			buildBrowserFrontend({
+				browserDir: options.browserDir,
+			});
 		},
 
 		async stop() {
@@ -157,10 +170,6 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 			return this.stop().then(() => {
 				void this.start();
 			});
-		},
-
-		printUsage() {
-			options.printUsage();
 		},
 	};
 }

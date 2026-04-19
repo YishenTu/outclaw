@@ -11,6 +11,7 @@
 		"oc": "src/cli.ts"
 	},
 	"scripts": {
+		"build:browser": "bun run --cwd src/frontend/browser build",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",

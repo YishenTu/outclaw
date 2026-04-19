@@ -8,19 +8,44 @@ import { renameAgent } from "../runtime/agents/rename-agent.ts";
 import { updateAgent } from "../runtime/agents/update-agent.ts";
 import { loadGlobalConfig } from "../runtime/config.ts";
 import { maybeMarkRestartRequired } from "./restart-required.ts";
+import {
+	formatAgentAskUsage,
+	formatAgentConfigUsage,
+	formatAgentCreateUsage,
+	formatAgentRemoveUsage,
+	formatAgentRenameUsage,
+	hasHelpFlag,
+	isHelpFlag,
+	printAgentAskUsage,
+	printAgentConfigUsage,
+	printAgentCreateUsage,
+	printAgentListUsage,
+	printAgentRemoveUsage,
+	printAgentRenameUsage,
+	printAgentUsage,
+} from "./usage.ts";
 
 interface AgentCommandOptions {
 	argv: string[];
 	homeDir: string;
-	printUsage: () => void;
 	templatesDir: string;
 	tui: (explicitAgentName?: string) => void;
 }
 
 export async function agentCommand(options: AgentCommandOptions) {
 	const subcommand = options.argv[3];
+	if (subcommand === undefined || isHelpFlag(subcommand)) {
+		printAgentUsage();
+		process.exit(subcommand === undefined ? 1 : 0);
+		return;
+	}
+
 	switch (subcommand) {
 		case "list":
+			if (hasHelpFlag(options.argv.slice(4))) {
+				printAgentListUsage();
+				process.exit(0);
+			}
 			printAgentList(options.homeDir);
 			return;
 		case "create":
@@ -38,10 +63,6 @@ export async function agentCommand(options: AgentCommandOptions) {
 		case "ask":
 			await askAgentCommand(options.homeDir, options.argv);
 			return;
-		case undefined:
-			options.printUsage();
-			process.exit(1);
-			return;
 		default:
 			options.tui(subcommand);
 	}
@@ -49,14 +70,16 @@ export async function agentCommand(options: AgentCommandOptions) {
 
 async function askAgentCommand(homeDir: string, argv: string[]) {
 	const args = argv.slice(4);
+	if (hasHelpFlag(args)) {
+		printAgentAskUsage();
+		process.exit(0);
+	}
 	const parsed = parseAskArgs(args);
 	const target = parsed.target;
 	const timeoutSeconds = parsed.timeoutSeconds;
 	const message = parsed.message;
 	if (!target || !message) {
-		console.error(
-			'Usage: oc agent ask --to <target> [--timeout <seconds>] "<message>"',
-		);
+		console.error(formatAgentAskUsage());
 		process.exit(1);
 	}
 
@@ -101,11 +124,13 @@ function printAgentList(homeDir: string) {
 }
 
 function createAgentCommand(options: AgentCommandOptions) {
+	if (hasHelpFlag(options.argv.slice(4))) {
+		printAgentCreateUsage();
+		process.exit(0);
+	}
 	const name = options.argv[4];
 	if (!name) {
-		console.log(
-			"Usage: oc agent create <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>]",
-		);
+		console.error(formatAgentCreateUsage());
 		process.exit(1);
 	}
 
@@ -129,10 +154,14 @@ function createAgentCommand(options: AgentCommandOptions) {
 }
 
 function renameAgentCommand(homeDir: string, argv: string[]) {
+	if (hasHelpFlag(argv.slice(4))) {
+		printAgentRenameUsage();
+		process.exit(0);
+	}
 	const oldName = argv[4];
 	const newName = argv[5];
 	if (!oldName || !newName) {
-		console.log("Usage: oc agent rename <old-name> <new-name>");
+		console.error(formatAgentRenameUsage());
 		process.exit(1);
 	}
 
@@ -146,11 +175,13 @@ function renameAgentCommand(homeDir: string, argv: string[]) {
 }
 
 function configAgentCommand(homeDir: string, argv: string[]) {
+	if (hasHelpFlag(argv.slice(4))) {
+		printAgentConfigUsage();
+		process.exit(0);
+	}
 	const name = argv[4];
 	if (!name) {
-		console.log(
-			"Usage: oc agent config <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>]",
-		);
+		console.error(formatAgentConfigUsage());
 		process.exit(1);
 	}
 
@@ -171,9 +202,13 @@ function configAgentCommand(homeDir: string, argv: string[]) {
 }
 
 function removeAgentCommand(homeDir: string, argv: string[]) {
+	if (hasHelpFlag(argv.slice(4))) {
+		printAgentRemoveUsage();
+		process.exit(0);
+	}
 	const name = argv[4];
 	if (!name) {
-		console.log("Usage: oc agent remove <name>");
+		console.error(formatAgentRemoveUsage());
 		process.exit(1);
 	}
 

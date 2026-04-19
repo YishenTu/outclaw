@@ -13,20 +13,47 @@ import {
 } from "../runtime/persistence/session-query.ts";
 import type { SessionRow } from "../runtime/persistence/session-store.ts";
 import type { SessionTag } from "../runtime/persistence/session-store-records.ts";
+import {
+	formatSessionSearchUsage,
+	formatSessionTranscriptUsage,
+	hasHelpFlag,
+	isHelpFlag,
+	printSessionListUsage,
+	printSessionSearchUsage,
+	printSessionTranscriptUsage,
+	printSessionUsage,
+} from "./usage.ts";
 
 const HOME_DIR = join(homedir(), ".outclaw");
 const DB_PATH = join(HOME_DIR, "db.sqlite");
 
 export async function sessionCommand(argv: string[]) {
 	const subcommand = argv[3];
+	if (subcommand === undefined || isHelpFlag(subcommand)) {
+		printSessionUsage();
+		process.exit(subcommand === undefined ? 1 : 0);
+	}
+
 	switch (subcommand) {
 		case "list":
+			if (hasHelpFlag(argv.slice(4))) {
+				printSessionListUsage();
+				process.exit(0);
+			}
 			await listSessions(argv.slice(4));
 			return;
 		case "search":
+			if (hasHelpFlag(argv.slice(4))) {
+				printSessionSearchUsage();
+				process.exit(0);
+			}
 			await searchSessions(argv.slice(4));
 			return;
 		case "transcript":
+			if (hasHelpFlag(argv.slice(4))) {
+				printSessionTranscriptUsage();
+				process.exit(0);
+			}
 			await showTranscript(argv.slice(4));
 			return;
 		default:
@@ -71,7 +98,7 @@ async function searchSessions(args: string[]) {
 		firstFlagIndex === -1 ? args : args.slice(0, firstFlagIndex)
 	).join(" ");
 	if (!queryText.trim()) {
-		console.log("Usage: oc session search <query> [--limit N]");
+		console.error(formatSessionSearchUsage());
 		process.exit(1);
 	}
 
@@ -109,9 +136,7 @@ async function searchSessions(args: string[]) {
 async function showTranscript(args: string[]) {
 	const selector = args[0];
 	if (!selector || selector.startsWith("--")) {
-		console.log(
-			"Usage: oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
-		);
+		console.error(formatSessionTranscriptUsage());
 		process.exit(1);
 	}
 
@@ -396,12 +421,4 @@ function formatTimestamp(timestamp: number): string {
 	const hours = String(date.getHours()).padStart(2, "0");
 	const minutes = String(date.getMinutes()).padStart(2, "0");
 	return `${year}-${month}-${day} ${hours}:${minutes}`;
-}
-
-function printSessionUsage() {
-	console.log(
-		"Usage: oc session list [--limit N] [--tag cron]\n" +
-			"       oc session search <query> [--limit N]\n" +
-			"       oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
-	);
 }

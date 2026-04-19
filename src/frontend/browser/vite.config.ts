@@ -1,9 +1,11 @@
 import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { browserBuildConfig } from "./build/build-config.ts";
 
 export default defineConfig({
 	plugins: [react()],
+	build: browserBuildConfig,
 	publicDir: path.resolve(__dirname, "../../../assets"),
 	resolve: {
 		alias: {

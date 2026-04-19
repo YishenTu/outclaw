@@ -7,10 +7,14 @@
 | `oc agent list` | List all agents |
 | `oc agent create <name>` | Create a new agent workspace |
 | `oc agent config <name>` | Update an existing agent's settings |
-| `oc agent rename <old> <new>` | Rename an agent |
+| `oc agent rename <old-name> <new-name>` | Rename an agent |
 | `oc agent remove <name>` | Remove an agent |
+| `oc agent ask --to <target> [--timeout <seconds>] "<message>"` | Send a message from the current agent workspace to another agent |
+| `oc agent <name>` | Open the TUI attached to that agent |
 
 Each agent has its own workspace under `~/.outclaw/agents/<name>/`.
+
+Use `oc agent -h` or `oc agent <subcommand> -h` for current command syntax.
 
 ## Creating an Agent
 
@@ -65,7 +69,7 @@ Agent settings are stored in `~/.outclaw/config.json` under the `agents` key, ke
 | `telegram.allowedUsers` | number[] | Telegram user IDs permitted to interact with this agent |
 | `telegram.defaultCronUserId` | number (optional) | Default Telegram user to receive cron results |
 
-Any value can be an env-var reference (e.g. `"$MY_BOT_TOKEN"`) — the runtime resolves it from `~/.outclaw/.env` at startup. Use `oc config secure` to migrate hardcoded secrets to env vars. Runtime-global config such as `port`, `autoCompact`, and `heartbeat` is separate and belongs on `oc config runtime`.
+Any value can be an env-var reference (e.g. `"$MY_BOT_TOKEN"`) — the runtime resolves it from `~/.outclaw/.env` at startup. Use `oc config secure` to migrate hardcoded secrets to env vars. Runtime-global config such as `host`, `port`, `autoCompact`, and `heartbeat` is separate and belongs on `oc config runtime`.
 
 ## Cron Delivery Routing
 

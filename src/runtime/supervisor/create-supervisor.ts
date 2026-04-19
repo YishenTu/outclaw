@@ -11,6 +11,7 @@ import type { AgentRuntime } from "../application/create-agent-runtime.ts";
 import { createBrowserSidebarWatcher } from "../browser/browser-sidebar-watcher.ts";
 import { TerminalRelay } from "../browser/terminal-relay.ts";
 import { AgentRuntimeRegistry } from "./agent-runtime-registry.ts";
+import { type BrowserApp, serveBrowserApp } from "./browser-app.ts";
 import { ClientAgentBinding } from "./client-agent-binding.ts";
 import { SupervisorController } from "./supervisor-controller.ts";
 
@@ -22,6 +23,7 @@ interface TelegramRoutingOptions {
 
 interface CreateSupervisorOptions {
 	agents: AgentRuntime[];
+	browserApp?: BrowserApp;
 	browserApi?: {
 		getAgentTerminalCwd(agentId: string): string | undefined;
 		listAgents(): BrowserAgentsResponse;
@@ -49,6 +51,7 @@ interface CreateSupervisorOptions {
 	};
 	emitAgentEvents?: boolean;
 	getDefaultAgentId?: () => string | undefined;
+	hostname?: string;
 	port: number;
 	rememberInteractiveAgentId?: (agentId: string) => void;
 	telegramRouting?: TelegramRoutingOptions;
@@ -86,6 +89,7 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		telegramBotId?: string;
 		telegramUserId?: number;
 	}>({
+		hostname: options.hostname,
 		port: options.port,
 		async fetch(req, server) {
 			const url = new URL(req.url);
@@ -116,10 +120,29 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 				return new Response("WebSocket upgrade failed", { status: 400 });
 			}
 
-			if (!isRuntimeSocketPath(url.pathname)) {
-				return new Response("outclaw runtime", { status: 200 });
-			}
-			if (!isWebSocketUpgradeRequest(req)) {
+			if (isRuntimeSocketPath(url.pathname)) {
+				if (!isWebSocketUpgradeRequest(req)) {
+					if (url.pathname === "/") {
+						const browserAppResponse = serveBrowserApp(
+							req.method,
+							url.pathname,
+							options.browserApp,
+						);
+						if (browserAppResponse) {
+							return browserAppResponse;
+						}
+					}
+					return new Response("outclaw runtime", { status: 200 });
+				}
+			} else {
+				const browserAppResponse = serveBrowserApp(
+					req.method,
+					url.pathname,
+					options.browserApp,
+				);
+				if (browserAppResponse) {
+					return browserAppResponse;
+				}
 				return new Response("outclaw runtime", { status: 200 });
 			}
 

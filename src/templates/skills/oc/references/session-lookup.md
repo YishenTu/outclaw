@@ -15,6 +15,8 @@
 
 Flags can be combined: `oc session list --limit 50 --tag cron`.
 
+Use `oc session -h` or `oc session <subcommand> -h` for the current syntax and defaults.
+
 ## Workflow
 
 Think of `search` and `transcript` like `grep` and `cat` — search finds *where* something was discussed, transcript lets you read the full context. The process is iterative, not one-shot:

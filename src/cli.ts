@@ -5,7 +5,7 @@ import { agentCommand } from "./cli/agent.ts";
 import { configCommand } from "./cli/config.ts";
 import { createDaemonCommands } from "./cli/daemon.ts";
 import { sessionCommand } from "./cli/session.ts";
-import { printUsage } from "./cli/usage.ts";
+import { isHelpFlag, printStartUsage, printUsage } from "./cli/usage.ts";
 
 const HOME_DIR = join(homedir(), ".outclaw");
 const PID_PATH = join(HOME_DIR, "daemon.pid");
@@ -24,20 +24,35 @@ const daemon = createDaemonCommands({
 	logPath: LOG_PATH,
 	pidPath: PID_PATH,
 	readyPath: READY_PATH,
-	printUsage,
 	templatesDir: TEMPLATES_DIR,
 	tuiEntry: TUI_ENTRY,
 });
 const command = argv[2];
 
+if (command === "-h" || command === "--help" || command === "help") {
+	printUsage();
+	process.exit(0);
+}
+
 switch (command) {
+	case "build":
+		daemon.build();
+		break;
 	case "start":
+		if (isHelpFlag(argv[3])) {
+			printStartUsage();
+			process.exit(0);
+		}
 		await daemon.start();
 		break;
 	case "stop":
 		await daemon.stop();
 		break;
 	case "restart":
+		if (isHelpFlag(argv[3])) {
+			printStartUsage();
+			process.exit(0);
+		}
 		await daemon.restart();
 		break;
 	case "status":
@@ -53,7 +68,6 @@ switch (command) {
 		await agentCommand({
 			argv,
 			homeDir: HOME_DIR,
-			printUsage,
 			templatesDir: TEMPLATES_DIR,
 			tui: daemon.tui,
 		});
@@ -62,7 +76,6 @@ switch (command) {
 		configCommand({
 			argv,
 			homeDir: HOME_DIR,
-			printUsage,
 		});
 		break;
 	case "session":

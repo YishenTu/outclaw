@@ -117,6 +117,10 @@ function writeConfig(port: number) {
 	);
 }
 
+function readConfigDocument() {
+	return JSON.parse(readFileSync(join(OUTCLAW_DIR, "config.json"), "utf-8"));
+}
+
 function readFrontendNotice() {
 	const store = new SessionStore(join(OUTCLAW_DIR, "db.sqlite"));
 	try {
@@ -160,7 +164,100 @@ describe("CLI", () => {
 		expect(stdout).toContain(
 			"oc agent <list|create|config|rename|remove|ask|name>",
 		);
+		expect(stdout).toContain("first run:   oc build && oc start");
+		expect(stdout).toContain("command help: oc <command> -h");
+		expect(stdout).not.toContain("LAN browser: oc start --lan");
+		expect(stdout).not.toContain("web update:  oc build && oc restart");
 		expect(exitCode).toBe(1);
+	});
+
+	test("dash h prints usage hints and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["-h"]);
+		expect(stdout).toContain("Usage:");
+		expect(stdout).toContain("first run:   oc build && oc start");
+		expect(stdout).toContain("command help: oc <command> -h");
+		expect(stdout).not.toContain("LAN browser: oc start --lan");
+		expect(stdout).not.toContain("web update:  oc build && oc restart");
+		expect(exitCode).toBe(0);
+	});
+
+	test("start dash h prints start-specific help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["start", "-h"]);
+		expect(stdout).toContain("Usage: oc start [--lan] [--host HOST]");
+		expect(stdout).toContain("0.0.0.0");
+		expect(stdout).toContain("127.0.0.1");
+		expect(stdout).toContain("oc build && oc restart");
+		expect(exitCode).toBe(0);
+	});
+
+	test("agent dash h prints agent-specific help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["agent", "-h"]);
+		expect(stdout).toContain(
+			"Usage: oc agent <list|create|config|rename|remove|ask|name>",
+		);
+		expect(stdout).toContain("create");
+		expect(stdout).toContain("config");
+		expect(stdout).toContain("ask");
+		expect(stdout).toContain("open TUI attached to that agent");
+		expect(exitCode).toBe(0);
+	});
+
+	test("agent create dash h prints create help without creating an agent", () => {
+		const { stdout, exitCode } = runCli(["agent", "create", "-h"]);
+		expect(stdout).toContain(
+			"Usage: oc agent create <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>]",
+		);
+		expect(existsSync(join(OUTCLAW_DIR, "agents", "-h"))).toBe(false);
+		expect(exitCode).toBe(0);
+	});
+
+	test("config dash h prints config-specific help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["config", "-h"]);
+		expect(stdout).toContain("Usage: oc config <runtime|secure>");
+		expect(stdout).toContain("oc config runtime");
+		expect(stdout).toContain("oc config secure");
+		expect(exitCode).toBe(0);
+	});
+
+	test("config runtime dash h prints runtime help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["config", "runtime", "-h"]);
+		expect(stdout).toContain(
+			"Usage: oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N]",
+		);
+		expect(stdout).toContain("config.json");
+		expect(exitCode).toBe(0);
+	});
+
+	test("session dash h prints session-specific help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["session", "-h"]);
+		expect(stdout).toContain("Usage: oc session <list|search|transcript>");
+		expect(stdout).toContain("oc session list");
+		expect(stdout).toContain("oc session search");
+		expect(stdout).toContain("oc session transcript");
+		expect(exitCode).toBe(0);
+	});
+
+	test("session list dash h prints list help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["session", "list", "-h"]);
+		expect(stdout).toContain("Usage: oc session list [--limit N] [--tag cron]");
+		expect(stdout).toContain("Default tag: chat");
+		expect(exitCode).toBe(0);
+	});
+
+	test("session search dash h prints search help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["session", "search", "-h"]);
+		expect(stdout).toContain("Usage: oc session search <query> [--limit N]");
+		expect(stdout).toContain("Searches chat sessions");
+		expect(exitCode).toBe(0);
+	});
+
+	test("session transcript dash h prints transcript help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["session", "transcript", "-h"]);
+		expect(stdout).toContain(
+			"Usage: oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
+		);
+		expect(stdout).toContain("Use a session id or unique prefix");
+		expect(exitCode).toBe(0);
 	});
 
 	test("status when no daemon shows not running", () => {
@@ -230,6 +327,59 @@ describe("CLI", () => {
 				"utf-8",
 			),
 		).toContain("# Agent Communication");
+	});
+
+	test("start keeps the daemon running after the start command exits", () => {
+		runCli(["agent", "create", "railly"]);
+		writeConfig(0);
+
+		const start = runCli(["start"]);
+		expect(start.exitCode).toBe(0);
+		expect(start.stdout).toContain("Daemon started");
+
+		const status = runCli(["status"]);
+		expect(status.exitCode).toBe(0);
+		expect(status.stdout).toContain("Daemon running");
+	});
+
+	test.serial("start --lan saves the runtime host for LAN access", async () => {
+		runCli(["agent", "create", "railly"]);
+		writeConfig(0);
+
+		const result = await runCliAsync(["start", "--lan"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(readConfigDocument()).toMatchObject({
+			autoCompact: true,
+			host: "0.0.0.0",
+			heartbeat: { intervalMinutes: 30, deferMinutes: 0 },
+			port: 0,
+		});
+	});
+
+	test.serial(
+		"start --host saves an explicit runtime host override",
+		async () => {
+			runCli(["agent", "create", "railly"]);
+			writeConfig(0);
+
+			const result = await runCliAsync(["start", "--host", "127.0.0.1"]);
+
+			expect(result.exitCode).toBe(0);
+			expect(readConfigDocument()).toMatchObject({
+				autoCompact: true,
+				host: "127.0.0.1",
+				heartbeat: { intervalMinutes: 30, deferMinutes: 0 },
+				port: 0,
+			});
+		},
+	);
+
+	test.serial("start rejects conflicting host flags", () => {
+		const result = runCli(["start", "--lan", "--host", "0.0.0.0"]);
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain("Cannot combine multiple host flags");
 	});
 
 	test("tui when no daemon shows not running", () => {
@@ -820,6 +970,7 @@ describe("CLI", () => {
 			JSON.parse(readFileSync(join(OUTCLAW_DIR, "config.json"), "utf-8")),
 		).toEqual({
 			autoCompact: false,
+			host: "127.0.0.1",
 			heartbeat: { intervalMinutes: 60, deferMinutes: 2 },
 			port: 4100,
 			agents: {
@@ -894,6 +1045,7 @@ describe("CLI", () => {
 			JSON.stringify(
 				{
 					autoCompact: true,
+					host: "127.0.0.1",
 					heartbeat: { intervalMinutes: 30, deferMinutes: 0 },
 					port: 4000,
 					custom: { note: "preserve me" },
@@ -906,6 +1058,8 @@ describe("CLI", () => {
 		const result = runCli([
 			"config",
 			"runtime",
+			"--host",
+			"0.0.0.0",
 			"--port",
 			"4100",
 			"--auto-compact",
@@ -922,6 +1076,7 @@ describe("CLI", () => {
 			JSON.parse(readFileSync(join(OUTCLAW_DIR, "config.json"), "utf-8")),
 		).toEqual({
 			autoCompact: false,
+			host: "0.0.0.0",
 			heartbeat: { intervalMinutes: 60, deferMinutes: 5 },
 			port: 4100,
 			custom: { note: "preserve me" },
@@ -937,6 +1092,7 @@ describe("CLI", () => {
 			JSON.parse(readFileSync(join(OUTCLAW_DIR, "config.json"), "utf-8")),
 		).toEqual({
 			autoCompact: true,
+			host: "127.0.0.1",
 			heartbeat: { intervalMinutes: 30, deferMinutes: 0 },
 			port: 4100,
 		});

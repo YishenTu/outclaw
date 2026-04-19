@@ -22,6 +22,7 @@ describe("loadGlobalConfig", () => {
 		const dir = tmp();
 		try {
 			const config = loadGlobalConfig(dir);
+			expect(config.host).toBe("127.0.0.1");
 			expect(config.port).toBe(4000);
 			expect(config.heartbeat).toEqual({
 				intervalMinutes: 30,
@@ -32,6 +33,7 @@ describe("loadGlobalConfig", () => {
 				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
 			).toEqual({
 				autoCompact: true,
+				host: "127.0.0.1",
 				heartbeat: {
 					intervalMinutes: 30,
 					deferMinutes: 0,
@@ -49,6 +51,7 @@ describe("loadGlobalConfig", () => {
 			writeFileSync(
 				join(dir, "config.json"),
 				JSON.stringify({
+					host: "0.0.0.0",
 					port: 5000,
 					heartbeat: {
 						intervalMinutes: 15,
@@ -58,6 +61,7 @@ describe("loadGlobalConfig", () => {
 			);
 
 			const config = loadGlobalConfig(dir);
+			expect(config.host).toBe("0.0.0.0");
 			expect(config.port).toBe(5000);
 			expect(config.heartbeat).toEqual({
 				intervalMinutes: 15,
@@ -74,6 +78,7 @@ describe("loadGlobalConfig", () => {
 			writeFileSync(join(dir, "config.json"), JSON.stringify({ port: 3000 }));
 
 			const config = loadGlobalConfig(dir);
+			expect(config.host).toBe("127.0.0.1");
 			expect(config.port).toBe(3000);
 			expect(config.heartbeat).toEqual({
 				intervalMinutes: 30,
@@ -98,6 +103,7 @@ describe("loadGlobalConfig", () => {
 			);
 
 			const config = loadGlobalConfig(dir);
+			expect(config.host).toBe("127.0.0.1");
 			expect(config.port).toBe(4000);
 			expect(config.heartbeat).toEqual({
 				intervalMinutes: 30,
@@ -107,6 +113,7 @@ describe("loadGlobalConfig", () => {
 				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
 			).toEqual({
 				autoCompact: true,
+				host: "127.0.0.1",
 				heartbeat: {
 					intervalMinutes: 30,
 					deferMinutes: 0,
@@ -161,6 +168,7 @@ describe("loadGlobalConfig", () => {
 		try {
 			const config = loadGlobalConfig(dir);
 			expect(config.autoCompact).toBe(true);
+			expect(config.host).toBe("127.0.0.1");
 		} finally {
 			rmSync(dir, { recursive: true });
 		}
@@ -188,6 +196,7 @@ describe("loadGlobalConfig", () => {
 				JSON.stringify(
 					{
 						autoCompact: true,
+						host: "127.0.0.1",
 						heartbeat: {
 							intervalMinutes: 30,
 							deferMinutes: 0,
@@ -212,6 +221,7 @@ describe("loadGlobalConfig", () => {
 
 			const config = updateGlobalConfig(dir, {
 				autoCompact: false,
+				host: "0.0.0.0",
 				heartbeat: {
 					intervalMinutes: 60,
 				},
@@ -220,6 +230,7 @@ describe("loadGlobalConfig", () => {
 
 			expect(config).toEqual({
 				autoCompact: false,
+				host: "0.0.0.0",
 				heartbeat: {
 					intervalMinutes: 60,
 					deferMinutes: 0,
@@ -230,6 +241,7 @@ describe("loadGlobalConfig", () => {
 				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
 			).toEqual({
 				autoCompact: false,
+				host: "0.0.0.0",
 				heartbeat: {
 					intervalMinutes: 60,
 					deferMinutes: 0,

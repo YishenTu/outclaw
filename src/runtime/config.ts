@@ -13,6 +13,7 @@ export interface GlobalConfig {
 		intervalMinutes: number;
 		deferMinutes: number;
 	};
+	host: string;
 	port: number;
 }
 
@@ -24,6 +25,7 @@ export interface GlobalConfigPatch {
 		intervalMinutes?: number;
 		deferMinutes?: number;
 	};
+	host?: string;
 	port?: number;
 }
 
@@ -33,6 +35,7 @@ const DEFAULTS: GlobalConfig = {
 		intervalMinutes: 30,
 		deferMinutes: 0,
 	},
+	host: "127.0.0.1",
 	port: 4000,
 };
 
@@ -47,6 +50,7 @@ interface ConfigDocument extends Record<string, unknown> {
 		intervalMinutes?: number;
 		deferMinutes?: number;
 	};
+	host?: string;
 	port?: number;
 }
 
@@ -74,6 +78,10 @@ function normalizeConfigDocument(raw: unknown): ConfigDocument {
 			typeof document.autoCompact === "boolean"
 				? document.autoCompact
 				: DEFAULTS.autoCompact,
+		host:
+			typeof document.host === "string" && document.host.trim() !== ""
+				? document.host
+				: DEFAULTS.host,
 		heartbeat: {
 			...heartbeat,
 			intervalMinutes:
@@ -99,6 +107,7 @@ export function loadGlobalConfig(homeDir: string): GlobalConfig {
 		return {
 			autoCompact: DEFAULTS.autoCompact,
 			heartbeat: { ...DEFAULTS.heartbeat },
+			host: DEFAULTS.host,
 			port: DEFAULTS.port,
 		};
 	}
@@ -118,6 +127,7 @@ export function loadGlobalConfig(homeDir: string): GlobalConfig {
 			deferMinutes:
 				merged.heartbeat?.deferMinutes ?? DEFAULTS.heartbeat.deferMinutes,
 		},
+		host: merged.host ?? DEFAULTS.host,
 		port: merged.port ?? DEFAULTS.port,
 	};
 }
@@ -138,6 +148,7 @@ export function updateGlobalConfig(
 		...(patch.autoCompact !== undefined
 			? { autoCompact: patch.autoCompact }
 			: {}),
+		...(patch.host !== undefined ? { host: patch.host } : {}),
 		...(patch.port !== undefined ? { port: patch.port } : {}),
 		heartbeat: {
 			...normalized.heartbeat,
@@ -161,6 +172,7 @@ export function updateGlobalConfig(
 			deferMinutes:
 				nextDocument.heartbeat?.deferMinutes ?? DEFAULTS.heartbeat.deferMinutes,
 		},
+		host: nextDocument.host ?? DEFAULTS.host,
 		port: nextDocument.port ?? DEFAULTS.port,
 	};
 }

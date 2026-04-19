@@ -23,6 +23,7 @@ import { createSupervisor } from "./runtime/supervisor/create-supervisor.ts";
 
 const HOME_DIR = join(homedir(), ".outclaw");
 const CLI_ENTRY = join(import.meta.dir, "cli.ts");
+const BROWSER_DIST_DIR = join(import.meta.dir, "frontend", "browser", "dist");
 const dbPath = join(HOME_DIR, "db.sqlite");
 const filesRoot = join(HOME_DIR, "files");
 const readyPath = join(HOME_DIR, "daemon.ready");
@@ -44,6 +45,7 @@ if (discoveredAgents.length === 0) {
 const daemon = startMultiAgentDaemon(config, discoveredAgents);
 
 console.log(`outclaw runtime listening on ws://localhost:${daemon.port}`);
+console.log(`runtime bound on http://${config.host}:${daemon.port}`);
 console.log(`daemon pid: ${process.pid}`);
 writeFileSync(readyPath, `${process.pid}\n`);
 
@@ -111,6 +113,9 @@ function startMultiAgentDaemon(
 	const availableAgentsByBotUser = buildTelegramAgentIndex(agents);
 	const supervisor = createSupervisor({
 		agents: runtimes,
+		browserApp: {
+			distDir: BROWSER_DIST_DIR,
+		},
 		browserApi: createBrowserApi({
 			agents: agents.map((agent) => {
 				const runtime = runtimes.find(
@@ -143,6 +148,7 @@ function startMultiAgentDaemon(
 			gitRoot: HOME_DIR,
 		},
 		getDefaultAgentId: () => stateStore.getLastInteractiveAgentId(),
+		hostname: config.host,
 		port: config.port,
 		rememberInteractiveAgentId: (agentId) =>
 			stateStore.setLastInteractiveAgentId(agentId),

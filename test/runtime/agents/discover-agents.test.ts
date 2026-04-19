@@ -222,6 +222,7 @@ describe("agent config", () => {
 					},
 				},
 				autoCompact: true,
+				host: "127.0.0.1",
 				heartbeat: {
 					intervalMinutes: 30,
 					deferMinutes: 0,
@@ -263,6 +264,7 @@ describe("agent config", () => {
 					},
 				},
 				autoCompact: true,
+				host: "127.0.0.1",
 				heartbeat: {
 					intervalMinutes: 30,
 					deferMinutes: 0,

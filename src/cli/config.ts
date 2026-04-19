@@ -4,39 +4,54 @@ import {
 	updateGlobalConfig,
 } from "../runtime/config.ts";
 import { maybeMarkRestartRequired } from "./restart-required.ts";
+import {
+	formatConfigRuntimeUsage,
+	hasHelpFlag,
+	isHelpFlag,
+	printConfigRuntimeUsage,
+	printConfigSecureUsage,
+	printConfigUsage,
+} from "./usage.ts";
 
 interface ConfigCommandOptions {
 	argv: string[];
 	homeDir: string;
-	printUsage: () => void;
 }
 
 export function configCommand(options: ConfigCommandOptions) {
 	const subcommand = options.argv[3];
+	if (subcommand === undefined || isHelpFlag(subcommand)) {
+		printConfigUsage();
+		process.exit(subcommand === undefined ? 1 : 0);
+	}
+
 	switch (subcommand) {
 		case "runtime":
 			configRuntimeCommand(options.homeDir, options.argv.slice(4));
 			return;
 		case "secure":
-			configSecureCommand(options.homeDir);
+			configSecureCommand(options.homeDir, options.argv.slice(4));
 			return;
 		default:
-			options.printUsage();
+			printConfigUsage();
 			process.exit(1);
 	}
 }
 
 function configRuntimeCommand(homeDir: string, args: string[]) {
+	if (hasHelpFlag(args)) {
+		printConfigRuntimeUsage();
+		process.exit(0);
+	}
 	const patch = parseRuntimeFlags(args);
 	if (
 		patch.port === undefined &&
+		patch.host === undefined &&
 		patch.autoCompact === undefined &&
 		patch.heartbeat?.intervalMinutes === undefined &&
 		patch.heartbeat?.deferMinutes === undefined
 	) {
-		console.error(
-			"Usage: oc config runtime [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N]",
-		);
+		console.error(formatConfigRuntimeUsage());
 		process.exit(1);
 	}
 
@@ -45,7 +60,12 @@ function configRuntimeCommand(homeDir: string, args: string[]) {
 	maybeMarkRestartRequired(homeDir);
 }
 
-function configSecureCommand(homeDir: string) {
+function configSecureCommand(homeDir: string, args: string[]) {
+	if (hasHelpFlag(args)) {
+		printConfigSecureUsage();
+		process.exit(0);
+	}
+
 	const result = secureAgentConfig(homeDir);
 	if (result.changes.length === 0) {
 		console.log("No hardcoded agent telegram config found in config.json");
@@ -76,6 +96,9 @@ function parseRuntimeFlags(args: string[]) {
 		}
 
 		switch (flag) {
+			case "--host":
+				patch.host = parseHost(value, "--host");
+				break;
 			case "--port":
 				patch.port = parseNonNegativeInteger(value, "--port");
 				break;
@@ -106,6 +129,14 @@ function parseRuntimeFlags(args: string[]) {
 	}
 
 	return patch;
+}
+
+function parseHost(value: string, flag: string): string {
+	if (value.trim() === "") {
+		console.error(`Invalid ${flag} value: ${value} (expected non-empty host)`);
+		process.exit(1);
+	}
+	return value;
 }
 
 function parseBoolean(value: string, flag: string): boolean {
