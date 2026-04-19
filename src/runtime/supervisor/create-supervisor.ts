@@ -7,6 +7,7 @@ import type {
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
 	BrowserTreeEntry,
+	ImageMediaType,
 	RuntimeClientType,
 } from "../../common/protocol.ts";
 import type { AgentRuntime } from "../application/create-agent-runtime.ts";
@@ -42,6 +43,9 @@ interface CreateSupervisorOptions {
 		readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
 		readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
 		readGitStatus(): Promise<BrowserGitStatusResponse>;
+		uploadImages?(
+			images: Array<{ bytes: Uint8Array; mediaType: ImageMediaType }>,
+		): Promise<Array<{ path: string; mediaType: ImageMediaType }>>;
 		setAgentCronEnabled(
 			agentId: string,
 			relativePath: string,
@@ -262,6 +266,20 @@ async function handleBrowserApiRequest(
 			return Response.json(await browserApi.readGitCommit(sha));
 		}
 
+		if (url.pathname === "/api/images") {
+			if (req.method !== "POST") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.uploadImages) {
+				return jsonError("Image upload is not configured", 404);
+			}
+
+			const images = await readUploadedImages(req);
+			return Response.json({
+				images: await browserApi.uploadImages(images),
+			});
+		}
+
 		const agentMatch = url.pathname.match(
 			/^\/api\/agents\/([^/]+)\/(tree|files|cron)$/,
 		);
@@ -322,6 +340,44 @@ function jsonError(message: string, status: number) {
 			error: message,
 		},
 		{ status },
+	);
+}
+
+async function readUploadedImages(req: Request) {
+	const formData = await req.formData();
+	const files = formData.getAll("images");
+	const images: Array<{ bytes: Uint8Array; mediaType: ImageMediaType }> = [];
+
+	for (const entry of files) {
+		if (!(entry instanceof File)) {
+			continue;
+		}
+
+		if (!isImageMediaType(entry.type)) {
+			throw new Error(
+				`Unsupported image media type: ${entry.type || "(empty)"}`,
+			);
+		}
+
+		images.push({
+			bytes: new Uint8Array(await entry.arrayBuffer()),
+			mediaType: entry.type,
+		});
+	}
+
+	if (images.length === 0) {
+		throw new Error("Missing uploaded images");
+	}
+
+	return images;
+}
+
+function isImageMediaType(type: string): type is ImageMediaType {
+	return (
+		type === "image/jpeg" ||
+		type === "image/png" ||
+		type === "image/gif" ||
+		type === "image/webp"
 	);
 }
 

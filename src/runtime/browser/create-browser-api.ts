@@ -15,8 +15,11 @@ import type {
 	BrowserGitStatusResponse,
 	BrowserTreeEntry,
 	BrowserTreeEntryGitStatus,
+	ImageMediaType,
+	ImageRef,
 } from "../../common/protocol.ts";
 import { parseJobConfig, serializeJobConfig } from "../cron/job-config.ts";
+import { saveManagedImage } from "../files/managed-image-store.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
 import { BROWSER_CONFIG_SCHEMA } from "./config-schema.ts";
 import { readBrowserFile } from "./read-browser-file.ts";
@@ -33,6 +36,7 @@ interface BrowserApiAgent {
 
 interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
+	filesRoot?: string;
 	getRememberedAgentId: () => string | undefined;
 	gitRoot: string;
 	homeDir: string;
@@ -56,6 +60,9 @@ export interface BrowserApi {
 	readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
 	readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
 	readGitStatus(): Promise<BrowserGitStatusResponse>;
+	uploadImages(
+		images: Array<{ bytes: Uint8Array; mediaType: ImageMediaType }>,
+	): Promise<ImageRef[]>;
 	setAgentCronEnabled(
 		agentId: string,
 		relativePath: string,
@@ -193,6 +200,21 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				path: relativePath,
 				diff,
 			};
+		},
+		async uploadImages(images) {
+			if (!options.filesRoot) {
+				throw new Error("Browser files root is not configured");
+			}
+
+			return await Promise.all(
+				images.map((image) =>
+					saveManagedImage(
+						options.filesRoot as string,
+						image.mediaType,
+						image.bytes,
+					),
+				),
+			);
 		},
 	};
 }

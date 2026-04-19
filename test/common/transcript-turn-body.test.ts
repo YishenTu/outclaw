@@ -20,7 +20,9 @@ describe("formatTranscriptTurnBody", () => {
 		const turn = {
 			role: "user" as const,
 			content: "",
-			images: [{ mediaType: "image/png" as const }],
+			images: [
+				{ kind: "placeholder" as const, mediaType: "image/png" as const },
+			],
 			timestamp: 1,
 		};
 

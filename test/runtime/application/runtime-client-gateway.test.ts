@@ -89,4 +89,40 @@ describe("RuntimeClientGateway", () => {
 			},
 		]);
 	});
+
+	test("handleOpen includes the replay session id on history replay events", async () => {
+		const gateway = new RuntimeClientGateway({
+			facade: createFacade({
+				async readHistory() {
+					return [
+						{
+							kind: "chat" as const,
+							role: "user" as const,
+							content: "past question",
+						},
+					];
+				},
+			}),
+			getStatusEvent: () => ({
+				...createStatusEvent(),
+				sessionId: "sdk-123",
+			}),
+		});
+		const ws = mockWs();
+
+		gateway.handleOpen(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(ws.events()).toContainEqual({
+			type: "history_replay",
+			sdkSessionId: "sdk-123",
+			messages: [
+				{
+					kind: "chat",
+					role: "user",
+					content: "past question",
+				},
+			],
+		});
+	});
 });

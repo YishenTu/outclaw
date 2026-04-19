@@ -45,3 +45,22 @@ export function resolveBrowserSessionKey(params: {
 				params.providerId ?? PENDING_PROVIDER_ID,
 			);
 }
+
+export function resolveCurrentBrowserSessionKey(params: {
+	agentId: string;
+	activeSession: SessionRef | null;
+	providerId?: string | null;
+	runtimeSessionId?: string | null;
+}): string {
+	if (params.providerId && params.runtimeSessionId) {
+		return createSessionKey(
+			createBrowserSessionRef(
+				params.agentId,
+				params.providerId,
+				params.runtimeSessionId,
+			),
+		);
+	}
+
+	return resolveBrowserSessionKey(params);
+}

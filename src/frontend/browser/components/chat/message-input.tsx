@@ -6,8 +6,18 @@ import { useWs } from "../../contexts/websocket-context.tsx";
 import { useRuntimePopupStore } from "../../stores/runtime-popup.ts";
 import type { CommandEntry } from "../../stores/slash-commands.ts";
 import { useSlashCommandsStore } from "../../stores/slash-commands.ts";
+import {
+	type ComposerImageAttachment,
+	createComposerImageAttachment,
+	filterSupportedImageFiles,
+} from "./composer-images.ts";
 import { ContextGauge } from "./context-gauge.tsx";
 import { HeartbeatIndicator } from "./heartbeat-indicator.tsx";
+import { getImageThumbnailClassName } from "./image-thumbnail-styles.ts";
+import {
+	type ComposerDraft,
+	clearSubmittedDraftIfUnchanged,
+} from "./message-input-draft.ts";
 import { handleMessageInputKeydown } from "./message-input-keydown.ts";
 import { ModelSelector } from "./model-selector.tsx";
 import { RuntimeCommandPopup } from "./runtime-command-popup.tsx";
@@ -15,7 +25,10 @@ import { useRuntimePopupShortcuts } from "./runtime-popup-shortcuts.ts";
 import { SlashCommandMenu } from "./slash-command-menu.tsx";
 
 interface MessageInputProps {
-	onSend: (text: string) => boolean;
+	onSend: (submission: {
+		text: string;
+		images: ComposerImageAttachment[];
+	}) => Promise<boolean> | boolean;
 	disabled?: boolean;
 	interruptible?: boolean;
 	sessionKey?: string | null;
@@ -56,15 +69,23 @@ export function MessageInput({
 }: MessageInputProps) {
 	const { sendCommand } = useWs();
 	const [value, setValue] = useState("");
+	const [images, setImages] = useState<ComposerImageAttachment[]>([]);
 	const [selectedIndex, setSelectedIndex] = useState(0);
+	const [submitting, setSubmitting] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const isComposingRef = useRef(false);
+	const draftRef = useRef<ComposerDraft>({
+		text: "",
+		images: [],
+	});
 	const commands = useSlashCommandsStore((state) => state.commands);
 	const runtimePopup = useRuntimePopupStore((state) => state.popup);
 	const closeRuntimePopup = useRuntimePopupStore((state) => state.closePopup);
 	const filteredCommands = filterSlashCommands(value, commands);
 	const showSlashMenu = filteredCommands.length > 0;
-	const canSend = !disabled && value.trim() !== "";
+	const canSend =
+		!disabled && !submitting && (value.trim() !== "" || images.length > 0);
+	const isInputDisabled = disabled || submitting;
 	const runtimePopupItemCount =
 		runtimePopup?.kind === "agent"
 			? runtimePopup.agents.length
@@ -97,6 +118,13 @@ export function MessageInput({
 	}, [runtimePopup]);
 
 	useEffect(() => {
+		draftRef.current = {
+			text: value,
+			images,
+		};
+	}, [images, value]);
+
+	useEffect(() => {
 		const itemCount = runtimePopup
 			? runtimePopupItemCount
 			: filteredCommands.length;
@@ -117,6 +145,18 @@ export function MessageInput({
 		setValue(`/${name} `);
 		setSelectedIndex(0);
 		focusTextarea();
+	}
+
+	async function appendFiles(files: File[]) {
+		const supportedFiles = filterSupportedImageFiles(files);
+		if (supportedFiles.length === 0) {
+			return;
+		}
+
+		const nextImages = await Promise.all(
+			supportedFiles.map((file) => createComposerImageAttachment(file)),
+		);
+		setImages((current) => [...current, ...nextImages]);
 	}
 
 	function selectRuntimePopupItem(index: number) {
@@ -146,11 +186,33 @@ export function MessageInput({
 		focusTextarea();
 	}
 
-	function submitValue() {
-		if (canSend && onSend(value)) {
-			closeRuntimePopup();
-			setValue("");
-			setSelectedIndex(0);
+	async function submitValue() {
+		if (!canSend) {
+			return;
+		}
+
+		setSubmitting(true);
+		try {
+			const submittedDraft = {
+				text: value,
+				images,
+			};
+			const sent = await onSend({
+				text: submittedDraft.text,
+				images: submittedDraft.images,
+			});
+			if (sent) {
+				closeRuntimePopup();
+				const nextDraft = clearSubmittedDraftIfUnchanged(
+					draftRef.current,
+					submittedDraft,
+				);
+				setValue(nextDraft.text);
+				setImages(nextDraft.images);
+				setSelectedIndex(0);
+			}
+		} finally {
+			setSubmitting(false);
 		}
 	}
 
@@ -179,12 +241,63 @@ export function MessageInput({
 							{headerSlot}
 						</div>
 					) : null}
+					{images.length > 0 && (
+						<div className="mb-2 flex flex-wrap gap-2 px-2">
+							{images.map((image, index) => (
+								<div key={image.id} className="relative">
+									<img
+										src={`data:${image.image.mediaType};base64,${image.image.base64}`}
+										alt={`Pending upload ${index + 1}`}
+										className={getImageThumbnailClassName("composer")}
+									/>
+									<button
+										type="button"
+										onClick={() =>
+											setImages((current) =>
+												current.filter((entry) => entry.id !== image.id),
+											)
+										}
+										disabled={submitting}
+										className="font-mono-ui absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-dark-700 bg-dark-950 text-[10px] text-dark-300"
+										aria-label={`Remove pending image ${index + 1}`}
+									>
+										×
+									</button>
+								</div>
+							))}
+						</div>
+					)}
 					<div className={`relative ${compact ? "h-[64px]" : "h-[115px]"}`}>
 						<textarea
 							ref={textareaRef}
 							value={value}
-							disabled={disabled}
+							disabled={isInputDisabled}
 							onChange={(event) => setValue(event.target.value)}
+							onPaste={(event) => {
+								const files = filterSupportedImageFiles(
+									Array.from(event.clipboardData.files),
+								);
+								if (files.length === 0) {
+									return;
+								}
+
+								event.preventDefault();
+								void appendFiles(files);
+							}}
+							onDragOver={(event) => {
+								const files = filterSupportedImageFiles(
+									Array.from(event.dataTransfer.files),
+								);
+								if (files.length === 0) {
+									return;
+								}
+
+								event.preventDefault();
+							}}
+							onDrop={(event) => {
+								event.preventDefault();
+								void appendFiles(Array.from(event.dataTransfer.files));
+							}}
 							onCompositionStart={() => {
 								isComposingRef.current = true;
 							}}
@@ -211,12 +324,14 @@ export function MessageInput({
 											}
 										},
 										sendStopCommand: () => sendCommand("/stop"),
-										submitValue,
+										submitValue: () => {
+											void submitValue();
+										},
 									},
 								);
 							}}
-							placeholder="Type a message..."
-							className="h-full w-full resize-none bg-transparent px-2 pt-1 text-sm text-dark-100 placeholder:text-dark-500"
+							placeholder="Type a message or paste/drop an image..."
+							className="scrollbar-none h-full w-full resize-none bg-transparent px-2 pt-1 text-sm text-dark-100 placeholder:text-dark-500"
 						/>
 					</div>
 					<div className="flex items-center justify-between gap-3 px-1 pt-1">
@@ -224,7 +339,7 @@ export function MessageInput({
 							<ModelSelector
 								model={model}
 								effort={effort}
-								disabled={disabled}
+								disabled={isInputDisabled}
 								onModelChange={onModelChange}
 								onEffortChange={onEffortChange}
 							/>
@@ -236,7 +351,9 @@ export function MessageInput({
 							disabled={!canSend}
 							tabIndex={-1}
 							onMouseDown={(event) => event.preventDefault()}
-							onClick={submitValue}
+							onClick={() => {
+								void submitValue();
+							}}
 							className={`p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
 								canSend
 									? "text-brand hover:text-ember"

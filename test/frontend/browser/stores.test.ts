@@ -4,6 +4,10 @@ import type {
 	UsageInfo,
 } from "../../../src/common/protocol.ts";
 import { ensureRunningChatSession } from "../../../src/frontend/browser/ensure-running-chat-session.ts";
+import {
+	createLiveRunSessionRouter,
+	routeLiveRunSessionKey,
+} from "../../../src/frontend/browser/live-run-session.ts";
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
 import { useChatStore } from "../../../src/frontend/browser/stores/chat.ts";
 import { useContextUsageStore } from "../../../src/frontend/browser/stores/context-usage.ts";
@@ -386,6 +390,39 @@ describe("browser stores", () => {
 		expect(typeof session?.thinkingStartedAt).toBe("number");
 	});
 
+	test("ensureRunningChatSession prefers the runtime session when sidebar session state is stale", () => {
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-a", name: "alpha" }]);
+		useAgentsStore.getState().setActiveAgent("agent-a");
+		useSessionsStore.getState().setActiveSession("agent-a", {
+			agentId: "agent-a",
+			providerId: "claude",
+			sdkSessionId: "sdk-stale",
+		});
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "alpha",
+			providerId: "claude",
+			model: "sonnet",
+			effort: "think",
+			running: true,
+			sessionId: "sdk-live",
+			sessionTitle: "Live session",
+		});
+
+		ensureRunningChatSession("agent-a", "claude");
+
+		expect(
+			useChatStore.getState().getSession("agent-a:claude:sdk-stale"),
+		).toBeUndefined();
+		const session = useChatStore
+			.getState()
+			.getSession("agent-a:claude:sdk-live");
+		expect(session?.isStreaming).toBe(true);
+		expect(session?.isThinking).toBe(true);
+	});
+
 	test("chat store preserves an active assistant turn across history replay", () => {
 		useChatStore.getState().pushMessage("agent-a:claude:sdk-alpha", {
 			kind: "chat",
@@ -415,6 +452,76 @@ describe("browser stores", () => {
 		expect(session?.isStreaming).toBe(true);
 		expect(session?.isThinking).toBe(true);
 		expect(typeof session?.thinkingStartedAt).toBe("number");
+	});
+
+	test("chat store hides replayed heartbeat noop turns", () => {
+		useChatStore.getState().replaceHistory("agent-a:claude:sdk-alpha", [
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: " `HEARTBEAT_OK` ",
+			},
+		]);
+
+		expect(
+			useChatStore.getState().getMessages("agent-a:claude:sdk-alpha"),
+		).toEqual([]);
+	});
+
+	test("chat store compacts raw replayed heartbeat prompts and keeps substantive results", () => {
+		useChatStore.getState().replaceHistory("agent-a:claude:sdk-alpha", [
+			{
+				kind: "chat",
+				role: "user",
+				content:
+					"Read HEARTBEAT.md and follow its instructions. Only act on what the file currently says — do not repeat tasks from earlier heartbeats or infer tasks from conversation history. If you took any action or have anything to report, summarise briefly. If you did nothing and have nothing to notify the user about, reply with exactly `HEARTBEAT_OK` — no other text.",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Updated inbox triage notes.",
+			},
+		]);
+
+		expect(
+			useChatStore.getState().getMessages("agent-a:claude:sdk-alpha"),
+		).toEqual([
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Updated inbox triage notes.",
+			},
+		]);
+	});
+
+	test("chat store hides raw replayed heartbeat noop prompts", () => {
+		useChatStore.getState().replaceHistory("agent-a:claude:sdk-alpha", [
+			{
+				kind: "chat",
+				role: "user",
+				content:
+					"Read HEARTBEAT.md and follow its instructions. Only act on what the file currently says — do not repeat tasks from earlier heartbeats or infer tasks from conversation history. If you took any action or have anything to report, summarise briefly. If you did nothing and have nothing to notify the user about, reply with exactly `HEARTBEAT_OK` — no other text.",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "HEARTBEAT_OK",
+			},
+		]);
+
+		expect(
+			useChatStore.getState().getMessages("agent-a:claude:sdk-alpha"),
+		).toEqual([]);
 	});
 
 	test("chat store can move a pending conversation into a real session key", () => {
@@ -451,6 +558,66 @@ describe("browser stores", () => {
 		).toBeUndefined();
 	});
 
+	test("chat store can clear all pending sessions for one agent", () => {
+		useChatStore.getState().replaceHistory("agent-a:runtime:__pending__", [
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+		]);
+		useChatStore.getState().replaceHistory("agent-a:claude:__pending__", [
+			{
+				kind: "system",
+				event: "compact_boundary",
+				text: "Context compacted",
+				trigger: "auto",
+				preTokens: 123,
+			},
+		]);
+		useChatStore.getState().replaceHistory("agent-a:claude:sdk-alpha", [
+			{
+				kind: "chat",
+				role: "user",
+				content: "keep me",
+			},
+		]);
+		useChatStore.getState().replaceHistory("agent-b:claude:__pending__", [
+			{
+				kind: "chat",
+				role: "user",
+				content: "other agent",
+			},
+		]);
+
+		useChatStore.getState().clearPendingSessions("agent-a");
+
+		expect(
+			useChatStore.getState().getSession("agent-a:runtime:__pending__"),
+		).toBeUndefined();
+		expect(
+			useChatStore.getState().getSession("agent-a:claude:__pending__"),
+		).toBeUndefined();
+		expect(
+			useChatStore.getState().getMessages("agent-a:claude:sdk-alpha"),
+		).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "keep me",
+			},
+		]);
+		expect(
+			useChatStore.getState().getMessages("agent-b:claude:__pending__"),
+		).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "other agent",
+			},
+		]);
+	});
+
 	test("chat store drops a heartbeat indicator when the final heartbeat result is only HEARTBEAT_OK", () => {
 		useChatStore.getState().pushMessage("agent-a:claude:sdk-alpha", {
 			kind: "system",
@@ -466,6 +633,127 @@ describe("browser stores", () => {
 		expect(
 			useChatStore.getState().getMessages("agent-a:claude:sdk-alpha"),
 		).toEqual([]);
+	});
+
+	test("history replay keeps a running heartbeat hidden when status arrives first", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+
+		useChatStore.getState().startAssistantTurn(sessionKey);
+		useChatStore.getState().replaceHistory(sessionKey, [
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+		]);
+		useChatStore.getState().appendText(sessionKey, "`HEARTBEAT_OK`");
+
+		useChatStore.getState().finalizeMessage(sessionKey);
+
+		expect(useChatStore.getState().getMessages(sessionKey)).toEqual([]);
+	});
+
+	test("startAssistantTurn restores pending heartbeat cleanup when replay arrives first", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+
+		useChatStore.getState().replaceHistory(sessionKey, [
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+		]);
+		useChatStore.getState().startAssistantTurn(sessionKey);
+		useChatStore.getState().appendText(sessionKey, "`HEARTBEAT_OK`");
+
+		useChatStore.getState().finalizeMessage(sessionKey);
+
+		expect(useChatStore.getState().getMessages(sessionKey)).toEqual([]);
+	});
+
+	test("heartbeat cleanup stays with the originating session across a session switch", () => {
+		const router = createLiveRunSessionRouter();
+		const sessionAKey = "agent-a:claude:sdk-alpha";
+		const sessionBKey = "agent-a:claude:sdk-beta";
+
+		useChatStore.getState().replaceHistory(sessionBKey, [
+			{
+				kind: "chat",
+				role: "user",
+				content: "keep session B clean",
+			},
+		]);
+		useChatStore.getState().pushMessage(router.pin(sessionAKey), {
+			kind: "system",
+			event: "heartbeat",
+			text: "Heartbeat",
+		});
+
+		useChatStore
+			.getState()
+			.appendText(router.route(sessionBKey), "`HEARTBEAT_OK`");
+
+		const completion = router.complete(sessionAKey, sessionBKey);
+		if (completion.adoptFromSessionKey) {
+			useChatStore
+				.getState()
+				.adoptSession(completion.adoptFromSessionKey, completion.sessionKey);
+		}
+		useChatStore.getState().finalizeMessage(completion.sessionKey);
+
+		expect(useChatStore.getState().getMessages(sessionAKey)).toEqual([]);
+		expect(useChatStore.getState().getMessages(sessionBKey)).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "keep session B clean",
+			},
+		]);
+	});
+
+	test("late heartbeat output still cleans up the originating session when the browser missed the prompt", () => {
+		const router = createLiveRunSessionRouter();
+		const sessionAKey = "agent-a:claude:sdk-alpha";
+		const sessionBKey = "agent-a:claude:sdk-beta";
+
+		useChatStore.getState().replaceHistory(sessionBKey, [
+			{
+				kind: "chat",
+				role: "user",
+				content: "keep session B clean",
+			},
+		]);
+		useChatStore.getState().pushMessage(sessionAKey, {
+			kind: "system",
+			event: "heartbeat",
+			text: "Heartbeat",
+		});
+
+		const routedSessionKey = routeLiveRunSessionKey({
+			agentId: "agent-a",
+			fallbackSessionKey: sessionBKey,
+			observedSessionId: "sdk-alpha",
+			providerId: "claude",
+			router,
+		});
+		useChatStore.getState().appendText(routedSessionKey, "`HEARTBEAT_OK`");
+
+		const completion = router.complete(sessionAKey, sessionBKey);
+		if (completion.adoptFromSessionKey) {
+			useChatStore
+				.getState()
+				.adoptSession(completion.adoptFromSessionKey, completion.sessionKey);
+		}
+		useChatStore.getState().finalizeMessage(completion.sessionKey);
+
+		expect(useChatStore.getState().getMessages(sessionAKey)).toEqual([]);
+		expect(useChatStore.getState().getMessages(sessionBKey)).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "keep session B clean",
+			},
+		]);
 	});
 
 	test("chat store keeps heartbeat indicator and result when the heartbeat produced content", () => {

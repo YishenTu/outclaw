@@ -6,8 +6,15 @@ import type {
 
 export { formatContext, formatStatus } from "../../../common/status.ts";
 
-export function formatImage(image: DisplayImage): string {
-	return image.path ? `[image: ${image.path}]` : "[image]";
+export function formatImage(
+	_image: DisplayImage,
+	index?: number,
+	total = 1,
+): string {
+	if (total > 1 && index !== undefined) {
+		return `[image ${index + 1}]`;
+	}
+	return "[image]";
 }
 
 export function formatLivePrompt(
@@ -22,8 +29,9 @@ export function formatLivePrompt(
 		lines.push(`${prefix}${prompt}`);
 	}
 
-	for (const image of images ?? []) {
-		lines.push(`${prefix}${formatImage(image)}`);
+	const imageCount = images?.length ?? 0;
+	for (const [index, image] of (images ?? []).entries()) {
+		lines.push(`${prefix}${formatImage(image, index, imageCount)}`);
 	}
 
 	return lines.length > 0 ? `${lines.join("\n")}\n` : "";
@@ -39,8 +47,9 @@ export function formatReplayMessage(message: DisplayChatMessage): string {
 		lines.push(`> ${message.content}`);
 	}
 
-	for (const image of message.images ?? []) {
-		lines.push(`> ${formatImage(image)}`);
+	const imageCount = message.images?.length ?? 0;
+	for (const [index, image] of (message.images ?? []).entries()) {
+		lines.push(`> ${formatImage(image, index, imageCount)}`);
 	}
 
 	return lines.length > 0 ? `${lines.join("\n")}\n` : "";

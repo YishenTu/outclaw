@@ -344,7 +344,13 @@ describe("readClaudeHistory", () => {
 				kind: "chat",
 				role: "user",
 				content: "describe this",
-				images: [{ mediaType: "image/png" }],
+				images: [
+					{
+						kind: "inline",
+						mediaType: "image/png",
+						base64: "abc123",
+					},
+				],
 			},
 			{ kind: "chat", role: "assistant", content: "It is a cat." },
 		]);
@@ -567,7 +573,7 @@ describe("readClaudeTranscript", () => {
 				{
 					role: "user",
 					content: "describe this",
-					images: [{ mediaType: "image/png" }],
+					images: [{ kind: "placeholder", mediaType: "image/png" }],
 					timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
 				},
 				{

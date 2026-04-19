@@ -177,14 +177,20 @@ describe("mapEventToActions", () => {
 		const actions = mapEventToActions({
 			type: "user_prompt",
 			prompt: "what is this?",
-			images: [{ path: "/tmp/cat.png", mediaType: "image/png" }],
+			images: [
+				{
+					kind: "managed",
+					path: "/tmp/cat.png",
+					mediaType: "image/png",
+				},
+			],
 			source: "telegram",
 		});
 		expect(actions).toEqual([
 			{
 				type: "push",
 				role: "user",
-				text: "[telegram] what is this?\n[telegram] [image: /tmp/cat.png]",
+				text: "[telegram] what is this?\n[telegram] [image]",
 			},
 		]);
 	});
@@ -276,6 +282,7 @@ describe("mapEventToActions", () => {
 	test("history_replay → replay with converted messages", () => {
 		const actions = mapEventToActions({
 			type: "history_replay",
+			sdkSessionId: "sdk-1",
 			messages: [
 				{ kind: "chat", role: "assistant", content: "Hello" },
 				{ kind: "chat", role: "user", content: "Question" },
@@ -295,6 +302,7 @@ describe("mapEventToActions", () => {
 	test("history_replay with thinking content", () => {
 		const actions = mapEventToActions({
 			type: "history_replay",
+			sdkSessionId: "sdk-1",
 			messages: [
 				{
 					kind: "chat",
@@ -318,12 +326,13 @@ describe("mapEventToActions", () => {
 	test("history_replay with user images", () => {
 		const actions = mapEventToActions({
 			type: "history_replay",
+			sdkSessionId: "sdk-1",
 			messages: [
 				{
 					kind: "chat",
 					role: "user",
 					content: "",
-					images: [{ mediaType: "image/png" }],
+					images: [{ kind: "placeholder", mediaType: "image/png" }],
 				},
 			],
 		});
@@ -335,6 +344,7 @@ describe("mapEventToActions", () => {
 	test("history_replay with user reply context", () => {
 		const actions = mapEventToActions({
 			type: "history_replay",
+			sdkSessionId: "sdk-1",
 			messages: [
 				{
 					kind: "chat",
@@ -428,6 +438,7 @@ describe("mapEventToActions", () => {
 	test("history_replay renders compact_boundary as info message", () => {
 		const actions = mapEventToActions({
 			type: "history_replay",
+			sdkSessionId: "sdk-1",
 			messages: [
 				{ kind: "chat", role: "user", content: "hello" },
 				{
@@ -460,6 +471,7 @@ describe("mapEventToActions", () => {
 	test("history_replay keeps heartbeat indicators compact", () => {
 		const actions = mapEventToActions({
 			type: "history_replay",
+			sdkSessionId: "sdk-1",
 			messages: [
 				{ kind: "system", event: "heartbeat", text: "Heartbeat" },
 				{ kind: "chat", role: "assistant", content: "HEARTBEAT_OK" },

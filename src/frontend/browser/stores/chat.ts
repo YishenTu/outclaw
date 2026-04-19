@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
 import type { DisplayImage, DisplayMessage } from "../../../common/protocol.ts";
+import { normalizeReplayHistory } from "../replay-history.ts";
 
 export interface ChatSession {
 	messages: DisplayMessage[];
@@ -38,6 +39,7 @@ export interface ChatState {
 	finalizeMessage: (sessionKey: string) => void;
 	adoptSession: (fromSessionKey: string, toSessionKey: string) => void;
 	clearSession: (sessionKey: string) => void;
+	clearPendingSessions: (agentId: string) => void;
 }
 
 function createEmptySession(): ChatSession {
@@ -98,6 +100,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 					...state.sessions,
 					[sessionKey]: {
 						...session,
+						heartbeatPending:
+							session.heartbeatPending ||
+							hasPendingHeartbeatIndicator(session.messages),
 						isThinking: true,
 						isStreaming: true,
 						error: null,
@@ -109,16 +114,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	replaceHistory: (sessionKey, messages) =>
 		set((state) => {
 			const session = getOrCreateSession(state.sessions, sessionKey);
+			const normalizedMessages = normalizeReplayHistory(messages);
 			return {
 				sessions: {
 					...state.sessions,
 					[sessionKey]: {
 						...session,
-						messages,
+						messages: normalizedMessages,
 						streamingText: "",
 						streamingThinking: "",
 						streamingImages: [],
-						heartbeatPending: false,
+						heartbeatPending:
+							(session.isThinking || session.isStreaming) &&
+							hasPendingHeartbeatIndicator(normalizedMessages),
 						heartbeatStreamingText: "",
 						heartbeatStreamingThinking: "",
 						heartbeatStreamingImages: [],
@@ -307,6 +315,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			const { [sessionKey]: _deleted, ...sessions } = state.sessions;
 			return { sessions };
 		}),
+	clearPendingSessions: (agentId) =>
+		set((state) => ({
+			sessions: Object.fromEntries(
+				Object.entries(state.sessions).filter(
+					([sessionKey]) =>
+						!(
+							sessionKey.startsWith(`${agentId}:`) &&
+							sessionKey.endsWith(":__pending__")
+						),
+				),
+			),
+		})),
 }));
 
 function finalizeSessionMessages(session: ChatSession): DisplayMessage[] {
@@ -371,4 +391,9 @@ function dropPendingHeartbeatIndicator(
 	}
 
 	return messages;
+}
+
+function hasPendingHeartbeatIndicator(messages: DisplayMessage[]): boolean {
+	const lastMessage = messages.at(-1);
+	return lastMessage?.kind === "system" && lastMessage.event === "heartbeat";
 }

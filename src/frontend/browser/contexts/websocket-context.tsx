@@ -14,6 +14,7 @@ import {
 import {
 	type BrowserAgentsResponse,
 	extractError,
+	type ImageRef,
 	parseMessage,
 	type ServerEvent,
 } from "../../../common/protocol.ts";
@@ -25,15 +26,26 @@ import {
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
+import type { ComposerImageAttachment } from "../components/chat/composer-images.ts";
 import { ensureRunningChatSession } from "../ensure-running-chat-session.ts";
-import { fetchSidebarSummary } from "../lib/api.ts";
+import { fetchSidebarSummary, uploadPromptImages } from "../lib/api.ts";
+import {
+	createLiveRunSessionRouter,
+	pinLiveRunSessionKey,
+	routeLiveRunSessionKey,
+} from "../live-run-session.ts";
 import { toObservedDisplayMessage } from "../observed-prompt.ts";
-import { sendPromptToAgent as dispatchPromptToAgent } from "../send-prompt-to-agent.ts";
+import { dispatchBrowserPrompt as dispatchBrowserPromptMessage } from "../send-browser-prompt.ts";
+import {
+	sendBrowserPromptToAgent as dispatchBrowserPromptToAgent,
+	sendPromptToAgent as dispatchPromptToAgent,
+} from "../send-prompt-to-agent.ts";
 import {
 	createBrowserSessionRef,
 	createSessionKey,
-	resolveBrowserSessionKey,
+	resolveCurrentBrowserSessionKey,
 } from "../session.ts";
+import { createSidebarRefreshGate } from "../sidebar-refresh-gate.ts";
 import type { AgentEntry } from "../stores/agents.ts";
 import { useAgentsStore } from "../stores/agents.ts";
 import { useChatStore } from "../stores/chat.ts";
@@ -41,11 +53,7 @@ import { useContextUsageStore } from "../stores/context-usage.ts";
 import { useRightPanelRefreshStore } from "../stores/right-panel-refresh.ts";
 import { useRuntimeStore } from "../stores/runtime.ts";
 import { useRuntimePopupStore } from "../stores/runtime-popup.ts";
-import {
-	type SessionEntry,
-	type SessionRef,
-	useSessionsStore,
-} from "../stores/sessions.ts";
+import { type SessionEntry, useSessionsStore } from "../stores/sessions.ts";
 import { useSlashCommandsStore } from "../stores/slash-commands.ts";
 
 export interface WebSocketContextValue {
@@ -53,6 +61,15 @@ export interface WebSocketContextValue {
 	connected: boolean;
 	connectionStatus: "connecting" | "connected" | "disconnected";
 	sendPrompt: (prompt: string) => boolean;
+	sendBrowserPrompt: (
+		prompt: string,
+		images?: ComposerImageAttachment[],
+	) => Promise<boolean>;
+	sendBrowserPromptToAgent: (
+		agent: AgentEntry,
+		prompt: string,
+		images?: ComposerImageAttachment[],
+	) => Promise<boolean>;
 	sendPromptToAgent: (agent: AgentEntry, prompt: string) => boolean;
 	sendCommand: (command: string) => boolean;
 	switchAgent: (agentName: string) => boolean;
@@ -65,6 +82,8 @@ const WebSocketContext = createContext<WebSocketContextValue>({
 	connected: false,
 	connectionStatus: "connecting",
 	sendPrompt: () => false,
+	sendBrowserPrompt: async () => false,
+	sendBrowserPromptToAgent: async () => false,
 	sendPromptToAgent: () => false,
 	sendCommand: () => false,
 	switchAgent: () => false,
@@ -97,16 +116,13 @@ function getActiveAgentId(): string | null {
 function getCurrentSessionKey(agentId: string): string {
 	const activeSession =
 		useSessionsStore.getState().activeSessionByAgent[agentId] ?? null;
-	const providerId = useRuntimeStore.getState().providerId ?? undefined;
-	return resolveBrowserSessionKey({
+	const runtime = useRuntimeStore.getState();
+	return resolveCurrentBrowserSessionKey({
 		agentId,
 		activeSession,
-		providerId,
+		providerId: runtime.providerId ?? undefined,
+		runtimeSessionId: runtime.sessionId,
 	});
-}
-
-function getCurrentSessionRef(agentId: string): SessionRef | null {
-	return useSessionsStore.getState().activeSessionByAgent[agentId] ?? null;
 }
 
 function applySidebarSummary(summary: BrowserAgentsResponse) {
@@ -166,8 +182,53 @@ function formatSessionInfoSummary(
 	return `Session\n${event.title}\nmodel: ${event.model}\nid: ${event.sdkSessionId}`;
 }
 
+function inferImageMediaTypeFromPath(
+	path: string,
+): ImageRef["mediaType"] | undefined {
+	const lowerPath = path.toLowerCase();
+	if (lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg")) {
+		return "image/jpeg";
+	}
+	if (lowerPath.endsWith(".png")) {
+		return "image/png";
+	}
+	if (lowerPath.endsWith(".gif")) {
+		return "image/gif";
+	}
+	if (lowerPath.endsWith(".webp")) {
+		return "image/webp";
+	}
+	return undefined;
+}
+
 export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 	const wsRef = useRef<WebSocket | null>(null);
+	const liveRunSessionRef = useRef(createLiveRunSessionRouter());
+	const sidebarRefreshGateRef = useRef(createSidebarRefreshGate());
+
+	const pinObservedSessionKey = useCallback(
+		(agentId: string, observedSessionId?: string) =>
+			pinLiveRunSessionKey({
+				agentId,
+				fallbackSessionKey: getCurrentSessionKey(agentId),
+				observedSessionId,
+				providerId: useRuntimeStore.getState().providerId,
+				router: liveRunSessionRef.current,
+			}),
+		[],
+	);
+
+	const routeObservedSessionKey = useCallback(
+		(agentId: string, observedSessionId?: string) =>
+			routeLiveRunSessionKey({
+				agentId,
+				fallbackSessionKey: getCurrentSessionKey(agentId),
+				observedSessionId,
+				providerId: useRuntimeStore.getState().providerId,
+				router: liveRunSessionRef.current,
+			}),
+		[],
+	);
 
 	const sendCommand = useCallback((command: string): boolean => {
 		const ws = wsRef.current;
@@ -186,11 +247,18 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 	}, []);
 
 	const refreshSidebar = useCallback(() => {
+		const requestId = sidebarRefreshGateRef.current.startRequest();
 		void fetchSidebarSummary()
 			.then((summary) => {
+				if (!sidebarRefreshGateRef.current.isCurrent(requestId)) {
+					return;
+				}
 				applySidebarSummary(summary);
 			})
 			.catch((error) => {
+				if (!sidebarRefreshGateRef.current.isCurrent(requestId)) {
+					return;
+				}
 				useRuntimeStore.getState().setError(extractError(error));
 			});
 
@@ -234,6 +302,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			}
 
 			const sessionKey = getCurrentSessionKey(agentId);
+			liveRunSessionRef.current.pin(sessionKey);
 			useChatStore.getState().pushMessage(sessionKey, {
 				kind: "chat",
 				role: "user",
@@ -243,6 +312,43 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			useChatStore.getState().setError(sessionKey, null);
 			useRuntimeStore.getState().setError(null);
 			return true;
+		},
+		[sendCommand],
+	);
+
+	const sendBrowserPrompt = useCallback(
+		async (
+			input: string,
+			images: ComposerImageAttachment[] = [],
+		): Promise<boolean> => {
+			return await dispatchBrowserPromptMessage({
+				input,
+				images,
+				getActiveAgentId,
+				getCurrentSessionKey,
+				getSocket: () => wsRef.current,
+				isSocketOpen: isRuntimeSocketOpen,
+				pinSession: (sessionKey) => {
+					liveRunSessionRef.current.pin(sessionKey);
+				},
+				pushMessage: (sessionKey, message) => {
+					useChatStore.getState().pushMessage(sessionKey, message);
+				},
+				sendCommand,
+				sendPrompt: (ws, prompt, uploadedImages) => {
+					sendRuntimePrompt(ws, prompt, undefined, uploadedImages);
+				},
+				setRuntimeError: (error) => {
+					useRuntimeStore.getState().setError(error);
+				},
+				setSessionError: (sessionKey, error) => {
+					useChatStore.getState().setError(sessionKey, error);
+				},
+				startAssistantTurn: (sessionKey) => {
+					useChatStore.getState().startAssistantTurn(sessionKey);
+				},
+				uploadImages: uploadPromptImages,
+			});
 		},
 		[sendCommand],
 	);
@@ -260,6 +366,26 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				setAgentName: useRuntimeStore.getState().setAgentName,
 			}),
 		[sendCommand, sendPrompt],
+	);
+
+	const sendBrowserPromptToAgent = useCallback(
+		(
+			agent: AgentEntry,
+			prompt: string,
+			images: ComposerImageAttachment[] = [],
+		): Promise<boolean> =>
+			dispatchBrowserPromptToAgent({
+				agent,
+				activeAgentId: useAgentsStore.getState().activeAgentId,
+				clearRuntimeSession: useRuntimeStore.getState().clearSession,
+				prompt,
+				images,
+				sendBrowserPrompt,
+				sendCommand,
+				setActiveAgent: useAgentsStore.getState().setActiveAgent,
+				setAgentName: useRuntimeStore.getState().setAgentName,
+			}),
+		[sendBrowserPrompt, sendCommand],
 	);
 
 	const switchAgent = useCallback(
@@ -389,35 +515,37 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					if (!agentId) {
 						return;
 					}
+					sidebarRefreshGateRef.current.invalidate();
+					liveRunSessionRef.current.clear();
 					const sessionKey = getCurrentSessionKey(agentId);
 					useSessionsStore.getState().setActiveSession(agentId, null);
 					useChatStore.getState().clearSession(sessionKey);
+					useChatStore.getState().clearPendingSessions(agentId);
 					useRuntimeStore.getState().clearSession();
 					return;
 				}
 				case "history_replay": {
 					const agentId = getActiveAgentId();
+					const providerId = useRuntimeStore.getState().providerId;
 					if (!agentId) {
 						return;
 					}
-
-					const activeSession =
-						getCurrentSessionRef(agentId) ??
-						(useRuntimeStore.getState().sessionId &&
-						useRuntimeStore.getState().providerId
-							? createBrowserSessionRef(
-									agentId,
-									useRuntimeStore.getState().providerId as string,
-									useRuntimeStore.getState().sessionId as string,
-								)
-							: null);
-					if (!activeSession) {
+					if (!providerId) {
 						return;
 					}
 
 					useChatStore
 						.getState()
-						.replaceHistory(createSessionKey(activeSession), event.messages);
+						.replaceHistory(
+							createSessionKey(
+								createBrowserSessionRef(
+									agentId,
+									providerId,
+									event.sdkSessionId,
+								),
+							),
+							event.messages,
+						);
 					if (useRuntimeStore.getState().running) {
 						ensureRunningChatSession(
 							agentId,
@@ -431,13 +559,11 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					if (!agentId) {
 						return;
 					}
+					const sessionKey = pinObservedSessionKey(agentId, event.sessionId);
 
 					useChatStore
 						.getState()
-						.pushMessage(
-							getCurrentSessionKey(agentId),
-							toObservedDisplayMessage(event),
-						);
+						.pushMessage(sessionKey, toObservedDisplayMessage(event));
 					return;
 				}
 				case "thinking": {
@@ -447,7 +573,10 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					}
 					useChatStore
 						.getState()
-						.appendThinking(getCurrentSessionKey(agentId), event.text);
+						.appendThinking(
+							routeObservedSessionKey(agentId, event.sessionId),
+							event.text,
+						);
 					return;
 				}
 				case "text": {
@@ -457,7 +586,10 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					}
 					useChatStore
 						.getState()
-						.appendText(getCurrentSessionKey(agentId), event.text);
+						.appendText(
+							routeObservedSessionKey(agentId, event.sessionId),
+							event.text,
+						);
 					return;
 				}
 				case "image": {
@@ -465,9 +597,16 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					if (!agentId) {
 						return;
 					}
-					useChatStore.getState().appendImage(getCurrentSessionKey(agentId), {
-						path: event.path,
-					});
+					useChatStore
+						.getState()
+						.appendImage(routeObservedSessionKey(agentId, event.sessionId), {
+							kind: "managed",
+							path: event.path,
+							mediaType:
+								event.mediaType ??
+								inferImageMediaTypeFromPath(event.path) ??
+								"image/png",
+						});
 					return;
 				}
 				case "compacting_started": {
@@ -477,7 +616,10 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					}
 					useChatStore
 						.getState()
-						.setCompacting(getCurrentSessionKey(agentId), true);
+						.setCompacting(
+							routeObservedSessionKey(agentId, event.sessionId),
+							true,
+						);
 					return;
 				}
 				case "compacting_finished": {
@@ -487,7 +629,10 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					}
 					useChatStore
 						.getState()
-						.setCompacting(getCurrentSessionKey(agentId), false);
+						.setCompacting(
+							routeObservedSessionKey(agentId, event.sessionId),
+							false,
+						);
 					return;
 				}
 				case "done": {
@@ -507,13 +652,23 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 						event.sessionId,
 					);
 					const nextSessionKey = createSessionKey(nextSessionRef);
+					const completion = liveRunSessionRef.current.complete(
+						nextSessionKey,
+						currentSessionKey,
+					);
 
-					if (currentSessionKey !== nextSessionKey) {
+					if (
+						completion.adoptFromSessionKey &&
+						completion.adoptFromSessionKey !== completion.sessionKey
+					) {
 						useChatStore
 							.getState()
-							.adoptSession(currentSessionKey, nextSessionKey);
+							.adoptSession(
+								completion.adoptFromSessionKey,
+								completion.sessionKey,
+							);
 					}
-					useChatStore.getState().finalizeMessage(nextSessionKey);
+					useChatStore.getState().finalizeMessage(completion.sessionKey);
 					useSessionsStore.getState().setActiveSession(agentId, nextSessionRef);
 					if (event.usage) {
 						useContextUsageStore
@@ -532,10 +687,13 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				case "error": {
 					const agentId = getActiveAgentId();
 					if (agentId) {
-						useChatStore
-							.getState()
-							.setError(getCurrentSessionKey(agentId), event.message);
+						const sessionKey = routeObservedSessionKey(
+							agentId,
+							event.sessionId,
+						);
+						useChatStore.getState().setError(sessionKey, event.message);
 					}
+					liveRunSessionRef.current.clear();
 					useRuntimeStore.getState().setError(event.message);
 					return;
 				}
@@ -560,7 +718,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					return;
 			}
 		},
-		[refreshSidebar],
+		[pinObservedSessionKey, refreshSidebar, routeObservedSessionKey],
 	);
 
 	useEffect(() => {
@@ -640,6 +798,8 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			connected: connectionStatus === "connected",
 			connectionStatus,
 			sendPrompt,
+			sendBrowserPrompt,
+			sendBrowserPromptToAgent,
 			sendPromptToAgent,
 			sendCommand,
 			switchAgent,
@@ -652,6 +812,8 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			connectionStatus,
 			sendCommand,
 			sendPrompt,
+			sendBrowserPrompt,
+			sendBrowserPromptToAgent,
 			sendPromptToAgent,
 			switchAgent,
 			switchSession,

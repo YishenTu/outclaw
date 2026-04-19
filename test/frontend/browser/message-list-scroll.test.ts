@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	createTranscriptAutoScrollToken,
+	displayMessageRenderKey,
 	isNearTranscriptBottom,
 } from "../../../src/frontend/browser/components/chat/message-list-scroll.ts";
 
@@ -97,6 +98,50 @@ describe("browser message list scroll", () => {
 		});
 
 		expect(second).not.toBe(first);
+	});
+
+	test("render keys stay unique for duplicate messages in the same session", () => {
+		const message = {
+			kind: "system" as const,
+			event: "heartbeat" as const,
+			text: "Heartbeat",
+		};
+
+		expect(
+			displayMessageRenderKey({
+				message,
+				index: 0,
+				sessionKey: "agent-a:claude:sdk-1",
+			}),
+		).not.toBe(
+			displayMessageRenderKey({
+				message,
+				index: 1,
+				sessionKey: "agent-a:claude:sdk-1",
+			}),
+		);
+	});
+
+	test("render keys stay session-scoped across session switches", () => {
+		const message = {
+			kind: "chat" as const,
+			role: "assistant" as const,
+			content: "HEARTBEAT_OK",
+		};
+
+		expect(
+			displayMessageRenderKey({
+				message,
+				index: 0,
+				sessionKey: "agent-a:claude:sdk-1",
+			}),
+		).not.toBe(
+			displayMessageRenderKey({
+				message,
+				index: 0,
+				sessionKey: "agent-a:claude:sdk-2",
+			}),
+		);
 	});
 
 	test("treats users near the bottom as sticky", () => {

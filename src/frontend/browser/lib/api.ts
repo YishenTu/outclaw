@@ -6,6 +6,7 @@ import type {
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
+	BrowserImageUploadResponse,
 	BrowserTreeEntry,
 } from "../../../common/protocol.ts";
 
@@ -109,4 +110,21 @@ export async function fetchGitCommit(
 	const url = new URL("/api/git/commit", window.location.origin);
 	url.searchParams.set("sha", sha);
 	return parseJsonResponse(await fetch(url));
+}
+
+export async function uploadPromptImages(
+	files: File[],
+): Promise<BrowserImageUploadResponse["images"]> {
+	const formData = new FormData();
+	for (const file of files) {
+		formData.append("images", file);
+	}
+
+	const response = await parseJsonResponse<BrowserImageUploadResponse>(
+		await fetch("/api/images", {
+			method: "POST",
+			body: formData,
+		}),
+	);
+	return response.images;
 }

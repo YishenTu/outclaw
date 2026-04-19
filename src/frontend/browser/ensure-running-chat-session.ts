@@ -1,5 +1,6 @@
-import { resolveBrowserSessionKey } from "./session.ts";
+import { resolveCurrentBrowserSessionKey } from "./session.ts";
 import { useChatStore } from "./stores/chat.ts";
+import { useRuntimeStore } from "./stores/runtime.ts";
 import { useSessionsStore } from "./stores/sessions.ts";
 
 export function ensureRunningChatSession(
@@ -8,10 +9,12 @@ export function ensureRunningChatSession(
 ) {
 	const activeSession =
 		useSessionsStore.getState().activeSessionByAgent[agentId] ?? null;
-	const sessionKey = resolveBrowserSessionKey({
+	const runtimeSessionId = useRuntimeStore.getState().sessionId;
+	const sessionKey = resolveCurrentBrowserSessionKey({
 		agentId,
 		activeSession,
 		providerId: providerId ?? undefined,
+		runtimeSessionId,
 	});
 	useChatStore.getState().startAssistantTurn(sessionKey);
 }

@@ -44,14 +44,30 @@ describe("formatContext", () => {
 });
 
 describe("formatImage", () => {
-	test("formats image with path", () => {
-		expect(formatImage({ path: "/tmp/cat.png", mediaType: "image/png" })).toBe(
-			"[image: /tmp/cat.png]",
-		);
+	test("formats managed image without exposing the path", () => {
+		expect(
+			formatImage({
+				kind: "managed",
+				path: "/tmp/cat.png",
+				mediaType: "image/png",
+			}),
+		).toBe("[image]");
 	});
 
-	test("formats image without path", () => {
-		expect(formatImage({ mediaType: "image/png" })).toBe("[image]");
+	test("formats inline replay images as placeholders", () => {
+		expect(
+			formatImage({
+				kind: "inline",
+				mediaType: "image/png",
+				base64: "abc123",
+			}),
+		).toBe("[image]");
+	});
+
+	test("formats placeholder images as placeholders", () => {
+		expect(formatImage({ kind: "placeholder", mediaType: "image/png" })).toBe(
+			"[image]",
+		);
 	});
 });
 
@@ -69,15 +85,17 @@ describe("formatLivePrompt", () => {
 	test("formats prompt with images", () => {
 		expect(
 			formatLivePrompt("telegram", "what is this?", [
-				{ path: "/tmp/cat.png", mediaType: "image/png" },
+				{ kind: "managed", path: "/tmp/cat.png", mediaType: "image/png" },
 			]),
-		).toBe("[telegram] what is this?\n[telegram] [image: /tmp/cat.png]\n");
+		).toBe("[telegram] what is this?\n[telegram] [image]\n");
 	});
 
 	test("formats image-only prompt", () => {
-		expect(formatLivePrompt("telegram", "", [{ mediaType: "image/png" }])).toBe(
-			"[telegram] [image]\n",
-		);
+		expect(
+			formatLivePrompt("telegram", "", [
+				{ kind: "placeholder", mediaType: "image/png" },
+			]),
+		).toBe("[telegram] [image]\n");
 	});
 
 	test("returns empty string for empty prompt and no images", () => {
@@ -116,9 +134,15 @@ describe("formatReplayMessage", () => {
 				kind: "chat",
 				role: "user",
 				content: "Question",
-				images: [{ path: "/tmp/cat.png", mediaType: "image/png" }],
+				images: [
+					{
+						kind: "inline",
+						mediaType: "image/png",
+						base64: "abc123",
+					},
+				],
 			}),
-		).toBe("> Question\n> [image: /tmp/cat.png]\n");
+		).toBe("> Question\n> [image]\n");
 	});
 
 	test("formats user message with reply context in the main message text", () => {
@@ -138,7 +162,7 @@ describe("formatReplayMessage", () => {
 				kind: "chat",
 				role: "user",
 				content: "",
-				images: [{ mediaType: "image/png" }],
+				images: [{ kind: "placeholder", mediaType: "image/png" }],
 			}),
 		).toBe("> [image]\n");
 	});

@@ -1,4 +1,5 @@
 import type {
+	DisplayImage,
 	DoneEvent,
 	FacadeEvent,
 	HeartbeatResult,
@@ -75,6 +76,7 @@ export class PromptDispatcher {
 	) {
 		const heartbeatBuffer: FacadeEvent[] = [];
 		let completedEvent: DoneEvent | undefined;
+		const observedSessionId = this.options.state.sessionId;
 
 		if (
 			task.source === "telegram" ||
@@ -86,22 +88,24 @@ export class PromptDispatcher {
 			this.options.clients.sendMany(this.listObservers(task), {
 				type: "user_prompt",
 				prompt: task.prompt,
-				images: task.images,
+				images: toDisplayImages(task.images),
 				replyContext: task.replyContext,
 				source: task.source,
+				sessionId: observedSessionId,
 			});
 			this.options.onVisibleRunStarted?.();
 		}
 
 		const emit = (event: FacadeEvent) => {
+			const observedEvent = attachObservedSessionId(event, observedSessionId);
 			task.onEvent?.(event);
 			if (task.source === "heartbeat") {
 				heartbeatBuffer.push(event);
 			}
 			if (task.sender) {
-				this.options.clients.send(task.sender, event);
+				this.options.clients.send(task.sender, observedEvent);
 			}
-			this.options.clients.sendMany(this.listObservers(task), event);
+			this.options.clients.sendMany(this.listObservers(task), observedEvent);
 			if (event.type === "error") {
 				completedEvent = undefined;
 			}
@@ -179,6 +183,38 @@ export class PromptDispatcher {
 
 		return [];
 	}
+}
+
+function toDisplayImages(
+	images: ImageRef[] | undefined,
+): DisplayImage[] | undefined {
+	if (!images || images.length === 0) {
+		return undefined;
+	}
+
+	return images.map((image) => ({
+		kind: "managed",
+		path: image.path,
+		mediaType: image.mediaType,
+	}));
+}
+
+function attachObservedSessionId(
+	event: FacadeEvent,
+	observedSessionId: string | undefined,
+): FacadeEvent {
+	if (
+		observedSessionId === undefined ||
+		event.type === "done" ||
+		event.type === "status"
+	) {
+		return event;
+	}
+
+	return {
+		...event,
+		sessionId: observedSessionId,
+	};
 }
 
 function toHeartbeatResult(events: FacadeEvent[]): HeartbeatResult {

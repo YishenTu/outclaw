@@ -143,6 +143,7 @@ function startMultiAgentDaemon(
 					providerId: runtime.providerId,
 				};
 			}),
+			filesRoot,
 			getRememberedAgentId: () => stateStore.getLastInteractiveAgentId(),
 			gitRoot: HOME_DIR,
 			homeDir: HOME_DIR,

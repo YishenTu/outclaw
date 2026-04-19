@@ -11,10 +11,21 @@ export interface ImageRef {
 	mediaType: ImageMediaType;
 }
 
-export interface DisplayImage {
-	path?: string;
-	mediaType?: ImageMediaType;
-}
+export type DisplayImage =
+	| {
+			kind: "managed";
+			path: string;
+			mediaType: ImageMediaType;
+	  }
+	| {
+			kind: "inline";
+			base64: string;
+			mediaType: ImageMediaType;
+	  }
+	| {
+			kind: "placeholder";
+			mediaType: ImageMediaType;
+	  };
 
 export interface ReplyContext {
 	text: string;
@@ -78,12 +89,15 @@ export type ClientMessage =
 export interface TextEvent {
 	type: "text";
 	text: string;
+	sessionId?: string;
 }
 
 export interface ImageEvent {
 	type: "image";
 	path: string;
+	mediaType?: ImageMediaType;
 	caption?: string;
+	sessionId?: string;
 }
 
 export interface StatusEvent {
@@ -94,11 +108,13 @@ export interface StatusEvent {
 export interface ThinkingEvent {
 	type: "thinking";
 	text: string;
+	sessionId?: string;
 }
 
 export interface ErrorEvent {
 	type: "error";
 	message: string;
+	sessionId?: string;
 }
 
 export interface UsageInfo {
@@ -126,14 +142,17 @@ export interface UserPromptEvent {
 	images?: DisplayImage[];
 	replyContext?: ReplyContext;
 	source: PromptSource;
+	sessionId?: string;
 }
 
 export interface CompactingStartedEvent {
 	type: "compacting_started";
+	sessionId?: string;
 }
 
 export interface CompactingFinishedEvent {
 	type: "compacting_finished";
+	sessionId?: string;
 }
 
 export interface SessionClearedEvent {
@@ -285,6 +304,7 @@ export interface TranscriptTurn {
 
 export interface HistoryReplayEvent {
 	type: "history_replay";
+	sdkSessionId: string;
 	messages: DisplayMessage[];
 }
 
@@ -383,6 +403,10 @@ export type BrowserConfigSchemaNode =
 
 export interface BrowserConfigResponse extends BrowserFileResponse {
 	schema: BrowserConfigSchemaNode;
+}
+
+export interface BrowserImageUploadResponse {
+	images: ImageRef[];
 }
 
 export interface BrowserGitFileStatus {

@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+	DisplayImage,
 	Facade,
 	FacadeEvent,
 	HistoryReplayEvent,
@@ -238,6 +239,9 @@ describe("RuntimeController", () => {
 
 			const replay = ws2.events().find((e) => e.type === "history_replay");
 			expect(replay).toBeDefined();
+			expect((replay as { sdkSessionId?: string }).sdkSessionId).toBe(
+				"mock-session-123",
+			);
 			expect((replay as { messages: unknown[] }).messages).toHaveLength(2);
 		});
 
@@ -800,9 +804,15 @@ describe("RuntimeController", () => {
 			const userPrompt = tui
 				.events()
 				.find((event) => event.type === "user_prompt") as
-				| { images?: ImageRef[] }
+				| { images?: DisplayImage[] }
 				| undefined;
-			expect(userPrompt?.images).toEqual(images);
+			expect(userPrompt?.images).toEqual([
+				{
+					kind: "managed",
+					path: "/tmp/cat.png",
+					mediaType: "image/png",
+				},
+			]);
 		});
 
 		test("broadcasts telegram reply context without mutating the prompt", async () => {
@@ -1021,7 +1031,11 @@ describe("RuntimeController", () => {
 				{ type: "text", text: "echo: from 123" },
 			]);
 			expect(tg456.events().filter((event) => event.type === "text")).toEqual([
-				{ type: "text", text: "echo: from 456" },
+				{
+					type: "text",
+					text: "echo: from 456",
+					sessionId: "mock-session-123",
+				},
 			]);
 			expect(state.createHeartbeatDeliveryTarget()).toEqual({
 				clientType: "telegram",
@@ -1087,6 +1101,7 @@ describe("RuntimeController", () => {
 				type: "user_prompt",
 				prompt: "check tasks",
 				source: "heartbeat",
+				sessionId: "mock-session-123",
 			});
 
 			await new Promise((r) => setTimeout(r, 80));
@@ -1098,10 +1113,12 @@ describe("RuntimeController", () => {
 				type: "user_prompt",
 				prompt: "check tasks",
 				source: "heartbeat",
+				sessionId: "mock-session-123",
 			});
 			expect(tuiEvents).toContainEqual({
 				type: "text",
 				text: "echo: check tasks",
+				sessionId: "mock-session-123",
 			});
 			expect(tuiEvents.some((event) => event.type === "done")).toBe(true);
 
@@ -1157,10 +1174,12 @@ describe("RuntimeController", () => {
 				type: "user_prompt",
 				prompt: "check in",
 				source: "heartbeat",
+				sessionId: "mock-session-123",
 			});
 			expect(tuiEvents).toContainEqual({
 				type: "text",
 				text: "echo: check in",
+				sessionId: "mock-session-123",
 			});
 
 			const tgEvents = tg
@@ -1212,10 +1231,12 @@ describe("RuntimeController", () => {
 					type: "user_prompt",
 					prompt: "check failure",
 					source: "heartbeat",
+					sessionId: "mock-session-123",
 				});
 				expect(tuiEvents).toContainEqual({
 					type: "text",
 					text: "echo: check failure",
+					sessionId: "mock-session-123",
 				});
 				expect(tuiEvents.some((event) => event.type === "done")).toBe(true);
 				expect(tuiEvents.some((event) => event.type === "error")).toBe(false);

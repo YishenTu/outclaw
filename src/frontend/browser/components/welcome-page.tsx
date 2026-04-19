@@ -9,6 +9,7 @@ import { useRuntimeStore } from "../stores/runtime.ts";
 import { useSessionsStore } from "../stores/sessions.ts";
 import { useWorkspaceViewStore } from "../stores/workspace-view.ts";
 import { resolveWelcomeAgentId } from "../welcome-agent-selection.ts";
+import type { ComposerImageAttachment } from "./chat/composer-images.ts";
 import { MessageInput } from "./chat/message-input.tsx";
 import { WelcomeAgentPicker } from "./welcome-agent-picker.tsx";
 
@@ -53,7 +54,7 @@ export function WelcomePageView({ input }: WelcomePageViewProps) {
 }
 
 export function WelcomePage() {
-	const { sendCommand, sendPromptToAgent } = useWs();
+	const { sendBrowserPromptToAgent, sendCommand } = useWs();
 	const openWorkspace = useWorkspaceViewStore((state) => state.openWorkspace);
 	const agents = useAgentsStore((state) => state.agents);
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
@@ -87,12 +88,18 @@ export function WelcomePage() {
 					providerId,
 				});
 
-	function handleSend(prompt: string): boolean {
+	async function handleSend({
+		images,
+		text,
+	}: {
+		text: string;
+		images: ComposerImageAttachment[];
+	}): Promise<boolean> {
 		if (!selectedAgent) {
 			return false;
 		}
 
-		const sent = sendPromptToAgent(selectedAgent, prompt);
+		const sent = await sendBrowserPromptToAgent(selectedAgent, text, images);
 		if (sent) {
 			openWorkspace();
 		}

@@ -377,8 +377,7 @@ describe("Runtime server", () => {
 			type: "user_prompt",
 			prompt: "mirror me",
 			source: "tui",
-			images: undefined,
-			replyContext: undefined,
+			sessionId: "mock-session-123",
 		});
 		expect(browserEvents.some((event) => event.type === "text")).toBe(true);
 		expect(browserEvents.some((event) => event.type === "done")).toBe(true);

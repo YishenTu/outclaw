@@ -4,7 +4,7 @@ import { MarkdownContent } from "./markdown-content.tsx";
 import { Message } from "./message.tsx";
 import {
 	createTranscriptAutoScrollToken,
-	displayMessageKey,
+	displayMessageRenderKey,
 	isNearTranscriptBottom,
 } from "./message-list-scroll.ts";
 import { ThinkingBlock } from "./thinking-block.tsx";
@@ -76,8 +76,15 @@ export const MessageList = memo(function MessageList({
 			className="scrollbar-none flex-1 overflow-y-auto"
 		>
 			<div className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
-				{messages.map((message) => (
-					<Message key={displayMessageKey(message)} message={message} />
+				{messages.map((message, index) => (
+					<Message
+						key={displayMessageRenderKey({
+							message,
+							index,
+							sessionKey,
+						})}
+						message={message}
+					/>
 				))}
 
 				{(hasAssistantOutput || isStreaming) && (

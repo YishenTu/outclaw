@@ -288,6 +288,52 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("stores uploaded browser prompt images under the managed files root", async () => {
+		const root = createTempDir("outclaw-browser-upload-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const filesRoot = join(root, "files");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			filesRoot,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		const uploaded = await api.uploadImages([
+			{
+				bytes: new Uint8Array([1, 2, 3]),
+				mediaType: "image/png",
+			},
+		]);
+
+		expect(uploaded).toHaveLength(1);
+		expect(uploaded[0]).toEqual({
+			path: expect.stringMatching(/\.png$/),
+			mediaType: "image/png",
+		});
+		expect(uploaded[0]?.path.startsWith(filesRoot)).toBe(true);
+		expect(readFileSync(uploaded[0]?.path ?? "")).toEqual(
+			Buffer.from([1, 2, 3]),
+		);
+
+		store.close();
+	});
+
 	test("lists agent tree entries with git status for modified and new files", async () => {
 		const root = createTempDir("outclaw-browser-tree-git-");
 		cleanupPaths.push(root);

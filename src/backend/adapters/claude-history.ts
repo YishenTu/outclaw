@@ -23,6 +23,7 @@ import {
 interface HistoryBlock {
 	type: string;
 	source?: {
+		data?: string;
 		media_type?: ImageMediaType;
 	};
 	text?: string;
@@ -194,13 +195,16 @@ export function normalizeClaudeHistory(
 				continue;
 			}
 			if (parsed.prompt || parsed.replyContext || images.length > 0) {
-				result.push({
+				const entry: DisplayChatMessage = {
 					kind: "chat",
 					role: "user",
 					content: parsed.prompt,
 					images: images.length > 0 ? images : undefined,
-					replyContext: parsed.replyContext,
-				});
+				};
+				if (parsed.replyContext) {
+					entry.replyContext = parsed.replyContext;
+				}
+				result.push(entry);
 			}
 		}
 
@@ -314,20 +318,26 @@ export function normalizeClaudeTranscript(
 			const parsed = parsePromptWithReplyContext(
 				stripTaskNotifications(extractText(content)),
 			);
-			const images = extractImages(content);
+			const images = extractImages(content, "transcript");
 			if (parsed.prompt || parsed.replyContext || images.length > 0) {
-				result.push({
+				const entry: TranscriptTurn = {
 					role: "user",
 					content: parsed.prompt,
 					images: images.length > 0 ? images : undefined,
-					replyContext: parsed.replyContext,
-					source: resolveTranscriptPromptSource(
-						parsed.prompt,
-						parsed.replyContext,
-						images,
-					),
 					timestamp,
-				});
+				};
+				if (parsed.replyContext) {
+					entry.replyContext = parsed.replyContext;
+				}
+				const source = resolveTranscriptPromptSource(
+					parsed.prompt,
+					parsed.replyContext,
+					images,
+				);
+				if (source) {
+					entry.source = source;
+				}
+				result.push(entry);
 			}
 			continue;
 		}
@@ -596,12 +606,38 @@ function findPreviousRelevantMessage(
 	return undefined;
 }
 
-function extractImages(blocks: HistoryBlock[]): DisplayImage[] {
+function extractImages(
+	blocks: HistoryBlock[],
+	mode: "history" | "transcript" = "history",
+): DisplayImage[] {
 	return blocks
 		.filter((block) => block.type === "image")
-		.map((block) => ({
-			mediaType: block.source?.media_type,
-		}));
+		.flatMap<DisplayImage>((block) => {
+			const mediaType = block.source?.media_type;
+			if (!mediaType) {
+				return [];
+			}
+
+			if (mode === "history") {
+				const base64 = block.source?.data;
+				if (typeof base64 === "string" && base64.length > 0) {
+					return [
+						{
+							kind: "inline" as const,
+							mediaType,
+							base64,
+						},
+					];
+				}
+			}
+
+			return [
+				{
+					kind: "placeholder" as const,
+					mediaType,
+				},
+			];
+		});
 }
 
 function extractText(blocks: HistoryBlock[]): string {

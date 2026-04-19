@@ -1,11 +1,61 @@
 import { clsx } from "clsx";
 import { Heart } from "lucide-react";
 import type { DisplayMessage } from "../../../../common/protocol.ts";
+import { getImageThumbnailClassName } from "./image-thumbnail-styles.ts";
 import { MarkdownContent } from "./markdown-content.tsx";
 import { ThinkingBlock } from "./thinking-block.tsx";
 
 interface MessageProps {
 	message: DisplayMessage;
+}
+
+type ChatImage = NonNullable<
+	Extract<DisplayMessage, { kind: "chat" }>["images"]
+>[number];
+
+function imageKey(image: ChatImage, index: number) {
+	return `${image.kind}:${index}`;
+}
+
+function imageLabel(index: number): string {
+	return `Image ${index + 1}`;
+}
+
+function inlineImageSrc(image: ChatImage) {
+	return image.kind === "inline"
+		? `data:${image.mediaType};base64,${image.base64}`
+		: undefined;
+}
+
+function renderImageGallery(images: ChatImage[], role: "user" | "assistant") {
+	return (
+		<div className="mb-2 flex flex-wrap gap-2">
+			{images.map((image, index) => {
+				const label = imageLabel(index);
+				const src = inlineImageSrc(image);
+
+				if (src) {
+					return (
+						<img
+							key={imageKey(image, index)}
+							src={src}
+							alt={`${role === "user" ? "User" : "Assistant"} upload ${index + 1}`}
+							className={getImageThumbnailClassName("message")}
+						/>
+					);
+				}
+
+				return (
+					<div
+						key={imageKey(image, index)}
+						className="font-mono-ui flex h-24 w-24 items-center justify-center rounded-md border border-dark-700 bg-dark-900/80 px-3 text-center text-[11px] uppercase tracking-[0.12em] text-dark-400"
+					>
+						{label}
+					</div>
+				);
+			})}
+		</div>
+	);
 }
 
 export function Message({ message }: MessageProps) {
@@ -45,18 +95,9 @@ export function Message({ message }: MessageProps) {
 							</div>
 						</div>
 					)}
-					{message.images && message.images.length > 0 && (
-						<div className="mb-2 flex flex-wrap gap-2">
-							{message.images.map((image) => (
-								<div
-									key={`${image.path ?? image.mediaType ?? "image"}:user`}
-									className="font-mono-ui rounded bg-dark-700 px-2 py-1 text-xs text-dark-300"
-								>
-									{image.path ?? "[image]"}
-								</div>
-							))}
-						</div>
-					)}
+					{message.images &&
+						message.images.length > 0 &&
+						renderImageGallery(message.images, "user")}
 					<div className="text-sm whitespace-pre-wrap break-words">
 						{message.content}
 					</div>
@@ -81,18 +122,8 @@ export function Message({ message }: MessageProps) {
 					)}
 					{message.images && message.images.length > 0 && (
 						<div className="px-3">
-							<div className="flex flex-wrap gap-2">
-								{message.images.map((image) => (
-									<div
-										key={`${image.path ?? image.mediaType ?? "image"}:assistant`}
-										className={clsx(
-											"font-mono-ui rounded px-2 py-1 text-xs text-dark-300",
-											"bg-dark-900",
-										)}
-									>
-										{image.path ?? "[image]"}
-									</div>
-								))}
+							<div className={clsx("rounded-md bg-dark-900/40 px-2 py-2")}>
+								{renderImageGallery(message.images, "assistant")}
 							</div>
 						</div>
 					)}

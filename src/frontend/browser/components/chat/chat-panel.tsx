@@ -1,7 +1,7 @@
 import type { EffortLevel } from "../../../../common/commands.ts";
 import type { ModelAlias } from "../../../../common/models.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
-import { resolveBrowserSessionKey } from "../../session.ts";
+import { resolveCurrentBrowserSessionKey } from "../../session.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import { useChatStore } from "../../stores/chat.ts";
 import { useRuntimeStore } from "../../stores/runtime.ts";
@@ -10,7 +10,7 @@ import { MessageInput } from "./message-input.tsx";
 import { MessageList } from "./message-list.tsx";
 
 export function ChatPanel() {
-	const { sendCommand, sendPrompt } = useWs();
+	const { sendBrowserPrompt, sendCommand } = useWs();
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
 	const agents = useAgentsStore((state) => state.agents);
 	const sessionsByAgent = useSessionsStore((state) => state.sessionsByAgent);
@@ -18,6 +18,7 @@ export function ChatPanel() {
 		activeAgentId ? (state.activeSessionByAgent[activeAgentId] ?? null) : null,
 	);
 	const providerId = useRuntimeStore((state) => state.providerId);
+	const runtimeSessionId = useRuntimeStore((state) => state.sessionId);
 	const sessionTitleFromRuntime = useRuntimeStore(
 		(state) => state.sessionTitle,
 	);
@@ -28,10 +29,11 @@ export function ChatPanel() {
 	const sessionKey =
 		activeAgentId === null
 			? null
-			: resolveBrowserSessionKey({
+			: resolveCurrentBrowserSessionKey({
 					agentId: activeAgentId,
 					activeSession,
 					providerId,
+					runtimeSessionId,
 				});
 	const chatSession = useChatStore((state) =>
 		sessionKey ? state.sessions[sessionKey] : undefined,
@@ -72,7 +74,7 @@ export function ChatPanel() {
 					</div>
 				</div>
 				<MessageInput
-					onSend={sendPrompt}
+					onSend={({ text, images }) => sendBrowserPrompt(text, images)}
 					disabled
 					interruptible={false}
 					model={model}
@@ -107,6 +109,7 @@ export function ChatPanel() {
 				<div className="flex-1" />
 			) : (
 				<MessageList
+					key={sessionKey ?? "no-session"}
 					sessionKey={sessionKey}
 					messages={chatSession?.messages ?? []}
 					streamingText={chatSession?.streamingText ?? ""}
@@ -118,7 +121,7 @@ export function ChatPanel() {
 			)}
 
 			<MessageInput
-				onSend={sendPrompt}
+				onSend={({ text, images }) => sendBrowserPrompt(text, images)}
 				interruptible={
 					(chatSession?.isStreaming ?? false) ||
 					(chatSession?.isThinking ?? false) ||

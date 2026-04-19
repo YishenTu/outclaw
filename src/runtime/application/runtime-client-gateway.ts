@@ -60,6 +60,7 @@ export class RuntimeClientGateway {
 				}
 				this.hub.sendMany(targetList, {
 					type: "history_replay",
+					sdkSessionId: sessionId,
 					messages,
 				});
 			})

@@ -522,6 +522,91 @@ describe("createSupervisor browser routes", () => {
 		});
 	});
 
+	test("accepts browser image uploads over HTTP", async () => {
+		const supervisor = createSupervisor({
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+				}),
+			],
+			browserApi: {
+				getAgentTerminalCwd: () => undefined,
+				listAgentCron: async () => [],
+				listAgentTree: async () => [],
+				listAgents: () => ({
+					activeAgentId: "agent-railly",
+					agents: [],
+				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async () => {
+					throw new Error("Not implemented");
+				},
+				readAgentFile: async (_agentId, path) => ({
+					path,
+					kind: "text",
+					content: "# Agent\n",
+					truncated: false,
+				}),
+				readGitCommit: async (sha) => ({
+					sha,
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
+				readGitDiff: async () => ({
+					path: "config.json",
+					diff: "",
+				}),
+				readGitStatus: async () => ({
+					root: "/tmp/.outclaw",
+					branch: "main",
+					ahead: 0,
+					behind: 0,
+					clean: true,
+					graph: { commits: [], branchHeads: [] },
+					files: [],
+				}),
+				uploadImages: async (images) =>
+					images.map((image, index) => ({
+						path: `/tmp/upload-${index}.png`,
+						mediaType: image.mediaType,
+					})),
+				setAgentCronEnabled: async () => {
+					throw new Error("Not implemented");
+				},
+			},
+			port: 0,
+		});
+		cleanup = () => supervisor.stop();
+
+		const body = new FormData();
+		body.append(
+			"images",
+			new File(["png-bytes"], "cat.png", { type: "image/png" }),
+		);
+
+		const response = await fetch(
+			`http://localhost:${supervisor.port}/api/images`,
+			{
+				method: "POST",
+				body,
+			},
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			images: [{ path: "/tmp/upload-0.png", mediaType: "image/png" }],
+		});
+	});
+
 	test("serves browser git commit details over HTTP", async () => {
 		const supervisor = createSupervisor({
 			agents: [

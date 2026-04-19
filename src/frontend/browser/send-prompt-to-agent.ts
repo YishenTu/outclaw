@@ -1,31 +1,40 @@
+import type { ComposerImageAttachment } from "./components/chat/composer-images.ts";
 import type { AgentEntry } from "./stores/agents.ts";
 
-interface SendPromptToAgentParams {
+interface SendPromptToAgentBaseParams {
 	agent: AgentEntry | null;
 	activeAgentId: string | null;
 	clearRuntimeSession: () => void;
-	prompt: string;
 	sendCommand: (command: string) => boolean;
-	sendPrompt: (prompt: string) => boolean;
 	setActiveAgent: (agentId: string) => void;
 	setAgentName: (name: string | null) => void;
 }
 
-export function sendPromptToAgent({
+interface SendPromptToAgentParams extends SendPromptToAgentBaseParams {
+	prompt: string;
+	sendPrompt: (prompt: string) => boolean;
+}
+
+interface SendBrowserPromptToAgentParams extends SendPromptToAgentBaseParams {
+	prompt: string;
+	images: ComposerImageAttachment[];
+	sendBrowserPrompt: (
+		prompt: string,
+		images: ComposerImageAttachment[],
+	) => Promise<boolean>;
+}
+
+function activateAgentForPrompt({
 	agent,
 	activeAgentId,
 	clearRuntimeSession,
-	prompt,
 	sendCommand,
-	sendPrompt,
 	setActiveAgent,
 	setAgentName,
-}: SendPromptToAgentParams): boolean {
-	const trimmedPrompt = prompt.trim();
-	if (!agent || trimmedPrompt === "") {
+}: SendPromptToAgentBaseParams): boolean {
+	if (!agent) {
 		return false;
 	}
-
 	if (activeAgentId !== agent.agentId) {
 		if (!sendCommand(`/agent ${agent.name}`)) {
 			return false;
@@ -36,5 +45,40 @@ export function sendPromptToAgent({
 		clearRuntimeSession();
 	}
 
+	return true;
+}
+
+export function sendPromptToAgent({
+	prompt,
+	sendPrompt,
+	...params
+}: SendPromptToAgentParams): boolean {
+	const trimmedPrompt = prompt.trim();
+	if (trimmedPrompt === "") {
+		return false;
+	}
+
+	if (!activateAgentForPrompt(params)) {
+		return false;
+	}
+
 	return sendPrompt(trimmedPrompt);
+}
+
+export async function sendBrowserPromptToAgent({
+	prompt,
+	images,
+	sendBrowserPrompt,
+	...params
+}: SendBrowserPromptToAgentParams): Promise<boolean> {
+	const trimmedPrompt = prompt.trim();
+	if (trimmedPrompt === "" && images.length === 0) {
+		return false;
+	}
+
+	if (!activateAgentForPrompt(params)) {
+		return false;
+	}
+
+	return sendBrowserPrompt(trimmedPrompt, images);
 }
