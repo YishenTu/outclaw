@@ -7,13 +7,15 @@ const REACT_PACKAGES = new Set([
 	"zustand",
 ]);
 
-const MARKDOWN_PACKAGES = new Set(["react-markdown", "remark-gfm"]);
-
-const HIGHLIGHT_PACKAGES = new Set([
+const MARKDOWN_PACKAGES = new Set([
 	"highlight.js",
 	"lowlight",
+	"react-markdown",
 	"rehype-highlight",
+	"remark-gfm",
 ]);
+
+const MATH_PACKAGES = new Set(["katex", "rehype-katex", "remark-math"]);
 
 const TERMINAL_PACKAGES = new Set(["@xterm/addon-fit", "@xterm/xterm"]);
 
@@ -54,8 +56,8 @@ export function manualChunkForBrowserModule(id: string): string | undefined {
 		return "vendor-markdown";
 	}
 
-	if (HIGHLIGHT_PACKAGES.has(packageName)) {
-		return "vendor-highlight";
+	if (MATH_PACKAGES.has(packageName)) {
+		return "vendor-math";
 	}
 
 	if (TERMINAL_PACKAGES.has(packageName)) {

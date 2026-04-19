@@ -40,4 +40,22 @@ describe("MarkdownContent", () => {
 		expect(html).not.toContain('class="hljs');
 		expect(html).not.toContain("hljs-keyword");
 	});
+
+	test("renders inline latex with katex markup", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownContent content={"Einstein wrote $E = mc^2$."} />,
+		);
+
+		expect(html).toContain('class="katex"');
+		expect(html).not.toContain("$E = mc^2$");
+	});
+
+	test("renders display latex blocks with katex display markup", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownContent content={"$$\n\\int_0^1 x^2 \\, dx\n$$"} />,
+		);
+
+		expect(html).toContain("katex-display");
+		expect(html).not.toContain("$$");
+	});
 });

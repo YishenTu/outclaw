@@ -1,3 +1,4 @@
+import { Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { SessionEntry } from "../../stores/sessions.ts";
 import { formatLastActive } from "./format-last-active.ts";
@@ -19,8 +20,10 @@ export function SessionItem({
 }: SessionItemProps) {
 	const titleInputRef = useRef<HTMLInputElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
+	const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
 	const [draftTitle, setDraftTitle] = useState(session.title);
 	const [editing, setEditing] = useState(false);
+	const [confirmingDelete, setConfirmingDelete] = useState(false);
 	const [menuPosition, setMenuPosition] = useState<{
 		x: number;
 		y: number;
@@ -45,11 +48,41 @@ export function SessionItem({
 	}
 
 	function handleDelete() {
-		if (window.confirm(`Delete session "${session.title}"?`)) {
-			onDelete();
-		}
 		setMenuPosition(null);
+		setConfirmingDelete(true);
 	}
+
+	function confirmDelete() {
+		setConfirmingDelete(false);
+		onDelete();
+	}
+
+	function cancelDelete() {
+		setConfirmingDelete(false);
+	}
+
+	useEffect(() => {
+		if (!confirmingDelete) {
+			return;
+		}
+
+		function onKeyDown(event: KeyboardEvent) {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				setConfirmingDelete(false);
+			}
+		}
+
+		window.addEventListener("keydown", onKeyDown);
+		const frameId = window.requestAnimationFrame(() => {
+			cancelButtonRef.current?.focus();
+		});
+
+		return () => {
+			window.removeEventListener("keydown", onKeyDown);
+			window.cancelAnimationFrame(frameId);
+		};
+	}, [confirmingDelete]);
 
 	useEffect(() => {
 		if (!menuPosition) {
@@ -188,6 +221,61 @@ export function SessionItem({
 						</button>
 					</div>
 				</>
+			)}
+
+			{confirmingDelete && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-dark-950/80 px-4 py-6 backdrop-blur-sm"
+					onPointerDown={(event) => {
+						if (event.target === event.currentTarget) {
+							cancelDelete();
+						}
+					}}
+				>
+					<div
+						role="dialog"
+						aria-label="Delete session"
+						aria-modal="true"
+						className="w-full max-w-sm overflow-hidden rounded-2xl border border-dark-800 bg-dark-950 shadow-2xl shadow-black/50"
+					>
+						<div className="flex items-center gap-3 bg-dark-900/40 px-4 py-3">
+							<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-danger/40 bg-danger/10 text-danger">
+								<Trash2 size={14} />
+							</div>
+							<div className="min-w-0">
+								<div className="font-display text-[13px] font-semibold uppercase tracking-[0.22em] text-dark-50">
+									Delete session
+								</div>
+								<div className="font-mono-ui text-[10px] uppercase tracking-[0.16em] text-dark-500">
+									This can't be undone
+								</div>
+							</div>
+						</div>
+						<div className="px-4 py-4 text-sm leading-6 text-dark-300">
+							Permanently delete session{" "}
+							<span className="font-medium text-dark-50">
+								&ldquo;{session.title}&rdquo;
+							</span>
+						</div>
+						<div className="flex items-center justify-end gap-2 bg-dark-900/40 px-4 py-3">
+							<button
+								ref={cancelButtonRef}
+								type="button"
+								onClick={cancelDelete}
+								className="rounded-lg border border-dark-700 bg-dark-950 px-3 py-1.5 text-sm text-dark-200 transition-colors hover:border-dark-500 hover:text-dark-50"
+							>
+								Cancel
+							</button>
+							<button
+								type="button"
+								onClick={confirmDelete}
+								className="rounded-lg border border-danger/40 bg-danger/15 px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/25"
+							>
+								Delete
+							</button>
+						</div>
+					</div>
+				</div>
 			)}
 
 			{menuPosition && (

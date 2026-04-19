@@ -2,8 +2,6 @@ import hljs from "highlight.js";
 import { AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import remarkGfm from "remark-gfm";
 import type { BrowserFileResponse } from "../../../../common/protocol.ts";
 import { fetchAgentFile } from "../../lib/api.ts";
 import {
@@ -11,6 +9,10 @@ import {
 	useRightPanelRefreshStore,
 } from "../../stores/right-panel-refresh.ts";
 import { useTabsStore } from "../../stores/tabs.ts";
+import {
+	BROWSER_MARKDOWN_REHYPE_PLUGINS,
+	BROWSER_MARKDOWN_REMARK_PLUGINS,
+} from "../markdown/markdown-pipeline.ts";
 import { remarkHtmlComments } from "./remark-html-comments.ts";
 
 interface FileViewerProps {
@@ -36,8 +38,8 @@ export function MarkdownPreview({ content }: { content: string }) {
 	return (
 		<div className="prose prose-invert prose-sm max-w-none text-dark-100 [&_code::before]:content-none [&_code::after]:content-none">
 			<ReactMarkdown
-				remarkPlugins={[remarkGfm, remarkHtmlComments]}
-				rehypePlugins={[rehypeHighlight]}
+				remarkPlugins={[...BROWSER_MARKDOWN_REMARK_PLUGINS, remarkHtmlComments]}
+				rehypePlugins={BROWSER_MARKDOWN_REHYPE_PLUGINS}
 			>
 				{content}
 			</ReactMarkdown>
@@ -61,8 +63,8 @@ export function CodePreview({
 	return (
 		<div className="prose prose-invert max-w-none text-dark-100 [&_pre]:m-0 [&_pre]:overflow-x-hidden [&_pre]:whitespace-pre-wrap [&_pre]:border-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-[12px] [&_pre]:leading-5 [&_pre]:[overflow-wrap:anywhere] [&_pre_code]:bg-transparent [&_pre_code]:whitespace-pre-wrap">
 			<ReactMarkdown
-				remarkPlugins={[remarkGfm]}
-				rehypePlugins={[rehypeHighlight]}
+				remarkPlugins={BROWSER_MARKDOWN_REMARK_PLUGINS}
+				rehypePlugins={BROWSER_MARKDOWN_REHYPE_PLUGINS}
 			>
 				{markdown}
 			</ReactMarkdown>

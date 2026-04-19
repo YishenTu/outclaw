@@ -1,5 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Share+Tech+Mono&display=swap");
 @import "highlight.js/styles/github-dark.css";
+@import "katex/dist/katex.min.css";
 
 .hljs {
 	background: transparent;
@@ -138,6 +139,17 @@ textarea {
 
 .prose :not(pre) > code {
 	font-size: 1em;
+}
+
+.prose .katex {
+	color: inherit;
+	font-size: 1em;
+}
+
+.prose .katex-display {
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding: 0.25rem 0;
 }
 
 .prose .md-comment {

@@ -52,7 +52,7 @@ describe("manualChunkForBrowserModule", () => {
 		).toBe("vendor-react");
 	});
 
-	test("splits markdown and syntax highlighting packages", () => {
+	test("groups markdown rendering packages into the markdown chunk", () => {
 		expect(
 			manualChunkForBrowserModule(
 				"/Users/test/outclaw/node_modules/react-markdown/index.js",
@@ -62,12 +62,30 @@ describe("manualChunkForBrowserModule", () => {
 			manualChunkForBrowserModule(
 				"/Users/test/outclaw/node_modules/highlight.js/lib/index.js",
 			),
-		).toBe("vendor-highlight");
+		).toBe("vendor-markdown");
 		expect(
 			manualChunkForBrowserModule(
 				"/Users/test/outclaw/node_modules/rehype-highlight/index.js",
 			),
-		).toBe("vendor-highlight");
+		).toBe("vendor-markdown");
+	});
+
+	test("groups math rendering packages into the math chunk", () => {
+		expect(
+			manualChunkForBrowserModule(
+				"/Users/test/outclaw/node_modules/remark-math/index.js",
+			),
+		).toBe("vendor-math");
+		expect(
+			manualChunkForBrowserModule(
+				"/Users/test/outclaw/node_modules/rehype-katex/index.js",
+			),
+		).toBe("vendor-math");
+		expect(
+			manualChunkForBrowserModule(
+				"/Users/test/outclaw/node_modules/katex/dist/katex.mjs",
+			),
+		).toBe("vendor-math");
 	});
 
 	test("splits terminal packages", () => {
