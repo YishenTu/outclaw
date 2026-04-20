@@ -1,0 +1,26 @@
+## TODO List
+
+- [x] browser frontend
+- [ ] revisit TUI image paste when terminal/clipboard approach is decided
+- [x] tool filtering / permission-surface refinement
+- [ ] more /command
+- [x] /command in TUI
+- [x] session management
+- [x] session tools for agents
+- [x] TUI
+- [x] compact
+- [ ] gateway lifecycle check and maintain
+- [ ] btw
+- [x] telegram ref
+- [x] onboarding
+- [x] skills/
+- [x] multi agents/users system
+- [x] agent-com
+- [x] browser automation
+- [x] session search
+- [x] TG voice input
+- [x] welcome page
+- [X] browser UI modify
+- [ ] browser UI new tool tab?
+- [ ] memory system
+- [ ] skill installation shortcut
