@@ -514,6 +514,50 @@ describe("browser stores", () => {
 		expect(typeof session?.thinkingStartedAt).toBe("number");
 	});
 
+	test("chat store restores the full buffered partial stream after history replay", () => {
+		useChatStore.getState().pushMessage("agent-a:claude:sdk-alpha", {
+			kind: "chat",
+			role: "user",
+			content: "hello",
+		});
+		useChatStore.getState().startAssistantTurn("agent-a:claude:sdk-alpha");
+		useChatStore.getState().appendText("agent-a:claude:sdk-alpha", "Hel");
+
+		useChatStore.getState().replaceHistory(
+			"agent-a:claude:sdk-alpha",
+			[
+				{
+					kind: "chat",
+					role: "user",
+					content: "hello",
+				},
+			],
+			{ preservePendingTurn: true },
+		);
+		useChatStore.getState().restoreStreamingState("agent-a:claude:sdk-alpha", {
+			images: [],
+			text: "Hello there",
+			thinking: "",
+		});
+		useChatStore.getState().appendText("agent-a:claude:sdk-alpha", "!");
+		useChatStore.getState().finalizeMessage("agent-a:claude:sdk-alpha");
+
+		expect(
+			useChatStore.getState().getMessages("agent-a:claude:sdk-alpha"),
+		).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "hello",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Hello there!",
+			},
+		]);
+	});
+
 	test("chat store hides replayed heartbeat noop turns", () => {
 		useChatStore.getState().replaceHistory("agent-a:claude:sdk-alpha", [
 			{

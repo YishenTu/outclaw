@@ -14,6 +14,7 @@ import { RuntimeExecutionCoordinator } from "./runtime-execution-coordinator.ts"
 import { RuntimeMessageRouter } from "./runtime-message-router.ts";
 import type { RuntimeState } from "./runtime-state.ts";
 import type { SessionService } from "./session-service.ts";
+import { StreamingStateStore } from "./streaming-state-store.ts";
 
 interface CreateRuntimeControllerOptions {
 	canSendToClient?: (ws: WsClient) => boolean;
@@ -43,10 +44,30 @@ export function createRuntimeController(
 	// Safe during construction: collaborators only invoke this after the
 	// controller has been fully assembled, when heartbeat-enriched status is ready.
 	let getStatusEvent = () => options.state.createStatusEvent();
+	const streamingState = new StreamingStateStore();
 	const clients = new RuntimeClientGateway({
 		canSendToClient: options.canSendToClient,
 		cwd: options.cwd,
 		facade: options.facade,
+		getStreamingSyncEvent: (sessionId) => {
+			const snapshot = streamingState.get(sessionId);
+			if (
+				!snapshot ||
+				(snapshot.text === "" &&
+					snapshot.thinking === "" &&
+					snapshot.images.length === 0)
+			) {
+				return undefined;
+			}
+
+			return {
+				type: "streaming_sync",
+				sdkSessionId: sessionId,
+				images: snapshot.images,
+				text: snapshot.text,
+				thinking: snapshot.thinking,
+			};
+		},
 		getStatusEvent: () => getStatusEvent(),
 	});
 	const promptRunner = new PromptRunner({
@@ -62,6 +83,7 @@ export function createRuntimeController(
 		readTranscript: options.facade.readTranscript?.bind(options.facade),
 		sessions: options.sessions,
 		state: options.state,
+		streamingState,
 	});
 	const execution = new RuntimeExecutionCoordinator({
 		onStatusChange: () => {

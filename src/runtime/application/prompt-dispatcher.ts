@@ -12,6 +12,7 @@ import type { PromptRunner } from "./prompt-runner.ts";
 import type { RuntimeClientGateway } from "./runtime-client-gateway.ts";
 import type { RuntimePromptContext, RuntimeState } from "./runtime-state.ts";
 import type { SessionService } from "./session-service.ts";
+import type { StreamingStateStore } from "./streaming-state-store.ts";
 
 export type PromptSource =
 	| "heartbeat"
@@ -49,6 +50,7 @@ interface PromptDispatcherOptions {
 	readTranscript?: (sessionId: string) => Promise<TranscriptTurn[]>;
 	sessions: SessionService;
 	state: RuntimeState;
+	streamingState: StreamingStateStore;
 	onVisibleRunStarted?: () => void;
 }
 
@@ -81,6 +83,9 @@ export class PromptDispatcher {
 		let completedEvent: DoneEvent | undefined;
 		const observedSessionId = context.resumeSessionId;
 		const isVisible = () => context.isVisible();
+		if (observedSessionId) {
+			this.options.streamingState.start(observedSessionId);
+		}
 
 		if (
 			isVisible() &&
@@ -104,6 +109,9 @@ export class PromptDispatcher {
 		const emit = (event: FacadeEvent) => {
 			const observedEvent = attachObservedSessionId(event, observedSessionId);
 			task.onEvent?.(event);
+			if (observedSessionId) {
+				this.options.streamingState.recordEvent(observedSessionId, event);
+			}
 			const visible = isVisible();
 			if (task.source === "heartbeat") {
 				heartbeatBuffer.push(event);
@@ -136,14 +144,20 @@ export class PromptDispatcher {
 			}
 		};
 
-		await this.options.promptRunner.run({
-			abortController,
-			effort: context.effort,
-			emit,
-			model: context.resolvedModel,
-			resume: context.resumeSessionId,
-			task,
-		});
+		try {
+			await this.options.promptRunner.run({
+				abortController,
+				effort: context.effort,
+				emit,
+				model: context.resolvedModel,
+				resume: context.resumeSessionId,
+				task,
+			});
+		} finally {
+			if (observedSessionId) {
+				this.options.streamingState.clear(observedSessionId);
+			}
+		}
 
 		if (completedEvent) {
 			try {

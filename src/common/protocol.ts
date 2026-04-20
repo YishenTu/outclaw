@@ -308,6 +308,14 @@ export interface HistoryReplayEvent {
 	messages: DisplayMessage[];
 }
 
+export interface StreamingSyncEvent {
+	type: "streaming_sync";
+	sdkSessionId: string;
+	text: string;
+	thinking: string;
+	images: DisplayImage[];
+}
+
 export interface CronResultEvent {
 	type: "cron_result";
 	jobName: string;
@@ -522,6 +530,7 @@ export type ServerEvent =
 	| CompactingStartedEvent
 	| CompactingFinishedEvent
 	| HistoryReplayEvent
+	| StreamingSyncEvent
 	| CronResultEvent
 	| BrowserSidebarInvalidatedEvent
 	| SkillsUpdateEvent

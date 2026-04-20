@@ -38,6 +38,14 @@ export interface ChatState {
 	appendText: (sessionKey: string, text: string) => void;
 	appendThinking: (sessionKey: string, text: string) => void;
 	appendImage: (sessionKey: string, image: DisplayImage) => void;
+	restoreStreamingState: (
+		sessionKey: string,
+		snapshot: {
+			images: DisplayImage[];
+			text: string;
+			thinking: string;
+		},
+	) => void;
 	setStreaming: (sessionKey: string, streaming: boolean) => void;
 	setThinking: (sessionKey: string, thinking: boolean) => void;
 	setCompacting: (sessionKey: string, compacting: boolean) => void;
@@ -203,6 +211,46 @@ export const useChatStore = create<ChatState>((set, get) => ({
 							? [...session.heartbeatStreamingImages, image]
 							: session.heartbeatStreamingImages,
 						isStreaming: true,
+					},
+				},
+			};
+		}),
+	restoreStreamingState: (sessionKey, snapshot) =>
+		set((state) => {
+			const session = getOrCreateSession(state.sessions, sessionKey);
+			const heartbeatPending =
+				session.heartbeatPending ||
+				hasPendingHeartbeatIndicator(session.messages);
+			return {
+				sessions: {
+					...state.sessions,
+					[sessionKey]: {
+						...session,
+						streamingText: heartbeatPending ? "" : snapshot.text,
+						streamingThinking: heartbeatPending ? "" : snapshot.thinking,
+						streamingImages: heartbeatPending ? [] : snapshot.images,
+						heartbeatPending,
+						heartbeatStreamingText: heartbeatPending ? snapshot.text : "",
+						heartbeatStreamingThinking: heartbeatPending
+							? snapshot.thinking
+							: "",
+						heartbeatStreamingImages: heartbeatPending ? snapshot.images : [],
+						isThinking:
+							session.isThinking ||
+							snapshot.thinking !== "" ||
+							snapshot.text !== "" ||
+							snapshot.images.length > 0,
+						isStreaming:
+							session.isStreaming ||
+							snapshot.text !== "" ||
+							snapshot.images.length > 0,
+						thinkingStartedAt:
+							session.thinkingStartedAt ??
+							(snapshot.thinking !== "" ||
+							snapshot.text !== "" ||
+							snapshot.images.length > 0
+								? Date.now()
+								: null),
 					},
 				},
 			};

@@ -1,4 +1,8 @@
-import type { Facade, RuntimeStatusEvent } from "../../common/protocol.ts";
+import type {
+	Facade,
+	RuntimeStatusEvent,
+	StreamingSyncEvent,
+} from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import { ClientHub, type WsClient } from "../transport/client-hub.ts";
 
@@ -6,6 +10,7 @@ interface RuntimeClientGatewayOptions {
 	canSendToClient?: (ws: WsClient) => boolean;
 	cwd?: string;
 	facade: Facade;
+	getStreamingSyncEvent?: (sessionId: string) => StreamingSyncEvent | undefined;
 	getStatusEvent: () => RuntimeStatusEvent;
 }
 
@@ -63,6 +68,10 @@ export class RuntimeClientGateway {
 					sdkSessionId: sessionId,
 					messages,
 				});
+				const streamingSync = this.options.getStreamingSyncEvent?.(sessionId);
+				if (streamingSync) {
+					this.hub.sendMany(targetList, streamingSync);
+				}
 			})
 			.catch((error) => {
 				this.hub.sendMany(targetList, {

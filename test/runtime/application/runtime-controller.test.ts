@@ -257,6 +257,59 @@ class SessionAwareBlockingFacade implements Facade {
 	}
 }
 
+class SessionAwareStreamingFacade implements Facade {
+	providerId = PROVIDER_ID;
+	private readonly firstChunkBySession = new Map<
+		string,
+		ReturnType<typeof createDeferred>
+	>();
+	private readonly releaseBySession = new Map<
+		string,
+		ReturnType<typeof createDeferred>
+	>();
+
+	waitForFirstChunk(sessionId: string): Promise<void> {
+		return this.getFirstChunk(sessionId).promise;
+	}
+
+	release(sessionId: string) {
+		this.getRelease(sessionId).resolve();
+	}
+
+	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		const sessionId = params.resume ?? "new-session";
+		yield { type: "text", text: `partial ${sessionId}` };
+		this.getFirstChunk(sessionId).resolve();
+		await this.getRelease(sessionId).promise;
+		yield { type: "text", text: ` later ${sessionId}` };
+		yield {
+			type: "done",
+			sessionId,
+			durationMs: 1,
+		};
+	}
+
+	private getFirstChunk(sessionId: string) {
+		const existing = this.firstChunkBySession.get(sessionId);
+		if (existing) {
+			return existing;
+		}
+		const next = createDeferred();
+		this.firstChunkBySession.set(sessionId, next);
+		return next;
+	}
+
+	private getRelease(sessionId: string) {
+		const existing = this.releaseBySession.get(sessionId);
+		if (existing) {
+			return existing;
+		}
+		const next = createDeferred();
+		this.releaseBySession.set(sessionId, next);
+		return next;
+	}
+}
+
 describe("RuntimeController", () => {
 	describe("client lifecycle", () => {
 		test("handleOpen hides heartbeat timer when no session is active", async () => {
@@ -1497,6 +1550,71 @@ describe("RuntimeController", () => {
 	});
 
 	describe("session mutation during active run", () => {
+		test("switching back to a running session replays the buffered partial stream", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "sdk-alpha",
+				title: "Alpha",
+				model: "opus",
+				source: "tui",
+			});
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "sdk-beta",
+				title: "Beta",
+				model: "opus",
+				source: "tui",
+			});
+			store.setActiveSessionId(PROVIDER_ID, "sdk-alpha");
+			const facade = new SessionAwareStreamingFacade();
+			const { controller } = createController({
+				facade,
+				historyReader: async (sessionId) => [
+					{
+						kind: "chat",
+						role: "user",
+						content:
+							sessionId === "sdk-alpha" ? "continue alpha" : "continue beta",
+					},
+				],
+				store,
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("continue alpha"));
+			await facade.waitForFirstChunk("sdk-alpha");
+
+			controller.handleMessage(ws, command("/session sdk-beta"));
+			await new Promise((r) => setTimeout(r, 20));
+
+			const eventCountBeforeReturn = ws.events().length;
+			controller.handleMessage(ws, command("/session sdk-alpha"));
+			await new Promise((r) => setTimeout(r, 20));
+
+			const replayEvents = ws.events().slice(eventCountBeforeReturn);
+			expect(replayEvents).toContainEqual({
+				type: "streaming_sync",
+				sdkSessionId: "sdk-alpha",
+				text: "partial sdk-alpha",
+				thinking: "",
+				images: [],
+			});
+
+			facade.release("sdk-alpha");
+			await waitForDone(ws);
+			expect(ws.events()).toContainEqual({
+				type: "text",
+				text: " later sdk-alpha",
+				sessionId: "sdk-alpha",
+			});
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
 		test("/session switch keeps the prior session running in background without surfacing it", async () => {
 			cleanupStore(TEST_DB);
 			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });

@@ -558,6 +558,23 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					}
 					return;
 				}
+				case "streaming_sync": {
+					const agentId = getActiveAgentId();
+					const providerId = useRuntimeStore.getState().providerId;
+					if (!agentId || !providerId) {
+						return;
+					}
+
+					const sessionKey = createSessionKey(
+						createBrowserSessionRef(agentId, providerId, event.sdkSessionId),
+					);
+					useChatStore.getState().restoreStreamingState(sessionKey, {
+						images: event.images,
+						text: event.text,
+						thinking: event.thinking,
+					});
+					return;
+				}
 				case "user_prompt": {
 					const agentId = getActiveAgentId();
 					if (!agentId) {
