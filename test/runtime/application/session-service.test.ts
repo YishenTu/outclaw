@@ -184,6 +184,41 @@ describe("SessionService", () => {
 		store.close();
 	});
 
+	test("recordBackgroundCompletion persists an inactive session without replacing the active one", () => {
+		const store = createTestStore();
+		store.upsert({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "sdk-beta",
+			title: "Current chat",
+			model: "sonnet",
+			source: "tui",
+		});
+		store.setActiveSessionId(PROVIDER_ID, "sdk-beta");
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		sessions.recordBackgroundCompletion({
+			event: makeDoneEvent("sdk-alpha"),
+			model: "opus",
+			source: "telegram",
+			title: "Background chat",
+		});
+
+		expect(store.getActiveSessionId(PROVIDER_ID)).toBe("sdk-beta");
+		expect(state.sessionId).toBe("sdk-beta");
+		expect(store.get(PROVIDER_ID, "sdk-alpha")).toMatchObject({
+			title: "Background chat",
+			model: "opus",
+			source: "telegram",
+			tag: "chat",
+		});
+		expect(store.getUsage(PROVIDER_ID, "sdk-alpha")).toEqual(
+			requireUsage(makeDoneEvent()),
+		);
+
+		store.close();
+	});
+
 	test("accepted tui prompts overwrite a prior telegram target immediately", () => {
 		const store = createTestStore();
 		const state = new RuntimeState(PROVIDER_ID);

@@ -11,7 +11,10 @@ import {
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
 import { useChatStore } from "../../../src/frontend/browser/stores/chat.ts";
 import { useContextUsageStore } from "../../../src/frontend/browser/stores/context-usage.ts";
-import { useRuntimeStore } from "../../../src/frontend/browser/stores/runtime.ts";
+import {
+	selectVisibleRuntimeNotice,
+	useRuntimeStore,
+} from "../../../src/frontend/browser/stores/runtime.ts";
 import {
 	type SessionEntry,
 	type SessionRef,
@@ -296,6 +299,63 @@ describe("browser stores", () => {
 		expect(useRuntimeStore.getState().sessionTitle).toBeNull();
 		expect(useRuntimeStore.getState().notice).toEqual({
 			kind: "restart_required",
+		});
+	});
+
+	test("runtime store keeps a dismissed rollover hidden until the notice changes", () => {
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "claude",
+			model: "opus",
+			effort: "high",
+			running: false,
+			notice: {
+				kind: "rollover",
+				message: "Session rolled over after idle timeout.",
+			},
+		});
+
+		expect(selectVisibleRuntimeNotice(useRuntimeStore.getState())).toEqual({
+			kind: "rollover",
+			message: "Session rolled over after idle timeout.",
+		});
+
+		useRuntimeStore.getState().dismissNotice();
+
+		expect(selectVisibleRuntimeNotice(useRuntimeStore.getState())).toBeNull();
+
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "claude",
+			model: "opus",
+			effort: "high",
+			running: false,
+			notice: {
+				kind: "rollover",
+				message: "Session rolled over after idle timeout.",
+			},
+		});
+
+		expect(selectVisibleRuntimeNotice(useRuntimeStore.getState())).toBeNull();
+
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "claude",
+			model: "opus",
+			effort: "high",
+			running: false,
+			notice: {
+				kind: "rollover",
+				message: "Session rolled over again after a later idle timeout.",
+			},
+		});
+
+		expect(selectVisibleRuntimeNotice(useRuntimeStore.getState())).toEqual({
+			kind: "rollover",
+			message: "Session rolled over again after a later idle timeout.",
 		});
 	});
 

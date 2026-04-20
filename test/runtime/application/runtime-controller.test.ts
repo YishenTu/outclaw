@@ -9,6 +9,7 @@ import type {
 	FacadeEvent,
 	HistoryReplayEvent,
 	ImageRef,
+	RunParams,
 	ServerEvent,
 	TranscriptTurn,
 } from "../../../src/common/protocol.ts";
@@ -39,9 +40,9 @@ function mockWs(
 	return ws as unknown as WsClient & { events: () => ServerEvent[] };
 }
 
-function createController(
+function createController<TFacade extends Facade = MockFacade>(
 	overrides: {
-		facade?: MockFacade;
+		facade?: TFacade;
 		cwd?: string;
 		deliverCronResult?: (params: {
 			jobName: string;
@@ -58,7 +59,7 @@ function createController(
 		historyReader?: (id: string) => Promise<HistoryReplayEvent["messages"]>;
 	} = {},
 ) {
-	const facade = overrides.facade ?? new MockFacade();
+	const facade = (overrides.facade ?? new MockFacade()) as TFacade;
 	const state = new RuntimeState(facade.providerId);
 	const sessions = new SessionService(state, overrides.store);
 	if (overrides.historyReader) {
@@ -185,6 +186,74 @@ class BlockingFacade implements Facade {
 			sessionId: "blocking-session",
 			durationMs: 1,
 		};
+	}
+}
+
+class SessionAwareBlockingFacade implements Facade {
+	providerId = PROVIDER_ID;
+	allParams: Array<{ abortController?: AbortController; resume?: string }> = [];
+	doneUsage = {
+		inputTokens: 3,
+		outputTokens: 5,
+		cacheCreationTokens: 0,
+		cacheReadTokens: 0,
+		contextWindow: 200_000,
+		maxOutputTokens: 8_000,
+		contextTokens: 8,
+		percentage: 0.004,
+	};
+	private readonly releaseBySession = new Map<
+		string,
+		ReturnType<typeof createDeferred>
+	>();
+	private readonly startedBySession = new Map<
+		string,
+		ReturnType<typeof createDeferred>
+	>();
+
+	waitStarted(sessionId: string): Promise<void> {
+		return this.getStarted(sessionId).promise;
+	}
+
+	release(sessionId: string) {
+		this.getRelease(sessionId).resolve();
+	}
+
+	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		const sessionId = params.resume ?? "new-session";
+		this.allParams.push({
+			abortController: params.abortController,
+			resume: params.resume,
+		});
+		this.getStarted(sessionId).resolve();
+		await this.getRelease(sessionId).promise;
+		yield { type: "text", text: `done ${sessionId}` };
+		yield {
+			type: "done",
+			sessionId,
+			durationMs: 1,
+			usage: this.doneUsage,
+		};
+	}
+
+	private getRelease(sessionId: string) {
+		const existing = this.releaseBySession.get(sessionId);
+		if (existing) {
+			return existing;
+		}
+		const next = createDeferred();
+		this.releaseBySession.set(sessionId, next);
+		return next;
+	}
+
+	private getStarted(sessionId: string) {
+		const existing = this.startedBySession.get(sessionId);
+		if (existing) {
+			return existing;
+		}
+		const next = createDeferred();
+		this.startedBySession.set(sessionId, next);
+		return next;
 	}
 }
 
@@ -1428,6 +1497,111 @@ describe("RuntimeController", () => {
 	});
 
 	describe("session mutation during active run", () => {
+		test("/session switch keeps the prior session running in background without surfacing it", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "sdk-alpha",
+				title: "Alpha",
+				model: "opus",
+				source: "tui",
+			});
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "sdk-beta",
+				title: "Beta",
+				model: "opus",
+				source: "tui",
+			});
+			store.setActiveSessionId(PROVIDER_ID, "sdk-alpha");
+			const facade = new SessionAwareBlockingFacade();
+			const { controller } = createController({ facade, store });
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("continue alpha"));
+			await facade.waitStarted("sdk-alpha");
+
+			const eventCountBeforeSwitch = ws.events().length;
+			controller.handleMessage(ws, command("/session sdk-beta"));
+			await new Promise((r) => setTimeout(r, 20));
+
+			expect(facade.allParams[0]?.resume).toBe("sdk-alpha");
+			expect(facade.allParams[0]?.abortController?.signal.aborted).toBe(false);
+			expect(store.getActiveSessionId(PROVIDER_ID)).toBe("sdk-beta");
+
+			const switchedStatus = ws
+				.events()
+				.filter((event) => event.type === "runtime_status")
+				.at(-1) as { running?: boolean; sessionId?: string } | undefined;
+			expect(switchedStatus).toMatchObject({
+				running: false,
+				sessionId: "sdk-beta",
+			});
+
+			facade.release("sdk-alpha");
+			await new Promise((r) => setTimeout(r, 20));
+
+			const postSwitchEvents = ws.events().slice(eventCountBeforeSwitch);
+			expect(
+				postSwitchEvents.some(
+					(event) => event.type === "text" || event.type === "done",
+				),
+			).toBe(false);
+			expect(store.getUsage(PROVIDER_ID, "sdk-alpha")).toEqual(
+				facade.doneUsage,
+			);
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
+		test("different sessions can run in parallel within one agent", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "sdk-alpha",
+				title: "Alpha",
+				model: "opus",
+				source: "tui",
+			});
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "sdk-beta",
+				title: "Beta",
+				model: "opus",
+				source: "tui",
+			});
+			store.setActiveSessionId(PROVIDER_ID, "sdk-alpha");
+			const facade = new SessionAwareBlockingFacade();
+			const { controller } = createController({ facade, store });
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("run alpha"));
+			await facade.waitStarted("sdk-alpha");
+
+			controller.handleMessage(ws, command("/session sdk-beta"));
+			await new Promise((r) => setTimeout(r, 20));
+			controller.handleMessage(ws, prompt("run beta"));
+			await facade.waitStarted("sdk-beta");
+
+			expect(facade.allParams.map((params) => params.resume)).toEqual([
+				"sdk-alpha",
+				"sdk-beta",
+			]);
+
+			facade.release("sdk-beta");
+			await waitForDone(ws);
+			facade.release("sdk-alpha");
+			await new Promise((r) => setTimeout(r, 20));
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
 		test("/new during active run does not let stale completeRun overwrite session", async () => {
 			const facade = new MockFacade();
 			facade.delayMs = 100;

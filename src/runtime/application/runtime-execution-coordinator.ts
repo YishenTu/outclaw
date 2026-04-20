@@ -1,7 +1,7 @@
 import { HeartbeatCoordinator } from "./heartbeat-coordinator.ts";
 import { MessageQueue } from "./message-queue.ts";
 import type { PromptDispatcher, PromptExecution } from "./prompt-dispatcher.ts";
-import type { RuntimeState } from "./runtime-state.ts";
+import type { RuntimePromptContext, RuntimeState } from "./runtime-state.ts";
 import type { SessionService } from "./session-service.ts";
 
 interface HeartbeatTask {
@@ -20,10 +20,17 @@ interface RuntimeExecutionCoordinatorOptions {
 	state: RuntimeState;
 }
 
+interface ExecutionLane {
+	activeAbort?: AbortController;
+	activeContext?: RuntimePromptContext;
+	key: string;
+	queue: MessageQueue;
+	resolvedSessionId?: string;
+}
+
 export class RuntimeExecutionCoordinator {
-	private activeAbort: AbortController | undefined;
 	private heartbeatCoordinator = new HeartbeatCoordinator();
-	private queue = new MessageQueue();
+	private lanes = new Map<string, ExecutionLane>();
 	private rolloverQueued = false;
 	private shuttingDown = false;
 
@@ -34,15 +41,31 @@ export class RuntimeExecutionCoordinator {
 	}
 
 	get hasActiveRun(): boolean {
-		return this.activeAbort !== undefined;
+		return [...this.lanes.values()].some(
+			(lane) => lane.activeAbort !== undefined,
+		);
+	}
+
+	get hasVisibleRun(): boolean {
+		return [...this.lanes.values()].some(
+			(lane) =>
+				lane.activeContext !== undefined &&
+				this.isLaneVisible(lane, lane.activeContext),
+		);
 	}
 
 	abortActiveRun(): boolean {
-		if (!this.activeAbort) {
+		const lane = [...this.lanes.values()].find(
+			(candidate) =>
+				candidate.activeAbort !== undefined &&
+				candidate.activeContext !== undefined &&
+				this.isLaneVisible(candidate, candidate.activeContext),
+		);
+		if (!lane?.activeAbort) {
 			return false;
 		}
 
-		this.activeAbort.abort();
+		lane.activeAbort.abort();
 		return true;
 	}
 
@@ -52,12 +75,16 @@ export class RuntimeExecutionCoordinator {
 		}
 		this.shuttingDown = true;
 		this.heartbeatCoordinator.beginShutdown();
-		this.activeAbort?.abort();
-		this.queue.close(true);
+		for (const lane of this.lanes.values()) {
+			lane.activeAbort?.abort();
+			lane.queue.close(true);
+		}
 	}
 
 	drain(): Promise<void> {
-		return this.queue.drain();
+		return Promise.all(
+			[...this.lanes.values()].map((lane) => lane.queue.drain()),
+		).then(() => undefined);
 	}
 
 	enqueueHeartbeat(
@@ -72,14 +99,16 @@ export class RuntimeExecutionCoordinator {
 			return false;
 		}
 
-		const sessionId = this.options.state.sessionId;
+		const context = this.options.state.capturePromptContext();
+		const sessionId = context.sessionId;
 		if (!sessionId) {
 			return false;
 		}
+		const lane = this.getOrCreateLane(context);
 
 		this.heartbeatCoordinator.markHeartbeatQueued();
-		const queued = this.queue.enqueue(() =>
-			this.runHeartbeat({
+		const queued = lane.queue.enqueue(() =>
+			this.runHeartbeat(lane, context, {
 				prompt,
 				scheduledAt,
 				sessionId,
@@ -95,38 +124,36 @@ export class RuntimeExecutionCoordinator {
 		if (this.shuttingDown) {
 			return;
 		}
-		this.queue.enqueue(
-			() => this.runPrompt(task),
-			() => {
-				this.options.state.preparePrompt(task.prompt, task.images);
-				this.heartbeatCoordinator.noteUserActivity();
-				if (
-					task.source === "telegram" ||
-					task.source === "tui" ||
-					task.source === "browser"
-				) {
-					this.options.sessions.recordAcceptedPromptTarget(
-						task.source === "telegram" ? "telegram" : "tui",
-						task.telegramChatId,
-					);
-				}
-			},
-		);
+		this.options.state.preparePrompt(task.prompt, task.images);
+		const context = this.options.state.capturePromptContext();
+		const lane = this.getOrCreateLane(context);
+		this.heartbeatCoordinator.noteUserActivity();
+		if (
+			task.source === "telegram" ||
+			task.source === "tui" ||
+			task.source === "browser"
+		) {
+			this.options.sessions.recordAcceptedPromptTarget(
+				task.source === "telegram" ? "telegram" : "tui",
+				task.telegramChatId,
+			);
+		}
+		lane.queue.enqueue(() => this.runPromptInLane(lane, task, context));
 	}
 
 	enqueueRollover(prompt: string, idleMinutes: number): boolean {
-		if (
-			this.shuttingDown ||
-			this.rolloverQueued ||
-			this.activeAbort !== undefined ||
-			this.options.state.sessionId === undefined
-		) {
+		if (this.shuttingDown || this.rolloverQueued || this.hasVisibleRun) {
 			return false;
 		}
+		const context = this.options.state.capturePromptContext();
+		if (context.sessionId === undefined) {
+			return false;
+		}
+		const lane = this.getOrCreateLane(context);
 
 		this.rolloverQueued = true;
-		const queued = this.queue.enqueue(() =>
-			this.runRollover({ idleMinutes, prompt }),
+		const queued = lane.queue.enqueue(() =>
+			this.runRollover(lane, context, { idleMinutes, prompt }),
 		);
 		if (!queued) {
 			this.rolloverQueued = false;
@@ -156,20 +183,15 @@ export class RuntimeExecutionCoordinator {
 					}
 				},
 			};
-			const queued = this.queue.enqueue(
-				async () => {
-					await this.runPrompt(wrappedTask);
-					if (!failed) {
-						resolve(responseText);
-					}
-				},
-				() => {
-					this.options.state.preparePrompt(
-						wrappedTask.prompt,
-						wrappedTask.images,
-					);
-				},
-			);
+			this.options.state.preparePrompt(wrappedTask.prompt, wrappedTask.images);
+			const context = this.options.state.capturePromptContext();
+			const lane = this.getOrCreateLane(context);
+			const queued = lane.queue.enqueue(async () => {
+				await this.runPromptInLane(lane, wrappedTask, context);
+				if (!failed) {
+					resolve(responseText);
+				}
+			});
 			if (!queued) {
 				reject(new Error("Runtime shutting down"));
 			}
@@ -195,7 +217,11 @@ export class RuntimeExecutionCoordinator {
 		this.heartbeatCoordinator.startDeferTimer(deferMinutes);
 	}
 
-	private async runHeartbeat(task: HeartbeatTask) {
+	private async runHeartbeat(
+		lane: ExecutionLane,
+		context: RuntimePromptContext,
+		task: HeartbeatTask,
+	) {
 		try {
 			if (this.options.state.sessionId !== task.sessionId) {
 				return;
@@ -205,16 +231,24 @@ export class RuntimeExecutionCoordinator {
 			}
 
 			this.options.state.preparePrompt(task.prompt);
-			await this.runPrompt({
-				prompt: task.prompt,
-				source: "heartbeat",
-			});
+			await this.runPromptInLane(
+				lane,
+				{
+					prompt: task.prompt,
+					source: "heartbeat",
+				},
+				context,
+			);
 		} finally {
 			this.heartbeatCoordinator.completeHeartbeat();
 		}
 	}
 
-	private async runRollover(task: { idleMinutes: number; prompt: string }) {
+	private async runRollover(
+		lane: ExecutionLane,
+		context: RuntimePromptContext,
+		task: { idleMinutes: number; prompt: string },
+	) {
 		let failed = true;
 		let started = false;
 
@@ -224,15 +258,19 @@ export class RuntimeExecutionCoordinator {
 			}
 
 			started = true;
-			await this.runPrompt({
-				onEvent: (event) => {
-					if (event.type === "done") {
-						failed = false;
-					}
+			await this.runPromptInLane(
+				lane,
+				{
+					onEvent: (event) => {
+						if (event.type === "done") {
+							failed = false;
+						}
+					},
+					prompt: task.prompt,
+					source: "rollover",
 				},
-				prompt: task.prompt,
-				source: "rollover",
-			});
+				context,
+			);
 		} finally {
 			this.rolloverQueued = false;
 			if (started) {
@@ -245,18 +283,78 @@ export class RuntimeExecutionCoordinator {
 		}
 	}
 
-	private async runPrompt(task: PromptExecution) {
+	private getOrCreateLane(context: RuntimePromptContext): ExecutionLane {
+		const key = context.sessionId ?? `pending:${context.generation}`;
+		const existing =
+			context.sessionId === undefined
+				? this.lanes.get(key)
+				: [...this.lanes.values()].find(
+						(lane) =>
+							lane.resolvedSessionId === context.sessionId || lane.key === key,
+					);
+		if (existing) {
+			if (context.sessionId) {
+				existing.resolvedSessionId = context.sessionId;
+			}
+			return existing;
+		}
+
+		const lane: ExecutionLane = {
+			key,
+			queue: new MessageQueue(),
+			resolvedSessionId: context.sessionId,
+		};
+		this.lanes.set(key, lane);
+		return lane;
+	}
+
+	private isLaneVisible(
+		lane: ExecutionLane,
+		context: RuntimePromptContext,
+	): boolean {
+		const resolvedSessionId = lane.resolvedSessionId ?? context.sessionId;
+		if (resolvedSessionId) {
+			return this.options.state.sessionId === resolvedSessionId;
+		}
+
+		return this.options.state.matchesVisiblePromptContext(context);
+	}
+
+	private async runPromptInLane(
+		lane: ExecutionLane,
+		task: PromptExecution,
+		context: RuntimePromptContext,
+	) {
 		const abortController = new AbortController();
-		this.activeAbort = abortController;
+		lane.activeAbort = abortController;
+		lane.activeContext = context;
+		let completedSessionId = lane.resolvedSessionId ?? context.sessionId;
+		const wrappedTask: PromptExecution = {
+			...task,
+			onEvent: (event) => {
+				task.onEvent?.(event);
+				if (event.type === "done") {
+					completedSessionId = event.sessionId;
+				}
+			},
+		};
 
 		try {
 			await this.options.promptDispatcher.run(
-				task,
-				this.options.state.generation,
+				wrappedTask,
+				{
+					...context,
+					isVisible: () => this.isLaneVisible(lane, context),
+					resumeSessionId: lane.resolvedSessionId ?? context.sessionId,
+				},
 				abortController,
 			);
 		} finally {
-			this.activeAbort = undefined;
+			if (completedSessionId) {
+				lane.resolvedSessionId = completedSessionId;
+			}
+			lane.activeAbort = undefined;
+			lane.activeContext = undefined;
 			this.options.onStatusChange?.();
 		}
 	}

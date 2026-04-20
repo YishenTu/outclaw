@@ -64,17 +64,13 @@ describe("toObservedDisplayMessage", () => {
 		});
 	});
 
-	test("converts rollover prompts into a rollover system message", () => {
+	test("does not surface live rollover prompts in the browser transcript", () => {
 		expect(
 			toObservedDisplayMessage({
 				type: "user_prompt",
 				prompt: "finalize old session",
 				source: "rollover",
 			}),
-		).toEqual({
-			kind: "system",
-			event: "rollover",
-			text: "Rollover",
-		});
+		).toBeNull();
 	});
 });

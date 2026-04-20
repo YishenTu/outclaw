@@ -28,7 +28,7 @@ export class RuntimeControlPlane {
 			this.handleRestart(ws);
 			return;
 		}
-		if (cmd === "/new" || isSessionMutation(cmd)) {
+		if (cmd === "/new" || shouldAbortActiveRun(cmd)) {
 			this.options.execution.abortActiveRun();
 		}
 		void handleRuntimeCommand({
@@ -84,8 +84,8 @@ export class RuntimeControlPlane {
 	}
 }
 
-function isSessionMutation(cmd: string): boolean {
+function shouldAbortActiveRun(cmd: string): boolean {
 	if (!cmd.startsWith("/session ")) return false;
 	const arg = cmd.slice("/session ".length).trim();
-	return arg !== "" && arg !== "list";
+	return arg === "delete" || arg.startsWith("delete ");
 }

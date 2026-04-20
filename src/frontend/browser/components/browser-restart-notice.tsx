@@ -1,13 +1,18 @@
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, X } from "lucide-react";
 import type { FrontendNotice } from "../../../common/protocol.ts";
-import { useRuntimeStore } from "../stores/runtime.ts";
+import {
+	selectVisibleRuntimeNotice,
+	useRuntimeStore,
+} from "../stores/runtime.ts";
 
 interface BrowserRestartNoticeContentProps {
 	notice: FrontendNotice | null;
+	onDismiss?: () => void;
 }
 
 export function BrowserRestartNoticeContent({
 	notice,
+	onDismiss,
 }: BrowserRestartNoticeContentProps) {
 	if (!notice) {
 		return null;
@@ -22,7 +27,7 @@ export function BrowserRestartNoticeContent({
 						className="mt-0.5 shrink-0 text-warning"
 						aria-hidden="true"
 					/>
-					<div className="min-w-0">
+					<div className="min-w-0 flex-1">
 						<div className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-warning">
 							Session rollover
 						</div>
@@ -30,6 +35,16 @@ export function BrowserRestartNoticeContent({
 							{notice.message}
 						</div>
 					</div>
+					{onDismiss ? (
+						<button
+							type="button"
+							onClick={onDismiss}
+							aria-label="Dismiss notification"
+							className="shrink-0 text-warning/70 transition-colors hover:text-warning"
+						>
+							<X size={14} />
+						</button>
+					) : null}
 				</div>
 			</div>
 		);
@@ -61,6 +76,12 @@ export function BrowserRestartNoticeContent({
 }
 
 export function BrowserRestartNotice() {
-	const notice = useRuntimeStore((state) => state.notice);
-	return <BrowserRestartNoticeContent notice={notice} />;
+	const notice = useRuntimeStore(selectVisibleRuntimeNotice);
+	const dismissNotice = useRuntimeStore((state) => state.dismissNotice);
+	return (
+		<BrowserRestartNoticeContent
+			notice={notice}
+			onDismiss={notice?.kind === "rollover" ? dismissNotice : undefined}
+		/>
+	);
 }

@@ -16,6 +16,16 @@ import type { SessionRow } from "../persistence/session-store.ts";
 import { RuntimeSessionState } from "./runtime-session-state.ts";
 import { RuntimeSettingsState } from "./runtime-settings-state.ts";
 
+export interface RuntimePromptContext {
+	effort: EffortLevel;
+	generation: number;
+	model: ModelAlias;
+	resolvedModel: string;
+	sessionId?: string;
+	sessionSource: "tui" | "telegram" | "agent";
+	sessionTitle?: string;
+}
+
 export class RuntimeState {
 	private readonly sessions = new RuntimeSessionState();
 	private readonly settings = new RuntimeSettingsState();
@@ -63,6 +73,18 @@ export class RuntimeState {
 
 	get usage(): UsageInfo | undefined {
 		return this.sessions.usage;
+	}
+
+	capturePromptContext(): RuntimePromptContext {
+		return {
+			effort: this.settings.effort,
+			generation: this.sessions.generation,
+			model: this.settings.model,
+			resolvedModel: this.settings.resolvedModel,
+			sessionId: this.sessions.sessionId,
+			sessionSource: this.sessions.sessionSource,
+			sessionTitle: this.sessions.sessionTitle,
+		};
 	}
 
 	createStatusEvent(): RuntimeStatusEvent {
@@ -142,6 +164,18 @@ export class RuntimeState {
 
 	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
 		this.sessions.completeRun(event, source, telegramChatId);
+	}
+
+	matchesVisiblePromptContext(context: RuntimePromptContext): boolean {
+		if (context.sessionId) {
+			return this.sessions.sessionId === context.sessionId;
+		}
+
+		return (
+			this.sessions.sessionId === undefined &&
+			this.sessions.generation === context.generation &&
+			this.sessions.sessionTitle === context.sessionTitle
+		);
 	}
 
 	private alignUsageToModel(

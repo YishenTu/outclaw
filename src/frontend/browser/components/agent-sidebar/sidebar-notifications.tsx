@@ -1,6 +1,9 @@
 import { AlertCircle, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useRuntimeStore } from "../../stores/runtime.ts";
+import {
+	selectVisibleRuntimeNotice,
+	useRuntimeStore,
+} from "../../stores/runtime.ts";
 import { useRuntimePopupStore } from "../../stores/runtime-popup.ts";
 import {
 	resolveConnectionToast,
@@ -56,19 +59,25 @@ function splitStatusText(text: string): { title: string; body: string } {
 	return { title: firstLine, body: rest.join("\n") };
 }
 
-export function SidebarNotifications() {
-	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
-	const runtimeError = useRuntimeStore((state) => state.error);
-	const notice = useRuntimeStore((state) => state.notice);
-	const popup = useRuntimePopupStore((state) => state.popup);
+interface CreateSidebarNotificationItemsOptions {
+	connectionStatus: ReturnType<
+		typeof useRuntimeStore.getState
+	>["connectionStatus"];
+	hasConnectedOnce: boolean;
+	notice: ReturnType<typeof selectVisibleRuntimeNotice>;
+	onDismissNotice?: () => void;
+	popup: ReturnType<typeof useRuntimePopupStore.getState>["popup"];
+	runtimeError: string | null;
+}
 
-	const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
-	useEffect(() => {
-		if (connectionStatus === "connected") {
-			setHasConnectedOnce(true);
-		}
-	}, [connectionStatus]);
-
+export function createSidebarNotificationItems({
+	connectionStatus,
+	hasConnectedOnce,
+	notice,
+	onDismissNotice,
+	popup,
+	runtimeError,
+}: CreateSidebarNotificationItemsOptions): NotificationItem[] {
 	const items: NotificationItem[] = [];
 
 	if (shouldShowConnectionToast(connectionStatus, hasConnectedOnce)) {
@@ -97,6 +106,7 @@ export function SidebarNotifications() {
 			icon: "alert",
 			title: "Session rollover",
 			detail: notice.message,
+			onDismiss: onDismissNotice,
 		});
 	}
 
@@ -112,6 +122,14 @@ export function SidebarNotifications() {
 		});
 	}
 
+	return items;
+}
+
+export function SidebarNotificationsContent({
+	items,
+}: {
+	items: NotificationItem[];
+}) {
 	if (items.length === 0) {
 		return null;
 	}
@@ -122,6 +140,34 @@ export function SidebarNotifications() {
 				<NotificationCard key={item.key} item={item} />
 			))}
 		</div>
+	);
+}
+
+export function SidebarNotifications() {
+	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
+	const runtimeError = useRuntimeStore((state) => state.error);
+	const notice = useRuntimeStore(selectVisibleRuntimeNotice);
+	const dismissNotice = useRuntimeStore((state) => state.dismissNotice);
+	const popup = useRuntimePopupStore((state) => state.popup);
+
+	const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
+	useEffect(() => {
+		if (connectionStatus === "connected") {
+			setHasConnectedOnce(true);
+		}
+	}, [connectionStatus]);
+
+	return (
+		<SidebarNotificationsContent
+			items={createSidebarNotificationItems({
+				connectionStatus,
+				hasConnectedOnce,
+				notice,
+				onDismissNotice: dismissNotice,
+				popup,
+				runtimeError,
+			})}
+		/>
 	);
 }
 

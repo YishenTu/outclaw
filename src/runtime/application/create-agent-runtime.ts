@@ -139,7 +139,7 @@ export function createAgentRuntime(
 				getLastHandledInteractiveAt: () =>
 					sessions.getLastHandledRolloverInteractiveAt(),
 				getLastInteractiveAt: () => sessions.getLastInteractiveAt(),
-				hasActiveRun: () => controller.hasActiveRun,
+				hasActiveRun: () => controller.hasVisibleRun,
 				hasActiveSession: () => sessions.activeSessionId !== undefined,
 				requestRollover: (prompt) =>
 					controller.enqueueRollover(

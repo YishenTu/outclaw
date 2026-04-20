@@ -7,12 +7,15 @@ import {
 	useLayoutStore,
 } from "../stores/layout.ts";
 import { useWorkspaceViewStore } from "../stores/workspace-view.ts";
+import { useRolloverNoticeAutoDismiss } from "../use-rollover-notice-auto-dismiss.ts";
 import { AppLayoutView, type ResizeSide } from "./app-layout-view.tsx";
 
 const MIN_CENTER_WIDTH = 560;
 const MIN_VISIBLE_INSPECTOR_WIDTH = 400;
 
 export function AppLayout() {
+	useRolloverNoticeAutoDismiss();
+
 	const sidebarWidth = useLayoutStore((state) => state.sidebarWidth);
 	const inspectorWidth = useLayoutStore((state) => state.inspectorWidth);
 	const leftCollapsed = useLayoutStore((state) => state.leftCollapsed);

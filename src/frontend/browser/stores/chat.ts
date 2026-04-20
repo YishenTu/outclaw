@@ -28,7 +28,13 @@ export interface ChatState {
 
 	pushMessage: (sessionKey: string, message: DisplayMessage) => void;
 	startAssistantTurn: (sessionKey: string) => void;
-	replaceHistory: (sessionKey: string, messages: DisplayMessage[]) => void;
+	replaceHistory: (
+		sessionKey: string,
+		messages: DisplayMessage[],
+		options?: {
+			preservePendingTurn?: boolean;
+		},
+	) => void;
 	appendText: (sessionKey: string, text: string) => void;
 	appendThinking: (sessionKey: string, text: string) => void;
 	appendImage: (sessionKey: string, image: DisplayImage) => void;
@@ -111,10 +117,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				},
 			};
 		}),
-	replaceHistory: (sessionKey, messages) =>
+	replaceHistory: (sessionKey, messages, options) =>
 		set((state) => {
 			const session = getOrCreateSession(state.sessions, sessionKey);
 			const normalizedMessages = normalizeReplayHistory(messages);
+			const preservePendingTurn = options?.preservePendingTurn ?? true;
 			return {
 				sessions: {
 					...state.sessions,
@@ -125,16 +132,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						streamingThinking: "",
 						streamingImages: [],
 						heartbeatPending:
+							preservePendingTurn &&
 							(session.isThinking || session.isStreaming) &&
 							hasPendingHeartbeatIndicator(normalizedMessages),
 						heartbeatStreamingText: "",
 						heartbeatStreamingThinking: "",
 						heartbeatStreamingImages: [],
-						isThinking: session.isThinking,
-						isStreaming: session.isStreaming,
+						isThinking: preservePendingTurn ? session.isThinking : false,
+						isStreaming: preservePendingTurn ? session.isStreaming : false,
 						error: null,
 						thinkingStartedAt:
-							session.isThinking || session.isStreaming
+							preservePendingTurn && (session.isThinking || session.isStreaming)
 								? session.thinkingStartedAt
 								: null,
 					},

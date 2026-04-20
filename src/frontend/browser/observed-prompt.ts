@@ -1,10 +1,9 @@
 import { HEARTBEAT_DISPLAY_LABEL } from "../../common/heartbeat-prompt.ts";
 import type { DisplayMessage, ServerEvent } from "../../common/protocol.ts";
-import { ROLLOVER_DISPLAY_LABEL } from "../../common/rollover-prompt.ts";
 
 export function toObservedDisplayMessage(
 	event: Extract<ServerEvent, { type: "user_prompt" }>,
-): DisplayMessage {
+): DisplayMessage | null {
 	if (event.source === "heartbeat") {
 		return {
 			kind: "system",
@@ -13,11 +12,7 @@ export function toObservedDisplayMessage(
 		};
 	}
 	if (event.source === "rollover") {
-		return {
-			kind: "system",
-			event: "rollover",
-			text: ROLLOVER_DISPLAY_LABEL,
-		};
+		return null;
 	}
 
 	return {

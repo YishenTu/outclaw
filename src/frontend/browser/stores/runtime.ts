@@ -12,6 +12,7 @@ export type BrowserConnectionStatus =
 
 export interface BrowserRuntimeState {
 	connectionStatus: BrowserConnectionStatus;
+	dismissedNoticeKey: string | null;
 	error: string | null;
 	agentName: string | null;
 	providerId: string | null;
@@ -26,6 +27,7 @@ export interface BrowserRuntimeState {
 	heartbeatDeferred: boolean;
 
 	setConnectionStatus: (status: BrowserConnectionStatus) => void;
+	dismissNotice: () => void;
 	setError: (error: string | null) => void;
 	updateFromStatus: (event: RuntimeStatusEvent) => void;
 	setAgentName: (name: string | null) => void;
@@ -34,8 +36,33 @@ export interface BrowserRuntimeState {
 	clearSession: () => void;
 }
 
+function createNoticeKey(
+	notice: FrontendNotice | null | undefined,
+): string | null {
+	if (!notice) {
+		return null;
+	}
+
+	if (notice.kind === "rollover") {
+		return `rollover:${notice.message}`;
+	}
+
+	return notice.kind;
+}
+
+export function selectVisibleRuntimeNotice(
+	state: Pick<BrowserRuntimeState, "dismissedNoticeKey" | "notice">,
+): FrontendNotice | null {
+	const noticeKey = createNoticeKey(state.notice);
+	if (!noticeKey || noticeKey === state.dismissedNoticeKey) {
+		return null;
+	}
+	return state.notice;
+}
+
 export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 	connectionStatus: "connecting",
+	dismissedNoticeKey: null,
 	error: null,
 	agentName: null,
 	providerId: null,
@@ -49,21 +76,34 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 	nextHeartbeatAt: undefined,
 	heartbeatDeferred: false,
 	setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
+	dismissNotice: () =>
+		set((state) => ({
+			dismissedNoticeKey:
+				createNoticeKey(state.notice) ?? state.dismissedNoticeKey,
+		})),
 	setError: (error) => set({ error }),
 	updateFromStatus: (event) =>
-		set((state) => ({
-			agentName: event.agentName ?? state.agentName,
-			providerId: event.providerId ?? state.providerId,
-			model: event.model,
-			effort: event.effort,
-			running: event.running,
-			sessionId: event.sessionId ?? null,
-			sessionTitle: event.sessionTitle ?? null,
-			notice: event.notice ?? null,
-			usage: event.usage,
-			nextHeartbeatAt: event.nextHeartbeatAt,
-			heartbeatDeferred: event.heartbeatDeferred ?? false,
-		})),
+		set((state) => {
+			const notice = event.notice ?? null;
+			const noticeKey = createNoticeKey(notice);
+			return {
+				agentName: event.agentName ?? state.agentName,
+				providerId: event.providerId ?? state.providerId,
+				model: event.model,
+				effort: event.effort,
+				running: event.running,
+				sessionId: event.sessionId ?? null,
+				sessionTitle: event.sessionTitle ?? null,
+				notice,
+				dismissedNoticeKey:
+					noticeKey && noticeKey === state.dismissedNoticeKey
+						? state.dismissedNoticeKey
+						: null,
+				usage: event.usage,
+				nextHeartbeatAt: event.nextHeartbeatAt,
+				heartbeatDeferred: event.heartbeatDeferred ?? false,
+			};
+		}),
 	setAgentName: (agentName) => set({ agentName }),
 	setModel: (model) => set({ model }),
 	setEffort: (effort) => set({ effort }),

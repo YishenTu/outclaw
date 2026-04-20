@@ -10,7 +10,7 @@ import type {
 import { extractError } from "../../common/protocol.ts";
 import type { PromptRunner } from "./prompt-runner.ts";
 import type { RuntimeClientGateway } from "./runtime-client-gateway.ts";
-import type { RuntimeState } from "./runtime-state.ts";
+import type { RuntimePromptContext, RuntimeState } from "./runtime-state.ts";
 import type { SessionService } from "./session-service.ts";
 
 export type PromptSource =
@@ -71,19 +71,24 @@ export class PromptDispatcher {
 
 	async run(
 		task: PromptExecution,
-		generation: number,
+		context: RuntimePromptContext & {
+			isVisible: () => boolean;
+			resumeSessionId?: string;
+		},
 		abortController: AbortController,
 	) {
 		const heartbeatBuffer: FacadeEvent[] = [];
 		let completedEvent: DoneEvent | undefined;
-		const observedSessionId = this.options.state.sessionId;
+		const observedSessionId = context.resumeSessionId;
+		const isVisible = () => context.isVisible();
 
 		if (
-			task.source === "telegram" ||
-			task.source === "heartbeat" ||
-			task.source === "rollover" ||
-			task.source === "tui" ||
-			task.source === "browser"
+			isVisible() &&
+			(task.source === "telegram" ||
+				task.source === "heartbeat" ||
+				task.source === "rollover" ||
+				task.source === "tui" ||
+				task.source === "browser")
 		) {
 			this.options.clients.sendMany(this.listObservers(task), {
 				type: "user_prompt",
@@ -99,35 +104,44 @@ export class PromptDispatcher {
 		const emit = (event: FacadeEvent) => {
 			const observedEvent = attachObservedSessionId(event, observedSessionId);
 			task.onEvent?.(event);
+			const visible = isVisible();
 			if (task.source === "heartbeat") {
 				heartbeatBuffer.push(event);
 			}
-			if (task.sender) {
+			if (visible && task.sender) {
 				this.options.clients.send(task.sender, observedEvent);
 			}
-			this.options.clients.sendMany(this.listObservers(task), observedEvent);
+			if (visible) {
+				this.options.clients.sendMany(this.listObservers(task), observedEvent);
+			}
 			if (event.type === "error") {
 				completedEvent = undefined;
 			}
-			if (
-				event.type === "done" &&
-				this.options.state.generation === generation
-			) {
+			if (event.type === "done") {
 				completedEvent = event;
-				this.options.sessions.completeRun(
-					event,
-					task.source,
-					task.telegramChatId,
-				);
+				if (visible) {
+					this.options.sessions.completeRun(
+						event,
+						task.source,
+						task.telegramChatId,
+					);
+				} else {
+					this.options.sessions.recordBackgroundCompletion({
+						event,
+						model: context.model,
+						source: toStoredSessionSource(task.source),
+						title: context.sessionTitle ?? "Untitled",
+					});
+				}
 			}
 		};
 
 		await this.options.promptRunner.run({
 			abortController,
-			effort: this.options.state.effort,
+			effort: context.effort,
 			emit,
-			model: this.options.state.resolvedModel,
-			resume: this.options.state.sessionId,
+			model: context.resolvedModel,
+			resume: context.resumeSessionId,
 			task,
 		});
 
@@ -183,6 +197,18 @@ export class PromptDispatcher {
 
 		return [];
 	}
+}
+
+function toStoredSessionSource(
+	source: PromptSource,
+): "agent" | "telegram" | "tui" {
+	if (source === "telegram") {
+		return "telegram";
+	}
+	if (source === "agent") {
+		return "agent";
+	}
+	return "tui";
 }
 
 function toDisplayImages(

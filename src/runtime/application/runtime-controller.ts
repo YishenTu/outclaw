@@ -67,6 +67,10 @@ export class RuntimeController {
 		return this.execution.hasActiveRun;
 	}
 
+	get hasVisibleRun(): boolean {
+		return this.execution.hasVisibleRun;
+	}
+
 	getStatusEvent(): RuntimeStatusEvent {
 		return this.createStatusEvent();
 	}
@@ -145,7 +149,7 @@ export class RuntimeController {
 
 	private createStatusEvent(): RuntimeStatusEvent {
 		const event = this.state.createStatusEvent();
-		event.running = this.execution.hasActiveRun;
+		event.running = this.execution.hasVisibleRun;
 		const notice = this.noticeProvider?.();
 		if (notice) {
 			event.notice = notice;

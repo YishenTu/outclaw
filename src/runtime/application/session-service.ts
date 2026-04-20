@@ -75,10 +75,21 @@ export class SessionService {
 	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
 		this.state.completeRun(event, source, telegramChatId);
 		this.persistActiveSession();
+	}
 
-		if (event.usage) {
-			this.store?.setUsage(this.state.providerId, event.sessionId, event.usage);
-		}
+	recordBackgroundCompletion(params: {
+		event: DoneEvent;
+		title: string;
+		model: string;
+		source: string;
+	}) {
+		this.persistSession({
+			sessionId: params.event.sessionId,
+			title: params.title,
+			model: params.model,
+			source: params.source,
+			usage: params.event.usage,
+		});
 	}
 
 	recordAcceptedPromptTarget(
@@ -185,14 +196,38 @@ export class SessionService {
 		}
 
 		this.store?.setActiveSessionId(this.state.providerId, sessionId);
-		this.store?.upsert({
-			providerId: this.state.providerId,
-			sdkSessionId: sessionId,
+		this.persistSession({
+			sessionId,
 			title: this.state.sessionTitle ?? "Untitled",
 			model: this.state.model,
 			source: this.state.sessionSource,
+			usage: this.state.usage,
+		});
+	}
+
+	private persistSession(params: {
+		sessionId: string;
+		title: string;
+		model: string;
+		source: string;
+		usage?: DoneEvent["usage"];
+	}) {
+		this.store?.upsert({
+			providerId: this.state.providerId,
+			sdkSessionId: params.sessionId,
+			title: params.title,
+			model: params.model,
+			source: params.source,
 			tag: "chat",
 		});
+
+		if (params.usage) {
+			this.store?.setUsage(
+				this.state.providerId,
+				params.sessionId,
+				params.usage,
+			);
+		}
 	}
 
 	private restorePersistedState() {

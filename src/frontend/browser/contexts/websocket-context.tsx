@@ -526,7 +526,8 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				}
 				case "history_replay": {
 					const agentId = getActiveAgentId();
-					const providerId = useRuntimeStore.getState().providerId;
+					const runtime = useRuntimeStore.getState();
+					const providerId = runtime.providerId;
 					if (!agentId) {
 						return;
 					}
@@ -545,12 +546,15 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 								),
 							),
 							event.messages,
+							{
+								preservePendingTurn:
+									runtime.running &&
+									runtime.sessionId === event.sdkSessionId &&
+									runtime.providerId === providerId,
+							},
 						);
-					if (useRuntimeStore.getState().running) {
-						ensureRunningChatSession(
-							agentId,
-							useRuntimeStore.getState().providerId,
-						);
+					if (runtime.running) {
+						ensureRunningChatSession(agentId, runtime.providerId);
 					}
 					return;
 				}
@@ -560,10 +564,12 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 						return;
 					}
 					const sessionKey = pinObservedSessionKey(agentId, event.sessionId);
+					const message = toObservedDisplayMessage(event);
+					if (!message) {
+						return;
+					}
 
-					useChatStore
-						.getState()
-						.pushMessage(sessionKey, toObservedDisplayMessage(event));
+					useChatStore.getState().pushMessage(sessionKey, message);
 					return;
 				}
 				case "thinking": {

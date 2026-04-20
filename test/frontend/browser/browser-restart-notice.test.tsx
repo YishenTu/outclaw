@@ -23,4 +23,20 @@ describe("BrowserRestartNotice", () => {
 			"Changes won&#x27;t update until the runtime restarts.",
 		);
 	});
+
+	test("renders a dismiss button for rollover notices", () => {
+		const html = renderToStaticMarkup(
+			<BrowserRestartNoticeContent
+				notice={{
+					kind: "rollover",
+					message: "Session rolled over after idle timeout.",
+				}}
+				onDismiss={() => {}}
+			/>,
+		);
+
+		expect(html).toContain("Session rollover");
+		expect(html).toContain("Session rolled over after idle timeout.");
+		expect(html).toContain('aria-label="Dismiss notification"');
+	});
 });
