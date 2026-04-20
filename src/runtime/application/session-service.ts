@@ -149,22 +149,37 @@ export class SessionService {
 		return session;
 	}
 
-	finishRolloverAttempt(params: { failed: boolean; idleMinutes: number }) {
+	beginRolloverAttempt(idleMinutes: number) {
 		const lastInteractiveAt = this.store?.getLastInteractiveAt();
 		if (lastInteractiveAt !== undefined) {
 			this.store?.setLastHandledRolloverInteractiveAt(lastInteractiveAt);
 		}
 
-		const message = params.failed
-			? `Previous session auto-finalized after ${formatIdleWindow(
-					params.idleMinutes,
-				)} idle. Final check failed. Use /session to resume.`
-			: `Previous session auto-finalized after ${formatIdleWindow(
-					params.idleMinutes,
-				)} idle. Use /session to resume.`;
-
 		this.clearActiveSession();
-		this.store?.setRolloverNotice(message);
+		this.store?.setRolloverNotice(
+			`Previous session auto-finalized after ${formatIdleWindow(
+				idleMinutes,
+			)} idle. Use /session to resume.`,
+		);
+	}
+
+	finishRolloverAttempt(params: { failed: boolean; idleMinutes: number }) {
+		if (!params.failed) {
+			return;
+		}
+
+		const expectedStartedMessage = `Previous session auto-finalized after ${formatIdleWindow(
+			params.idleMinutes,
+		)} idle. Use /session to resume.`;
+		if (this.store?.getRolloverNotice() !== expectedStartedMessage) {
+			return;
+		}
+
+		this.store?.setRolloverNotice(
+			`Previous session auto-finalized after ${formatIdleWindow(
+				params.idleMinutes,
+			)} idle. Final check failed. Use /session to resume.`,
+		);
 	}
 
 	recordCronRun(params: { sessionId: string; jobName: string; model: string }) {

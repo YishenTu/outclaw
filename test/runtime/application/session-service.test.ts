@@ -160,7 +160,7 @@ describe("SessionService", () => {
 		store.close();
 	});
 
-	test("finishRolloverAttempt marks the idle epoch handled, clears the active session, and stores a notice", () => {
+	test("beginRolloverAttempt marks the idle epoch handled, clears the active session, and stores a notice", () => {
 		const store = createTestStore();
 		const state = new RuntimeState(PROVIDER_ID);
 		const sessions = new SessionService(state, store);
@@ -169,16 +169,31 @@ describe("SessionService", () => {
 		state.preparePrompt("Current chat");
 		sessions.completeRun(makeDoneEvent("sdk-active"));
 
-		sessions.finishRolloverAttempt({
-			failed: false,
-			idleMinutes: 480,
-		});
+		sessions.beginRolloverAttempt(480);
 
 		expect(store.getLastHandledRolloverInteractiveAt()).toBe(123);
 		expect(store.getActiveSessionId(PROVIDER_ID)).toBeUndefined();
 		expect(state.sessionId).toBeUndefined();
 		expect(store.getRolloverNotice()).toBe(
 			"Previous session auto-finalized after 8h idle. Use /session to resume.",
+		);
+
+		store.close();
+	});
+
+	test("finishRolloverAttempt upgrades the notice when the background finalize fails", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		sessions.beginRolloverAttempt(480);
+		sessions.finishRolloverAttempt({
+			failed: true,
+			idleMinutes: 480,
+		});
+
+		expect(store.getRolloverNotice()).toBe(
+			"Previous session auto-finalized after 8h idle. Final check failed. Use /session to resume.",
 		);
 
 		store.close();

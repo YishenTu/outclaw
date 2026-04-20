@@ -15,7 +15,9 @@ interface RuntimeExecutionCoordinatorOptions {
 	promptDispatcher: Pick<PromptDispatcher, "run">;
 	sessions: Pick<
 		SessionService,
-		"finishRolloverAttempt" | "recordAcceptedPromptTarget"
+		| "beginRolloverAttempt"
+		| "finishRolloverAttempt"
+		| "recordAcceptedPromptTarget"
 	>;
 	state: RuntimeState;
 }
@@ -257,6 +259,7 @@ export class RuntimeExecutionCoordinator {
 				return;
 			}
 
+			this.options.sessions.beginRolloverAttempt(task.idleMinutes);
 			started = true;
 			await this.runPromptInLane(
 				lane,

@@ -140,7 +140,7 @@ describe("RuntimeExecutionCoordinator", () => {
 		}
 	});
 
-	test("rollover prompts mark the idle epoch handled and clear the active session after completion", async () => {
+	test("rollover prompts detach the active session before the background finalize completes", async () => {
 		const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
 		const state = new RuntimeState("mock");
 		const sessions = new SessionService(state, store);
@@ -148,11 +148,19 @@ describe("RuntimeExecutionCoordinator", () => {
 		state.preparePrompt("Old session");
 		sessions.completeRun(makeDoneEvent("sdk-old"));
 		let source: string | undefined;
+		const release = createDeferred();
 
 		const coordinator = new RuntimeExecutionCoordinator({
 			promptDispatcher: {
 				run: async (task) => {
 					source = task.source;
+					expect(state.sessionId).toBeUndefined();
+					expect(store.getActiveSessionId("mock")).toBeUndefined();
+					expect(store.getLastHandledRolloverInteractiveAt()).toBe(123);
+					expect(store.getRolloverNotice()).toBe(
+						"Previous session auto-finalized after 8h idle. Use /session to resume.",
+					);
+					await release.promise;
 					task.onEvent?.({
 						type: "done",
 						sessionId: "sdk-old",
@@ -167,6 +175,7 @@ describe("RuntimeExecutionCoordinator", () => {
 		expect(coordinator.enqueueRollover("finalize the old session", 480)).toBe(
 			true,
 		);
+		release.resolve();
 		await coordinator.drain();
 
 		expect(source).toBe("rollover");
