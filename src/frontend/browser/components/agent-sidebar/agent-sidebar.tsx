@@ -335,14 +335,10 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 			) : null}
 			<div className="flex h-12 items-center border-b border-dark-800 px-3">
 				<img
-					src="/logo.png"
-					alt=""
-					aria-hidden="true"
-					className="mr-2 h-5 w-5 shrink-0 rounded-[4px] object-cover"
+					src="/Sidebar%20Banner.png"
+					alt="OUTCLAW"
+					className="h-7 w-auto shrink-0"
 				/>
-				<div className="font-display text-[14px] font-semibold uppercase leading-tight tracking-[0.32em] text-parchment">
-					OUTCLAW
-				</div>
 				<div className="flex-1" />
 				{onCollapse && (
 					<button
