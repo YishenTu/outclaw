@@ -333,18 +333,17 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 					onSave={handleConfigSave}
 				/>
 			) : null}
-			<div className="flex h-12 items-center border-b border-dark-800 px-3">
+			<div className="relative flex h-12 items-center justify-center border-b border-dark-800 px-3">
 				<img
 					src="/Sidebar%20Banner.png"
 					alt="OUTCLAW"
-					className="h-7 w-auto shrink-0"
+					className="h-7 w-auto shrink-0 -translate-x-3"
 				/>
-				<div className="flex-1" />
 				{onCollapse && (
 					<button
 						type="button"
 						onClick={onCollapse}
-						className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
+						className="absolute right-3 flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
 						aria-label="Collapse left sidebar"
 					>
 						<PanelLeftOpen size={15} />
