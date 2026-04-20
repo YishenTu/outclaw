@@ -46,4 +46,15 @@ describe("right panel refresh store", () => {
 		expect(selectAgentTreeRevision(store.getState(), "agent-beta")).toBe(0);
 		expect(selectGitRevision(store.getState())).toBe(1);
 	});
+
+	test("supports explicit tree refresh bumps for the active agent", () => {
+		const store = createRightPanelRefreshStore();
+
+		store.getState().bumpTreeRevision("agent-alpha");
+		store.getState().bumpTreeRevision("agent-alpha");
+
+		expect(selectAgentTreeRevision(store.getState(), "agent-alpha")).toBe(2);
+		expect(selectAgentTreeRevision(store.getState(), "agent-beta")).toBe(0);
+		expect(selectGitRevision(store.getState())).toBe(0);
+	});
 });

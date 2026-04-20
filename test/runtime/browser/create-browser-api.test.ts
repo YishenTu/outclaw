@@ -560,6 +560,9 @@ describe("createBrowserApi", () => {
 			});
 
 			const status = await api.readGitStatus();
+			if (!status.initialized) {
+				throw new Error("expected initialized git status");
+			}
 			expect(status.branch).toBe("main");
 			const secondCommit = status.graph.commits.find(
 				(commit) => commit.commit.message === "Second commit",
@@ -686,6 +689,9 @@ describe("createBrowserApi", () => {
 		});
 
 		const status = await api.readGitStatus();
+		if (!status.initialized) {
+			throw new Error("expected initialized git status");
+		}
 		expect(status.files).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
@@ -743,6 +749,9 @@ describe("createBrowserApi", () => {
 		});
 
 		const status = await api.readGitStatus();
+		if (!status.initialized) {
+			throw new Error("expected initialized git status");
+		}
 		expect(status.files).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
@@ -851,6 +860,9 @@ describe("createBrowserApi", () => {
 		});
 
 		const status = await api.readGitStatus();
+		if (!status.initialized) {
+			throw new Error("expected initialized git status");
+		}
 		expect(status.files).toEqual([
 			expect.objectContaining({
 				path: "agents/railly/skills/oc/SKILL.md",
@@ -863,6 +875,143 @@ describe("createBrowserApi", () => {
 				}),
 			]),
 		);
+	});
+
+	test("reports uninitialized status when the git root is not a repo", async () => {
+		const root = createTempDir("outclaw-browser-git-uninit-");
+		cleanupPaths.push(root);
+
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const status = await api.readGitStatus();
+		expect(status).toEqual({
+			initialized: false,
+			root,
+		});
+	});
+
+	test("initGitRepo initializes the git root and readGitStatus reports it", async () => {
+		const root = createTempDir("outclaw-browser-git-init-");
+		cleanupPaths.push(root);
+
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const before = await api.readGitStatus();
+		expect(before.initialized).toBe(false);
+
+		const after = await api.initGitRepo();
+		expect(after.initialized).toBe(true);
+		expect(existsSync(join(root, ".git"))).toBe(true);
+
+		const status = await api.readGitStatus();
+		expect(status.initialized).toBe(true);
+	});
+
+	test("reads git status in an unborn repo with the correct branch and line counts", async () => {
+		const root = createTempDir("outclaw-browser-git-unborn-");
+		cleanupPaths.push(root);
+
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+		writeFileSync(join(root, "README.md"), "# Outclaw\n");
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		runGit(root, ["init", "--initial-branch=main"]);
+		runGit(root, ["add", "README.md"]);
+		writeFileSync(join(root, "README.md"), "# Outclaw\n\nHello\n");
+
+		const status = await api.readGitStatus();
+		if (!status.initialized) {
+			throw new Error("expected initialized git status");
+		}
+
+		expect(status.branch).toBe("main");
+		expect(status.files).toEqual([
+			expect.objectContaining({
+				path: "README.md",
+				indexStatus: "A",
+				worktreeStatus: "M",
+				additions: 3,
+				deletions: 0,
+			}),
+		]);
+	});
+
+	test("treats only the exact git root as initialized", async () => {
+		const parentRoot = createTempDir("outclaw-browser-git-parent-");
+		cleanupPaths.push(parentRoot);
+
+		const childRoot = join(parentRoot, ".outclaw");
+		const agentHomeDir = join(childRoot, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		runGit(parentRoot, ["init", "--initial-branch=main"]);
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: childRoot,
+			homeDir: childRoot,
+			storesByAgent: new Map(),
+		});
+
+		await expect(api.readGitStatus()).resolves.toEqual({
+			initialized: false,
+			root: childRoot,
+		});
 	});
 });
 

@@ -96,6 +96,14 @@ export async function fetchGitStatus(): Promise<BrowserGitStatusResponse> {
 	return parseJsonResponse(await fetch("/api/git/status"));
 }
 
+export async function initGitRepo(): Promise<BrowserGitStatusResponse> {
+	return parseJsonResponse(
+		await fetch("/api/git/init", {
+			method: "POST",
+		}),
+	);
+}
+
 export async function fetchGitDiff(
 	path: string,
 ): Promise<BrowserGitDiffResponse> {

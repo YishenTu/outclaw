@@ -6,6 +6,8 @@ interface RightPanelRefreshState {
 	gitRevision: number;
 	treeRevisionByAgent: Record<string, number>;
 
+	bumpGitRevision: () => void;
+	bumpTreeRevision: (agentId: string) => void;
 	invalidate: (event: BrowserSidebarInvalidatedEvent) => void;
 }
 
@@ -35,6 +37,15 @@ export function createRightPanelRefreshStore() {
 		cronRevisionByAgent: {},
 		gitRevision: 0,
 		treeRevisionByAgent: {},
+		bumpGitRevision: () =>
+			set((state) => ({ gitRevision: state.gitRevision + 1 })),
+		bumpTreeRevision: (agentId) =>
+			set((state) => ({
+				treeRevisionByAgent: incrementRevision(
+					state.treeRevisionByAgent,
+					agentId,
+				),
+			})),
 		invalidate: (event) =>
 			set((state) => {
 				let nextCronRevisionByAgent = state.cronRevisionByAgent;

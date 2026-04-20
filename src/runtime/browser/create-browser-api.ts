@@ -1,4 +1,4 @@
-import type { Dirent } from "node:fs";
+import { type Dirent, realpathSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import type {
@@ -12,6 +12,7 @@ import type {
 	BrowserGitGraph,
 	BrowserGitGraphBranchHead,
 	BrowserGitGraphCommit,
+	BrowserGitInitializedResponse,
 	BrowserGitStatusResponse,
 	BrowserTreeEntry,
 	BrowserTreeEntryGitStatus,
@@ -57,6 +58,7 @@ export interface BrowserApi {
 		agentId: string,
 		relativePath: string,
 	): Promise<BrowserFileResponse>;
+	initGitRepo(): Promise<BrowserGitStatusResponse>;
 	readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
 	readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
 	readGitStatus(): Promise<BrowserGitStatusResponse>;
@@ -164,6 +166,9 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			return await readBrowserFile(agent.homeDir, absolutePath);
 		},
 		async readGitStatus() {
+			if (!isGitRepo(options.gitRoot)) {
+				return { initialized: false, root: options.gitRoot };
+			}
 			const output = runGit(
 				options.gitRoot,
 				["status", "--porcelain=v1", "--branch", "--untracked-files=all"],
@@ -175,6 +180,12 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				readGitGraphData(options.gitRoot),
 				ignoredGitPaths,
 			);
+		},
+		async initGitRepo() {
+			if (!isGitRepo(options.gitRoot)) {
+				runGit(options.gitRoot, ["init"], false);
+			}
+			return this.readGitStatus();
 		},
 		async readGitCommit(sha) {
 			return readGitCommit(options.gitRoot, sha);
@@ -515,6 +526,41 @@ function runGit(
 	return runProcess(["git", ...args], cwd, allowExitCodeOne);
 }
 
+function isGitRepo(cwd: string): boolean {
+	const result = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
+		cwd,
+		stderr: "pipe",
+		stdout: "pipe",
+	});
+	if (result.exitCode !== 0) {
+		return false;
+	}
+
+	return (
+		canonicalizePath(result.stdout.toString().trim()) === canonicalizePath(cwd)
+	);
+}
+
+function canonicalizePath(path: string): string {
+	try {
+		return realpathSync.native(path);
+	} catch {
+		return resolve(path);
+	}
+}
+
+function hasGitHeadCommit(root: string): boolean {
+	const result = Bun.spawnSync(
+		["git", "rev-parse", "--verify", "HEAD^{commit}"],
+		{
+			cwd: root,
+			stderr: "pipe",
+			stdout: "pipe",
+		},
+	);
+	return result.exitCode === 0;
+}
+
 function runProcess(
 	cmd: string[],
 	cwd: string,
@@ -608,7 +654,7 @@ function parseGitStatus(
 	root: string,
 	graph: BrowserGitGraph,
 	ignoredGitPaths: readonly string[],
-): BrowserGitStatusResponse {
+): BrowserGitInitializedResponse {
 	const lines = output
 		.split(/\r?\n/)
 		.map((line) => line.trimEnd())
@@ -616,17 +662,8 @@ function parseGitStatus(
 	const branchLine = lines.find((line) => line.startsWith("## "));
 	const fileLines = lines.filter((line) => !line.startsWith("## "));
 
-	let branch: string | null = null;
-	let ahead = 0;
-	let behind = 0;
-	if (branchLine) {
-		const branchMatch = branchLine.match(/^## ([^. ]+)/);
-		branch = branchMatch?.[1] ?? null;
-		const aheadMatch = branchLine.match(/ahead (\d+)/);
-		const behindMatch = branchLine.match(/behind (\d+)/);
-		ahead = Number(aheadMatch?.[1] ?? 0);
-		behind = Number(behindMatch?.[1] ?? 0);
-	}
+	const { ahead, behind, branch } = parseGitBranchStatusLine(branchLine);
+	const hasHeadCommit = hasGitHeadCommit(root);
 
 	const files = fileLines
 		.map((line) => parseGitFileStatusLine(line))
@@ -634,10 +671,11 @@ function parseGitStatus(
 		.filter((file) => !isIgnoredGitPath(file.path, ignoredGitPaths))
 		.map((file) => ({
 			...file,
-			...readGitFileLineCounts(root, file),
+			...readGitFileLineCounts(root, file, hasHeadCommit),
 		}));
 
 	return {
+		initialized: true,
 		root,
 		branch,
 		ahead,
@@ -645,6 +683,40 @@ function parseGitStatus(
 		clean: files.length === 0,
 		graph,
 		files,
+	};
+}
+
+function parseGitBranchStatusLine(branchLine: string | undefined): {
+	ahead: number;
+	behind: number;
+	branch: string | null;
+} {
+	if (!branchLine) {
+		return {
+			ahead: 0,
+			behind: 0,
+			branch: null,
+		};
+	}
+
+	const unbornMatch = branchLine.match(
+		/^## (?:No commits yet on|Initial commit on) (.+)$/,
+	);
+	if (unbornMatch) {
+		return {
+			ahead: 0,
+			behind: 0,
+			branch: unbornMatch[1] ?? null,
+		};
+	}
+
+	const aheadMatch = branchLine.match(/ahead (\d+)/);
+	const behindMatch = branchLine.match(/behind (\d+)/);
+	const summary = branchLine.slice(3).split("...")[0]?.trim() ?? "";
+	return {
+		ahead: Number(aheadMatch?.[1] ?? 0),
+		behind: Number(behindMatch?.[1] ?? 0),
+		branch: summary === "" || summary.startsWith("HEAD") ? null : summary,
 	};
 }
 
@@ -673,7 +745,37 @@ function parseGitFileStatusLine(
 function readGitFileLineCounts(
 	root: string,
 	file: BrowserGitFileStatus,
+	hasHeadCommit: boolean,
 ): { additions: number; deletions: number } {
+	if (!hasHeadCommit) {
+		if (file.indexStatus === "?" || file.worktreeStatus === "?") {
+			const absolutePath = resolveWithinRoot(root, file.path);
+			const untrackedOutput = runProcess(
+				["git", "diff", "--no-index", "--numstat", "/dev/null", absolutePath],
+				root,
+				true,
+			);
+			return (
+				parseGitNumstatOutput(untrackedOutput) ?? { additions: 0, deletions: 0 }
+			);
+		}
+
+		const paths = file.renamedFrom
+			? [file.renamedFrom, file.path]
+			: [file.path];
+		const stagedCounts = parseGitNumstatOutput(
+			runGit(
+				root,
+				["diff", "--cached", "--numstat", "-M", "--", ...paths],
+				false,
+			),
+		);
+		const worktreeCounts = parseGitNumstatOutput(
+			runGit(root, ["diff", "--numstat", "-M", "--", ...paths], false),
+		);
+		return sumGitNumstatCounts(stagedCounts, worktreeCounts);
+	}
+
 	const trackedOutput = runGit(
 		root,
 		[
@@ -704,6 +806,16 @@ function readGitFileLineCounts(
 	}
 
 	return { additions: 0, deletions: 0 };
+}
+
+function sumGitNumstatCounts(
+	left: { additions: number; deletions: number } | undefined,
+	right: { additions: number; deletions: number } | undefined,
+): { additions: number; deletions: number } {
+	return {
+		additions: (left?.additions ?? 0) + (right?.additions ?? 0),
+		deletions: (left?.deletions ?? 0) + (right?.deletions ?? 0),
+	};
 }
 
 function parseGitNumstatOutput(

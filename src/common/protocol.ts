@@ -447,7 +447,13 @@ export interface BrowserGitGraph {
 	branchHeads: BrowserGitGraphBranchHead[];
 }
 
-export interface BrowserGitStatusResponse {
+export interface BrowserGitUninitializedResponse {
+	initialized: false;
+	root: string;
+}
+
+export interface BrowserGitInitializedResponse {
+	initialized: true;
 	root: string;
 	branch: string | null;
 	ahead: number;
@@ -456,6 +462,10 @@ export interface BrowserGitStatusResponse {
 	graph: BrowserGitGraph;
 	files: BrowserGitFileStatus[];
 }
+
+export type BrowserGitStatusResponse =
+	| BrowserGitUninitializedResponse
+	| BrowserGitInitializedResponse;
 
 export interface BrowserGitDiffResponse {
 	path: string;

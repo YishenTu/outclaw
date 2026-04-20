@@ -2,10 +2,12 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ReactNode } from "react";
 import type {
 	BrowserGitGraphCommit,
+	BrowserGitInitializedResponse,
 	BrowserGitStatusResponse,
 } from "../../../../common/protocol.ts";
 import { GitGraph } from "./git-graph.tsx";
 import { gitPanelFileToneClass } from "./git-status-tone.ts";
+import { GitUninitializedCard } from "./git-uninitialized-card.tsx";
 
 const GIT_PANEL_SECTION_HEADER_CLASS =
 	"mb-2 flex shrink-0 items-center justify-between gap-3 px-2";
@@ -17,6 +19,7 @@ const GIT_PANEL_TOGGLE_CLASS =
 interface GitPanelProps {
 	graphCollapsed?: boolean;
 	onCommit?: () => void;
+	onInitialize?: () => Promise<void>;
 	onOpenCommit?: (commit: BrowserGitGraphCommit) => void;
 	status: BrowserGitStatusResponse | null;
 	loading: boolean;
@@ -84,11 +87,13 @@ function GitPanelSection({
 	);
 }
 
-function formatGitBranch(status: BrowserGitStatusResponse): string {
+function formatGitBranch(status: BrowserGitInitializedResponse): string {
 	return status.branch ? `Branch ${status.branch}` : "Detached HEAD";
 }
 
-function formatGitSummary(status: BrowserGitStatusResponse): string | null {
+function formatGitSummary(
+	status: BrowserGitInitializedResponse,
+): string | null {
 	if (status.clean) {
 		return null;
 	}
@@ -100,7 +105,7 @@ export function GitPanelHeader({
 	status,
 	onCommit,
 }: {
-	status: BrowserGitStatusResponse;
+	status: BrowserGitInitializedResponse;
 	onCommit?: () => void;
 }) {
 	const summary = formatGitSummary(status);
@@ -134,6 +139,7 @@ export function GitPanelHeader({
 export function GitPanel({
 	graphCollapsed = false,
 	onCommit,
+	onInitialize,
 	onOpenCommit,
 	status,
 	loading,
@@ -155,6 +161,15 @@ export function GitPanel({
 
 	if (!status) {
 		return <div className="px-4 py-4 text-sm text-dark-500">No git data.</div>;
+	}
+
+	if (!status.initialized) {
+		return (
+			<GitUninitializedCard
+				root={status.root}
+				onInitialize={onInitialize ?? (async () => {})}
+			/>
+		);
 	}
 
 	return (

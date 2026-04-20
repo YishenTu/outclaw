@@ -40,6 +40,7 @@ interface CreateSupervisorOptions {
 			agentId: string,
 			relativePath: string,
 		): Promise<BrowserFileResponse>;
+		initGitRepo(): Promise<BrowserGitStatusResponse>;
 		readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
 		readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
 		readGitStatus(): Promise<BrowserGitStatusResponse>;
@@ -248,6 +249,13 @@ async function handleBrowserApiRequest(
 
 		if (url.pathname === "/api/git/status") {
 			return Response.json(await browserApi.readGitStatus());
+		}
+
+		if (url.pathname === "/api/git/init") {
+			if (req.method !== "POST") {
+				return jsonError("Method not allowed", 405);
+			}
+			return Response.json(await browserApi.initGitRepo());
 		}
 
 		if (url.pathname === "/api/git/diff") {

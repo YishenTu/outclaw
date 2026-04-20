@@ -13,7 +13,7 @@ import type {
 	BrowserTreeEntry,
 } from "../../../../common/protocol.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
-import { fetchAgentTree, fetchGitStatus } from "../../lib/api.ts";
+import { fetchAgentTree, fetchGitStatus, initGitRepo } from "../../lib/api.ts";
 import { sendGitCommitPrompt } from "../../send-git-commit-prompt.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import {
@@ -182,6 +182,12 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		selectAgentTreeRevision(state, activeAgentId),
 	);
 	const gitRevision = useRightPanelRefreshStore(selectGitRevision);
+	const bumpGitRevision = useRightPanelRefreshStore(
+		(state) => state.bumpGitRevision,
+	);
+	const bumpTreeRevision = useRightPanelRefreshStore(
+		(state) => state.bumpTreeRevision,
+	);
 
 	useEffect(() => {
 		void treeRevision;
@@ -303,9 +309,15 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	}, [activeUpperTab, gitRevision, loadedGitRevision]);
 
 	useEffect(() => {
+		if (selectedGitCommitSha === null) {
+			return;
+		}
+		if (!gitStatus?.initialized) {
+			setSelectedGitCommitSha(null);
+			return;
+		}
 		if (
-			selectedGitCommitSha !== null &&
-			!gitStatus?.graph.commits.some(
+			!gitStatus.graph.commits.some(
 				(commit) => commit.sha === selectedGitCommitSha,
 			)
 		) {
@@ -356,6 +368,14 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			}),
 		[activeAgent, sendPromptToAgent],
 	);
+
+	const handleInitialize = useCallback(async () => {
+		await initGitRepo();
+		if (activeAgentId) {
+			bumpTreeRevision(activeAgentId);
+		}
+		bumpGitRevision();
+	}, [activeAgentId, bumpGitRevision, bumpTreeRevision]);
 
 	const handleResizeMouseDown = useCallback(
 		(event: React.MouseEvent<HTMLButtonElement>) => {
@@ -457,6 +477,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 				<GitPanel
 					graphCollapsed={rightGitGraphCollapsed}
 					onCommit={handleCommit}
+					onInitialize={handleInitialize}
 					onOpenCommit={handleOpenCommit}
 					status={gitStatus}
 					loading={gitLoading}

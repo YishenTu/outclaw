@@ -90,6 +90,7 @@ describe("createSupervisor browser routes", () => {
 					diff: "diff --git a/README.md b/README.md",
 				}),
 				readGitStatus: async () => ({
+					initialized: true,
 					root: "/tmp/.outclaw",
 					branch: "main",
 					ahead: 0,
@@ -97,6 +98,10 @@ describe("createSupervisor browser routes", () => {
 					clean: true,
 					graph: { commits: [], branchHeads: [] },
 					files: [],
+				}),
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
 				}),
 				setAgentCronEnabled: async () => {
 					throw new Error("Not implemented");
@@ -167,6 +172,7 @@ describe("createSupervisor browser routes", () => {
 					diff: "diff --git a/README.md b/README.md",
 				}),
 				readGitStatus: async () => ({
+					initialized: true,
 					root: "/tmp/.outclaw",
 					branch: "main",
 					ahead: 0,
@@ -174,6 +180,10 @@ describe("createSupervisor browser routes", () => {
 					clean: true,
 					graph: { commits: [], branchHeads: [] },
 					files: [],
+				}),
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
 				}),
 				setAgentCronEnabled: async () => {
 					throw new Error("Not implemented");
@@ -239,6 +249,7 @@ describe("createSupervisor browser routes", () => {
 					diff: "diff --git a/README.md b/README.md",
 				}),
 				readGitStatus: async () => ({
+					initialized: true,
 					root: "/tmp/.outclaw",
 					branch: "main",
 					ahead: 0,
@@ -246,6 +257,10 @@ describe("createSupervisor browser routes", () => {
 					clean: true,
 					graph: { commits: [], branchHeads: [] },
 					files: [],
+				}),
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
 				}),
 				setAgentCronEnabled: async () => {
 					throw new Error("Not implemented");
@@ -308,6 +323,7 @@ describe("createSupervisor browser routes", () => {
 					diff: "diff --git a/README.md b/README.md",
 				}),
 				readGitStatus: async () => ({
+					initialized: true,
 					root: "/tmp/.outclaw",
 					branch: "main",
 					ahead: 0,
@@ -315,6 +331,10 @@ describe("createSupervisor browser routes", () => {
 					clean: true,
 					graph: { commits: [], branchHeads: [] },
 					files: [],
+				}),
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
 				}),
 				setAgentCronEnabled: async () => {
 					throw new Error("Not implemented");
@@ -344,6 +364,96 @@ describe("createSupervisor browser routes", () => {
 		await expect(response.json()).resolves.toEqual(
 			createConfigResponse('{\n\t"host": "127.0.0.1",\n\t"port": 4100\n}\n'),
 		);
+	});
+
+	test("initializes the git repo over HTTP", async () => {
+		let initCalls = 0;
+		const supervisor = createSupervisor({
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+				}),
+			],
+			browserApi: {
+				getAgentTerminalCwd: () => undefined,
+				listAgentCron: async () => [],
+				listAgentTree: async () => [],
+				listAgents: () => ({
+					activeAgentId: "agent-railly",
+					agents: [],
+				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async () => {
+					throw new Error("Not implemented");
+				},
+				readAgentFile: async (_agentId, path) => ({
+					path,
+					kind: "text",
+					content: "# Agent\n",
+					truncated: false,
+				}),
+				readGitDiff: async () => ({
+					path: "config.json",
+					diff: "",
+				}),
+				readGitCommit: async () => ({
+					sha: "abc1234",
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
+				readGitStatus: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
+				}),
+				initGitRepo: async () => {
+					initCalls += 1;
+					return {
+						initialized: true,
+						root: "/tmp/.outclaw",
+						branch: "main",
+						ahead: 0,
+						behind: 0,
+						clean: true,
+						graph: { commits: [], branchHeads: [] },
+						files: [],
+					};
+				},
+				setAgentCronEnabled: async () => {
+					throw new Error("Not implemented");
+				},
+			},
+			port: 0,
+		});
+		cleanup = () => supervisor.stop();
+
+		const response = await fetch(
+			`http://localhost:${supervisor.port}/api/git/init`,
+			{
+				method: "POST",
+			},
+		);
+
+		expect(response.status).toBe(200);
+		expect(initCalls).toBe(1);
+		await expect(response.json()).resolves.toEqual({
+			initialized: true,
+			root: "/tmp/.outclaw",
+			branch: "main",
+			ahead: 0,
+			behind: 0,
+			clean: true,
+			graph: { commits: [], branchHeads: [] },
+			files: [],
+		});
 	});
 
 	test("serves browser cron summaries over HTTP", async () => {
@@ -398,6 +508,7 @@ describe("createSupervisor browser routes", () => {
 					diff: "diff --git a/README.md b/README.md",
 				}),
 				readGitStatus: async () => ({
+					initialized: true,
 					root: "/tmp/.outclaw",
 					branch: "main",
 					ahead: 0,
@@ -405,6 +516,10 @@ describe("createSupervisor browser routes", () => {
 					clean: true,
 					graph: { commits: [], branchHeads: [] },
 					files: [],
+				}),
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
 				}),
 				setAgentCronEnabled: async (_agentId, path, enabled) => ({
 					name: "Morning check",
@@ -478,6 +593,7 @@ describe("createSupervisor browser routes", () => {
 					diff: "diff --git a/README.md b/README.md",
 				}),
 				readGitStatus: async () => ({
+					initialized: true,
 					root: "/tmp/.outclaw",
 					branch: "main",
 					ahead: 0,
@@ -485,6 +601,10 @@ describe("createSupervisor browser routes", () => {
 					clean: true,
 					graph: { commits: [], branchHeads: [] },
 					files: [],
+				}),
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
 				}),
 				setAgentCronEnabled: async (_agentId, path, enabled) => ({
 					name: "Morning check",
@@ -566,6 +686,7 @@ describe("createSupervisor browser routes", () => {
 					diff: "",
 				}),
 				readGitStatus: async () => ({
+					initialized: true,
 					root: "/tmp/.outclaw",
 					branch: "main",
 					ahead: 0,
@@ -573,6 +694,10 @@ describe("createSupervisor browser routes", () => {
 					clean: true,
 					graph: { commits: [], branchHeads: [] },
 					files: [],
+				}),
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
 				}),
 				uploadImages: async (images) =>
 					images.map((image, index) => ({
@@ -651,6 +776,7 @@ describe("createSupervisor browser routes", () => {
 					diff: "",
 				}),
 				readGitStatus: async () => ({
+					initialized: true,
 					root: "/tmp/.outclaw",
 					branch: "main",
 					ahead: 0,
@@ -658,6 +784,10 @@ describe("createSupervisor browser routes", () => {
 					clean: true,
 					graph: { commits: [], branchHeads: [] },
 					files: [],
+				}),
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
 				}),
 				setAgentCronEnabled: async () => {
 					throw new Error("Not implemented");

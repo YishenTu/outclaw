@@ -12,6 +12,7 @@ describe("git panel header", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanelHeader, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
@@ -51,6 +52,7 @@ describe("git panel header", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanelHeader, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
@@ -81,6 +83,7 @@ describe("git panel header", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanelHeader, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
@@ -104,6 +107,7 @@ describe("git panel header", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanel, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
@@ -164,6 +168,7 @@ describe("git panel header", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanel, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
@@ -199,6 +204,7 @@ describe("git panel header", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanel, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
@@ -238,6 +244,7 @@ describe("git panel header", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanel, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
@@ -269,6 +276,7 @@ describe("git panel header", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanel, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
@@ -300,6 +308,7 @@ describe("git panel header", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanel, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
@@ -329,6 +338,7 @@ describe("git panel header", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanel, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
@@ -366,10 +376,34 @@ describe("git panel header", () => {
 		expect(html).not.toContain("git-graph-shell");
 	});
 
+	test("renders an uninitialized card with an init button when the git root is not a repo", () => {
+		const html = renderToStaticMarkup(
+			createElement(GitPanel, {
+				status: {
+					initialized: false,
+					root: "/tmp/outclaw-new",
+				} as never,
+				loading: false,
+				error: null,
+				onOpenDiff() {},
+			}),
+		);
+
+		expect(html).toContain("Not a git repository");
+		expect(html).toContain("/tmp/outclaw-new");
+		expect(html).toContain(">Initialize repository<");
+		expect(html).toContain(
+			'aria-label="Initialize git repository in the working directory"',
+		);
+		expect(html).not.toContain("Changed files");
+		expect(html).not.toContain("Git graph");
+	});
+
 	test("renders the selected commit card inside the git graph shell", () => {
 		const html = renderToStaticMarkup(
 			createElement(GitPanel, {
 				status: {
+					initialized: true,
 					root: "/tmp/outclaw",
 					branch: "main",
 					ahead: 0,
