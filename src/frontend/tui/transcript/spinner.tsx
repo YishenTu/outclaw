@@ -1,5 +1,5 @@
 import { Text } from "ink";
-import { SPINNER_FRAMES } from "../../spinner-frames.ts";
+import { useSpinnerFrame } from "../../use-spinner-frame.ts";
 import { theme } from "../chrome/theme.ts";
 
 interface SpinnerProps {
@@ -7,9 +7,11 @@ interface SpinnerProps {
 }
 
 export function Spinner({ label }: SpinnerProps) {
+	const frame = useSpinnerFrame();
+
 	return (
 		<Text>
-			<Text color={theme.accent}>{SPINNER_FRAMES[0]}</Text>
+			<Text color={theme.accent}>{frame}</Text>
 			{label ? ` ${label}` : ""}
 		</Text>
 	);

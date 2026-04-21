@@ -3,6 +3,7 @@ import { PassThrough } from "node:stream";
 import { stripVTControlCharacters } from "node:util";
 import { render } from "ink";
 import type { ReactElement } from "react";
+import { SPINNER_FRAMES } from "../../../../src/frontend/spinner-frames.ts";
 import { MessageItem } from "../../../../src/frontend/tui/transcript/message-item.tsx";
 import { MessageList } from "../../../../src/frontend/tui/transcript/message-list.tsx";
 
@@ -351,7 +352,7 @@ describe("transcript components", () => {
 		}
 	});
 
-	test("MessageList renders a stable spinner when running without streaming", async () => {
+	test("MessageList advances spinner frames when running without streaming", async () => {
 		const now = new Date("2026-04-11T00:00:00Z");
 		setSystemTime(now);
 		vi.useFakeTimers({ now });
@@ -369,14 +370,15 @@ describe("transcript components", () => {
 
 		try {
 			await flushUpdates();
-			const firstFrame = getOutput();
-			expect(firstFrame).toContain("Thinking...");
+			const firstFrame = stripVTControlCharacters(getOutput());
+			expect(firstFrame).toContain(`${SPINNER_FRAMES[0]} Thinking...`);
 			expect(firstFrame).not.toContain("Working...");
 
 			vi.advanceTimersByTime(80);
 			await flushUpdates();
-			expect(getOutput()).toContain("Thinking...");
-			expect(getOutput()).toBe(firstFrame);
+			const secondFrame = stripVTControlCharacters(getOutput());
+			expect(secondFrame).toContain(`${SPINNER_FRAMES[1]} Thinking...`);
+			expect(secondFrame).not.toBe(firstFrame);
 		} finally {
 			app.unmount();
 			app.cleanup();
