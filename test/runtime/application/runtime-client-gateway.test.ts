@@ -3,6 +3,7 @@ import type {
 	Facade,
 	RuntimeStatusEvent,
 	ServerEvent,
+	TranscriptTurn,
 } from "../../../src/common/protocol.ts";
 import { RuntimeClientGateway } from "../../../src/runtime/application/runtime-client-gateway.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
@@ -121,6 +122,69 @@ describe("RuntimeClientGateway", () => {
 					kind: "chat",
 					role: "user",
 					content: "past question",
+				},
+			],
+		});
+	});
+
+	test("handleOpen merges transcript timestamps into replayed chat messages", async () => {
+		const turns: TranscriptTurn[] = [
+			{
+				role: "user",
+				content: "past question",
+				timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+			},
+			{
+				role: "assistant",
+				content: "past answer",
+				timestamp: Date.parse("2025-01-15T14:31:04.000Z"),
+			},
+		];
+		const gateway = new RuntimeClientGateway({
+			facade: createFacade({
+				async readHistory() {
+					return [
+						{
+							kind: "chat" as const,
+							role: "user" as const,
+							content: "past question",
+						},
+						{
+							kind: "chat" as const,
+							role: "assistant" as const,
+							content: "past answer",
+						},
+					];
+				},
+				async readTranscript() {
+					return turns;
+				},
+			}),
+			getStatusEvent: () => ({
+				...createStatusEvent(),
+				sessionId: "sdk-123",
+			}),
+		});
+		const ws = mockWs();
+
+		gateway.handleOpen(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(ws.events()).toContainEqual({
+			type: "history_replay",
+			sdkSessionId: "sdk-123",
+			messages: [
+				{
+					kind: "chat",
+					role: "user",
+					content: "past question",
+					timestamp: turns[0]?.timestamp,
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "past answer",
+					timestamp: turns[1]?.timestamp,
 				},
 			],
 		});

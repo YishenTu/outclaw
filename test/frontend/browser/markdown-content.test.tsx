@@ -23,6 +23,28 @@ describe("MarkdownContent", () => {
 		expect(html).toContain("[&amp;_pre_code]:whitespace-pre-wrap");
 	});
 
+	test("renders a copy button inside fenced code blocks", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownContent content={"```ts\nconst value = 1;\n```"} />,
+		);
+
+		expect(html).toContain('aria-label="Copy code block"');
+		expect(html).toContain("absolute right-2 top-2");
+		expect(html).not.toContain('title="Copy code"');
+		expect(html).not.toContain(">Copy code<");
+		expect(html).not.toContain("rounded border");
+		expect(html).not.toContain("border-dark-700");
+	});
+
+	test("does not add a copy button to inline code", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownContent content={"Use `code` inline"} />,
+		);
+
+		expect(html).not.toContain("Copy code");
+		expect(html).not.toContain("Copy code block");
+	});
+
 	test("highlights fenced code blocks with explicit languages", () => {
 		const html = renderToStaticMarkup(
 			<MarkdownContent content={"```ts\nconst value = 1;\n```"} />,

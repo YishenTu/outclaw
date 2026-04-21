@@ -6,16 +6,14 @@ import {
 	GitCommitHorizontal,
 	User,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { BrowserGitGraphCommit } from "../../../../common/protocol.ts";
+import { useCopyToClipboard } from "../../use-copy-to-clipboard.ts";
 
 const selectedCommitDateFormatter = new Intl.DateTimeFormat("en-US", {
 	day: "numeric",
 	month: "short",
 	year: "numeric",
 });
-
-const COPY_FEEDBACK_MS = 1200;
 
 function shortSha(sha: string): string {
 	return sha.slice(0, 7);
@@ -24,43 +22,6 @@ function shortSha(sha: string): string {
 function commitSubject(message: string): string {
 	const newline = message.indexOf("\n");
 	return newline === -1 ? message : message.slice(0, newline);
-}
-
-function useCopyToClipboard(): {
-	copied: boolean;
-	copy: (value: string) => void;
-} {
-	const [copied, setCopied] = useState(false);
-	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-	useEffect(() => {
-		return () => {
-			if (timeoutRef.current !== null) {
-				clearTimeout(timeoutRef.current);
-			}
-		};
-	}, []);
-
-	const copy = useCallback((value: string) => {
-		if (!navigator.clipboard) {
-			return;
-		}
-		navigator.clipboard
-			.writeText(value)
-			.then(() => {
-				setCopied(true);
-				if (timeoutRef.current !== null) {
-					clearTimeout(timeoutRef.current);
-				}
-				timeoutRef.current = setTimeout(() => {
-					setCopied(false);
-					timeoutRef.current = null;
-				}, COPY_FEEDBACK_MS);
-			})
-			.catch(() => {});
-	}, []);
-
-	return { copied, copy };
 }
 
 export function GitSelectedCommitCard({

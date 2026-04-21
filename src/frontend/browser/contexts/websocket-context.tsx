@@ -307,6 +307,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				kind: "chat",
 				role: "user",
 				content: prompt,
+				timestamp: Date.now(),
 			});
 			useChatStore.getState().startAssistantTurn(sessionKey);
 			useChatStore.getState().setError(sessionKey, null);
@@ -586,7 +587,15 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 						return;
 					}
 
-					useChatStore.getState().pushMessage(sessionKey, message);
+					useChatStore.getState().pushMessage(
+						sessionKey,
+						message.kind === "chat"
+							? {
+									...message,
+									timestamp: Date.now(),
+								}
+							: message,
+					);
 					return;
 				}
 				case "thinking": {
@@ -691,7 +700,9 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 								completion.sessionKey,
 							);
 					}
-					useChatStore.getState().finalizeMessage(completion.sessionKey);
+					useChatStore.getState().finalizeMessage(completion.sessionKey, {
+						timestamp: Date.now(),
+					});
 					useSessionsStore.getState().setActiveSession(agentId, nextSessionRef);
 					if (event.usage) {
 						useContextUsageStore

@@ -5,6 +5,94 @@ import { MessageList } from "../../../src/frontend/browser/components/chat/messa
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
 describe("browser message list", () => {
+	test("renders an assistant utility bar with derived duration and timestamp", () => {
+		const assistantTimestamp = Date.parse("2025-01-15T14:31:04.000Z");
+		const html = renderToStaticMarkup(
+			<MessageList
+				messages={[
+					{
+						kind: "chat",
+						role: "user",
+						content: "hello",
+						timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+					},
+					{
+						kind: "chat",
+						role: "assistant",
+						content: "world",
+						timestamp: assistantTimestamp,
+					},
+				]}
+				streamingText=""
+				streamingThinking=""
+				isStreaming={false}
+				isCompacting={false}
+				thinkingStartedAt={null}
+			/>,
+		);
+
+		const expectedTimestamp = new Intl.DateTimeFormat("en-US", {
+			hour: "2-digit",
+			hour12: false,
+			minute: "2-digit",
+		}).format(assistantTimestamp);
+
+		expect(html).toContain("1m 04s");
+		expect(html).toContain('aria-label="Copy final result"');
+		expect(html).toContain(expectedTimestamp);
+	});
+
+	test("shows the copy action only on the final assistant message in a turn", () => {
+		const firstAssistantTimestamp = Date.parse("2025-01-15T14:30:30.000Z");
+		const finalAssistantTimestamp = Date.parse("2025-01-15T14:31:04.000Z");
+		const html = renderToStaticMarkup(
+			<MessageList
+				messages={[
+					{
+						kind: "chat",
+						role: "user",
+						content: "hello",
+						timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+					},
+					{
+						kind: "chat",
+						role: "assistant",
+						content: "intermediate",
+						timestamp: firstAssistantTimestamp,
+					},
+					{
+						kind: "chat",
+						role: "assistant",
+						content: "final",
+						timestamp: finalAssistantTimestamp,
+					},
+				]}
+				streamingText=""
+				streamingThinking=""
+				isStreaming={false}
+				isCompacting={false}
+				thinkingStartedAt={null}
+			/>,
+		);
+
+		const copyCount = (html.match(/aria-label="Copy final result"/g) ?? [])
+			.length;
+		const finalTimestamp = new Intl.DateTimeFormat("en-US", {
+			hour: "2-digit",
+			hour12: false,
+			minute: "2-digit",
+		}).format(finalAssistantTimestamp);
+		const intermediateTimestamp = new Intl.DateTimeFormat("en-US", {
+			hour: "2-digit",
+			hour12: false,
+			minute: "2-digit",
+		}).format(firstAssistantTimestamp);
+
+		expect(copyCount).toBe(1);
+		expect(html).toContain(finalTimestamp);
+		expect(html).not.toContain(intermediateTimestamp);
+	});
+
 	test("renders streaming assistant text as markdown", () => {
 		const html = renderToStaticMarkup(
 			<MessageList

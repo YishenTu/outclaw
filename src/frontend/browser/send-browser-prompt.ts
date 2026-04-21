@@ -24,6 +24,7 @@ interface DispatchBrowserPromptParams<SocketLike> {
 			role: "user";
 			content: string;
 			images?: DisplayImage[];
+			timestamp?: number;
 		},
 	) => void;
 	sendCommand: (command: string) => boolean;
@@ -99,6 +100,7 @@ export async function dispatchBrowserPrompt<SocketLike>(
 		role: "user",
 		content: prompt,
 		images: images.map((image) => image.image),
+		timestamp: Date.now(),
 	});
 	params.startAssistantTurn(sessionKey);
 	params.setSessionError(sessionKey, null);

@@ -1,4 +1,12 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	setSystemTime,
+	test,
+	vi,
+} from "bun:test";
 import type {
 	DisplayMessage,
 	UsageInfo,
@@ -64,6 +72,11 @@ describe("browser stores", () => {
 		resetStore(useChatStore);
 		resetStore(useContextUsageStore);
 		resetStore(useRuntimeStore);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		setSystemTime();
 	});
 
 	test("agents store tracks agent list and active agent", () => {
@@ -400,6 +413,44 @@ describe("browser stores", () => {
 		expect(finalizedSession?.streamingThinking).toBe("");
 		expect(finalizedSession?.isStreaming).toBe(false);
 		expect(finalizedSession?.isThinking).toBe(false);
+	});
+
+	test("chat store can stamp finalized live turns with timestamps", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+		const promptTimestamp = new Date("2025-01-15T14:30:00.000Z");
+		const replyTimestamp = new Date("2025-01-15T14:31:04.000Z");
+
+		setSystemTime(promptTimestamp);
+		vi.useFakeTimers({ now: promptTimestamp });
+
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "hello",
+			timestamp: Date.now(),
+		});
+		useChatStore.getState().startAssistantTurn(sessionKey);
+		useChatStore.getState().appendText(sessionKey, "world");
+
+		setSystemTime(replyTimestamp);
+		useChatStore.getState().finalizeMessage(sessionKey, {
+			timestamp: Date.now(),
+		});
+
+		expect(useChatStore.getState().getMessages(sessionKey)).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "hello",
+				timestamp: promptTimestamp.getTime(),
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "world",
+				timestamp: replyTimestamp.getTime(),
+			},
+		]);
 	});
 
 	test("chat store can start optimistic thinking before the first assistant delta", () => {

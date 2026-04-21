@@ -50,7 +50,12 @@ export interface ChatState {
 	setThinking: (sessionKey: string, thinking: boolean) => void;
 	setCompacting: (sessionKey: string, compacting: boolean) => void;
 	setError: (sessionKey: string, error: string | null) => void;
-	finalizeMessage: (sessionKey: string) => void;
+	finalizeMessage: (
+		sessionKey: string,
+		options?: {
+			timestamp?: number;
+		},
+	) => void;
 	adoptSession: (fromSessionKey: string, toSessionKey: string) => void;
 	clearSession: (sessionKey: string) => void;
 	clearPendingSessions: (agentId: string) => void;
@@ -321,10 +326,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				},
 			};
 		}),
-	finalizeMessage: (sessionKey) =>
+	finalizeMessage: (sessionKey, options) =>
 		set((state) => {
 			const session = getOrCreateSession(state.sessions, sessionKey);
-			const messages = finalizeSessionMessages(session);
+			const messages = finalizeSessionMessages(session, options);
 			return {
 				sessions: {
 					...state.sessions,
@@ -385,7 +390,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		})),
 }));
 
-function finalizeSessionMessages(session: ChatSession): DisplayMessage[] {
+function finalizeSessionMessages(
+	session: ChatSession,
+	options?: {
+		timestamp?: number;
+	},
+): DisplayMessage[] {
 	if (session.heartbeatPending) {
 		const content = isHeartbeatNoopResult(session.heartbeatStreamingText)
 			? ""
@@ -410,6 +420,7 @@ function finalizeSessionMessages(session: ChatSession): DisplayMessage[] {
 					session.heartbeatStreamingImages.length > 0
 						? session.heartbeatStreamingImages
 						: undefined,
+				timestamp: options?.timestamp,
 			},
 		];
 	}
@@ -433,6 +444,7 @@ function finalizeSessionMessages(session: ChatSession): DisplayMessage[] {
 						session.streamingImages.length > 0
 							? session.streamingImages
 							: undefined,
+					timestamp: options?.timestamp,
 				},
 			]
 		: session.messages;

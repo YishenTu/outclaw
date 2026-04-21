@@ -1,12 +1,15 @@
 import { clsx } from "clsx";
 import { Heart } from "lucide-react";
 import type { DisplayMessage } from "../../../../common/protocol.ts";
+import { AssistantTurnUtilityBar } from "./assistant-turn-utility-bar.tsx";
 import { getImageThumbnailClassName } from "./image-thumbnail-styles.ts";
 import { MarkdownContent } from "./markdown-content.tsx";
 import { ThinkingBlock } from "./thinking-block.tsx";
 
 interface MessageProps {
 	message: DisplayMessage;
+	showUtilityBar?: boolean;
+	turnStartedAt?: number;
 }
 
 type ChatImage = NonNullable<
@@ -58,7 +61,11 @@ function renderImageGallery(images: ChatImage[], role: "user" | "assistant") {
 	);
 }
 
-export function Message({ message }: MessageProps) {
+export function Message({
+	message,
+	showUtilityBar = false,
+	turnStartedAt,
+}: MessageProps) {
 	if (message.kind === "system") {
 		if (message.event === "heartbeat") {
 			return (
@@ -128,6 +135,13 @@ export function Message({ message }: MessageProps) {
 						</div>
 					)}
 				</div>
+				{showUtilityBar ? (
+					<AssistantTurnUtilityBar
+						content={message.content}
+						timestamp={message.timestamp}
+						turnStartedAt={turnStartedAt}
+					/>
+				) : null}
 			</div>
 		</div>
 	);

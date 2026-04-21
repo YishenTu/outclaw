@@ -264,6 +264,7 @@ export interface DisplayChatMessage {
 	thinking?: string;
 	images?: DisplayImage[];
 	replyContext?: ReplyContext;
+	timestamp?: number;
 }
 
 export interface DisplayCompactBoundaryMessage {

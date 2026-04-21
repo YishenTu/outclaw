@@ -2,9 +2,11 @@ import type {
 	Facade,
 	RuntimeStatusEvent,
 	StreamingSyncEvent,
+	TranscriptTurn,
 } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import { ClientHub, type WsClient } from "../transport/client-hub.ts";
+import { annotateHistoryWithTranscript } from "./annotate-history-with-transcript.ts";
 
 interface RuntimeClientGatewayOptions {
 	canSendToClient?: (ws: WsClient) => boolean;
@@ -58,15 +60,25 @@ export class RuntimeClientGateway {
 			return Promise.resolve();
 		}
 
-		return safeInvoke(() => this.options.facade.readHistory?.(sessionId))
-			.then((messages) => {
+		return safeInvoke(async () => {
+			const messages = await this.options.facade.readHistory?.(sessionId);
+			const transcript = await readReplayTranscript(
+				this.options.facade,
+				sessionId,
+			);
+			return {
+				messages,
+				transcript,
+			};
+		})
+			.then(({ messages, transcript }) => {
 				if (!messages) {
 					return;
 				}
 				this.hub.sendMany(targetList, {
 					type: "history_replay",
 					sdkSessionId: sessionId,
-					messages,
+					messages: annotateHistoryWithTranscript(messages, transcript),
 				});
 				const streamingSync = this.options.getStreamingSyncEvent?.(sessionId);
 				if (streamingSync) {
@@ -125,5 +137,20 @@ function safeInvoke<T>(invoke: () => Promise<T> | T): Promise<T> {
 		return Promise.resolve(invoke());
 	} catch (err) {
 		return Promise.reject(err);
+	}
+}
+
+async function readReplayTranscript(
+	facade: Facade,
+	sessionId: string,
+): Promise<TranscriptTurn[] | undefined> {
+	if (!facade.readTranscript) {
+		return undefined;
+	}
+
+	try {
+		return await facade.readTranscript(sessionId);
+	} catch {
+		return undefined;
 	}
 }

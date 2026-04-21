@@ -39,6 +39,7 @@ export function displayMessageKey(message: DisplayMessage): string {
 		message.content,
 		message.replyContext?.text ?? "",
 		message.thinking ?? "",
+		String(message.timestamp ?? ""),
 		message.images
 			?.map((image) =>
 				image.kind === "managed"

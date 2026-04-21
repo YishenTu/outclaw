@@ -84,6 +84,8 @@ export const MessageList = memo(function MessageList({
 							sessionKey,
 						})}
 						message={message}
+						showUtilityBar={isFinalAssistantMessage(messages, index)}
+						turnStartedAt={findPreviousUserTimestamp(messages, index)}
 					/>
 				))}
 
@@ -112,3 +114,48 @@ export const MessageList = memo(function MessageList({
 		</div>
 	);
 });
+
+function findPreviousUserTimestamp(
+	messages: DisplayMessage[],
+	endIndex: number,
+): number | undefined {
+	for (let index = endIndex - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (
+			message?.kind === "chat" &&
+			message.role === "user" &&
+			message.timestamp !== undefined
+		) {
+			return message.timestamp;
+		}
+	}
+
+	return undefined;
+}
+
+function isFinalAssistantMessage(
+	messages: DisplayMessage[],
+	startIndex: number,
+): boolean {
+	const message = messages[startIndex];
+	if (message?.kind !== "chat" || message.role !== "assistant") {
+		return false;
+	}
+
+	for (let index = startIndex + 1; index < messages.length; index += 1) {
+		const nextMessage = messages[index];
+		if (nextMessage?.kind !== "chat") {
+			continue;
+		}
+
+		if (nextMessage.role === "assistant") {
+			return false;
+		}
+
+		if (nextMessage.role === "user") {
+			return true;
+		}
+	}
+
+	return true;
+}

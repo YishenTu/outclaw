@@ -125,6 +125,38 @@ describe("readClaudeHistory", () => {
 		]);
 	});
 
+	test("preserves chat timestamps in replayable history when present", async () => {
+		const { result } = readSdkHistory([
+			{
+				type: "user",
+				timestamp: "2025-01-15T14:30:00.000Z",
+				message: { content: "hello" },
+			},
+			{
+				type: "assistant",
+				timestamp: "2025-01-15T14:31:04.000Z",
+				message: {
+					content: [{ type: "text", text: "hi there" }],
+				},
+			},
+		]);
+
+		expect(await result).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "hello",
+				timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "hi there",
+				timestamp: Date.parse("2025-01-15T14:31:04.000Z"),
+			},
+		]);
+	});
+
 	test("returns displayable user and assistant messages", async () => {
 		const { result } = readSdkHistory(
 			[

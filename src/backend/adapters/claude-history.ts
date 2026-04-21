@@ -108,6 +108,7 @@ export function normalizeClaudeHistory(
 ): DisplayMessage[] {
 	const result: DisplayMessage[] = [];
 	let pendingThinking = "";
+	let pendingThinkingTimestamp: number | undefined;
 	let pendingSystemPrompt: "heartbeat" | "rollover" | undefined;
 
 	for (let index = 0; index < messages.length; index++) {
@@ -131,6 +132,7 @@ export function normalizeClaudeHistory(
 		if (content === undefined) {
 			continue;
 		}
+		const timestamp = parseDisplayTimestamp(msg);
 
 		if (
 			pendingThinking &&
@@ -142,8 +144,10 @@ export function normalizeClaudeHistory(
 				role: "assistant",
 				content: "",
 				thinking: pendingThinking,
+				timestamp: pendingThinkingTimestamp,
 			});
 			pendingThinking = "";
+			pendingThinkingTimestamp = undefined;
 		}
 
 		if (msg.type === "user" && isCompactionCommand(content)) {
@@ -173,6 +177,7 @@ export function normalizeClaudeHistory(
 					role: "user",
 					content: parsed.prompt,
 					replyContext: parsed.replyContext,
+					timestamp,
 				});
 			}
 		}
@@ -200,6 +205,7 @@ export function normalizeClaudeHistory(
 					role: "user",
 					content: parsed.prompt,
 					images: images.length > 0 ? images : undefined,
+					timestamp,
 				};
 				if (parsed.replyContext) {
 					entry.replyContext = parsed.replyContext;
@@ -213,18 +219,21 @@ export function normalizeClaudeHistory(
 			const thinking = extractThinking(content);
 			if (isSyntheticNoResponseReply(text, msg, messages, index)) {
 				pendingThinking = "";
+				pendingThinkingTimestamp = undefined;
 				pendingSystemPrompt = undefined;
 				continue;
 			}
 
 			if (thinking && !text) {
 				pendingThinking += thinking;
+				pendingThinkingTimestamp ??= timestamp;
 				continue;
 			}
 
 			if (text) {
 				const merged = [pendingThinking, thinking].join("") || undefined;
 				pendingThinking = "";
+				pendingThinkingTimestamp = undefined;
 				if (pendingSystemPrompt === "heartbeat") {
 					pendingSystemPrompt = undefined;
 					if (isHeartbeatNoopResult(text)) {
@@ -239,6 +248,7 @@ export function normalizeClaudeHistory(
 					kind: "chat",
 					role: "assistant",
 					content: text,
+					timestamp,
 				};
 				if (merged) {
 					entry.thinking = merged;
@@ -254,6 +264,7 @@ export function normalizeClaudeHistory(
 			role: "assistant",
 			content: "",
 			thinking: pendingThinking,
+			timestamp: pendingThinkingTimestamp,
 		});
 	}
 
@@ -680,6 +691,18 @@ function parseTranscriptTimestamp(message: ClaudeHistoryMessage): number {
 		throw new Error("Claude transcript turn is missing a valid timestamp");
 	}
 	return parsed;
+}
+
+function parseDisplayTimestamp(
+	message: ClaudeHistoryMessage,
+): number | undefined {
+	const timestamp = message.timestamp;
+	if (typeof timestamp !== "string") {
+		return undefined;
+	}
+
+	const parsed = Date.parse(timestamp);
+	return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 async function loadClaudeRawHistory(
