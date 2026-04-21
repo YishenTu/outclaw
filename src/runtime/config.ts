@@ -1,6 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+	DEFAULT_EFFORT,
+	type EffortLevel,
+	isEffortLevel,
+} from "../common/commands.ts";
+import {
 	DEFAULT_STORED_AGENT_CONFIG,
 	normalizeStoredAgentConfig,
 	type StoredAgentConfig,
@@ -15,6 +20,7 @@ export interface GlobalConfig {
 	};
 	host: string;
 	port: number;
+	thinkingEffort: EffortLevel;
 }
 
 export type Config = GlobalConfig;
@@ -27,6 +33,7 @@ export interface GlobalConfigPatch {
 	};
 	host?: string;
 	port?: number;
+	thinkingEffort?: EffortLevel;
 }
 
 const DEFAULTS: GlobalConfig = {
@@ -37,6 +44,7 @@ const DEFAULTS: GlobalConfig = {
 	},
 	host: "127.0.0.1",
 	port: 4000,
+	thinkingEffort: DEFAULT_EFFORT,
 };
 
 function ensureConfigHomeDir(homeDir: string) {
@@ -52,6 +60,7 @@ interface ConfigDocument extends Record<string, unknown> {
 	};
 	host?: string;
 	port?: number;
+	thinkingEffort?: EffortLevel;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -94,6 +103,11 @@ function normalizeConfigDocument(raw: unknown): ConfigDocument {
 					: DEFAULTS.heartbeat.deferMinutes,
 		},
 		port: typeof document.port === "number" ? document.port : DEFAULTS.port,
+		thinkingEffort:
+			typeof document.thinkingEffort === "string" &&
+			isEffortLevel(document.thinkingEffort)
+				? document.thinkingEffort
+				: DEFAULTS.thinkingEffort,
 	};
 }
 
@@ -109,6 +123,7 @@ export function loadGlobalConfig(homeDir: string): GlobalConfig {
 			heartbeat: { ...DEFAULTS.heartbeat },
 			host: DEFAULTS.host,
 			port: DEFAULTS.port,
+			thinkingEffort: DEFAULTS.thinkingEffort,
 		};
 	}
 
@@ -129,6 +144,7 @@ export function loadGlobalConfig(homeDir: string): GlobalConfig {
 		},
 		host: merged.host ?? DEFAULTS.host,
 		port: merged.port ?? DEFAULTS.port,
+		thinkingEffort: merged.thinkingEffort ?? DEFAULTS.thinkingEffort,
 	};
 }
 
@@ -150,6 +166,9 @@ export function updateGlobalConfig(
 			: {}),
 		...(patch.host !== undefined ? { host: patch.host } : {}),
 		...(patch.port !== undefined ? { port: patch.port } : {}),
+		...(patch.thinkingEffort !== undefined
+			? { thinkingEffort: patch.thinkingEffort }
+			: {}),
 		heartbeat: {
 			...normalized.heartbeat,
 			...(patch.heartbeat?.intervalMinutes !== undefined
@@ -174,6 +193,7 @@ export function updateGlobalConfig(
 		},
 		host: nextDocument.host ?? DEFAULTS.host,
 		port: nextDocument.port ?? DEFAULTS.port,
+		thinkingEffort: nextDocument.thinkingEffort ?? DEFAULTS.thinkingEffort,
 	};
 }
 

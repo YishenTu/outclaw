@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { EffortLevel } from "../../../src/common/commands.ts";
 import { MODEL_ALIAS_LIST } from "../../../src/common/models.ts";
 import type { ServerEvent } from "../../../src/common/protocol.ts";
 import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
@@ -21,11 +22,13 @@ function mockWs(): WsClient & { events: () => ServerEvent[] } {
 	return ws as unknown as WsClient & { events: () => ServerEvent[] };
 }
 
-function setup() {
+function setup(options: { defaultEffort?: EffortLevel } = {}) {
 	const hub = new ClientHub();
 	const ws = mockWs();
 	const observer = mockWs();
-	const state = new RuntimeState(PROVIDER_ID);
+	const state = new RuntimeState(PROVIDER_ID, undefined, {
+		defaultEffort: options.defaultEffort,
+	});
 	hub.add(ws);
 	hub.add(observer);
 
@@ -257,21 +260,21 @@ describe("handleRuntimeSettingsCommand", () => {
 			});
 		});
 
-		test("downgrades xhigh to high when switching off opus", () => {
-			const { observer, run, state } = setup();
+		test("downgrades xhigh to the configured default when switching off opus", () => {
+			const { observer, run, state } = setup({ defaultEffort: "low" });
 			expect(run("/thinking xhigh")).toBe(true);
 			expect(state.effort).toBe("xhigh");
 
 			expect(run("/model haiku")).toBe(true);
 			expect(state.model).toBe("haiku");
-			expect(state.effort).toBe("high");
+			expect(state.effort).toBe("low");
 
 			const effortEvents = observer
 				.events()
 				.filter((event) => event.type === "effort_changed");
 			expect(effortEvents.at(-1)).toEqual({
 				type: "effort_changed",
-				effort: "high",
+				effort: "low",
 			});
 		});
 

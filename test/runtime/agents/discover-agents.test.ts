@@ -246,6 +246,7 @@ describe("agent config", () => {
 					deferMinutes: 0,
 				},
 				port: 4000,
+				thinkingEffort: "medium",
 			});
 		} finally {
 			rmSync(homeDir, { recursive: true });
@@ -327,6 +328,7 @@ describe("agent config", () => {
 					deferMinutes: 0,
 				},
 				port: 4000,
+				thinkingEffort: "medium",
 			});
 		} finally {
 			rmSync(homeDir, { recursive: true });

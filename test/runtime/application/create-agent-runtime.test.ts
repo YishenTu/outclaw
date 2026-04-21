@@ -105,7 +105,7 @@ describe("createAgentRuntime", () => {
 			agentName: "railly",
 			providerId: "mock",
 			model: "opus",
-			effort: "high",
+			effort: "medium",
 			running: false,
 		});
 
@@ -130,11 +130,32 @@ describe("createAgentRuntime", () => {
 			agentName: "railly",
 			providerId: "mock",
 			model: "opus",
-			effort: "high",
+			effort: "medium",
 			running: false,
 			notice: {
 				kind: "restart_required",
 			},
+		});
+
+		await runtime.stop();
+	});
+
+	test("uses the configured default thinking effort on startup", async () => {
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			defaultEffort: "low",
+			name: "railly",
+			facade: new MockFacade(),
+		});
+		const ws = mockWs();
+
+		runtime.handleOpen(ws);
+
+		expect(
+			ws.events().find((event) => event.type === "runtime_status"),
+		).toMatchObject({
+			type: "runtime_status",
+			effort: "low",
 		});
 
 		await runtime.stop();

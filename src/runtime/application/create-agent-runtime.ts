@@ -1,3 +1,4 @@
+import type { EffortLevel } from "../../common/commands.ts";
 import type {
 	Facade,
 	FrontendNotice,
@@ -33,6 +34,7 @@ interface CreateAgentRuntimeOptions {
 			telegramChatId: number;
 		} & HeartbeatResult,
 	) => Promise<void> | void;
+	defaultEffort?: EffortLevel;
 	facade: Facade;
 	getFrontendNotice?: () => FrontendNotice | undefined;
 	heartbeat?: Config["heartbeat"];
@@ -92,6 +94,7 @@ export function createAgentRuntime(
 	const state = new RuntimeState(
 		facade.providerId,
 		options.statusAgentName ?? options.name,
+		{ defaultEffort: options.defaultEffort },
 	);
 	let noteRolloverStateChange = () => {};
 	const sessions = new SessionService(state, options.store, {

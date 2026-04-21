@@ -320,6 +320,7 @@ describe("config panel", () => {
 
 		expect(html).toContain("config.json");
 		expect(html).toContain("host");
+		expect(html).toContain(">string<");
 		expect(html).toContain('value="127.0.0.1"');
 		expect(html).toContain("agents");
 		expect(html).toContain("railly");
@@ -331,6 +332,76 @@ describe("config panel", () => {
 		expect(html).toContain('aria-label="Config modal"');
 		expect(html).toContain("Save changes");
 		expect(html).toContain("scrollbar-none flex-1 overflow-y-auto px-5 py-4");
+		expect(html).toContain('class="flex min-w-0 flex-col items-start gap-0.5"');
+	});
+
+	test("renders shorter config editors while keeping type labels visible", () => {
+		const html = renderToStaticMarkup(
+			<ConfigModalContent
+				entries={[
+					{
+						displayItem: "host",
+						item: "host",
+						typeLabel: "string",
+						value: "127.0.0.1",
+						valueKind: "string",
+					},
+					{
+						displayItem: "agents.railly.telegram.allowedUsers",
+						item: "agents.agent-railly.telegram.allowedUsers",
+						typeLabel: "number[] | string",
+						value: "[1,2]",
+						valueKind: "array",
+					},
+				]}
+				error={null}
+				errorMode="load"
+				isLoading={false}
+				isSaving={false}
+				onClose={() => {}}
+				onEntryChange={() => {}}
+				onSave={() => {}}
+			/>,
+		);
+
+		expect(html).toContain(">string<");
+		expect(html).toContain(">number[] | string<");
+		expect(html).toContain(
+			"grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]",
+		);
+		expect(html).toContain("scrollbar-none resize-none w-full max-w-[22rem]");
+		expect(html).toContain('rows="1"');
+		expect(html).toContain('class="w-full max-w-[22rem] rounded-lg');
+	});
+
+	test("renders union string values as single-line inputs", () => {
+		const html = renderToStaticMarkup(
+			<ConfigModalContent
+				entries={[
+					{
+						allowedValueKinds: ["array", "string"],
+						displayItem: "agents.railly.telegram.allowedUsers",
+						item: "agents.agent-railly.telegram.allowedUsers",
+						typeLabel: "number[] | string",
+						value: "$RAILLY_TELEGRAM_USERS",
+						valueKind: "string",
+					},
+				]}
+				error={null}
+				errorMode="load"
+				isLoading={false}
+				isSaving={false}
+				onClose={() => {}}
+				onEntryChange={() => {}}
+				onSave={() => {}}
+			/>,
+		);
+
+		expect(html).toContain('<input type="text"');
+		expect(html).toContain('value="$RAILLY_TELEGRAM_USERS"');
+		expect(html).toContain(">string<");
+		expect(html).not.toContain(">number[] | string<");
+		expect(html).not.toContain("<textarea");
 	});
 
 	test("renders a load error", () => {

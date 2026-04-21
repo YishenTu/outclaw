@@ -1,6 +1,6 @@
 import { Settings2, X } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ConfigEntry, ConfigValueKind } from "./config-editor.ts";
+import type { ConfigEntry } from "./config-editor.ts";
 import { buildConfigEntryTree, type ConfigTreeNode } from "./config-tree.ts";
 
 interface ConfigModalContentProps {
@@ -13,15 +13,6 @@ interface ConfigModalContentProps {
 	onEntryChange: (item: string, value: string) => void;
 	onSave: () => void;
 }
-
-const KIND_BADGE_CLASS: Record<ConfigValueKind, string> = {
-	array: "border-success/40 bg-success/10 text-success",
-	boolean: "border-warning/40 bg-warning/10 text-warning",
-	null: "border-dark-700 bg-dark-900 text-dark-500",
-	number: "border-info/40 bg-info/10 text-info",
-	object: "border-brand/40 bg-brand/10 text-ember",
-	string: "border-dark-700 bg-dark-900 text-dark-200",
-};
 
 export function ConfigModalContent({
 	entries,
@@ -219,20 +210,29 @@ function ConfigLeaf({
 	onEntryChange: (item: string, value: string) => void;
 }) {
 	return (
-		<div className="grid gap-2 md:grid-cols-[minmax(0,200px)_minmax(0,1fr)] md:items-start md:gap-3">
-			<div className="flex min-w-0 flex-wrap items-center gap-2">
+		<div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start md:gap-3">
+			<div className="flex min-w-0 flex-col items-start gap-0.5">
 				<span className="font-mono-ui break-all text-[12px] text-dark-100">
 					{label}
 				</span>
-				<span
-					className={`font-mono-ui inline-flex items-center rounded border px-1.5 py-0 text-[9px] uppercase tracking-[0.12em] ${KIND_BADGE_CLASS[entry.valueKind]}`}
-				>
-					{entry.typeLabel ?? entry.valueKind}
+				<span className="font-mono-ui text-[10px] uppercase tracking-[0.12em] text-dark-500">
+					{resolveTypeLabel(entry)}
 				</span>
 			</div>
 			<ConfigValueField entry={entry} onEntryChange={onEntryChange} />
 		</div>
 	);
+}
+
+function resolveTypeLabel(entry: ConfigEntry): string {
+	if (
+		(entry.allowedValueKinds?.length ?? 0) > 1 &&
+		entry.valueKind === "string"
+	) {
+		return "string";
+	}
+
+	return entry.typeLabel ?? entry.valueKind;
 }
 
 function ConfigValueField({
@@ -244,7 +244,7 @@ function ConfigValueField({
 }) {
 	const editableKinds = entry.allowedValueKinds ?? [entry.valueKind];
 	const usesTextarea =
-		editableKinds.includes("array") || editableKinds.includes("object");
+		entry.valueKind === "array" || entry.valueKind === "object";
 	const isBooleanOnlyField =
 		editableKinds.length === 1 && editableKinds[0] === "boolean";
 
@@ -288,8 +288,8 @@ function ConfigValueField({
 			<textarea
 				value={entry.value}
 				onChange={(event) => onEntryChange(entry.item, event.target.value)}
-				rows={3}
-				className="scrollbar-none w-full rounded-lg border border-dark-800 bg-dark-950 px-3 py-2 font-mono-ui text-sm text-dark-50 outline-none transition-colors focus:border-brand"
+				rows={1}
+				className="scrollbar-none resize-none w-full max-w-[22rem] rounded-lg border border-dark-800 bg-dark-950 px-3 py-2 font-mono-ui text-sm text-dark-50 outline-none transition-colors focus:border-brand"
 			/>
 		);
 	}
@@ -299,7 +299,7 @@ function ConfigValueField({
 			type="text"
 			value={entry.value}
 			onChange={(event) => onEntryChange(entry.item, event.target.value)}
-			className="w-full rounded-lg border border-dark-800 bg-dark-950 px-3 py-1.5 font-mono-ui text-sm text-dark-50 outline-none transition-colors focus:border-brand"
+			className="w-full max-w-[22rem] rounded-lg border border-dark-800 bg-dark-950 px-3 py-1.5 font-mono-ui text-sm text-dark-50 outline-none transition-colors focus:border-brand"
 		/>
 	);
 }

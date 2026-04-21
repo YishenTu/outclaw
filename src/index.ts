@@ -96,6 +96,7 @@ function startMultiAgentDaemon(
 			agentId: agent.agentId,
 			cwd: agent.homeDir,
 			cronDir: join(agent.homeDir, "cron"),
+			defaultEffort: config.thinkingEffort,
 			facade: new ClaudeAdapter({ autoCompact: config.autoCompact }),
 			getFrontendNotice: () => {
 				const rolloverNotice = agentStores

@@ -1,7 +1,7 @@
 import { MODEL_ALIAS_LIST } from "./models.ts";
 
 export const DEFAULT_MODEL = "opus";
-export const DEFAULT_EFFORT = "high";
+export const DEFAULT_EFFORT = "medium";
 
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 

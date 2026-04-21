@@ -24,6 +24,7 @@ describe("loadGlobalConfig", () => {
 			const config = loadGlobalConfig(dir);
 			expect(config.host).toBe("127.0.0.1");
 			expect(config.port).toBe(4000);
+			expect(config.thinkingEffort).toBe("medium");
 			expect(config.heartbeat).toEqual({
 				intervalMinutes: 30,
 				deferMinutes: 0,
@@ -39,6 +40,7 @@ describe("loadGlobalConfig", () => {
 					deferMinutes: 0,
 				},
 				port: 4000,
+				thinkingEffort: "medium",
 			});
 		} finally {
 			rmSync(dir, { recursive: true });
@@ -53,6 +55,7 @@ describe("loadGlobalConfig", () => {
 				JSON.stringify({
 					host: "0.0.0.0",
 					port: 5000,
+					thinkingEffort: "low",
 					heartbeat: {
 						intervalMinutes: 15,
 						deferMinutes: 3,
@@ -63,6 +66,7 @@ describe("loadGlobalConfig", () => {
 			const config = loadGlobalConfig(dir);
 			expect(config.host).toBe("0.0.0.0");
 			expect(config.port).toBe(5000);
+			expect(config.thinkingEffort).toBe("low");
 			expect(config.heartbeat).toEqual({
 				intervalMinutes: 15,
 				deferMinutes: 3,
@@ -80,6 +84,7 @@ describe("loadGlobalConfig", () => {
 			const config = loadGlobalConfig(dir);
 			expect(config.host).toBe("127.0.0.1");
 			expect(config.port).toBe(3000);
+			expect(config.thinkingEffort).toBe("medium");
 			expect(config.heartbeat).toEqual({
 				intervalMinutes: 30,
 				deferMinutes: 0,
@@ -105,6 +110,7 @@ describe("loadGlobalConfig", () => {
 			const config = loadGlobalConfig(dir);
 			expect(config.host).toBe("127.0.0.1");
 			expect(config.port).toBe(4000);
+			expect(config.thinkingEffort).toBe("medium");
 			expect(config.heartbeat).toEqual({
 				intervalMinutes: 30,
 				deferMinutes: 0,
@@ -119,6 +125,7 @@ describe("loadGlobalConfig", () => {
 					deferMinutes: 0,
 				},
 				port: 4000,
+				thinkingEffort: "medium",
 				telegram: {
 					botToken: "tok",
 					allowedUsers: [123],
@@ -142,6 +149,7 @@ describe("loadGlobalConfig", () => {
 				intervalMinutes: 5,
 				deferMinutes: 0,
 			});
+			expect(config.thinkingEffort).toBe("medium");
 		} finally {
 			rmSync(dir, { recursive: true });
 		}
@@ -169,6 +177,7 @@ describe("loadGlobalConfig", () => {
 			const config = loadGlobalConfig(dir);
 			expect(config.autoCompact).toBe(true);
 			expect(config.host).toBe("127.0.0.1");
+			expect(config.thinkingEffort).toBe("medium");
 		} finally {
 			rmSync(dir, { recursive: true });
 		}
@@ -183,6 +192,29 @@ describe("loadGlobalConfig", () => {
 			);
 			const config = loadGlobalConfig(dir);
 			expect(config.autoCompact).toBe(false);
+			expect(config.thinkingEffort).toBe("medium");
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
+	test("defaults thinkingEffort to medium when not specified", () => {
+		const dir = tmp();
+		try {
+			writeFileSync(
+				join(dir, "config.json"),
+				JSON.stringify({ host: "0.0.0.0" }),
+			);
+
+			const config = loadGlobalConfig(dir);
+
+			expect(config.thinkingEffort).toBe("medium");
+			expect(
+				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
+			).toMatchObject({
+				host: "0.0.0.0",
+				thinkingEffort: "medium",
+			});
 		} finally {
 			rmSync(dir, { recursive: true });
 		}
@@ -217,6 +249,7 @@ describe("loadGlobalConfig", () => {
 					deferMinutes: 0,
 				},
 				port: 4000,
+				thinkingEffort: "medium",
 				agents: {
 					"agent-railly": {
 						rollover: {
@@ -272,6 +305,7 @@ describe("loadGlobalConfig", () => {
 					intervalMinutes: 60,
 				},
 				port: 4100,
+				thinkingEffort: "low",
 			});
 
 			expect(config).toEqual({
@@ -282,6 +316,7 @@ describe("loadGlobalConfig", () => {
 					deferMinutes: 0,
 				},
 				port: 4100,
+				thinkingEffort: "low",
 			});
 			expect(
 				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
@@ -293,6 +328,7 @@ describe("loadGlobalConfig", () => {
 					deferMinutes: 0,
 				},
 				port: 4100,
+				thinkingEffort: "low",
 				custom: {
 					flag: true,
 				},

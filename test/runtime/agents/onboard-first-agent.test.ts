@@ -75,6 +75,7 @@ describe("agent onboarding", () => {
 					intervalMinutes: 30,
 				},
 				port: 4000,
+				thinkingEffort: "medium",
 			});
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });

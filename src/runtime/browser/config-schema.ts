@@ -33,6 +33,11 @@ export const BROWSER_CONFIG_SCHEMA: BrowserConfigSchemaNode = {
 			editorKinds: ["number"],
 			typeLabel: "number",
 		},
+		thinkingEffort: {
+			kind: "leaf",
+			editorKinds: ["string"],
+			typeLabel: "low | medium | high | xhigh | max",
+		},
 		agents: {
 			kind: "object",
 			additionalProperties: {

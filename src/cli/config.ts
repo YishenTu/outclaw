@@ -1,3 +1,4 @@
+import { EFFORT_LEVELS, isEffortLevel } from "../common/commands.ts";
 import { secureAgentConfig } from "../runtime/config/secure-agent-config.ts";
 import {
 	type GlobalConfigPatch,
@@ -48,6 +49,7 @@ function configRuntimeCommand(homeDir: string, args: string[]) {
 		patch.port === undefined &&
 		patch.host === undefined &&
 		patch.autoCompact === undefined &&
+		patch.thinkingEffort === undefined &&
 		patch.heartbeat?.intervalMinutes === undefined &&
 		patch.heartbeat?.deferMinutes === undefined
 	) {
@@ -120,6 +122,9 @@ function parseRuntimeFlags(args: string[]) {
 					deferMinutes: parseNonNegativeInteger(value, "--heartbeat-defer"),
 				};
 				break;
+			case "--thinking-effort":
+				patch.thinkingEffort = parseThinkingEffort(value, flag);
+				break;
 			default:
 				console.error(`Unknown flag: ${flag}`);
 				process.exit(1);
@@ -149,6 +154,17 @@ function parseBoolean(value: string, flag: string): boolean {
 
 	console.error(`Invalid ${flag} value: ${value} (expected true or false)`);
 	process.exit(1);
+}
+
+function parseThinkingEffort(value: string, flag: string) {
+	if (!isEffortLevel(value)) {
+		console.error(
+			`Invalid ${flag} value: ${value} (expected one of: ${EFFORT_LEVELS.join(", ")})`,
+		);
+		process.exit(1);
+	}
+
+	return value;
 }
 
 function parseNonNegativeInteger(value: string, flag: string): number {

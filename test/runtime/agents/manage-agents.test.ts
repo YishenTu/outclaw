@@ -84,6 +84,7 @@ describe("agent management", () => {
 					intervalMinutes: 30,
 				},
 				port: 4000,
+				thinkingEffort: "medium",
 			});
 			expect(existsSync(join(created.agentHomeDir, ".claude", "skills"))).toBe(
 				true,
@@ -130,6 +131,7 @@ describe("agent management", () => {
 					intervalMinutes: 30,
 				},
 				port: 4000,
+				thinkingEffort: "medium",
 			});
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
@@ -419,6 +421,7 @@ describe("agent management", () => {
 					intervalMinutes: 30,
 				},
 				port: 4000,
+				thinkingEffort: "medium",
 			});
 			expect(listAgents(homeDir).map((agent) => agent.name)).toEqual([
 				"railly",

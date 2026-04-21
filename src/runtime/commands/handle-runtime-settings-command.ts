@@ -1,5 +1,4 @@
 import {
-	DEFAULT_EFFORT,
 	EFFORT_LEVELS,
 	isEffortLevel,
 	isOpusOnlyEffort,
@@ -85,12 +84,12 @@ function handleModelCommand(
 		}
 	}
 
+	const previousEffort = options.state.effort;
 	options.state.setModel(modelArg as ModelAlias);
 	options.hub.broadcast(buildModelChangedEvent(modelArg));
 
-	if (modelArg !== "opus" && isOpusOnlyEffort(options.state.effort)) {
-		options.state.setEffort(DEFAULT_EFFORT);
-		options.hub.broadcast(buildEffortChangedEvent(DEFAULT_EFFORT));
+	if (options.state.effort !== previousEffort) {
+		options.hub.broadcast(buildEffortChangedEvent(options.state.effort));
 	}
 
 	options.hub.broadcast(options.state.createStatusEvent());

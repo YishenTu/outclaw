@@ -1,4 +1,8 @@
-import type { EffortLevel } from "../../common/commands.ts";
+import {
+	DEFAULT_EFFORT,
+	type EffortLevel,
+	isOpusOnlyEffort,
+} from "../../common/commands.ts";
 import {
 	contextWindowForAlias,
 	isModelAlias,
@@ -27,14 +31,23 @@ export interface RuntimePromptContext {
 	sessionTitle?: string;
 }
 
+interface RuntimeStateOptions {
+	defaultEffort?: EffortLevel;
+}
+
 export class RuntimeState {
 	private readonly sessions = new RuntimeSessionState();
-	private readonly settings = new RuntimeSettingsState();
+	private readonly settings: RuntimeSettingsState;
 
 	constructor(
 		private readonly currentProviderId: string,
 		private readonly agentName?: string,
-	) {}
+		options: RuntimeStateOptions = {},
+	) {
+		this.settings = new RuntimeSettingsState({
+			defaultEffort: options.defaultEffort,
+		});
+	}
 
 	get generation(): number {
 		return this.sessions.generation;
@@ -123,6 +136,7 @@ export class RuntimeState {
 
 	setModel(model: ModelAlias) {
 		this.settings.setModel(model);
+		this.normalizeEffortForModel(model);
 		this.sessions.setUsage(this.alignUsageToModel(this.sessions.usage, model));
 	}
 
@@ -137,7 +151,7 @@ export class RuntimeState {
 	}) {
 		let usage = params.usage;
 		if (params.session && isModelAlias(params.session.model)) {
-			this.settings.setModel(params.session.model);
+			this.setModel(params.session.model);
 			usage = this.alignUsageToModel(usage, params.session.model);
 		}
 		this.sessions.restorePersistedState({
@@ -162,7 +176,7 @@ export class RuntimeState {
 		}
 
 		if (isModelAlias(session.model)) {
-			this.settings.setModel(session.model);
+			this.setModel(session.model);
 			usage = this.alignUsageToModel(usage, session.model);
 		}
 		this.sessions.switchToSession(session, usage);
@@ -198,5 +212,21 @@ export class RuntimeState {
 		}
 
 		return recalculateUsageForContextWindow(usage, contextWindow);
+	}
+
+	private normalizeEffortForModel(model: ModelAlias) {
+		if (model === "opus" || !isOpusOnlyEffort(this.settings.effort)) {
+			return;
+		}
+
+		this.settings.setEffort(this.resolveCompatibleDefaultEffort(model));
+	}
+
+	private resolveCompatibleDefaultEffort(model: ModelAlias): EffortLevel {
+		if (model === "opus" || !isOpusOnlyEffort(this.settings.defaultEffort)) {
+			return this.settings.defaultEffort;
+		}
+
+		return DEFAULT_EFFORT;
 	}
 }

@@ -110,7 +110,9 @@ function writeConfig(port: number) {
 			{
 				autoCompact: true,
 				heartbeat: { intervalMinutes: 30, deferMinutes: 0 },
+				host: "127.0.0.1",
 				port,
+				thinkingEffort: "medium",
 			},
 			null,
 			"\t",
@@ -223,7 +225,7 @@ describe("CLI", () => {
 	test("config runtime dash h prints runtime help and exits successfully", () => {
 		const { stdout, exitCode } = runCli(["config", "runtime", "-h"]);
 		expect(stdout).toContain(
-			"Usage: oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N]",
+			"Usage: oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N] [--thinking-effort LEVEL]",
 		);
 		expect(stdout).toContain("config.json");
 		expect(exitCode).toBe(0);
@@ -998,6 +1000,7 @@ describe("CLI", () => {
 			host: "127.0.0.1",
 			heartbeat: { intervalMinutes: 60, deferMinutes: 2 },
 			port: 4100,
+			thinkingEffort: "medium",
 			agents: {
 				"agent-railly": {
 					rollover: {
@@ -1079,6 +1082,7 @@ describe("CLI", () => {
 					host: "127.0.0.1",
 					heartbeat: { intervalMinutes: 30, deferMinutes: 0 },
 					port: 4000,
+					thinkingEffort: "medium",
 					custom: { note: "preserve me" },
 				},
 				null,
@@ -1099,6 +1103,8 @@ describe("CLI", () => {
 			"60",
 			"--heartbeat-defer",
 			"5",
+			"--thinking-effort",
+			"low",
 		]);
 
 		expect(result.exitCode).toBe(0);
@@ -1110,6 +1116,7 @@ describe("CLI", () => {
 			host: "0.0.0.0",
 			heartbeat: { intervalMinutes: 60, deferMinutes: 5 },
 			port: 4100,
+			thinkingEffort: "low",
 			custom: { note: "preserve me" },
 		});
 	});
@@ -1126,6 +1133,7 @@ describe("CLI", () => {
 			host: "127.0.0.1",
 			heartbeat: { intervalMinutes: 30, deferMinutes: 0 },
 			port: 4100,
+			thinkingEffort: "medium",
 		});
 	});
 
@@ -1150,6 +1158,15 @@ describe("CLI", () => {
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr).toContain(
 			"Invalid --auto-compact value: maybe (expected true or false)",
+		);
+	});
+
+	test("config runtime rejects invalid thinking effort values", () => {
+		const result = runCli(["config", "runtime", "--thinking-effort", "turbo"]);
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain(
+			"Invalid --thinking-effort value: turbo (expected one of: low, medium, high, xhigh, max)",
 		);
 	});
 

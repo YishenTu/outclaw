@@ -614,7 +614,7 @@ describe("Runtime server", () => {
 		ws.send(JSON.stringify({ type: "command", command: "/thinking" }));
 		const event = await waitForEvent(ws, (e) => e.type === "effort_changed");
 
-		expect(event.effort).toBe("high");
+		expect(event.effort).toBe("medium");
 		ws.close();
 	});
 
@@ -856,7 +856,7 @@ describe("Runtime server", () => {
 
 		expect(event.type).toBe("runtime_status");
 		expect(event.model).toBe("opus");
-		expect(event.effort).toBe("high");
+		expect(event.effort).toBe("medium");
 		expect(event.sessionId).toBe("mock-session-123");
 
 		ws.close();

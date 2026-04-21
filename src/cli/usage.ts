@@ -15,7 +15,7 @@ export function formatUsage() {
 		"Usage: oc <start|stop|restart|status|tui|browser|dev|build|agent|config|session|note>",
 		"       oc start|restart [--lan] [--host HOST]",
 		"       oc agent <list|create|config|rename|remove|ask|name>",
-		"       oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N]",
+		"       oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N] [--thinking-effort LEVEL]",
 		"       oc config secure",
 		"       oc session list [--limit N] [--tag cron]",
 		"       oc session search <query> [--limit N]",
@@ -154,7 +154,7 @@ export function printAgentAskUsage() {
 export function formatConfigUsage() {
 	return joinLines([
 		"Usage: oc config <runtime|secure>",
-		"       oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N]",
+		"       oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N] [--thinking-effort LEVEL]",
 		"       oc config secure",
 		"",
 		"Commands:",
@@ -169,7 +169,7 @@ export function printConfigUsage() {
 
 export function formatConfigRuntimeUsage() {
 	return joinLines([
-		"Usage: oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N]",
+		"Usage: oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N] [--thinking-effort LEVEL]",
 		"",
 		"Updates shared runtime settings saved in config.json.",
 		"Use --host 0.0.0.0 for trusted LAN browser access.",

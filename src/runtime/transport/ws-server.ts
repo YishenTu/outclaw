@@ -23,6 +23,7 @@ interface RuntimeOptions {
 	promptHomeDir?: string;
 	heartbeat?: Config["heartbeat"];
 	store?: SessionStore;
+	defaultEffort?: Config["thinkingEffort"];
 }
 
 export function createRuntime(options: RuntimeOptions) {
@@ -32,6 +33,7 @@ export function createRuntime(options: RuntimeOptions) {
 		cronDir: options.cronDir,
 		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
+		defaultEffort: options.defaultEffort,
 		facade: options.facade,
 		heartbeat: options.heartbeat,
 		name: "default",
