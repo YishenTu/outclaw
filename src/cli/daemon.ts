@@ -1,14 +1,15 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { createInterface } from "node:readline/promises";
-import { prepareAgentWorkspace } from "../backend/agent-workspace.ts";
 import { listAgents } from "../runtime/agents/list-agents.ts";
-import { onboardFirstAgent } from "../runtime/agents/onboard-first-agent.ts";
 import { stopDaemon } from "../runtime/process/daemon-stop.ts";
 import { PidManager } from "../runtime/process/pid-manager.ts";
 import { seedTemplates } from "../runtime/prompt/seed-templates.ts";
 import { launchBrowserFrontend } from "./browser.ts";
 import { buildBrowserFrontend, ensureBrowserBuild } from "./browser-build.ts";
-import { applyStartRuntimeFlags } from "./start-runtime-flags.ts";
+import { promptAndApplyOnboarding } from "./onboard.ts";
+import {
+	applyStartRuntimeFlags,
+	parseStartRuntimeFlags,
+} from "./start-runtime-flags.ts";
 
 interface DaemonCommandOptions {
 	argv: string[];
@@ -31,17 +32,17 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 	return {
 		async start() {
 			mkdirSync(options.homeDir, { recursive: true });
+			parseStartRuntimeFlags(options.argv.slice(3));
 
 			if (pid.isRunning()) {
 				console.log(`Daemon already running (pid ${pid.read()})`);
 				process.exit(1);
 			}
 
-			applyStartRuntimeFlags(options.homeDir, options.argv.slice(3));
-
 			if (listAgents(options.homeDir).length === 0) {
 				await runFreshInstallOnboarding(options.homeDir, options.templatesDir);
 			}
+			applyStartRuntimeFlags(options.homeDir, options.argv.slice(3));
 			reseedMissingAgentTemplates(options.homeDir, options.templatesDir);
 			ensureBrowserBuild({
 				browserDir: options.browserDir,
@@ -178,22 +179,13 @@ async function runFreshInstallOnboarding(
 	homeDir: string,
 	templatesDir: string,
 ) {
-	const rl = createInterface({
-		input: process.stdin,
-		output: process.stdout,
+	const created = await promptAndApplyOnboarding({
+		homeDir,
+		templatesDir,
 	});
-	try {
-		await onboardFirstAgent({
-			homeDir,
-			io: {
-				log: (message) => console.log(`\n${message}\n`),
-				prompt: (message) => rl.question(message),
-			},
-			prepareWorkspace: prepareAgentWorkspace,
-			templatesDir,
-		});
-	} finally {
-		rl.close();
+	if (!created) {
+		console.log("Onboarding cancelled");
+		process.exit(1);
 	}
 }
 

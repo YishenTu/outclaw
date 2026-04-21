@@ -1,9 +1,9 @@
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { assertValidAgentName } from "../../common/agent-name.ts";
 import { deleteStoredAgentConfig } from "../config.ts";
 import { SessionStore } from "../persistence/session-store.ts";
 import { TelegramRouteStore } from "../persistence/telegram-route-store.ts";
-import { assertValidAgentName } from "./agent-name.ts";
 import { readAgentId } from "./read-agent-id.ts";
 
 interface RemoveAgentOptions {

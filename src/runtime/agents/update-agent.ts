@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { assertValidAgentName } from "../../common/agent-name.ts";
 import {
 	loadSharedEnv,
 	resolveAllowedUsers,
@@ -11,7 +12,6 @@ import {
 	assertDefaultCronUserAllowed,
 	type StoredAgentConfig,
 } from "./agent-config.ts";
-import { assertValidAgentName } from "./agent-name.ts";
 import { readAgentId } from "./read-agent-id.ts";
 
 interface UpdateAgentOptions {

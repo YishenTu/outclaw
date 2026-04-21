@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { assertValidAgentName } from "./agent-name.ts";
+import { assertValidAgentName } from "../../common/agent-name.ts";
 import type { AgentRecord } from "./agent-record.ts";
 import { readAgentConfig } from "./read-agent-config.ts";
 import { readAgentId } from "./read-agent-id.ts";

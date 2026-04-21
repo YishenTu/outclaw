@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { assertValidAgentName } from "./agent-name.ts";
+import { assertValidAgentName } from "../../common/agent-name.ts";
 
 interface RenameAgentOptions {
 	homeDir: string;

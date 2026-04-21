@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { assertValidAgentName } from "../../common/agent-name.ts";
 import { seedTemplates } from "../prompt/seed-templates.ts";
 import { assertDefaultCronUserAllowed } from "./agent-config.ts";
-import { assertValidAgentName } from "./agent-name.ts";
 import { writeAgentConfig } from "./write-agent-config.ts";
 
 interface CreateAgentOptions {

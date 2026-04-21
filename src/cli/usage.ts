@@ -12,8 +12,9 @@ export function hasHelpFlag(values: string[]): boolean {
 
 export function formatUsage() {
 	return joinLines([
-		"Usage: oc <start|stop|restart|status|tui|browser|dev|build|agent|config|session|note>",
+		"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|session|note>",
 		"       oc start|restart [--lan] [--host HOST]",
+		"       oc onboard",
 		"       oc agent <list|create|config|rename|remove|ask|name>",
 		"       oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N] [--thinking-effort LEVEL]",
 		"       oc config secure",
@@ -52,6 +53,19 @@ export function formatStartUsage() {
 
 export function printStartUsage() {
 	console.log(formatStartUsage());
+}
+
+export function formatOnboardUsage() {
+	return joinLines([
+		"Usage: oc onboard",
+		"",
+		"Launch the interactive agent onboarding TUI.",
+		"Creates a new agent workspace and updates ~/.outclaw/config.json.",
+	]);
+}
+
+export function printOnboardUsage() {
+	console.log(formatOnboardUsage());
 }
 
 export function formatAgentUsage() {

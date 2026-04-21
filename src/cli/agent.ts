@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { prepareAgentWorkspace } from "../backend/agent-workspace.ts";
 import { createAgent } from "../runtime/agents/create-agent.ts";
+import { ensureGlobalEnvFile } from "../runtime/agents/ensure-global-env-file.ts";
 import { listAgents } from "../runtime/agents/list-agents.ts";
 import { removeAgent } from "../runtime/agents/remove-agent.ts";
 import { renameAgent } from "../runtime/agents/rename-agent.ts";
@@ -151,7 +152,7 @@ function createAgentCommand(options: AgentCommandOptions) {
 				: undefined,
 		templatesDir: options.templatesDir,
 	});
-	ensureEnvFile(options.homeDir);
+	ensureGlobalEnvFile(options.homeDir);
 	console.log(`Created agent ${name}`);
 	console.log(created.agentHomeDir);
 	maybeMarkRestartRequired(options.homeDir);
@@ -223,13 +224,6 @@ function removeAgentCommand(homeDir: string, argv: string[]) {
 	removeAgent({ homeDir, name });
 	console.log(`Removed agent ${name}`);
 	maybeMarkRestartRequired(homeDir);
-}
-
-function ensureEnvFile(homeDir: string) {
-	const envPath = join(homeDir, ".env");
-	if (!existsSync(envPath)) {
-		writeFileSync(envPath, "");
-	}
 }
 
 function parseFlags(args: string[]) {

@@ -14,7 +14,7 @@ export function applyStartRuntimeFlags(homeDir: string, args: string[]) {
 	updateGlobalConfig(homeDir, patch);
 }
 
-function parseStartRuntimeFlags(args: string[]): GlobalConfigPatch {
+export function parseStartRuntimeFlags(args: string[]): GlobalConfigPatch {
 	let host: string | undefined;
 
 	for (let index = 0; index < args.length; index += 1) {

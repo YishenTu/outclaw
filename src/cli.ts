@@ -5,13 +5,20 @@ import { agentCommand } from "./cli/agent.ts";
 import { configCommand } from "./cli/config.ts";
 import { createDaemonCommands } from "./cli/daemon.ts";
 import { noteCommand } from "./cli/note.ts";
+import { onboardCommand } from "./cli/onboard.ts";
 import { sessionCommand } from "./cli/session.ts";
-import { isHelpFlag, printStartUsage, printUsage } from "./cli/usage.ts";
+import {
+	isHelpFlag,
+	printOnboardUsage,
+	printStartUsage,
+	printUsage,
+} from "./cli/usage.ts";
 
 const HOME_DIR = join(homedir(), ".outclaw");
 const PID_PATH = join(HOME_DIR, "daemon.pid");
 const LOG_PATH = join(HOME_DIR, "daemon.log");
 const READY_PATH = join(HOME_DIR, "daemon.ready");
+const CLI_ENTRY = join(import.meta.dir, "cli.ts");
 const DAEMON_ENTRY = join(import.meta.dir, "index.ts");
 const TEMPLATES_DIR = join(import.meta.dir, "templates");
 const TUI_ENTRY = join(import.meta.dir, "tui.ts");
@@ -64,6 +71,17 @@ switch (command) {
 		break;
 	case "browser":
 		daemon.browser();
+		break;
+	case "onboard":
+		if (isHelpFlag(argv[3])) {
+			printOnboardUsage();
+			process.exit(0);
+		}
+		await onboardCommand({
+			cliEntry: CLI_ENTRY,
+			homeDir: HOME_DIR,
+			templatesDir: TEMPLATES_DIR,
+		});
 		break;
 	case "agent":
 		await agentCommand({

@@ -163,7 +163,9 @@ describe("CLI", () => {
 	test("no args prints usage", () => {
 		const { stdout, exitCode } = runCli([]);
 		expect(stdout).toContain("Usage:");
-		expect(stdout).toContain("<start|stop|restart|status|tui|browser|dev");
+		expect(stdout).toContain(
+			"<start|stop|restart|status|tui|browser|onboard|dev",
+		);
 		expect(stdout).toContain(
 			"oc agent <list|create|config|rename|remove|ask|name>",
 		);
@@ -178,9 +180,17 @@ describe("CLI", () => {
 		const { stdout, exitCode } = runCli(["-h"]);
 		expect(stdout).toContain("Usage:");
 		expect(stdout).toContain("first run:   oc build && oc start");
+		expect(stdout).toContain("oc onboard");
 		expect(stdout).toContain("command help: oc <command> -h");
 		expect(stdout).not.toContain("LAN browser: oc start --lan");
 		expect(stdout).not.toContain("web update:  oc build && oc restart");
+		expect(exitCode).toBe(0);
+	});
+
+	test("onboard dash h prints onboarding help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["onboard", "-h"]);
+		expect(stdout).toContain("Usage: oc onboard");
+		expect(stdout).toContain("Launch the interactive agent onboarding TUI.");
 		expect(exitCode).toBe(0);
 	});
 
