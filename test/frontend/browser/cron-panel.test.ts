@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import {
+	buildFallbackCronEntries,
 	CronPanelHeader,
 	humanizeCronSchedule,
 } from "../../../src/frontend/browser/components/right-panel/cron-panel.tsx";
@@ -50,5 +51,36 @@ describe("cron panel helpers", () => {
 
 	test("keeps unknown schedules as-is", () => {
 		expect(humanizeCronSchedule("0 9 * * 1,3")).toBe("0 9 * * 1,3");
+	});
+
+	test("fallback entries exclude template cron yaml files", () => {
+		expect(
+			buildFallbackCronEntries([
+				{
+					children: [
+						{
+							kind: "file",
+							name: "_template.yaml",
+							path: "cron/_template.yaml",
+						},
+						{
+							kind: "file",
+							name: "daily.yaml",
+							path: "cron/daily.yaml",
+						},
+					],
+					kind: "directory",
+					name: "cron",
+					path: "cron",
+				},
+			]),
+		).toEqual([
+			{
+				name: "daily.yaml",
+				path: "cron/daily.yaml",
+				schedule: "Schedule unavailable",
+				enabled: true,
+			},
+		]);
 	});
 });

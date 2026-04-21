@@ -1,0 +1,37 @@
+name: memory-route
+schedule: "17 5 * * *"
+model: opus
+enabled: true
+prompt: |
+  Route yesterday's daily-memory entries into the right schemas.
+
+  ## Inputs
+
+  - Today's date: `bash: date`. Compute yesterday's date from it.
+  - Yesterday's daily memory: `daily-memories/<yesterday>.md`.
+  - Existing schemas: `bash: ls schemas/` (ignore files starting with `_`).
+  - Schema skeleton: `schemas/_template.md` — the shape to follow when creating new schemas.
+
+  ## Daily-memory format
+
+  Each observation line looks like:
+  ```
+  - HH:MM [salience] content [[hint]]
+  ```
+  The `[[hint]]` is optional — treat it as the writing agent's note-to-self about which schema this belongs to, then override with your own judgment.
+  The session id is the `<id>` from the nearest preceding `## Session <id> | HH:MM` stanza header above the observation.
+
+  ## For each observation
+
+  1. Decide which schema it belongs to. Skip the entry if it's clearly ephemeral or redundant — not every line belongs in a schema.
+  2. If no existing schema fits and the entity is worth tracking over time (multiple attributes, durable identity), create a new schema: copy `schemas/_template.md` to `schemas/<descriptive-kebab-case>.md` and fill in the frontmatter (`name`, `kind`, `description`, `last_observation_at`, `last_synthesized`). `description` must be a stable one-line router summary for `MEMORY.md`, not a volatile status line. Any filename under `schemas/` is fine; pick one that reads well. Be conservative — only create a schema when a flat note under `notes/` wouldn't do.
+  3. Append the observation to the target schema's `# Observations` section in this format:
+     ```
+     - <yesterday> HH:MM [salience] content [sess:<id>]
+     ```
+     HH:MM and salience lift directly from the daily-memory line; date is yesterday's; session id is read from the stanza header.
+  4. Update the target schema's frontmatter: set `last_observation_at: <yesterday>`.
+
+  Do NOT rewrite `# Model` sections — that's the synthesis cron's job.
+
+  Reply with a summary of routed entries (which schemas got how many), or `NO_REPLY` if nothing needed routing.

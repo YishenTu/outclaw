@@ -1,11 +1,11 @@
 ---
 name: oc
-description: Use when operating the `oc` CLI for daemon control, agent management, config updates, agent-to-agent communication, or past-session lookup. Also invoke when the user references a past or different session you need to inspect.
+description: Use when operating the `oc` CLI for daemon control, agent management, config updates, agent-to-agent communication, past-session lookup, or capturing observations to memory (`oc note`). Also invoke when the user references a past or different session you need to inspect.
 ---
 
 # oc
 
-Use the `oc` CLI to manage agents, control the daemon, rebuild the browser bundle, communicate across agents, and inspect past sessions.
+Use the `oc` CLI to manage agents, control the daemon, rebuild the browser bundle, communicate across agents, inspect past sessions, and capture observations into memory.
 
 ## Quick Start
 
@@ -21,6 +21,7 @@ Use the `oc` CLI to manage agents, control the daemon, rebuild the browser bundl
 - The user asks to contact another agent, delegate work, or ask another agent a question -> read [references/agent-com.md](references/agent-com.md)
 - The user asks about past sessions, transcripts, or cron run history -> read [references/session-lookup.md](references/session-lookup.md)
 - The user references a past or different session you need to inspect -> read [references/session-lookup.md](references/session-lookup.md)
+- You need to capture an observation to memory (the `oc note` write primitive for daily memory) -> read [references/memory-capture.md](references/memory-capture.md)
 
 ## Gotchas
 

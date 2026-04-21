@@ -287,12 +287,31 @@ describe("agent management", () => {
 				join(created.agentHomeDir, "AGENTS.md"),
 				"utf-8",
 			);
-			expect(agentsTemplate).toContain(
-				"Invoke the `oc` skill before proceeding",
-			);
-			expect(agentsTemplate).toContain("## Recalling Past Context");
+			expect(agentsTemplate).toContain("### The `oc` skill");
+			expect(agentsTemplate).toContain("### Recall");
 			expect(agentsTemplate).toContain("`oc session search`");
 			expect(agentsTemplate).toContain("`oc session transcript`");
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+		}
+	});
+
+	test("createAgent seeds the memory synthesize cron with the schema description field preserved", () => {
+		const homeDir = createHomeDir();
+		try {
+			const created = createAgent({
+				homeDir,
+				name: "railly",
+				templatesDir: REPO_TEMPLATES_DIR,
+				createAgentId: () => "agent-railly",
+			});
+
+			expect(
+				readFileSync(
+					join(created.agentHomeDir, "cron", "memory-synthesize.yaml"),
+					"utf-8",
+				),
+			).toContain("description:");
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 		}

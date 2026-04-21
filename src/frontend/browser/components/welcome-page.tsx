@@ -3,7 +3,7 @@ import type { EffortLevel } from "../../../common/commands.ts";
 import type { ModelAlias } from "../../../common/models.ts";
 import { randomTagline } from "../../../common/taglines.ts";
 import { useWs } from "../contexts/websocket-context.tsx";
-import { resolveBrowserSessionKey } from "../session.ts";
+import { resolveComposerSessionKey } from "../session.ts";
 import { useAgentsStore } from "../stores/agents.ts";
 import { useRuntimeStore } from "../stores/runtime.ts";
 import { useSessionsStore } from "../stores/sessions.ts";
@@ -62,7 +62,9 @@ export function WelcomePage() {
 	const activeSessionByAgent = useSessionsStore(
 		(state) => state.activeSessionByAgent,
 	);
+	const runtimeAgentName = useRuntimeStore((state) => state.agentName);
 	const providerId = useRuntimeStore((state) => state.providerId);
+	const runtimeSessionId = useRuntimeStore((state) => state.sessionId);
 	const model = useRuntimeStore((state) => state.model);
 	const effort = useRuntimeStore((state) => state.effort);
 	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
@@ -82,10 +84,12 @@ export function WelcomePage() {
 	const sessionKey =
 		selectedAgent === null
 			? null
-			: resolveBrowserSessionKey({
+			: resolveComposerSessionKey({
 					agentId: selectedAgent.agentId,
 					activeSession: selectedSession,
+					preferRuntimeSession: selectedAgent.name === runtimeAgentName,
 					providerId,
+					runtimeSessionId,
 				});
 
 	async function handleSend({
@@ -99,7 +103,12 @@ export function WelcomePage() {
 			return false;
 		}
 
-		const sent = await sendBrowserPromptToAgent(selectedAgent, text, images);
+		const sent = await sendBrowserPromptToAgent(
+			selectedAgent,
+			text,
+			images,
+			selectedSession,
+		);
 		if (sent) {
 			openWorkspace();
 		}

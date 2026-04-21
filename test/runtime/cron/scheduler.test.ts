@@ -120,6 +120,47 @@ describe("CronScheduler", () => {
 		expect(scheduler.jobCount).toBe(1);
 	});
 
+	test("ignores underscore-prefixed yaml files", () => {
+		const cronDir = makeCronDir();
+		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
+		writeJob(cronDir, "_template.yaml", SIMPLE_JOB.replace("test-job", "tpl"));
+		writeJob(cronDir, "_draft.yml", SIMPLE_JOB.replace("test-job", "draft"));
+
+		const scheduler = createScheduler(cronDir);
+		scheduler.start();
+
+		expect(scheduler.jobCount).toBe(1);
+	});
+
+	test("unschedules a live job when it is renamed to an underscore-prefixed yaml file", async () => {
+		const cronDir = makeCronDir();
+		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
+
+		const watcher = new EventEmitter() as ReturnType<
+			typeof import("node:fs").watch
+		>;
+		watcher.close = () => {};
+		const scheduler = createScheduler(cronDir, {
+			watchDir: (_path, listener) => {
+				watcher.on("change", (eventType, filename) => {
+					listener(eventType, filename);
+				});
+				return watcher;
+			},
+		});
+		scheduler.start();
+		expect(scheduler.jobCount).toBe(1);
+
+		rmSync(join(cronDir, "job.yaml"));
+		writeJob(
+			cronDir,
+			"_job.yaml",
+			SIMPLE_JOB.replace("test-job", "renamed-job"),
+		);
+		watcher.emit("change", "rename", "_job.yaml");
+		await waitForCondition(() => scheduler.jobCount === 0);
+	});
+
 	test("skips disabled jobs", () => {
 		const cronDir = makeCronDir();
 		writeJob(cronDir, "active.yaml", SIMPLE_JOB);
@@ -164,7 +205,10 @@ describe("CronScheduler", () => {
 
 		const results: ScheduledCronResult[] = [];
 		const scheduler = createScheduler(cronDir, {
-			runAgent: async () => "hello from agent",
+			runAgent: async () => ({
+				sessionId: "cron-session-123",
+				text: "hello from agent",
+			}),
 			onResult: (event) => results.push(event),
 		});
 		scheduler.start();
@@ -175,7 +219,7 @@ describe("CronScheduler", () => {
 			{
 				jobName: "test-job",
 				model: "haiku",
-				sessionId: undefined,
+				sessionId: "cron-session-123",
 				telegramChatId: undefined,
 				text: "hello from agent",
 			},

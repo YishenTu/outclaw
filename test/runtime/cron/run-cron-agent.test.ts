@@ -72,7 +72,7 @@ describe("createCronAgentRunner", () => {
 
 		const result = await runCronAgent("Summarize overnight changes", "opus");
 
-		expect(receivedParams).toEqual({
+		expect(receivedParams).toMatchObject({
 			prompt: "Summarize overnight changes",
 			systemPrompt:
 				"<agents>\nAgent instructions\n</agents>\n\n<user>\nUser context\n</user>",
@@ -81,6 +81,13 @@ describe("createCronAgentRunner", () => {
 			effort: "max",
 			stream: false,
 		});
+		expect(receivedParams?.sessionEnv?.OC_MEMORY_ROOT).toBe(promptHomeDir);
+		expect(
+			receivedParams?.sessionEnv?.OC_SESSION_ID?.length ?? 0,
+		).toBeGreaterThan(0);
+		expect(receivedParams?.sessionId).toBe(
+			receivedParams?.sessionEnv?.OC_SESSION_ID,
+		);
 		expect(result).toEqual({
 			sessionId: "cron-session-123",
 			text: "hello world",

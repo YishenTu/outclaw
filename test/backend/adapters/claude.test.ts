@@ -398,6 +398,33 @@ describe("ClaudeAdapter", () => {
 		);
 	});
 
+	test("forwards a caller-supplied sessionId to the SDK query options", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "result",
+					session_id: "sdk-stable",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+
+		const { adapter } = createAdapter({ query });
+
+		for await (const _event of adapter.run({
+			prompt: "hello",
+			sessionId: "sdk-stable",
+		})) {
+			// Drain
+		}
+
+		const args = query.mock.calls[0]?.[0] as {
+			options?: { sessionId?: string };
+		};
+		expect(args.options?.sessionId).toBe("sdk-stable");
+	});
+
 	test("streams text deltas and merges usage from the main assistant message with result model metadata", async () => {
 		const query = mock((_params: unknown) =>
 			(async function* () {

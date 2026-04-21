@@ -158,6 +158,28 @@ describe("RuntimeSessionState", () => {
 				telegramChatId: 123,
 			});
 		});
+
+		test("canonicalizes legacy ocSessionId aliases back to sdkSessionId", () => {
+			const state = new RuntimeSessionState();
+
+			state.restorePersistedState({
+				session: {
+					agentId: AGENT_ID,
+					providerId: "mock",
+					sdkSessionId: "sdk-persist",
+					ocSessionId: "oc-legacy",
+					title: "Stored title",
+					model: "haiku",
+					source: "telegram",
+					tag: "chat",
+					createdAt: 0,
+					lastActive: 0,
+				},
+			});
+
+			expect(state.sessionId).toBe("sdk-persist");
+			expect(state.ocSessionId).toBe("sdk-persist");
+		});
 	});
 
 	describe("switchToSession", () => {
@@ -186,6 +208,29 @@ describe("RuntimeSessionState", () => {
 			expect(state.sessionSource).toBe("telegram");
 			expect(state.usage).toEqual(usage);
 			expect(state.generation).toBe(generation + 1);
+		});
+
+		test("switching to a legacy row exports the sdkSessionId as canonical", () => {
+			const state = new RuntimeSessionState();
+
+			state.switchToSession(
+				{
+					agentId: AGENT_ID,
+					providerId: "mock",
+					sdkSessionId: "sdk-old",
+					ocSessionId: "oc-legacy",
+					title: "Old chat",
+					model: "sonnet",
+					source: "telegram",
+					tag: "chat",
+					createdAt: Date.now(),
+					lastActive: Date.now(),
+				},
+				undefined,
+			);
+
+			expect(state.sessionId).toBe("sdk-old");
+			expect(state.ocSessionId).toBe("sdk-old");
 		});
 	});
 

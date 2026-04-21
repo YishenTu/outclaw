@@ -1,0 +1,39 @@
+---
+# REQUIRED — the runtime memory index reads these:
+name: <schema-name>
+kind: <project | initiative | person | topic>
+description: <one-line router summary for MEMORY.md>
+last_observation_at: <YYYY-MM-DD>
+last_synthesized: <YYYY-MM-DD>
+# Any other fields are fine; the runtime ignores them.
+---
+
+# Model
+
+<!-- REQUIRED: this heading exists. -->
+<!-- SUGGESTED subsections below — adapt to the entity kind, drop what doesn't fit. -->
+
+## What
+
+<!-- One or two sentences: what is this entity? -->
+
+## How to work with / on it
+
+<!-- Preferences, conventions, guardrails specific to this entity. -->
+
+## Current focus
+
+<!-- What's active right now. Short-lived, refreshed often. -->
+
+## Uncertain / open
+
+<!-- Known unknowns. What needs confirming, what's disputed, what's in flux. -->
+
+---
+
+# Observations
+
+<!-- REQUIRED: this heading exists. -->
+<!-- Append-only log. Entry format: -->
+<!--   - YYYY-MM-DD HH:MM [salience] content [sess:<id>] -->
+<!-- Salience is one of: correction | confirmation | decision | surprise | routine -->

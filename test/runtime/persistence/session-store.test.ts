@@ -37,6 +37,7 @@ describe("SessionStore", () => {
 		store.upsert({
 			providerId: CLAUDE_PROVIDER,
 			sdkSessionId: "sdk-123",
+			ocSessionId: "oc-123",
 			title: "Hello world",
 			model: "sonnet",
 		});
@@ -45,6 +46,7 @@ describe("SessionStore", () => {
 		expect(session).toBeDefined();
 		expect(session?.agentId).toBe(DEFAULT_AGENT_ID);
 		expect(session?.providerId).toBe(CLAUDE_PROVIDER);
+		expect(session?.ocSessionId).toBe("oc-123");
 		expect(session?.title).toBe("Hello world");
 		expect(session?.model).toBe("sonnet");
 		expect(session?.createdAt).toBeGreaterThan(0);
@@ -137,6 +139,30 @@ describe("SessionStore", () => {
 		const session = store.get(CLAUDE_PROVIDER, "sdk-123");
 		expect(session?.title).toBe("Updated");
 		expect(session?.source).toBe("tui");
+
+		store.close();
+	});
+
+	test("upsert preserves an existing ocSessionId when an update omits it", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-123",
+			ocSessionId: "oc-stable",
+			title: "First",
+			model: "sonnet",
+		});
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-123",
+			title: "Updated",
+			model: "opus",
+		});
+
+		expect(store.get(CLAUDE_PROVIDER, "sdk-123")?.ocSessionId).toBe(
+			"oc-stable",
+		);
 
 		store.close();
 	});
@@ -378,6 +404,29 @@ describe("SessionStore", () => {
 			store.findByPrefix(CLAUDE_PROVIDER, "chat", "chat")?.sdkSessionId,
 		).toBe("chat-1");
 		expect(store.findByPrefix(CLAUDE_PROVIDER, "cron", "chat")).toBeUndefined();
+
+		store.close();
+	});
+
+	test("findByPrefix resolves legacy ocSessionId aliases", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-canonical",
+			ocSessionId: "oc-legacy",
+			title: "Legacy session",
+			model: "opus",
+		});
+
+		expect(store.findByPrefix(CLAUDE_PROVIDER, "oc-legacy")).toMatchObject({
+			sdkSessionId: "sdk-canonical",
+			ocSessionId: "oc-legacy",
+		});
+		expect(store.findByPrefix(CLAUDE_PROVIDER, "oc-leg")).toMatchObject({
+			sdkSessionId: "sdk-canonical",
+			ocSessionId: "oc-legacy",
+		});
 
 		store.close();
 	});

@@ -64,3 +64,16 @@ export function resolveCurrentBrowserSessionKey(params: {
 
 	return resolveBrowserSessionKey(params);
 }
+
+export function resolveComposerSessionKey(params: {
+	agentId: string;
+	activeSession: SessionRef | null;
+	providerId?: string | null;
+	preferRuntimeSession?: boolean;
+	runtimeSessionId?: string | null;
+}): string {
+	if (params.preferRuntimeSession === false) {
+		return resolveBrowserSessionKey(params);
+	}
+	return resolveCurrentBrowserSessionKey(params);
+}

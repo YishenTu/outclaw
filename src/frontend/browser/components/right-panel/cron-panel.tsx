@@ -1,5 +1,6 @@
 import { Clock3 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { isCronJobFile } from "../../../../common/cron-job-file.ts";
 import type {
 	BrowserCronEntry,
 	BrowserTreeEntry,
@@ -155,7 +156,7 @@ function isCronDayOfMonth(value: string): boolean {
 	return /^(?:[1-9]|[12]\d|3[01])$/.test(value);
 }
 
-function fallbackCronEntries(
+export function buildFallbackCronEntries(
 	treeEntries: BrowserTreeEntry[] | undefined,
 ): BrowserCronEntry[] {
 	const cronDirectory = treeEntries?.find(
@@ -163,11 +164,7 @@ function fallbackCronEntries(
 	);
 	return (
 		cronDirectory?.children
-			?.filter(
-				(entry) =>
-					entry.kind === "file" &&
-					(entry.path.endsWith(".yaml") || entry.path.endsWith(".yml")),
-			)
+			?.filter((entry) => entry.kind === "file" && isCronJobFile(entry.path))
 			.map((entry) => ({
 				name: entry.name,
 				path: entry.path,
@@ -191,7 +188,7 @@ export function CronPanel({
 	const [error, setError] = useState<string | null>(null);
 	const [mutationError, setMutationError] = useState<string | null>(null);
 	const fallbackEntries = useMemo(
-		() => fallbackCronEntries(treeEntries),
+		() => buildFallbackCronEntries(treeEntries),
 		[treeEntries],
 	);
 
@@ -240,8 +237,9 @@ export function CronPanel({
 		return <div className="px-4 py-4 text-sm text-danger">{error}</div>;
 	}
 
-	const visibleEntries =
-		entries.length > 0 ? entries : error ? fallbackEntries : entries;
+	const visibleEntries = (
+		entries.length > 0 ? entries : error ? fallbackEntries : entries
+	).filter((entry) => isCronJobFile(entry.path));
 
 	if (visibleEntries.length === 0) {
 		return (

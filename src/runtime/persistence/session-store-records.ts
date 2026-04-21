@@ -6,6 +6,7 @@ export interface SessionRow {
 	agentId: string;
 	providerId: string;
 	sdkSessionId: string;
+	ocSessionId?: string;
 	title: string;
 	model: string;
 	source: string;
@@ -34,6 +35,7 @@ export const SESSION_TABLE_COLUMNS = [
 	"agent_id",
 	"provider_id",
 	"sdk_session_id",
+	"oc_session_id",
 	"title",
 	"model",
 	"source",
@@ -47,6 +49,7 @@ interface SessionDatabaseRow {
 	agent_id: string;
 	provider_id: string;
 	sdk_session_id: string;
+	oc_session_id: string | null;
 	title: string;
 	model: string;
 	source: string;
@@ -77,6 +80,7 @@ export function mapSessionRow(
 		agentId: row.agent_id,
 		providerId: row.provider_id,
 		sdkSessionId: row.sdk_session_id,
+		ocSessionId: row.oc_session_id ?? undefined,
 		title: row.title,
 		model: row.model,
 		source: row.source,
@@ -91,6 +95,7 @@ export function mapSessionRows(rows: SessionDatabaseRow[]): SessionRow[] {
 		agentId: row.agent_id,
 		providerId: row.provider_id,
 		sdkSessionId: row.sdk_session_id,
+		ocSessionId: row.oc_session_id ?? undefined,
 		title: row.title,
 		model: row.model,
 		source: row.source,

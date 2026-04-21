@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { resolveModelAlias } from "../../common/models.ts";
 import type { Facade } from "../../common/protocol.ts";
 import { assembleSystemPrompt } from "../prompt/assemble-system-prompt.ts";
+import { buildSessionEnv } from "../prompt/session-env.ts";
 
 export interface CronAgentRunResult {
 	sessionId?: string;
@@ -21,17 +23,21 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 	): Promise<CronAgentRunResult> => {
 		const systemPrompt = await assembleSystemPrompt(options.promptHomeDir);
 		const resolvedModel = model ? resolveModelAlias(model) : undefined;
+		const sessionId = randomUUID();
+		const sessionEnv = buildSessionEnv(options.promptHomeDir, sessionId);
 
 		let resultText = "";
-		let sessionId: string | undefined;
+		let completedSessionId: string | undefined;
 
 		for await (const event of options.facade.run({
 			prompt,
 			systemPrompt,
+			sessionId,
 			cwd: options.cwd,
 			model: resolvedModel,
 			effort: options.effort,
 			stream: false,
+			sessionEnv,
 		})) {
 			if (event.type === "text") {
 				resultText += event.text;
@@ -40,13 +46,13 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 				throw new Error(event.message);
 			}
 			if (event.type === "done") {
-				sessionId = event.sessionId;
+				completedSessionId = event.sessionId;
 				break;
 			}
 		}
 
 		return {
-			sessionId,
+			sessionId: completedSessionId,
 			text: resultText,
 		};
 	};

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+	mkdirSync,
 	mkdtempSync,
 	rmSync,
 	unlinkSync,
@@ -82,6 +83,26 @@ describe("assembleSystemPrompt", () => {
 		const second = await assembleSystemPrompt(tmp);
 		expect(second).toContain("updated");
 		expect(second).not.toContain("original");
+	});
+
+	test("ignores generated schema index changes because they are not prompt files", async () => {
+		writeFileSync(join(tmp, "MEMORY.md"), "stable memory router");
+
+		const first = await assembleSystemPrompt(tmp);
+		expect(first).toContain("stable memory router");
+
+		mkdirSync(join(tmp, "schemas"), { recursive: true });
+		writeFileSync(join(tmp, "schemas", "index.md"), "# Schema Index\n");
+
+		const second = await assembleSystemPrompt(tmp);
+		expect(second).toBe(first);
+
+		writeFileSync(
+			join(tmp, "schemas", "index.md"),
+			"# Schema Index\nupdated\n",
+		);
+		const third = await assembleSystemPrompt(tmp);
+		expect(third).toBe(first);
 	});
 
 	test("picks up file deletion", async () => {

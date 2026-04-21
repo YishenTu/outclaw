@@ -137,6 +137,7 @@ export class PromptDispatcher {
 					this.options.sessions.recordBackgroundCompletion({
 						event,
 						model: context.model,
+						ocSessionId: context.ocSessionId,
 						source: toStoredSessionSource(task.source),
 						title: context.sessionTitle ?? "Untitled",
 					});
@@ -150,6 +151,7 @@ export class PromptDispatcher {
 				effort: context.effort,
 				emit,
 				model: context.resolvedModel,
+				ocSessionId: context.ocSessionId,
 				resume: context.resumeSessionId,
 				task,
 			});

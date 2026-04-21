@@ -276,7 +276,17 @@ export class ClaudeAdapter implements Facade {
 					systemPrompt: params.systemPrompt,
 					abortController,
 					resume: params.resume,
+					sessionId: params.sessionId,
 					cwd: params.cwd,
+					// The SDK uses options.env as-is for the claude-code subprocess
+					// spawn (defaulting to process.env only when undefined). Merge
+					// with process.env so PATH/HOME/etc survive.
+					env: params.sessionEnv
+						? {
+								...(process.env as Record<string, string>),
+								...params.sessionEnv,
+							}
+						: undefined,
 					model: params.model,
 					effort: params.effort as
 						| "low"

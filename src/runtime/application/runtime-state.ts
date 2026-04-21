@@ -20,6 +20,7 @@ export interface RuntimePromptContext {
 	effort: EffortLevel;
 	generation: number;
 	model: ModelAlias;
+	ocSessionId: string;
 	resolvedModel: string;
 	sessionId?: string;
 	sessionSource: "tui" | "telegram" | "agent";
@@ -63,6 +64,10 @@ export class RuntimeState {
 		return this.sessions.sessionId;
 	}
 
+	get ocSessionId(): string | undefined {
+		return this.sessions.ocSessionId;
+	}
+
 	get sessionSource(): "tui" | "telegram" | "agent" {
 		return this.sessions.sessionSource;
 	}
@@ -80,6 +85,7 @@ export class RuntimeState {
 			effort: this.settings.effort,
 			generation: this.sessions.generation,
 			model: this.settings.model,
+			ocSessionId: this.sessions.ensureOcSessionId(),
 			resolvedModel: this.settings.resolvedModel,
 			sessionId: this.sessions.sessionId,
 			sessionSource: this.sessions.sessionSource,

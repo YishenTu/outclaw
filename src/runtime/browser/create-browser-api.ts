@@ -1,6 +1,7 @@
 import { type Dirent, realpathSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
+import { isCronJobFile } from "../../common/cron-job-file.ts";
 import type {
 	BrowserAgentsResponse,
 	BrowserConfigResponse,
@@ -243,11 +244,7 @@ async function listCronEntries(rootDir: string): Promise<BrowserCronEntry[]> {
 	}
 
 	const cronFiles = entries
-		.filter(
-			(entry) =>
-				entry.isFile() &&
-				(entry.name.endsWith(".yaml") || entry.name.endsWith(".yml")),
-		)
+		.filter((entry) => entry.isFile() && isCronJobFile(entry.name))
 		.sort((left, right) => left.name.localeCompare(right.name));
 
 	return await Promise.all(

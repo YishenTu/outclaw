@@ -25,6 +25,7 @@ export function ensureSessionStoreSchema(db: Database) {
 	}
 
 	const columns = getTableColumns(db, "sessions");
+	migrateSessionsTable(db, columns);
 	assertCurrentSessionsTable(columns);
 	createTranscriptTables(db);
 }
@@ -34,6 +35,7 @@ function createSessionsTable(db: Database) {
 			agent_id TEXT NOT NULL,
 			provider_id TEXT NOT NULL,
 			sdk_session_id TEXT NOT NULL,
+			oc_session_id TEXT,
 			title TEXT NOT NULL,
 			model TEXT NOT NULL,
 			source TEXT NOT NULL DEFAULT 'tui',
@@ -50,6 +52,17 @@ function createSessionsTable(db: Database) {
 			percentage INTEGER,
 				PRIMARY KEY (agent_id, provider_id, sdk_session_id)
 				)`);
+}
+
+function migrateSessionsTable(db: Database, columns: TableColumnInfo[]) {
+	const columnNames = new Set(columns.map((column) => column.name));
+	if (!columnNames.has("oc_session_id")) {
+		db.exec("ALTER TABLE sessions ADD COLUMN oc_session_id TEXT");
+		columns.push({
+			name: "oc_session_id",
+			pk: 0,
+		});
+	}
 }
 
 function createTranscriptTables(db: Database) {

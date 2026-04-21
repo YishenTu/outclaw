@@ -1,5 +1,6 @@
 import type { ComposerImageAttachment } from "./components/chat/composer-images.ts";
 import type { AgentEntry } from "./stores/agents.ts";
+import type { SessionRef } from "./stores/sessions.ts";
 
 interface SendPromptToAgentBaseParams {
 	agent: AgentEntry | null;
@@ -18,10 +19,26 @@ interface SendPromptToAgentParams extends SendPromptToAgentBaseParams {
 interface SendBrowserPromptToAgentParams extends SendPromptToAgentBaseParams {
 	prompt: string;
 	images: ComposerImageAttachment[];
+	targetSession?: SessionRef | null;
+	runtimeProviderId?: string | null;
+	runtimeSessionId?: string | null;
 	sendBrowserPrompt: (
 		prompt: string,
 		images: ComposerImageAttachment[],
 	) => Promise<boolean>;
+}
+
+function isRuntimeSessionActive(
+	targetSession: SessionRef | null | undefined,
+	runtimeProviderId: string | null | undefined,
+	runtimeSessionId: string | null | undefined,
+): boolean {
+	return (
+		targetSession !== null &&
+		targetSession !== undefined &&
+		targetSession.providerId === runtimeProviderId &&
+		targetSession.sdkSessionId === runtimeSessionId
+	);
 }
 
 function activateAgentForPrompt({
@@ -68,6 +85,9 @@ export function sendPromptToAgent({
 export async function sendBrowserPromptToAgent({
 	prompt,
 	images,
+	targetSession = null,
+	runtimeProviderId = null,
+	runtimeSessionId = null,
 	sendBrowserPrompt,
 	...params
 }: SendBrowserPromptToAgentParams): Promise<boolean> {
@@ -77,6 +97,18 @@ export async function sendBrowserPromptToAgent({
 	}
 
 	if (!activateAgentForPrompt(params)) {
+		return false;
+	}
+
+	if (
+		targetSession &&
+		!isRuntimeSessionActive(
+			targetSession,
+			runtimeProviderId,
+			runtimeSessionId,
+		) &&
+		!params.sendCommand(`/session ${targetSession.sdkSessionId}`)
+	) {
 		return false;
 	}
 

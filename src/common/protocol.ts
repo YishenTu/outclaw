@@ -557,10 +557,24 @@ export interface RunParams {
 	systemPrompt?: string;
 	abortController?: AbortController;
 	resume?: string;
+	/**
+	 * Preferred session id for a new conversation. The adapter may map this to
+	 * a provider-native "use this session id" option when supported.
+	 *
+	 * Do not set this on resumed runs unless the provider explicitly supports
+	 * combining both semantics.
+	 */
+	sessionId?: string;
 	cwd?: string;
 	model?: string;
 	effort?: string;
 	stream?: boolean;
+	/**
+	 * Environment variables to inject into the agent session and its tool
+	 * subprocesses. Provider-neutral; the adapter maps this to its transport
+	 * (e.g. the Claude SDK's `env` option).
+	 */
+	sessionEnv?: Record<string, string>;
 }
 
 export interface Facade {

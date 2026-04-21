@@ -12,7 +12,7 @@ export function hasHelpFlag(values: string[]): boolean {
 
 export function formatUsage() {
 	return joinLines([
-		"Usage: oc <start|stop|restart|status|tui|browser|dev|build|agent|config|session>",
+		"Usage: oc <start|stop|restart|status|tui|browser|dev|build|agent|config|session|note>",
 		"       oc start|restart [--lan] [--host HOST]",
 		"       oc agent <list|create|config|rename|remove|ask|name>",
 		"       oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N]",
@@ -20,6 +20,7 @@ export function formatUsage() {
 		"       oc session list [--limit N] [--tag cron]",
 		"       oc session search <query> [--limit N]",
 		"       oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
+		'       oc note "<content>" [--salience <tag>] [--hint <schema>]',
 		"",
 		"Quick start:",
 		"       first run:   oc build && oc start",

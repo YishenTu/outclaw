@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import type {
 	Facade,
 	FacadeEvent,
@@ -6,6 +8,7 @@ import type {
 	ServerEvent,
 } from "../../../src/common/protocol.ts";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
 
@@ -61,7 +64,30 @@ class BlockingFacade implements Facade {
 	}
 }
 
+class RecordingFacade implements Facade {
+	providerId = "mock";
+	readonly seenParams: RunParams[] = [];
+
+	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		this.seenParams.push(params);
+		yield { type: "text", text: `echo: ${params.prompt}` };
+		yield {
+			type: "done",
+			sessionId: params.resume ?? "sdk-shared",
+			durationMs: 1,
+		};
+	}
+}
+
+const TEST_DB = join(import.meta.dir, ".tmp-create-agent-runtime.sqlite");
+
 describe("createAgentRuntime", () => {
+	afterEach(() => {
+		if (existsSync(TEST_DB)) rmSync(TEST_DB);
+		if (existsSync(`${TEST_DB}-wal`)) rmSync(`${TEST_DB}-wal`);
+		if (existsSync(`${TEST_DB}-shm`)) rmSync(`${TEST_DB}-shm`);
+	});
+
 	test("emits runtime_status with the active agent name", async () => {
 		const runtime = createAgentRuntime({
 			agentId: "agent-railly",
@@ -200,5 +226,102 @@ describe("createAgentRuntime", () => {
 
 		await raillyRuntime.stop();
 		await mimiRuntime.stop();
+	});
+
+	test("persists OC_SESSION_ID across runtime restart when resuming a stored session", async () => {
+		const promptHomeDir = "/tmp/outclaw-agent";
+		const firstFacade = new RecordingFacade();
+		const firstStore = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+		const firstRuntime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: firstFacade,
+			promptHomeDir,
+			store: firstStore,
+		});
+		const firstWs = mockWs();
+
+		firstRuntime.handleOpen(firstWs);
+		firstRuntime.handleMessage(
+			firstWs,
+			JSON.stringify({ type: "prompt", prompt: "first prompt" }),
+		);
+		await waitForDone(firstWs);
+		await firstRuntime.stop();
+		firstStore.close();
+
+		const secondFacade = new RecordingFacade();
+		const secondStore = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+		const secondRuntime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: secondFacade,
+			promptHomeDir,
+			store: secondStore,
+		});
+		const secondWs = mockWs();
+
+		secondRuntime.handleOpen(secondWs);
+		secondRuntime.handleMessage(
+			secondWs,
+			JSON.stringify({ type: "prompt", prompt: "follow up" }),
+		);
+		await waitForDone(secondWs);
+
+		expect(firstFacade.seenParams).toHaveLength(1);
+		expect(secondFacade.seenParams).toHaveLength(1);
+		expect(firstFacade.seenParams[0]?.resume).toBeUndefined();
+		expect(secondFacade.seenParams[0]?.resume).toBe("sdk-shared");
+		expect(firstFacade.seenParams[0]?.sessionEnv?.OC_SESSION_ID).toBeDefined();
+		expect(secondFacade.seenParams[0]?.sessionEnv?.OC_SESSION_ID).toBe(
+			"sdk-shared",
+		);
+		expect(secondStore.get("mock", "sdk-shared")?.ocSessionId).toBe(
+			"sdk-shared",
+		);
+
+		await secondRuntime.stop();
+		secondStore.close();
+	});
+
+	test("runtime restart canonicalizes a legacy ocSessionId alias back to sdkSessionId", async () => {
+		const promptHomeDir = "/tmp/outclaw-agent";
+		const seedStore = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+		seedStore.upsert({
+			providerId: "mock",
+			sdkSessionId: "sdk-legacy",
+			ocSessionId: "oc-legacy",
+			title: "Legacy chat",
+			model: "opus",
+			source: "tui",
+		});
+		seedStore.setActiveSessionId("mock", "sdk-legacy");
+		seedStore.close();
+
+		const facade = new RecordingFacade();
+		const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade,
+			promptHomeDir,
+			store,
+		});
+		const ws = mockWs();
+
+		runtime.handleOpen(ws);
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "prompt", prompt: "follow up" }),
+		);
+		await waitForDone(ws);
+
+		expect(facade.seenParams).toHaveLength(1);
+		expect(facade.seenParams[0]?.resume).toBe("sdk-legacy");
+		expect(facade.seenParams[0]?.sessionEnv?.OC_SESSION_ID).toBe("sdk-legacy");
+		expect(store.get("mock", "sdk-legacy")?.ocSessionId).toBe("sdk-legacy");
+
+		await runtime.stop();
+		store.close();
 	});
 });

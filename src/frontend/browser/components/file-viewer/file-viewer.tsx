@@ -13,6 +13,7 @@ import {
 	BROWSER_MARKDOWN_REHYPE_PLUGINS,
 	BROWSER_MARKDOWN_REMARK_PLUGINS,
 } from "../markdown/markdown-pipeline.ts";
+import { splitMarkdownFrontmatter } from "./markdown-frontmatter.ts";
 import { remarkHtmlComments } from "./remark-html-comments.ts";
 
 interface FileViewerProps {
@@ -35,14 +36,32 @@ function buildCodeFence(content: string, language?: string): string {
 }
 
 export function MarkdownPreview({ content }: { content: string }) {
+	const preview = useMemo(() => splitMarkdownFrontmatter(content), [content]);
+	const markdownBody = preview?.body ?? content;
+	const hasMarkdownBody = markdownBody.trim().length > 0;
+
 	return (
-		<div className="prose prose-invert prose-sm max-w-none text-dark-100 [&_code::before]:content-none [&_code::after]:content-none">
-			<ReactMarkdown
-				remarkPlugins={[...BROWSER_MARKDOWN_REMARK_PLUGINS, remarkHtmlComments]}
-				rehypePlugins={BROWSER_MARKDOWN_REHYPE_PLUGINS}
-			>
-				{content}
-			</ReactMarkdown>
+		<div className="space-y-6">
+			{preview && (
+				<div>
+					<CodePreview content={preview.frontmatter} language="yaml" />
+					{hasMarkdownBody ? <hr className="border-dark-800" /> : null}
+				</div>
+			)}
+
+			{hasMarkdownBody ? (
+				<div className="prose prose-invert prose-sm max-w-none text-dark-100 [&_code::before]:content-none [&_code::after]:content-none">
+					<ReactMarkdown
+						remarkPlugins={[
+							...BROWSER_MARKDOWN_REMARK_PLUGINS,
+							remarkHtmlComments,
+						]}
+						rehypePlugins={BROWSER_MARKDOWN_REHYPE_PLUGINS}
+					>
+						{markdownBody}
+					</ReactMarkdown>
+				</div>
+			) : null}
 		</div>
 	);
 }

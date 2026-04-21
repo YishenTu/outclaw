@@ -53,7 +53,11 @@ import { useContextUsageStore } from "../stores/context-usage.ts";
 import { useRightPanelRefreshStore } from "../stores/right-panel-refresh.ts";
 import { useRuntimeStore } from "../stores/runtime.ts";
 import { useRuntimePopupStore } from "../stores/runtime-popup.ts";
-import { type SessionEntry, useSessionsStore } from "../stores/sessions.ts";
+import {
+	type SessionEntry,
+	type SessionRef,
+	useSessionsStore,
+} from "../stores/sessions.ts";
 import { useSlashCommandsStore } from "../stores/slash-commands.ts";
 
 export interface WebSocketContextValue {
@@ -69,6 +73,7 @@ export interface WebSocketContextValue {
 		agent: AgentEntry,
 		prompt: string,
 		images?: ComposerImageAttachment[],
+		session?: SessionRef | null,
 	) => Promise<boolean>;
 	sendPromptToAgent: (agent: AgentEntry, prompt: string) => boolean;
 	sendCommand: (command: string) => boolean;
@@ -374,6 +379,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			agent: AgentEntry,
 			prompt: string,
 			images: ComposerImageAttachment[] = [],
+			session: SessionRef | null = null,
 		): Promise<boolean> =>
 			dispatchBrowserPromptToAgent({
 				agent,
@@ -381,6 +387,9 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				clearRuntimeSession: useRuntimeStore.getState().clearSession,
 				prompt,
 				images,
+				targetSession: session,
+				runtimeProviderId: useRuntimeStore.getState().providerId,
+				runtimeSessionId: useRuntimeStore.getState().sessionId,
 				sendBrowserPrompt,
 				sendCommand,
 				setActiveAgent: useAgentsStore.getState().setActiveAgent,

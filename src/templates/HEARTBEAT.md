@@ -5,4 +5,4 @@
 
 ## Session Reflection
 
-Reflect on what happened in this session. Check today's daily memory file (`daily-memories/YYYY-MM-DD.md`). If anything notable from this session isn't captured there, write it in.
+Reflect on what happened in this session. If anything is worth keeping, capture it through `oc note` so it lands in today's daily memory (`daily-memories/YYYY-MM-DD.md`).

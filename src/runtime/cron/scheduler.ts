@@ -1,6 +1,10 @@
 import { existsSync, readdirSync, readFileSync, watch } from "node:fs";
 import { join } from "node:path";
 import { Cron } from "croner";
+import {
+	hasCronJobExtension,
+	isCronJobFile,
+} from "../../common/cron-job-file.ts";
 import { extractError } from "../../common/protocol.ts";
 import { type CronJobConfig, parseJobConfig } from "./job-config.ts";
 
@@ -99,8 +103,8 @@ export class CronScheduler {
 	private readJobFiles(): string[] | undefined {
 		if (!existsSync(this.options.cronDir)) return undefined;
 
-		return readdirSync(this.options.cronDir).filter(
-			(f) => f.endsWith(".yaml") || f.endsWith(".yml"),
+		return readdirSync(this.options.cronDir).filter((filename) =>
+			isCronJobFile(filename),
 		);
 	}
 
@@ -179,44 +183,15 @@ export class CronScheduler {
 			if (!filename) return;
 			const normalizedFilename =
 				typeof filename === "string" ? filename : filename.toString("utf-8");
-			if (
-				!normalizedFilename.endsWith(".yaml") &&
-				!normalizedFilename.endsWith(".yml")
-			) {
+			if (!hasCronJobExtension(normalizedFilename)) {
 				return;
 			}
 
-			this.reloadJobFile(normalizedFilename);
+			this.syncJobsWithDirectory();
 		});
 		this.watcher.on("error", (err) => {
 			this.handleWatcherError(err);
 		});
-	}
-
-	private reloadJobFile(filename: string) {
-		const filepath = join(this.options.cronDir, filename);
-
-		if (!existsSync(filepath)) {
-			this.removeJobByFile(filename);
-			return;
-		}
-
-		try {
-			const content = readFileSync(filepath, "utf-8");
-			const config = parseJobConfig(content);
-
-			if (!config.enabled) {
-				this.removeJobByFile(filename);
-				return;
-			}
-
-			this.registerJob(filename, config);
-		} catch (err) {
-			this.removeJobByFile(filename);
-			console.warn(
-				`Failed to reload cron job ${filename}: ${extractError(err)}`,
-			);
-		}
 	}
 
 	private removeJobByFile(filename: string) {

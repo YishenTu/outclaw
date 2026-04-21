@@ -1,0 +1,34 @@
+# Cron job template. Copy to a new file under cron/ (e.g. `cron/my-task.yaml`)
+# and fill in. Files starting with `_` are ignored by the scheduler, so this
+# template stays inert.
+#
+# REQUIRED fields:
+#   name      — unique identifier, kebab-case
+#   schedule  — cron expression: "minute hour day-of-month month day-of-week"
+#               examples:
+#                 "0 9 * * 1"     -> every Monday at 09:00
+#                 "*/30 * * * *"  -> every 30 minutes
+#                 "45 5 * * *"    -> every day at 05:45
+#   prompt    — the task description the agent reads when the cron fires
+#
+# OPTIONAL fields:
+#   enabled   — false to disable without deleting (default: true)
+#   model     — opus | sonnet | haiku (default: the agent's current model)
+#
+# Prompt guidelines:
+#   - Be specific about what to read, what to decide, what to write.
+#   - Name concrete files/paths the agent should touch.
+#   - Close with a response contract, e.g. "Reply with a summary of changes, or
+#     reply `NO_REPLY` if nothing needed work."
+#   - Keep it self-contained — the cron agent has no conversation history.
+
+name: <job-name>
+schedule: "0 9 * * 1"
+enabled: true
+# model: opus
+prompt: |
+  <describe the task here — what to read, what to produce, what to write.>
+
+  <State the response contract at the end.>
+
+  Reply with a short summary of what you did, or `NO_REPLY` if nothing needed work.

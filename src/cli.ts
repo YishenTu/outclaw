@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { agentCommand } from "./cli/agent.ts";
 import { configCommand } from "./cli/config.ts";
 import { createDaemonCommands } from "./cli/daemon.ts";
+import { noteCommand } from "./cli/note.ts";
 import { sessionCommand } from "./cli/session.ts";
 import { isHelpFlag, printStartUsage, printUsage } from "./cli/usage.ts";
 
@@ -80,6 +81,9 @@ switch (command) {
 		break;
 	case "session":
 		await sessionCommand(argv);
+		break;
+	case "note":
+		await noteCommand({ argv });
 		break;
 	case "dev":
 		daemon.dev();

@@ -7,6 +7,7 @@ import type {
 import type { Config } from "../config.ts";
 import type { CronJobConfig } from "../cron/index.ts";
 import { CronScheduler, createCronAgentRunner } from "../cron/index.ts";
+import { startMemoryIndexWatcher } from "../cron/memory-index-watcher.ts";
 import {
 	HeartbeatScheduler,
 	hasHeartbeatContent,
@@ -168,6 +169,11 @@ export function createAgentRuntime(
 	heartbeat?.start();
 	rollover?.start();
 	cronScheduler?.start();
+	const memoryIndexWatcher = options.promptHomeDir
+		? startMemoryIndexWatcher({
+				memoryRoot: options.promptHomeDir,
+			})
+		: undefined;
 	let stopPromise: Promise<void> | undefined;
 
 	return {
@@ -202,6 +208,7 @@ export function createAgentRuntime(
 					cronScheduler?.stop();
 					heartbeat?.stop();
 					rollover?.stop();
+					memoryIndexWatcher?.stop();
 					controller.beginShutdown();
 					await controller.drain();
 				})();

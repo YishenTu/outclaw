@@ -72,6 +72,7 @@ export class SessionStore {
 	upsert(params: {
 		providerId: string;
 		sdkSessionId: string;
+		ocSessionId?: string;
 		title: string;
 		model: string;
 		source?: string;
@@ -84,6 +85,7 @@ export class SessionStore {
 					agent_id,
 					provider_id,
 					sdk_session_id,
+					oc_session_id,
 					title,
 					model,
 					source,
@@ -95,6 +97,7 @@ export class SessionStore {
 					$agentId,
 					$providerId,
 					$id,
+					$ocSessionId,
 					$title,
 					$model,
 					$source,
@@ -103,6 +106,7 @@ export class SessionStore {
 					$now
 				)
 				ON CONFLICT(agent_id, provider_id, sdk_session_id) DO UPDATE SET
+					oc_session_id = COALESCE($ocSessionId, oc_session_id),
 					title = $title,
 					model = $model,
 					source = $source,
@@ -113,6 +117,7 @@ export class SessionStore {
 				$agentId: this.agentId,
 				$providerId: params.providerId,
 				$id: params.sdkSessionId,
+				$ocSessionId: params.ocSessionId ?? null,
 				$title: params.title,
 				$model: params.model,
 				$source: params.source ?? "tui",
@@ -129,6 +134,7 @@ export class SessionStore {
 						agent_id,
 						provider_id,
 						sdk_session_id,
+						oc_session_id,
 						title,
 						model,
 						source,
@@ -158,10 +164,39 @@ export class SessionStore {
 			return exactMatch;
 		}
 
+		const exactAliasMatch = mapSessionRow(
+			this.db
+				.query(
+					`SELECT
+						agent_id,
+						provider_id,
+						sdk_session_id,
+						oc_session_id,
+						title,
+						model,
+						source,
+						tag,
+						created_at,
+						last_active
+					FROM sessions
+					WHERE agent_id = $agentId
+					  AND provider_id = $providerId
+					  AND oc_session_id = $id`,
+				)
+				.get({
+					$agentId: this.agentId,
+					$providerId: providerId,
+					$id: prefix,
+				}) as Parameters<typeof mapSessionRow>[0],
+		);
+		if (exactAliasMatch && (!tag || exactAliasMatch.tag === tag)) {
+			return exactAliasMatch;
+		}
+
 		const conditions = [
 			"agent_id = $agentId",
 			"provider_id = $providerId",
-			"sdk_session_id LIKE $prefix",
+			"(sdk_session_id LIKE $prefix OR oc_session_id LIKE $prefix)",
 		];
 		const params: Record<string, string> = {
 			$agentId: this.agentId,
@@ -180,6 +215,7 @@ export class SessionStore {
 						agent_id,
 						provider_id,
 						sdk_session_id,
+						oc_session_id,
 						title,
 						model,
 						source,
@@ -219,6 +255,7 @@ export class SessionStore {
 							agent_id,
 							provider_id,
 							sdk_session_id,
+							oc_session_id,
 							title,
 							model,
 							source,

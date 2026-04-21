@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
 	DoneEvent,
 	HeartbeatDeliveryTarget,
@@ -9,6 +10,7 @@ import type { SessionRow } from "../persistence/session-store.ts";
 
 export class RuntimeSessionState {
 	private activeSessionId: string | undefined;
+	private activeOcSessionId: string | undefined;
 	private activeSessionSource: "tui" | "telegram" | "agent" = "tui";
 	private currentTitle: string | undefined;
 	private lastUserTarget: LastUserTarget | undefined;
@@ -21,6 +23,10 @@ export class RuntimeSessionState {
 
 	get sessionId(): string | undefined {
 		return this.activeSessionId;
+	}
+
+	get ocSessionId(): string | undefined {
+		return this.activeOcSessionId;
 	}
 
 	get sessionSource(): "tui" | "telegram" | "agent" {
@@ -61,6 +67,9 @@ export class RuntimeSessionState {
 	}
 
 	preparePrompt(prompt: string, images?: ImageRef[]) {
+		if (!this.activeOcSessionId) {
+			this.activeOcSessionId = randomUUID();
+		}
 		if (!this.activeSessionId && !this.currentTitle) {
 			const title = deriveSessionTitle(prompt, images);
 			if (title) {
@@ -69,9 +78,17 @@ export class RuntimeSessionState {
 		}
 	}
 
+	ensureOcSessionId(): string {
+		if (!this.activeOcSessionId) {
+			this.activeOcSessionId = randomUUID();
+		}
+		return this.activeOcSessionId;
+	}
+
 	clearSession() {
 		this.currentGeneration++;
 		this.activeSessionId = undefined;
+		this.activeOcSessionId = undefined;
 		this.activeSessionSource = "tui";
 		this.currentTitle = undefined;
 		this.lastUsage = undefined;
@@ -88,6 +105,11 @@ export class RuntimeSessionState {
 		}
 
 		this.activeSessionId = params.session.sdkSessionId;
+		// The persisted SDK session id is the canonical id for Claude-backed
+		// sessions. Older rows may still carry a legacy ocSessionId alias; keep
+		// selector compatibility in the store, but export the canonical id to the
+		// runtime/tool env so new notes and transcript lookup converge.
+		this.activeOcSessionId = params.session.sdkSessionId;
 		this.currentTitle = params.session.title;
 		this.activeSessionSource =
 			params.session.source === "telegram"
@@ -107,6 +129,7 @@ export class RuntimeSessionState {
 	switchToSession(session: SessionRow, usage?: UsageInfo) {
 		this.currentGeneration++;
 		this.activeSessionId = session.sdkSessionId;
+		this.activeOcSessionId = session.sdkSessionId;
 		this.currentTitle = session.title;
 		this.activeSessionSource =
 			session.source === "telegram"
@@ -135,6 +158,9 @@ export class RuntimeSessionState {
 		}
 
 		this.activeSessionId = event.sessionId;
+		if (!this.activeOcSessionId) {
+			this.activeOcSessionId = event.sessionId;
+		}
 		this.lastUsage = event.usage;
 	}
 }

@@ -821,6 +821,51 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("filters template cron yaml files from browser cron listings", async () => {
+		const root = createTempDir("outclaw-browser-cron-filter-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const cronDir = join(agentHomeDir, "cron");
+		mkdirSync(cronDir, { recursive: true });
+		writeFileSync(
+			join(cronDir, "daily.yaml"),
+			"name: Daily\nschedule: 15 6 * * *\nenabled: true\nprompt: Check inbox\n",
+		);
+		writeFileSync(
+			join(cronDir, "_template.yaml"),
+			"name: Template\nschedule: 0 0 * * *\nenabled: true\nprompt: Copy me\n",
+		);
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(api.listAgentCron("agent-railly")).resolves.toEqual([
+			{
+				name: "Daily",
+				path: "cron/daily.yaml",
+				schedule: "15 6 * * *",
+				enabled: true,
+			},
+		]);
+
+		store.close();
+	});
+
 	test("ignores managed skills symlink paths in git status", async () => {
 		const root = createTempDir("outclaw-browser-git-symlink-");
 		cleanupPaths.push(root);

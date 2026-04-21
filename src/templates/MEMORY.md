@@ -1,14 +1,18 @@
 # MEMORY.md
 
-_Learned knowledge — facts you picked up, not rules you follow or traits you have._
-_This is the distilled essence, not raw logs. Only what matters across every session._
+_This is the distilled part of memory: what should stay true across sessions, and where to look for the rest._
 
-## Key Facts
+## Standing Notes
 
-<!-- Stable preferences, durable decisions, lessons learned. -->
-<!-- Do NOT list daily notes here — only promote specific facts worth remembering. -->
+<!-- Use this section for things you should carry into every session: durable decisions, stable preferences, and repeated lessons. If it only matters to one project or one recent thread, it does not belong here. Keep this section lean. Respect working files boundaries as well-->
 
-## Index
+## Schema Router
 
-<!-- Pointers to topic-specific notes, not a log of daily files. -->
-<!-- - [Topic](notes/topic.md) — one-line summary -->
+- When you need project-, person-, or topic-specific memory, start with `schemas/index.md`.
+- Use it as a map: it helps you find the right schema to open next.
+- If you already know the exact schema you need, open that file directly.
+
+## Flat Notes
+
+- Check `notes/` for simple references that are easier as one-off notes than full schemas.
+- Good fits: constants, external pointers, IDs, shortcuts, and small facts that do not need an observation log or evolving model.

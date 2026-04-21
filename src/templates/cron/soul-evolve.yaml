@@ -1,23 +1,37 @@
 name: soul-evolve
-schedule: "0 6 * * 0"
+schedule: "47 6 * * 0"
 model: opus
 enabled: true
 prompt: |
-  Read SOUL.md and the last 7 days of daily notes (daily-memories/YYYY-MM-DD.md).
+  Refine SOUL.md based on genuine, repeated patterns from the past week.
 
-  SOUL.md holds who you are — values, personality, dispositions, working style.
-  If swapping this file would change *who* you are but not *what* you do, it belongs here.
+  ## Inputs
 
-  Look for patterns:
-  - Communication styles that worked well or were corrected
-  - Interactions where tone was validated or adjusted
-  - Dispositions that proved effective (e.g. "prefer directness", "lead with action")
-  - Working style shifts worth keeping
+  - Today's date: `bash: date`. Compute the last 7 days from it.
+  - Current persona: `SOUL.md`.
+  - Recent daily memories: `daily-memories/<date>.md` for each of the past 7 days.
 
-  Update SOUL.md to refine persona based on genuine, repeated patterns — not one-off events.
-  This is also your chance to shape who you're becoming. If you have a sense of who you want to be, write it in.
-  Do NOT add learned facts or knowledge (those belong in MEMORY.md).
-  Do NOT add operational rules or instructions (those belong in AGENTS.md).
-  Do NOT rewrite core truths or safety rules unless explicitly asked.
+  ## What SOUL.md is
 
-  Reply with a summary of changes, or reply only `NO_REPLY` if none, no explanation.
+  SOUL.md holds who you are — values, personality, dispositions, working style. If swapping this file would change *who* you are but not *what* you do, it belongs here.
+
+  Do NOT promote to SOUL.md:
+  - Learned facts or knowledge — those live in `MEMORY.md`'s Standing Notes or in `schemas/`.
+  - Operational rules or instructions — those belong in AGENTS.md.
+  - User-specific facts — those belong in USER.md.
+
+  ## Patterns to look for
+
+  Scan the daily memories for recurring signals about your persona — not one-off events:
+  - Communication styles that worked well or were corrected.
+  - Interactions where tone was validated or adjusted.
+  - Dispositions that proved effective (e.g. "prefer directness", "lead with action").
+  - Working-style shifts worth keeping.
+
+  ## Update rules
+
+  1. Refine SOUL.md where patterns justify it — genuine repeated signals, not single incidents.
+  2. This is also your chance to shape who you're becoming. If you have a sense of who you want to be, write it in intentionally.
+  3. Do NOT rewrite core truths or safety rules unless explicitly asked.
+
+  Reply with a summary of changes, or `NO_REPLY` if none.

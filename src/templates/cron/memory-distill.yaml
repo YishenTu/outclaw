@@ -1,27 +1,31 @@
 name: memory-distill
-schedule: "45 5 * * *"
+schedule: "47 5 * * *"
 model: opus
 enabled: true
 prompt: |
-  Distill yesterday's daily notes into long-term memory.
-  Read MEMORY.md and yesterday's daily note (daily-memories/YYYY-MM-DD.md).
+  Distill cross-cutting operating guidance from yesterday's daily memory into MEMORY.md's Standing Notes section.
 
-  MEMORY.md holds learned knowledge — facts you picked up, not rules you follow or traits you have.
-  Only promote items that belong there:
-  - Learned facts with no other source of truth
-  - Stable preferences or durable decisions
-  - Repeated patterns that should be remembered
+  Read MEMORY.md and yesterday's `daily-memories/YYYY-MM-DD.md`.
+
+  Your target is the `## Standing Notes` section only. Do NOT touch:
+  - `## Schema Router`
+  - `## Flat Notes`
+
+  Standing Notes holds cross-cutting knowledge the agent should carry into every session:
+  - Stable preferences and durable decisions that apply across all work.
+  - Operating rules learned through experience that belong nowhere else.
+  - Lessons that should shape future behavior regardless of topic.
 
   Do NOT promote:
-  - Personality or working style observations (those belong in SOUL.md)
-  - Operational rules or instructions (those belong in AGENTS.md)
-  - User profile facts (those belong in USER.md)
-  - Routine task logs or one-off operations
-  - Project details that have their own source of truth
-  - Anything already captured in MEMORY.md
-  - Infrastructure details (repo URLs, sync schedules, config paths) — these live in the infra itself
-  - Anything that can be re-derived by reading a file or running a command
+  - Schema-bound content (project specifics, initiative state, topic-specific facts) — those are routed into `schemas/` by the routing cron.
+  - Personality or working-style observations — those belong in SOUL.md.
+  - Structural rules and instructions — those belong in AGENTS.md.
+  - User profile facts — those belong in USER.md.
+  - Routine task logs, one-off operations, or anything already captured elsewhere.
+  - Anything re-derivable by reading a file or running a command.
 
-  Remove outdated info from MEMORY.md that's no longer relevant.
-  The bar for MEMORY.md is high — only facts that genuinely have no other source of truth AND matter across many sessions.
+  Remove outdated entries from Standing Notes that no longer apply.
+
+  The bar is high: Standing Notes matters in every session, so every line pays a context tax. Keep it lean.
+
   Reply with a summary of changes, or reply only `NO_REPLY` if none, no explanation.

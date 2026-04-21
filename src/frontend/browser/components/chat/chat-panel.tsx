@@ -1,7 +1,7 @@
 import type { EffortLevel } from "../../../../common/commands.ts";
 import type { ModelAlias } from "../../../../common/models.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
-import { resolveCurrentBrowserSessionKey } from "../../session.ts";
+import { resolveComposerSessionKey } from "../../session.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import { useChatStore } from "../../stores/chat.ts";
 import { useRuntimeStore } from "../../stores/runtime.ts";
@@ -29,7 +29,7 @@ export function ChatPanel() {
 	const sessionKey =
 		activeAgentId === null
 			? null
-			: resolveCurrentBrowserSessionKey({
+			: resolveComposerSessionKey({
 					agentId: activeAgentId,
 					activeSession,
 					providerId,

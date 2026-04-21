@@ -64,6 +64,24 @@ describe("MarkdownPreview", () => {
 		expect(html).toContain("Just a paragraph.");
 	});
 
+	test("renders leading frontmatter as YAML preview before markdown body", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownPreview
+				content={
+					"---\nname: daily-brief\nkind: topic\nlast_observation_at: 2026-04-21\nlast_synthesized: 2026-04-20\n---\n\n# Model\n\n## What\n\nBody\n"
+				}
+			/>,
+		);
+
+		expect(html).toContain("language-yaml");
+		expect(html).toContain("daily-brief");
+		expect(html).toContain("<hr");
+		expect(html).toContain("<h1>Model</h1>");
+		expect(html).toContain("<h2>What</h2>");
+		expect(html).toContain("Body");
+		expect(html).not.toContain("Frontmatter");
+	});
+
 	test("removes typography backticks from inline code", () => {
 		const html = renderToStaticMarkup(
 			<MarkdownPreview content={"Use `code` inline"} />,

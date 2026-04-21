@@ -39,6 +39,7 @@ describe("session-store-schema", () => {
 			"agent_id",
 			"provider_id",
 			"sdk_session_id",
+			"oc_session_id",
 			"title",
 			"model",
 			"source",
@@ -85,6 +86,7 @@ describe("session-store-schema", () => {
 			agent_id TEXT NOT NULL,
 			provider_id TEXT NOT NULL,
 			sdk_session_id TEXT NOT NULL,
+			oc_session_id TEXT,
 			title TEXT NOT NULL,
 			model TEXT NOT NULL,
 			source TEXT NOT NULL DEFAULT 'tui',
@@ -102,5 +104,33 @@ describe("session-store-schema", () => {
 			PRIMARY KEY (agent_id, provider_id, sdk_session_id)
 		)`);
 		expect(() => ensureSessionStoreSchema(db)).not.toThrow();
+	});
+
+	test("adds oc_session_id when upgrading the previous current schema", () => {
+		const db = new Database(":memory:");
+		databases.push(db);
+		db.exec(`CREATE TABLE sessions (
+			agent_id TEXT NOT NULL,
+			provider_id TEXT NOT NULL,
+			sdk_session_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			model TEXT NOT NULL,
+			source TEXT NOT NULL DEFAULT 'tui',
+			tag TEXT NOT NULL DEFAULT 'chat',
+			created_at INTEGER NOT NULL,
+			last_active INTEGER NOT NULL,
+			input_tokens INTEGER,
+			output_tokens INTEGER,
+			cache_creation_tokens INTEGER,
+			cache_read_tokens INTEGER,
+			context_window INTEGER,
+			max_output_tokens INTEGER,
+			context_tokens INTEGER,
+			percentage INTEGER,
+			PRIMARY KEY (agent_id, provider_id, sdk_session_id)
+		)`);
+
+		expect(() => ensureSessionStoreSchema(db)).not.toThrow();
+		expect(getColumnNames(db, "sessions")).toContain("oc_session_id");
 	});
 });

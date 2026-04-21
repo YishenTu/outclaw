@@ -154,6 +154,80 @@ describe("sendBrowserPromptToAgent", () => {
 		]);
 	});
 
+	test("activates the selected saved session before sending a browser prompt", async () => {
+		const calls: string[] = [];
+
+		const sent = await sendBrowserPromptToAgent({
+			agent: { agentId: "agent-alpha", name: "alpha" },
+			activeAgentId: "agent-alpha",
+			clearRuntimeSession: () => calls.push("clear"),
+			prompt: "hello again",
+			images: [createAttachment()],
+			targetSession: {
+				agentId: "agent-alpha",
+				providerId: "claude",
+				sdkSessionId: "sdk-existing",
+			},
+			runtimeProviderId: "claude",
+			runtimeSessionId: "sdk-other",
+			sendCommand: (command) => {
+				calls.push(`command:${command}`);
+				return true;
+			},
+			sendBrowserPrompt: async (prompt, images) => {
+				calls.push(`browser:${prompt}:${images.length}`);
+				return true;
+			},
+			setActiveAgent: (agentId) => calls.push(`active:${agentId}`),
+			setAgentName: (name) => calls.push(`name:${name}`),
+		});
+
+		expect(sent).toBe(true);
+		expect(calls).toEqual([
+			"command:/session sdk-existing",
+			"browser:hello again:1",
+		]);
+	});
+
+	test("switches agents and activates the selected session before sending a browser prompt", async () => {
+		const calls: string[] = [];
+
+		const sent = await sendBrowserPromptToAgent({
+			agent: { agentId: "agent-beta", name: "beta" },
+			activeAgentId: "agent-alpha",
+			clearRuntimeSession: () => calls.push("clear"),
+			prompt: "hello beta",
+			images: [createAttachment()],
+			targetSession: {
+				agentId: "agent-beta",
+				providerId: "claude",
+				sdkSessionId: "sdk-existing",
+			},
+			runtimeProviderId: "claude",
+			runtimeSessionId: "sdk-other",
+			sendCommand: (command) => {
+				calls.push(`command:${command}`);
+				return true;
+			},
+			sendBrowserPrompt: async (prompt, images) => {
+				calls.push(`browser:${prompt}:${images.length}`);
+				return true;
+			},
+			setActiveAgent: (agentId) => calls.push(`active:${agentId}`),
+			setAgentName: (name) => calls.push(`name:${name}`),
+		});
+
+		expect(sent).toBe(true);
+		expect(calls).toEqual([
+			"command:/agent beta",
+			"active:agent-beta",
+			"name:beta",
+			"clear",
+			"command:/session sdk-existing",
+			"browser:hello beta:1",
+		]);
+	});
+
 	test("does not send the browser prompt when switching agents fails", async () => {
 		const calls: string[] = [];
 
@@ -177,5 +251,37 @@ describe("sendBrowserPromptToAgent", () => {
 
 		expect(sent).toBe(false);
 		expect(calls).toEqual(["command:/agent beta"]);
+	});
+
+	test("does not send the browser prompt when activating the selected session fails", async () => {
+		const calls: string[] = [];
+
+		const sent = await sendBrowserPromptToAgent({
+			agent: { agentId: "agent-alpha", name: "alpha" },
+			activeAgentId: "agent-alpha",
+			clearRuntimeSession: () => calls.push("clear"),
+			prompt: "hello again",
+			images: [createAttachment()],
+			targetSession: {
+				agentId: "agent-alpha",
+				providerId: "claude",
+				sdkSessionId: "sdk-existing",
+			},
+			runtimeProviderId: "claude",
+			runtimeSessionId: "sdk-other",
+			sendCommand: (command) => {
+				calls.push(`command:${command}`);
+				return command !== "/session sdk-existing";
+			},
+			sendBrowserPrompt: async (prompt, images) => {
+				calls.push(`browser:${prompt}:${images.length}`);
+				return true;
+			},
+			setActiveAgent: (agentId) => calls.push(`active:${agentId}`),
+			setAgentName: (name) => calls.push(`name:${name}`),
+		});
+
+		expect(sent).toBe(false);
+		expect(calls).toEqual(["command:/session sdk-existing"]);
 	});
 });

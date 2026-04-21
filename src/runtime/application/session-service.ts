@@ -81,10 +81,12 @@ export class SessionService {
 		event: DoneEvent;
 		title: string;
 		model: string;
+		ocSessionId?: string;
 		source: string;
 	}) {
 		this.persistSession({
 			sessionId: params.event.sessionId,
+			ocSessionId: params.ocSessionId,
 			title: params.title,
 			model: params.model,
 			source: params.source,
@@ -213,6 +215,7 @@ export class SessionService {
 		this.store?.setActiveSessionId(this.state.providerId, sessionId);
 		this.persistSession({
 			sessionId,
+			ocSessionId: this.state.ocSessionId,
 			title: this.state.sessionTitle ?? "Untitled",
 			model: this.state.model,
 			source: this.state.sessionSource,
@@ -222,6 +225,7 @@ export class SessionService {
 
 	private persistSession(params: {
 		sessionId: string;
+		ocSessionId?: string;
 		title: string;
 		model: string;
 		source: string;
@@ -230,6 +234,7 @@ export class SessionService {
 		this.store?.upsert({
 			providerId: this.state.providerId,
 			sdkSessionId: params.sessionId,
+			ocSessionId: params.ocSessionId,
 			title: params.title,
 			model: params.model,
 			source: params.source,
@@ -284,6 +289,7 @@ export class SessionService {
 			agentId: "",
 			providerId: this.state.providerId,
 			sdkSessionId: sessionId,
+			ocSessionId: this.state.ocSessionId,
 			title: this.state.sessionTitle ?? "Untitled",
 			model: this.state.model,
 			source: this.state.sessionSource,

@@ -1,0 +1,47 @@
+name: memory-synthesize
+schedule: "17 6 * * 0"
+model: opus
+enabled: true
+prompt: |
+  Synthesize fresh Models for schemas whose Observations have moved ahead of their last synthesis.
+
+  ## Scope
+
+  - Today's date: `bash: date`.
+  - List schemas: `bash: ls schemas/` (ignore files starting with `_`).
+  - For each schema file, read its frontmatter. If `last_observation_at <= last_synthesized`, skip. Otherwise, it needs synthesis.
+
+  ## Schema shape
+
+  ```markdown
+  ---
+  name: <entity>
+  kind: <project | initiative | person | topic>
+  description: <stable one-line router summary>
+  last_observation_at: <YYYY-MM-DD>
+  last_synthesized: <YYYY-MM-DD>
+  ---
+
+  # Model
+  ...synthesized narrative — what you read when the schema comes up...
+
+  ---
+
+  # Observations
+  - YYYY-MM-DD HH:MM [salience] content [sess:<id>]
+  ...
+  ```
+
+  ## For each schema needing synthesis
+
+  1. Read the current `# Model` and every `# Observations` entry dated after `last_synthesized`.
+  2. Rewrite `# Model` so it reflects what those observations add or change:
+     - Resolve contradictions — newer evidence wins; annotate "superseded" where useful.
+     - Keep the Model concise — a reference, not a history.
+     - Preserve section structure where it still fits; adapt where the entity has evolved.
+  3. Update frontmatter: set `last_synthesized: <today>`, and preserve existing metadata such as `description` unless it is clearly wrong.
+  4. Do NOT remove Observations — they're the audit trail. Optionally compress entries older than 30 days into one-line summaries if the log has grown unwieldy.
+
+  If new Observations don't actually change the Model, write nothing rather than churn.
+
+  Reply with a summary of which schemas were resynthesized, or `NO_REPLY` if nothing needed work.
