@@ -165,6 +165,7 @@ export function createAgentRuntime(
 					}),
 					onResult: (event) => controller.broadcastCronResult(event),
 					getDefaultModel: () => controller.currentModel,
+					getDefaultEffort: () => state.defaultEffort,
 					resolveTelegramChatId: options.resolveCronTelegramChatId,
 				})
 			: undefined;

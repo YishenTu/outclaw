@@ -1,6 +1,7 @@
 name: memory-distill
 schedule: "47 5 * * *"
 model: opus
+effort: high
 enabled: true
 prompt: |
   Distill cross-cutting operating guidance from yesterday's daily memory into MEMORY.md's Standing Notes section.

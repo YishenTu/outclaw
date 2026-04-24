@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { EffortLevel } from "../../common/commands.ts";
 import { resolveModelAlias } from "../../common/models.ts";
 import type { Facade } from "../../common/protocol.ts";
 import { assembleSystemPrompt } from "../prompt/assemble-system-prompt.ts";
@@ -13,13 +14,13 @@ interface RunCronAgentOptions {
 	facade: Facade;
 	promptHomeDir: string;
 	cwd: string;
-	effort?: string;
 }
 
 export function createCronAgentRunner(options: RunCronAgentOptions) {
 	return async (
 		prompt: string,
 		model?: string,
+		effort?: EffortLevel,
 	): Promise<CronAgentRunResult> => {
 		const systemPrompt = await assembleSystemPrompt(options.promptHomeDir);
 		const resolvedModel = model ? resolveModelAlias(model) : undefined;
@@ -35,7 +36,7 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 			sessionId,
 			cwd: options.cwd,
 			model: resolvedModel,
-			effort: options.effort,
+			effort,
 			stream: false,
 			sessionEnv,
 		})) {

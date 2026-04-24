@@ -42,9 +42,42 @@ prompt: do something
 name: test-job
 schedule: "*/5 * * * *"
 prompt: do something
-	`.trim();
+		`.trim();
 		const job = parseJobConfig(yaml);
 		expect(job.model).toBeUndefined();
+	});
+
+	test("parses thinking effort when provided", () => {
+		const yaml = `
+name: test-job
+schedule: "*/5 * * * *"
+effort: high
+prompt: do something
+		`.trim();
+		const job = parseJobConfig(yaml);
+		expect(job.effort).toBe("high");
+	});
+
+	test("defaults effort to undefined when omitted", () => {
+		const yaml = `
+name: test-job
+schedule: "*/5 * * * *"
+prompt: do something
+		`.trim();
+		const job = parseJobConfig(yaml);
+		expect(job.effort).toBeUndefined();
+	});
+
+	test("throws when effort is invalid", () => {
+		const yaml = `
+name: test-job
+schedule: "*/5 * * * *"
+effort: turbo
+prompt: do something
+		`.trim();
+		expect(() => parseJobConfig(yaml)).toThrow(
+			"Invalid effort: turbo. Valid: low, medium, high, xhigh, max",
+		);
 	});
 
 	test("parses telegramUserId when provided", () => {
@@ -98,7 +131,7 @@ prompt: do something
 	});
 
 	test("serializes a parsed config back to equivalent YAML", () => {
-		const parsed = parseJobConfig(VALID_YAML);
+		const parsed = parseJobConfig(`${VALID_YAML}\neffort: xhigh`);
 		const reparsed = parseJobConfig(serializeJobConfig(parsed));
 
 		expect(reparsed).toEqual(parsed);

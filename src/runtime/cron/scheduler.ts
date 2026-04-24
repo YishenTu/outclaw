@@ -1,10 +1,12 @@
 import { existsSync, readdirSync, readFileSync, watch } from "node:fs";
 import { join } from "node:path";
 import { Cron } from "croner";
+import { type EffortLevel, isOpusOnlyEffort } from "../../common/commands.ts";
 import {
 	hasCronJobExtension,
 	isCronJobFile,
 } from "../../common/cron-job-file.ts";
+import { MODELS, resolveModelAlias } from "../../common/models.ts";
 import { extractError } from "../../common/protocol.ts";
 import { type CronJobConfig, parseJobConfig } from "./job-config.ts";
 
@@ -26,9 +28,11 @@ interface CronSchedulerOptions {
 	runAgent: (
 		prompt: string,
 		model?: string,
+		effort?: EffortLevel,
 	) => Promise<string | CronAgentRunResult>;
 	onResult: (result: CronExecutionResult) => Promise<void> | void;
 	getDefaultModel: () => string;
+	getDefaultEffort: () => EffortLevel;
 	resolveTelegramChatId?: (config: CronJobConfig) => number | undefined;
 	watchDir?: (
 		path: string,
@@ -150,10 +154,14 @@ export class CronScheduler {
 
 	private async executeJob(job: ActiveJob) {
 		const model = job.config.model ?? this.options.getDefaultModel();
+		const effort = normalizeCronEffort(
+			model,
+			job.config.effort ?? this.options.getDefaultEffort(),
+		);
 
 		try {
 			const runResult = normalizeRunResult(
-				await this.options.runAgent(job.config.prompt, model),
+				await this.options.runAgent(job.config.prompt, model, effort),
 			);
 
 			if (isSuppressedCronResult(runResult.text)) return;
@@ -230,4 +238,16 @@ function normalizeRunResult(
 
 function isSuppressedCronResult(text: string): boolean {
 	return text.trim().replace(/`/g, "").toUpperCase() === "NO_REPLY";
+}
+
+function normalizeCronEffort(model: string, effort: EffortLevel): EffortLevel {
+	if (isOpusOnlyEffort(effort) && !isCronOpusModel(model)) {
+		return "high";
+	}
+
+	return effort;
+}
+
+function isCronOpusModel(model: string): boolean {
+	return resolveModelAlias(model) === MODELS.opus.id;
 }

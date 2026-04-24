@@ -271,13 +271,20 @@ async function listCronEntries(rootDir: string): Promise<BrowserCronEntry[]> {
 function toBrowserCronEntry(
 	rootDir: string,
 	absolutePath: string,
-	config: { enabled: boolean; model?: string; name: string; schedule: string },
+	config: {
+		effort?: string;
+		enabled: boolean;
+		model?: string;
+		name: string;
+		schedule: string;
+	},
 ): BrowserCronEntry {
 	return {
 		name: config.name,
 		path: toRelativePath(rootDir, absolutePath),
 		schedule: config.schedule,
 		model: config.model,
+		effort: config.effort,
 		enabled: config.enabled,
 	};
 }

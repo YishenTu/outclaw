@@ -57,6 +57,10 @@ export class RuntimeState {
 		return this.settings.effort;
 	}
 
+	get defaultEffort(): EffortLevel {
+		return this.settings.defaultEffort;
+	}
+
 	get model(): ModelAlias {
 		return this.settings.model;
 	}

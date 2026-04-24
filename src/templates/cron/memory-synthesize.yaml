@@ -1,6 +1,7 @@
 name: memory-synthesize
 schedule: "17 6 * * 0"
 model: opus
+effort: xhigh
 enabled: true
 prompt: |
   Synthesize fresh Models for schemas whose Observations have moved ahead of their last synthesis.

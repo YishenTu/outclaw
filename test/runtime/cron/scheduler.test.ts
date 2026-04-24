@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { EffortLevel } from "../../../src/common/commands.ts";
 import { CronScheduler } from "../../../src/runtime/cron/scheduler.ts";
 
 interface ScheduledCronResult {
@@ -72,9 +73,11 @@ describe("CronScheduler", () => {
 			runAgent?: (
 				prompt: string,
 				model?: string,
+				effort?: EffortLevel,
 			) => Promise<string | { text: string; sessionId?: string }>;
 			onResult?: (event: ScheduledCronResult) => void;
 			getDefaultModel?: () => string;
+			getDefaultEffort?: () => EffortLevel;
 			resolveTelegramChatId?: (config: {
 				name: string;
 				telegramUserId?: number;
@@ -90,6 +93,7 @@ describe("CronScheduler", () => {
 			runAgent: overrides.runAgent ?? (async () => "agent response"),
 			onResult: overrides.onResult ?? (() => {}),
 			getDefaultModel: overrides.getDefaultModel ?? (() => "opus"),
+			getDefaultEffort: overrides.getDefaultEffort ?? (() => "medium"),
 			resolveTelegramChatId: overrides.resolveTelegramChatId,
 			watchDir: overrides.watchDir,
 		});
@@ -277,6 +281,90 @@ prompt: say hello
 		expect(receivedModel).toBe("haiku");
 	});
 
+	test("passes explicit effort to runAgent", async () => {
+		const cronDir = makeCronDir();
+		writeJob(
+			cronDir,
+			"job.yaml",
+			`
+name: focused-job
+schedule: "* * * * *"
+model: opus
+effort: max
+prompt: do something
+		`.trim(),
+		);
+
+		let receivedEffort: string | undefined;
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async (_prompt, _model, effort) => {
+				receivedEffort = effort;
+				return "ok";
+			},
+		});
+		scheduler.start();
+
+		await scheduler.triggerJob("focused-job");
+
+		expect(receivedEffort).toBe("max");
+	});
+
+	test("keeps xhigh effort for opus cron jobs", async () => {
+		const cronDir = makeCronDir();
+		writeJob(
+			cronDir,
+			"job.yaml",
+			`
+name: opus-job
+schedule: "* * * * *"
+model: opus
+effort: xhigh
+prompt: do something
+		`.trim(),
+		);
+
+		let receivedEffort: string | undefined;
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async (_prompt, _model, effort) => {
+				receivedEffort = effort;
+				return "ok";
+			},
+		});
+		scheduler.start();
+
+		await scheduler.triggerJob("opus-job");
+
+		expect(receivedEffort).toBe("xhigh");
+	});
+
+	test("falls back to high when a non-opus cron job requests xhigh", async () => {
+		const cronDir = makeCronDir();
+		writeJob(
+			cronDir,
+			"job.yaml",
+			`
+name: haiku-job
+schedule: "* * * * *"
+model: haiku
+effort: xhigh
+prompt: do something
+		`.trim(),
+		);
+
+		let receivedEffort: string | undefined;
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async (_prompt, _model, effort) => {
+				receivedEffort = effort;
+				return "ok";
+			},
+		});
+		scheduler.start();
+
+		await scheduler.triggerJob("haiku-job");
+
+		expect(receivedEffort).toBe("high");
+	});
+
 	test("uses default model when job has no model", async () => {
 		const cronDir = makeCronDir();
 		const noModelJob = `
@@ -299,6 +387,55 @@ prompt: do something
 		await scheduler.triggerJob("no-model-job");
 
 		expect(receivedModel).toBe("sonnet");
+	});
+
+	test("uses default effort when job has no effort", async () => {
+		const cronDir = makeCronDir();
+		const noEffortJob = `
+name: no-effort-job
+schedule: "* * * * *"
+prompt: do something
+	`.trim();
+		writeJob(cronDir, "job.yaml", noEffortJob);
+
+		let receivedEffort: string | undefined;
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async (_prompt, _model, effort) => {
+				receivedEffort = effort;
+				return "ok";
+			},
+			getDefaultEffort: () => "low",
+		});
+		scheduler.start();
+
+		await scheduler.triggerJob("no-effort-job");
+
+		expect(receivedEffort).toBe("low");
+	});
+
+	test("falls back to high when default effort is xhigh for a non-opus model", async () => {
+		const cronDir = makeCronDir();
+		const noEffortJob = `
+name: default-haiku-job
+schedule: "* * * * *"
+model: haiku
+prompt: do something
+	`.trim();
+		writeJob(cronDir, "job.yaml", noEffortJob);
+
+		let receivedEffort: string | undefined;
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async (_prompt, _model, effort) => {
+				receivedEffort = effort;
+				return "ok";
+			},
+			getDefaultEffort: () => "xhigh",
+		});
+		scheduler.start();
+
+		await scheduler.triggerJob("default-haiku-job");
+
+		expect(receivedEffort).toBe("high");
 	});
 
 	test("suppresses NO_REPLY results", async () => {

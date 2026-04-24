@@ -1,6 +1,7 @@
 name: soul-evolve
 schedule: "47 6 * * 0"
 model: opus
+effort: xhigh
 enabled: true
 prompt: |
   Refine SOUL.md based on genuine, repeated patterns from the past week.

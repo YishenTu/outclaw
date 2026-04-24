@@ -14,6 +14,7 @@
 # OPTIONAL fields:
 #   enabled   — false to disable without deleting (default: true)
 #   model     — opus | sonnet | haiku (default: the agent's current model)
+#   effort    — low | medium | high | xhigh | max (default: runtime config)
 #
 # Prompt guidelines:
 #   - Be specific about what to read, what to decide, what to write.
@@ -26,6 +27,7 @@ name: <job-name>
 schedule: "0 9 * * 1"
 enabled: true
 # model: opus
+# effort: medium
 prompt: |
   <describe the task here — what to read, what to produce, what to write.>
 

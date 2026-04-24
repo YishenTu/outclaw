@@ -1,6 +1,7 @@
 name: memory-route
 schedule: "17 5 * * *"
 model: opus
+effort: high
 enabled: true
 prompt: |
   Route yesterday's daily-memory entries into the right schemas.

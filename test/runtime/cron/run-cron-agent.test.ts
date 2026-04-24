@@ -67,10 +67,13 @@ describe("createCronAgentRunner", () => {
 			),
 			promptHomeDir,
 			cwd: "/workspace/project",
-			effort: "max",
 		});
 
-		const result = await runCronAgent("Summarize overnight changes", "opus");
+		const result = await runCronAgent(
+			"Summarize overnight changes",
+			"opus",
+			"max",
+		);
 
 		expect(receivedParams).toMatchObject({
 			prompt: "Summarize overnight changes",

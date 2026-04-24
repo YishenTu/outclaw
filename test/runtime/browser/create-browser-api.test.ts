@@ -97,7 +97,7 @@ describe("createBrowserApi", () => {
 		writeFileSync(join(agentHomeDir, "AGENTS.md"), "# Agent\n");
 		writeFileSync(
 			join(cronDir, "daily.yaml"),
-			"name: Daily\nschedule: 15 6 * * *\nmodel: haiku\nenabled: true\nprompt: Check inbox\n",
+			"name: Daily\nschedule: 15 6 * * *\nmodel: haiku\neffort: high\nenabled: true\nprompt: Check inbox\n",
 		);
 
 		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
@@ -142,6 +142,7 @@ describe("createBrowserApi", () => {
 				path: "cron/daily.yaml",
 				schedule: "15 6 * * *",
 				model: "haiku",
+				effort: "high",
 				enabled: true,
 			},
 		]);
@@ -160,7 +161,7 @@ describe("createBrowserApi", () => {
 			api.readAgentFile("agent-railly", "cron/daily.yaml"),
 		).resolves.toEqual({
 			content:
-				"name: Daily\nschedule: 15 6 * * *\nmodel: haiku\nenabled: true\nprompt: Check inbox\n",
+				"name: Daily\nschedule: 15 6 * * *\nmodel: haiku\neffort: high\nenabled: true\nprompt: Check inbox\n",
 			kind: "text",
 			language: "yaml",
 			path: "cron/daily.yaml",

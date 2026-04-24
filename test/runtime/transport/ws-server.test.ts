@@ -974,6 +974,7 @@ describe("Runtime server", () => {
 			facade: cronFacade,
 			promptHomeDir,
 			cronDir,
+			defaultEffort: "low",
 		});
 		cronServer.setCronResultHandler(async () => undefined);
 
@@ -1000,6 +1001,7 @@ describe("Runtime server", () => {
 			});
 			expect(cronFacade.lastParams?.prompt).toBe("say hello");
 			expect(cronFacade.lastParams?.model).toBe("claude-opus-4-7[1m]");
+			expect(cronFacade.lastParams?.effort).toBe("low");
 
 			ws.close();
 		} finally {

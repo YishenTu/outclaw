@@ -372,6 +372,7 @@ export interface BrowserCronEntry {
 	path: string;
 	schedule: string;
 	model?: string;
+	effort?: string;
 	enabled: boolean;
 	error?: string;
 }
