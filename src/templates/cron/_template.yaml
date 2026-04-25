@@ -16,7 +16,8 @@
 #   model     — opus | sonnet | haiku (default: the agent's current model)
 #   effort    — low | medium | high | xhigh | max (default: runtime config)
 #   timezone  — UTC offset for the schedule: "UTC", "UTC+8", "UTC-7"
-#               (default: daemon's local timezone)
+#               (default: daemon's local timezone — leave this field OUT
+#               unless the user explicitly specifies a timezone)
 #
 # Prompt guidelines:
 #   - Be specific about what to read, what to decide, what to write.
