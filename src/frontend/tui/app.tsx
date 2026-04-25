@@ -1,5 +1,5 @@
 import { Box, Text, useApp } from "ink";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	canonicalizePromptSlashCommand,
 	isRuntimeCommand,
@@ -65,6 +65,14 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 	const resetComposer = useCallback(() => {
 		syncComposerState(createComposerState());
 	}, [syncComposerState]);
+	const staticTranscriptPrefix = useMemo(
+		() => (
+			<Box paddingX={1}>
+				<HeaderBar />
+			</Box>
+		),
+		[],
+	);
 
 	const handleSubmit = useCallback(
 		(value: string) => {
@@ -195,9 +203,6 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 
 	return (
 		<Box flexDirection="column" paddingY={1}>
-			<Box paddingX={1}>
-				<HeaderBar />
-			</Box>
 			<Box marginTop={1} marginBottom={1} flexGrow={1} flexDirection="column">
 				<MessageList
 					messages={tuiState.messages}
@@ -205,7 +210,10 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 					streamingThinking={tuiState.streamingThinking}
 					running={tuiState.running}
 					compacting={tuiState.compacting}
+					heartbeatPending={tuiState.heartbeatPending}
 					columns={columns}
+					transcriptVersion={tuiState.transcriptVersion}
+					staticPrefix={staticTranscriptPrefix}
 				/>
 			</Box>
 			{agentMenuData ? (

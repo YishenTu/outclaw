@@ -828,6 +828,18 @@ describe("applyAction", () => {
 		expect(state.running).toBe(false);
 	});
 
+	test("clear advances the transcript version for append-only rendering", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "push",
+			role: "user",
+			text: "old",
+		});
+		const next = applyAction(state, { type: "clear" });
+
+		expect(next.transcriptVersion).toBe(state.transcriptVersion + 1);
+	});
+
 	test("replay replaces all messages", () => {
 		let state = initialTuiState();
 		state = applyAction(state, {
@@ -847,6 +859,30 @@ describe("applyAction", () => {
 			{ id: 2, role: "user", text: "question" },
 		]);
 		expect(state.nextId).toBe(3);
+	});
+
+	test("replay advances the transcript version even when history length is unchanged", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "replay",
+			messages: [
+				{ id: 1, role: "assistant", text: "old reply" },
+				{ id: 2, role: "user", text: "old question" },
+			],
+		});
+		const next = applyAction(state, {
+			type: "replay",
+			messages: [
+				{ id: 1, role: "assistant", text: "new reply" },
+				{ id: 2, role: "user", text: "new question" },
+			],
+		});
+
+		expect(next.messages.map((message) => message.text)).toEqual([
+			"new reply",
+			"new question",
+		]);
+		expect(next.transcriptVersion).toBe(state.transcriptVersion + 1);
 	});
 
 	test("noop returns same state", () => {

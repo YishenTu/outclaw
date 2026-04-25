@@ -25,6 +25,7 @@ describe("TUI architecture", () => {
 			running: false,
 			compacting: false,
 			nextId: 1,
+			transcriptVersion: 0,
 		});
 	});
 
@@ -42,6 +43,7 @@ describe("TUI architecture", () => {
 			running: true,
 			compacting: false,
 			nextId: 1,
+			transcriptVersion: 0,
 		});
 	});
 

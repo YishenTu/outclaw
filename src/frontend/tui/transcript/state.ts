@@ -26,6 +26,7 @@ export interface TuiState {
 	running: boolean;
 	compacting: boolean;
 	nextId: number;
+	transcriptVersion: number;
 }
 
 export function initialTuiState(): TuiState {
@@ -39,5 +40,6 @@ export function initialTuiState(): TuiState {
 		running: false,
 		compacting: false,
 		nextId: 1,
+		transcriptVersion: 0,
 	};
 }

@@ -186,6 +186,7 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				heartbeatStreaming: "",
 				heartbeatStreamingThinking: "",
 				running: false,
+				transcriptVersion: state.transcriptVersion + 1,
 			};
 		case "replay": {
 			const maxId = action.messages.reduce((max, message) => {
@@ -199,6 +200,7 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				heartbeatStreaming: "",
 				heartbeatStreamingThinking: "",
 				nextId: maxId + 1,
+				transcriptVersion: state.transcriptVersion + 1,
 			};
 		}
 		case "start_compacting":

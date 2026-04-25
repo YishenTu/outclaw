@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, setSystemTime, test, vi } from "bun:test";
 import { PassThrough } from "node:stream";
 import { stripVTControlCharacters } from "node:util";
-import { render } from "ink";
+import { render, Text } from "ink";
 import type { ReactElement } from "react";
 import { SPINNER_FRAMES } from "../../../../src/frontend/spinner-frames.ts";
 import { MessageItem } from "../../../../src/frontend/tui/transcript/message-item.tsx";
@@ -35,7 +35,7 @@ function renderToOutput(element: ReactElement) {
 	stdin.isTTY = false;
 	let output = "";
 	stdout.on("data", (chunk) => {
-		output = chunk.toString();
+		output += chunk.toString();
 	});
 
 	const app = render(element, {
@@ -49,6 +49,32 @@ function renderToOutput(element: ReactElement) {
 	return {
 		app,
 		getOutput: () => output,
+	};
+}
+
+function renderToFrames(element: ReactElement) {
+	const stdout = createOutputStream();
+	const stderr = createOutputStream();
+	const stdin = new PassThrough() as unknown as NodeJS.ReadStream & {
+		isTTY: boolean;
+	};
+	stdin.isTTY = false;
+	const frames: string[] = [];
+	stdout.on("data", (chunk) => {
+		frames.push(chunk.toString());
+	});
+
+	const app = render(element, {
+		exitOnCtrlC: false,
+		patchConsole: false,
+		stderr,
+		stdin,
+		stdout,
+	});
+
+	return {
+		app,
+		frames,
 	};
 }
 
@@ -409,6 +435,126 @@ describe("transcript components", () => {
 			expect(output).toContain("history 2");
 			expect(output).toContain("history 3");
 			expect(output).toContain("history 4");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("MessageList keeps committed history in static scrollback outside the live frame", async () => {
+		const messages = Array.from({ length: 20 }, (_, index) => ({
+			id: index + 1,
+			role: "assistant" as const,
+			text: `history ${index + 1}`,
+		}));
+		const { app, frames } = renderToFrames(
+			<MessageList
+				messages={messages}
+				streaming=""
+				streamingThinking=""
+				compacting={false}
+				heartbeatPending={false}
+				running={false}
+				columns={40}
+				transcriptVersion={0}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			const allOutput = frames.join("");
+			expect(allOutput).toContain("history 1");
+			expect(allOutput).toContain("history 20");
+			expect(frames.at(-1) ?? "").not.toContain("history 1");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("MessageList replays a same-length replacement when the transcript version changes", async () => {
+		const { app, frames } = renderToFrames(
+			<MessageList
+				messages={[
+					{ id: 1, role: "assistant", text: "old reply" },
+					{ id: 2, role: "user", text: "old question" },
+				]}
+				streaming=""
+				streamingThinking=""
+				compacting={false}
+				heartbeatPending={false}
+				running={false}
+				columns={40}
+				transcriptVersion={0}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			app.rerender(
+				<MessageList
+					messages={[
+						{ id: 1, role: "assistant", text: "new reply" },
+						{ id: 2, role: "user", text: "new question" },
+					]}
+					streaming=""
+					streamingThinking=""
+					compacting={false}
+					heartbeatPending={false}
+					running={false}
+					columns={40}
+					transcriptVersion={1}
+				/>,
+			);
+			await flushUpdates();
+
+			const allOutput = frames.join("");
+			expect(allOutput).toContain("old reply");
+			expect(allOutput).toContain("new reply");
+			expect(allOutput).toContain("new question");
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("MessageList keeps a static prefix before appended transcript messages", async () => {
+		const { app, frames } = renderToFrames(
+			<MessageList
+				messages={[]}
+				streaming=""
+				streamingThinking=""
+				compacting={false}
+				heartbeatPending={false}
+				running={false}
+				columns={40}
+				transcriptVersion={0}
+				staticPrefix={<Text>SESSION HEADER</Text>}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			app.rerender(
+				<MessageList
+					messages={[{ id: 1, role: "assistant", text: "history 1" }]}
+					streaming=""
+					streamingThinking=""
+					compacting={false}
+					heartbeatPending={false}
+					running={false}
+					columns={40}
+					transcriptVersion={0}
+					staticPrefix={<Text>SESSION HEADER</Text>}
+				/>,
+			);
+			await flushUpdates();
+
+			const allOutput = frames.join("");
+			expect(allOutput.indexOf("SESSION HEADER")).toBeLessThan(
+				allOutput.indexOf("history 1"),
+			);
+			expect(allOutput.match(/SESSION HEADER/g)).toHaveLength(1);
 		} finally {
 			app.unmount();
 			app.cleanup();
