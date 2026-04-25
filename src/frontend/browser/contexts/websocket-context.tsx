@@ -364,6 +364,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			dispatchPromptToAgent({
 				agent,
 				activeAgentId: useAgentsStore.getState().activeAgentId,
+				runtimeAgentName: useRuntimeStore.getState().agentName,
 				clearRuntimeSession: useRuntimeStore.getState().clearSession,
 				prompt,
 				sendCommand,
@@ -384,6 +385,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			dispatchBrowserPromptToAgent({
 				agent,
 				activeAgentId: useAgentsStore.getState().activeAgentId,
+				runtimeAgentName: useRuntimeStore.getState().agentName,
 				clearRuntimeSession: useRuntimeStore.getState().clearSession,
 				prompt,
 				images,

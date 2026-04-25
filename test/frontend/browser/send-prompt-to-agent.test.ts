@@ -11,6 +11,7 @@ describe("sendPromptToAgent", () => {
 		const sent = sendPromptToAgent({
 			agent: { agentId: "agent-alpha", name: "alpha" },
 			activeAgentId: "agent-alpha",
+			runtimeAgentName: "alpha",
 			clearRuntimeSession: () => calls.push("clear"),
 			prompt: "  hello world  ",
 			sendCommand: (command) => {
@@ -35,6 +36,38 @@ describe("sendPromptToAgent", () => {
 		const sent = sendPromptToAgent({
 			agent: { agentId: "agent-beta", name: "beta" },
 			activeAgentId: "agent-alpha",
+			runtimeAgentName: "alpha",
+			clearRuntimeSession: () => calls.push("clear"),
+			prompt: "hello beta",
+			sendCommand: (command) => {
+				calls.push(`command:${command}`);
+				return true;
+			},
+			sendPrompt: (prompt) => {
+				calls.push(`prompt:${prompt}`);
+				return true;
+			},
+			setActiveAgent: (agentId) => calls.push(`active:${agentId}`),
+			setAgentName: (name) => calls.push(`name:${name}`),
+		});
+
+		expect(sent).toBe(true);
+		expect(calls).toEqual([
+			"command:/agent beta",
+			"active:agent-beta",
+			"name:beta",
+			"clear",
+			"prompt:hello beta",
+		]);
+	});
+
+	test("switches when runtime is on a different agent even if activeAgentId already matches the target", () => {
+		const calls: string[] = [];
+
+		const sent = sendPromptToAgent({
+			agent: { agentId: "agent-beta", name: "beta" },
+			activeAgentId: "agent-beta",
+			runtimeAgentName: "alpha",
 			clearRuntimeSession: () => calls.push("clear"),
 			prompt: "hello beta",
 			sendCommand: (command) => {
@@ -65,6 +98,7 @@ describe("sendPromptToAgent", () => {
 		const sent = sendPromptToAgent({
 			agent: { agentId: "agent-beta", name: "beta" },
 			activeAgentId: "agent-alpha",
+			runtimeAgentName: "alpha",
 			clearRuntimeSession: () => calls.push("clear"),
 			prompt: "hello beta",
 			sendCommand: (command) => {
@@ -104,6 +138,7 @@ describe("sendBrowserPromptToAgent", () => {
 		const sent = await sendBrowserPromptToAgent({
 			agent: { agentId: "agent-alpha", name: "alpha" },
 			activeAgentId: "agent-alpha",
+			runtimeAgentName: "alpha",
 			clearRuntimeSession: () => calls.push("clear"),
 			prompt: "   ",
 			images: [image],
@@ -129,6 +164,7 @@ describe("sendBrowserPromptToAgent", () => {
 		const sent = await sendBrowserPromptToAgent({
 			agent: { agentId: "agent-beta", name: "beta" },
 			activeAgentId: "agent-alpha",
+			runtimeAgentName: "alpha",
 			clearRuntimeSession: () => calls.push("clear"),
 			prompt: "hello beta",
 			images: [createAttachment()],
@@ -160,6 +196,7 @@ describe("sendBrowserPromptToAgent", () => {
 		const sent = await sendBrowserPromptToAgent({
 			agent: { agentId: "agent-alpha", name: "alpha" },
 			activeAgentId: "agent-alpha",
+			runtimeAgentName: "alpha",
 			clearRuntimeSession: () => calls.push("clear"),
 			prompt: "hello again",
 			images: [createAttachment()],
@@ -195,6 +232,7 @@ describe("sendBrowserPromptToAgent", () => {
 		const sent = await sendBrowserPromptToAgent({
 			agent: { agentId: "agent-beta", name: "beta" },
 			activeAgentId: "agent-alpha",
+			runtimeAgentName: "alpha",
 			clearRuntimeSession: () => calls.push("clear"),
 			prompt: "hello beta",
 			images: [createAttachment()],
@@ -228,12 +266,45 @@ describe("sendBrowserPromptToAgent", () => {
 		]);
 	});
 
+	test("switches when runtime is on a different agent even if activeAgentId already matches the target", async () => {
+		const calls: string[] = [];
+
+		const sent = await sendBrowserPromptToAgent({
+			agent: { agentId: "agent-beta", name: "beta" },
+			activeAgentId: "agent-beta",
+			runtimeAgentName: "alpha",
+			clearRuntimeSession: () => calls.push("clear"),
+			prompt: "hello beta",
+			images: [createAttachment()],
+			sendCommand: (command) => {
+				calls.push(`command:${command}`);
+				return true;
+			},
+			sendBrowserPrompt: async (prompt, images) => {
+				calls.push(`browser:${prompt}:${images.length}`);
+				return true;
+			},
+			setActiveAgent: (agentId) => calls.push(`active:${agentId}`),
+			setAgentName: (name) => calls.push(`name:${name}`),
+		});
+
+		expect(sent).toBe(true);
+		expect(calls).toEqual([
+			"command:/agent beta",
+			"active:agent-beta",
+			"name:beta",
+			"clear",
+			"browser:hello beta:1",
+		]);
+	});
+
 	test("does not send the browser prompt when switching agents fails", async () => {
 		const calls: string[] = [];
 
 		const sent = await sendBrowserPromptToAgent({
 			agent: { agentId: "agent-beta", name: "beta" },
 			activeAgentId: "agent-alpha",
+			runtimeAgentName: "alpha",
 			clearRuntimeSession: () => calls.push("clear"),
 			prompt: "",
 			images: [createAttachment()],
@@ -259,6 +330,7 @@ describe("sendBrowserPromptToAgent", () => {
 		const sent = await sendBrowserPromptToAgent({
 			agent: { agentId: "agent-alpha", name: "alpha" },
 			activeAgentId: "agent-alpha",
+			runtimeAgentName: "alpha",
 			clearRuntimeSession: () => calls.push("clear"),
 			prompt: "hello again",
 			images: [createAttachment()],

@@ -5,6 +5,7 @@ import type { SessionRef } from "./stores/sessions.ts";
 interface SendPromptToAgentBaseParams {
 	agent: AgentEntry | null;
 	activeAgentId: string | null;
+	runtimeAgentName: string | null;
 	clearRuntimeSession: () => void;
 	sendCommand: (command: string) => boolean;
 	setActiveAgent: (agentId: string) => void;
@@ -44,6 +45,7 @@ function isRuntimeSessionActive(
 function activateAgentForPrompt({
 	agent,
 	activeAgentId,
+	runtimeAgentName,
 	clearRuntimeSession,
 	sendCommand,
 	setActiveAgent,
@@ -52,7 +54,8 @@ function activateAgentForPrompt({
 	if (!agent) {
 		return false;
 	}
-	if (activeAgentId !== agent.agentId) {
+	const runtimeMatchesAgent = runtimeAgentName === agent.name;
+	if (activeAgentId !== agent.agentId || !runtimeMatchesAgent) {
 		if (!sendCommand(`/agent ${agent.name}`)) {
 			return false;
 		}
