@@ -78,6 +78,7 @@ describe("CronScheduler", () => {
 			onResult?: (event: ScheduledCronResult) => void;
 			getDefaultModel?: () => string;
 			getDefaultEffort?: () => EffortLevel;
+			watchPollIntervalMs?: number;
 			resolveTelegramChatId?: (config: {
 				name: string;
 				telegramUserId?: number;
@@ -95,6 +96,7 @@ describe("CronScheduler", () => {
 			getDefaultModel: overrides.getDefaultModel ?? (() => "opus"),
 			getDefaultEffort: overrides.getDefaultEffort ?? (() => "medium"),
 			resolveTelegramChatId: overrides.resolveTelegramChatId,
+			watchPollIntervalMs: overrides.watchPollIntervalMs ?? 10,
 			watchDir: overrides.watchDir,
 		});
 		schedulers.push(scheduler);

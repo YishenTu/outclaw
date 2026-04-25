@@ -189,6 +189,25 @@ class BlockingFacade implements Facade {
 	}
 }
 
+class AbortErrorFacade implements Facade {
+	providerId = PROVIDER_ID;
+	started = createDeferred();
+
+	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		this.started.resolve();
+		await new Promise<void>((resolve) => {
+			params.abortController?.signal.addEventListener(
+				"abort",
+				() => resolve(),
+				{
+					once: true,
+				},
+			);
+		});
+		yield { type: "error", message: "AbortError: operation aborted" };
+	}
+}
+
 class SessionAwareBlockingFacade implements Facade {
 	providerId = PROVIDER_ID;
 	allParams: Array<{ abortController?: AbortController; resume?: string }> = [];
@@ -1906,7 +1925,29 @@ describe("RuntimeController", () => {
 			expect(slowCall?.abortController?.signal.aborted).toBe(true);
 			expect(stopRequester.events()).toContainEqual({
 				type: "status",
-				message: "Stopping current run",
+				message: "Request interrupted by user",
+				presentation: "inline",
+			});
+		});
+
+		test("/stop suppresses provider abort errors", async () => {
+			const facade = new AbortErrorFacade();
+			const { controller } = createController({ facade });
+			const ws = mockWs();
+			const stopRequester = mockWs();
+			controller.handleOpen(ws);
+			controller.handleOpen(stopRequester);
+
+			controller.handleMessage(ws, prompt("slow task"));
+			await facade.started.promise;
+
+			controller.handleMessage(stopRequester, command("/stop"));
+			await new Promise((r) => setTimeout(r, 20));
+
+			const userFacingEvents = [...ws.events(), ...stopRequester.events()];
+			expect(userFacingEvents).not.toContainEqual({
+				type: "error",
+				message: "AbortError: operation aborted",
 			});
 		});
 
@@ -1919,7 +1960,11 @@ describe("RuntimeController", () => {
 			await new Promise((r) => setTimeout(r, 10));
 
 			const events = ws.events();
-			expect(events.some((e) => e.type === "status")).toBe(true);
+			expect(events).toContainEqual({
+				type: "status",
+				message: "Nothing to stop",
+				presentation: "inline",
+			});
 		});
 
 		test("abort controller is passed to facade.run()", async () => {

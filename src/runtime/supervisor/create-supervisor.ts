@@ -18,6 +18,24 @@ import { type BrowserApp, serveBrowserApp } from "./browser-app.ts";
 import { ClientAgentBinding } from "./client-agent-binding.ts";
 import { SupervisorController } from "./supervisor-controller.ts";
 
+interface SupervisorSocketData {
+	clientType: RuntimeClientType;
+	socketType: "runtime" | "terminal";
+	requestedAgentName?: string;
+	terminalCwd?: string;
+	telegramBotId?: string;
+	telegramUserId?: number;
+}
+
+type SupervisorServeOptions = Parameters<
+	typeof Bun.serve<SupervisorSocketData>
+>[0];
+
+const EPHEMERAL_PORT_MIN = 49152;
+const EPHEMERAL_PORT_RANGE = 16384;
+let nextEphemeralPort =
+	EPHEMERAL_PORT_MIN + Math.floor(Math.random() * EPHEMERAL_PORT_RANGE);
+
 interface TelegramRoutingOptions {
 	getAgentId(botId: string, telegramUserId: number): string | undefined;
 	listAgentIds(botId: string, telegramUserId: number): string[];
@@ -93,14 +111,7 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		: undefined;
 	const terminalRelay = new TerminalRelay();
 
-	const server = Bun.serve<{
-		clientType: RuntimeClientType;
-		socketType: "runtime" | "terminal";
-		requestedAgentName?: string;
-		terminalCwd?: string;
-		telegramBotId?: string;
-		telegramUserId?: number;
-	}>({
+	const server = createSupervisorServer({
 		hostname: options.hostname,
 		port: options.port,
 		async fetch(req, server) {
@@ -218,6 +229,46 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 			return stopPromise;
 		},
 	};
+}
+
+function createSupervisorServer(options: SupervisorServeOptions) {
+	if (options.port !== 0) {
+		return Bun.serve<SupervisorSocketData>(options);
+	}
+
+	let lastError: unknown;
+	for (let attempt = 0; attempt < 100; attempt += 1) {
+		try {
+			return Bun.serve<SupervisorSocketData>({
+				...options,
+				port: reserveEphemeralPort(),
+			});
+		} catch (error) {
+			if (!isListenError(error)) {
+				throw error;
+			}
+			lastError = error;
+		}
+	}
+
+	throw lastError;
+}
+
+function reserveEphemeralPort(): number {
+	const port = nextEphemeralPort;
+	nextEphemeralPort += 1;
+	if (nextEphemeralPort >= EPHEMERAL_PORT_MIN + EPHEMERAL_PORT_RANGE) {
+		nextEphemeralPort = EPHEMERAL_PORT_MIN;
+	}
+	return port;
+}
+
+function isListenError(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		(error as { code?: unknown }).code === "EADDRINUSE"
+	);
 }
 
 async function handleBrowserApiRequest(

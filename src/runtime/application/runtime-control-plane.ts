@@ -73,13 +73,15 @@ export class RuntimeControlPlane {
 		if (this.options.execution.abortActiveRun()) {
 			this.options.clients.send(ws, {
 				type: "status",
-				message: "Stopping current run",
+				message: "Request interrupted by user",
+				presentation: "inline",
 			});
 			return;
 		}
 		this.options.clients.send(ws, {
 			type: "status",
 			message: "Nothing to stop",
+			presentation: "inline",
 		});
 	}
 }

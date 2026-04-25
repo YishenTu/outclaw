@@ -560,17 +560,15 @@ export class SessionStore {
 	}
 
 	private migrateLegacyStateKeys() {
-		this.db.transaction(() => {
-			const legacyAgentId = this.getStateValue(LEGACY_LAST_TUI_AGENT_KEY);
-			if (!legacyAgentId) {
-				return;
-			}
+		const legacyAgentId = this.getStateValue(LEGACY_LAST_TUI_AGENT_KEY);
+		if (!legacyAgentId) {
+			return;
+		}
 
-			if (!this.getStateValue(LAST_INTERACTIVE_AGENT_KEY)) {
-				this.setStateValue(LAST_INTERACTIVE_AGENT_KEY, legacyAgentId);
-			}
-			this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
-		})();
+		if (!this.getStateValue(LAST_INTERACTIVE_AGENT_KEY)) {
+			this.setStateValue(LAST_INTERACTIVE_AGENT_KEY, legacyAgentId);
+		}
+		this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
 	}
 
 	private deleteStateValue(key: string) {

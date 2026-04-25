@@ -194,6 +194,128 @@ describe("readClaudeHistory", () => {
 		]);
 	});
 
+	test("maps raw JSONL request interruption markers to inline status messages", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "outclaw-claude-interrupt-"));
+		const projectsDir = join(tmp, "projects");
+		const projectDir = join(projectsDir, "sample-project");
+		const sessionId = "sdk-interrupted";
+
+		try {
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(
+				join(projectDir, `${sessionId}.jsonl`),
+				JSON.stringify({
+					type: "user",
+					timestamp: "2026-04-25T04:32:15.103Z",
+					message: {
+						content: [{ type: "text", text: "[Request interrupted by user]" }],
+					},
+				}),
+			);
+
+			const messages = await readClaudeHistory({
+				sessionId,
+				loadHistory: mock(async () => []),
+				claudeProjectsDir: projectsDir,
+			});
+
+			expect(messages).toEqual([
+				{
+					kind: "system",
+					event: "status",
+					text: "Request interrupted by user",
+					timestamp: Date.parse("2026-04-25T04:32:15.103Z"),
+				},
+			]);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	test("maps tool-use interruption markers to inline status messages", async () => {
+		const { result } = readSdkHistory([
+			{
+				type: "user",
+				timestamp: "2026-04-25T04:32:15.103Z",
+				message: {
+					content: [
+						{
+							type: "text",
+							text: "[Request interrupted by user for tool use]",
+						},
+					],
+				},
+			},
+		]);
+
+		expect(await result).toEqual([
+			{
+				kind: "system",
+				event: "status",
+				text: "Request interrupted by user",
+				timestamp: Date.parse("2026-04-25T04:32:15.103Z"),
+			},
+		]);
+	});
+
+	test("maps interrupted tool results to inline status messages", async () => {
+		const { result } = readSdkHistory([
+			{
+				type: "user",
+				timestamp: "2026-04-25T04:32:15.103Z",
+				message: {
+					content: [
+						{
+							type: "tool_result",
+							content: "(Bash interrupted)",
+							is_error: true,
+						},
+					],
+				},
+				toolUseResult: {
+					interrupted: true,
+					stdout: "",
+					stderr: "",
+				},
+			},
+		]);
+
+		expect(await result).toEqual([
+			{
+				kind: "system",
+				event: "status",
+				text: "Request interrupted by user",
+				timestamp: Date.parse("2026-04-25T04:32:15.103Z"),
+			},
+		]);
+	});
+
+	test("maps interruption markers from text block content fields", async () => {
+		const { result } = readSdkHistory([
+			{
+				type: "user",
+				timestamp: "2026-04-25T04:32:15.103Z",
+				message: {
+					content: [
+						{
+							type: "text",
+							content: "[Request interrupted by user]",
+						},
+					],
+				},
+			},
+		]);
+
+		expect(await result).toEqual([
+			{
+				kind: "system",
+				event: "status",
+				text: "Request interrupted by user",
+				timestamp: Date.parse("2026-04-25T04:32:15.103Z"),
+			},
+		]);
+	});
+
 	test("merges separate thinking and text assistant entries", async () => {
 		const { result } = readSdkHistory([
 			{
@@ -673,6 +795,31 @@ describe("readClaudeTranscript", () => {
 				timestamp: Date.parse("2025-01-15T14:31:00.000Z"),
 			},
 		]);
+	});
+
+	test("omits request interruption markers from searchable transcripts", async () => {
+		const loadHistory = mock(async () => [
+			{
+				type: "user",
+				timestamp: "2026-04-25T04:32:15.103Z",
+				message: {
+					content: [
+						{
+							type: "text",
+							content: "[Request interrupted by user]",
+						},
+					],
+				},
+			},
+		]);
+
+		const turns = await readClaudeTranscript({
+			sessionId: "missing-session",
+			loadHistory,
+			claudeProjectsDir: MISSING_PROJECTS_DIR,
+		});
+
+		expect(turns).toEqual([]);
 	});
 
 	test("tags operational heartbeat turns with heartbeat source metadata", async () => {

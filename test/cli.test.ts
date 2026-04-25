@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { parseAskArgs } from "../src/cli/agent.ts";
 import type { FrontendNotice } from "../src/common/protocol.ts";
 import { SessionStore } from "../src/runtime/persistence/session-store.ts";
+import { createTestServer } from "./helpers/test-server.ts";
 
 const TEST_HOME = join(import.meta.dir, ".tmp-cli-test");
 const OUTCLAW_DIR = join(TEST_HOME, ".outclaw");
@@ -787,7 +788,7 @@ describe("CLI", () => {
 	test("agent ask resolves sender from cwd and prints control response", async () => {
 		createAgentHome("railly", "agent-railly");
 		createAgentHome("mimi", "agent-mimi");
-		const server = Bun.serve({
+		const server = createTestServer({
 			port: 0,
 			fetch(req, websocketServer) {
 				if (websocketServer.upgrade(req)) {
@@ -836,7 +837,7 @@ describe("CLI", () => {
 	test("agent ask does not treat flag values as the message body", async () => {
 		createAgentHome("railly", "agent-railly");
 		createAgentHome("mimi", "agent-mimi");
-		const server = Bun.serve({
+		const server = createTestServer({
 			port: 0,
 			fetch(req, websocketServer) {
 				if (websocketServer.upgrade(req)) {
@@ -891,7 +892,7 @@ describe("CLI", () => {
 	test("agent ask times out only when --timeout is passed", async () => {
 		createAgentHome("railly", "agent-railly");
 		createAgentHome("mimi", "agent-mimi");
-		const server = Bun.serve({
+		const server = createTestServer({
 			port: 0,
 			fetch(req, websocketServer) {
 				if (websocketServer.upgrade(req)) {
@@ -922,7 +923,7 @@ describe("CLI", () => {
 	test("agent ask exits when the control connection closes before a response", async () => {
 		createAgentHome("railly", "agent-railly");
 		createAgentHome("mimi", "agent-mimi");
-		const server = Bun.serve({
+		const server = createTestServer({
 			port: 0,
 			fetch(req, websocketServer) {
 				if (websocketServer.upgrade(req)) {

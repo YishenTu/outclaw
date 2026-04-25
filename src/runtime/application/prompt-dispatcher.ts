@@ -108,11 +108,21 @@ export class PromptDispatcher {
 
 		const emit = (event: FacadeEvent) => {
 			const observedEvent = attachObservedSessionId(event, observedSessionId);
+			const visible = isVisible();
+			if (
+				event.type === "error" &&
+				abortController.signal.aborted &&
+				visible &&
+				task.source !== "agent"
+			) {
+				completedEvent = undefined;
+				return;
+			}
+
 			task.onEvent?.(event);
 			if (observedSessionId) {
 				this.options.streamingState.recordEvent(observedSessionId, event);
 			}
-			const visible = isVisible();
 			if (task.source === "heartbeat") {
 				heartbeatBuffer.push(event);
 			}

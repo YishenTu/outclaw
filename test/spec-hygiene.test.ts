@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
@@ -6,6 +7,10 @@ const DEV_ROOT = resolve(REPO_ROOT, "dev");
 
 describe("dev spec hygiene", () => {
 	test("archived plans end at the archive pointer", async () => {
+		if (!existsSync(DEV_ROOT)) {
+			return;
+		}
+
 		const offenders: string[] = [];
 
 		for await (const relativePath of new Bun.Glob("plans/*.md").scan(
@@ -38,6 +43,10 @@ describe("dev spec hygiene", () => {
 	});
 
 	test("design specs only reference source files that exist", async () => {
+		if (!existsSync(DEV_ROOT)) {
+			return;
+		}
+
 		const missing: string[] = [];
 		const sourcePathPattern = /`(src\/[^`]+?\.(?:ts|tsx|md|yaml))`/g;
 

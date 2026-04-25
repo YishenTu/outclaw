@@ -12,10 +12,11 @@ import {
 	copyTelegramFile,
 	saveTelegramFile,
 } from "../../../../src/frontend/telegram/files/storage.ts";
+import { createTestServer } from "../../../helpers/test-server.ts";
 
 describe("saveTelegramFile", () => {
 	const filesRoot = mkdtempSync(join(tmpdir(), "mis-media-"));
-	const server = Bun.serve({
+	const server = createTestServer({
 		port: 0,
 		fetch() {
 			return new Response("png-bytes");
@@ -69,7 +70,7 @@ describe("saveTelegramFile", () => {
 	});
 
 	test("throws when Telegram download fails", async () => {
-		const failingServer = Bun.serve({
+		const failingServer = createTestServer({
 			port: 0,
 			fetch() {
 				return new Response("missing", { status: 404 });

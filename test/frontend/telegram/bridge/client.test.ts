@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { createTelegramBridge } from "../../../../src/frontend/telegram/bridge/client.ts";
 import { createRuntime } from "../../../../src/runtime/transport/ws-server.ts";
 import { MockFacade } from "../../../helpers/mock-facade.ts";
+import { createTestServer } from "../../../helpers/test-server.ts";
 
 class FakeWebSocket {
 	static readonly CONNECTING = 0;
@@ -84,7 +85,7 @@ async function flushMicrotasks() {
 }
 
 function createClosingServer() {
-	const server = Bun.serve({
+	const server = createTestServer({
 		port: 0,
 		fetch(req, runtime) {
 			if (runtime.upgrade(req)) {
@@ -108,7 +109,7 @@ function createClosingServer() {
 }
 
 function createStatusServer(message: string) {
-	const server = Bun.serve({
+	const server = createTestServer({
 		port: 0,
 		fetch(req, runtime) {
 			if (runtime.upgrade(req)) {

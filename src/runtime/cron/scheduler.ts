@@ -38,6 +38,7 @@ interface CronSchedulerOptions {
 	getDefaultModel: () => string;
 	getDefaultEffort: () => EffortLevel;
 	resolveTelegramChatId?: (config: CronJobConfig) => number | undefined;
+	watchPollIntervalMs?: number;
 	watchDir?: (
 		path: string,
 		listener: (eventType: string, filename: string | Buffer | null) => void,
@@ -54,6 +55,7 @@ interface ActiveJob {
 export class CronScheduler {
 	private jobs = new Map<string, ActiveJob>();
 	private filesByName = new Map<string, string>();
+	private pollTimer: ReturnType<typeof setInterval> | undefined;
 	private watcher: ReturnType<typeof watch> | undefined;
 	private options: CronSchedulerOptions;
 
@@ -68,11 +70,16 @@ export class CronScheduler {
 	start() {
 		this.syncJobsWithDirectory();
 		this.startWatcher();
+		this.startPolling();
 	}
 
 	stop() {
 		this.watcher?.close();
 		this.watcher = undefined;
+		if (this.pollTimer) {
+			clearInterval(this.pollTimer);
+			this.pollTimer = undefined;
+		}
 		for (const [, job] of this.jobs) {
 			job.cron.stop();
 		}
@@ -200,7 +207,10 @@ export class CronScheduler {
 
 		const watcherFactory = this.options.watchDir ?? watch;
 		this.watcher = watcherFactory(this.options.cronDir, (_event, filename) => {
-			if (!filename) return;
+			if (!filename) {
+				this.syncJobsWithDirectory();
+				return;
+			}
 			const normalizedFilename =
 				typeof filename === "string" ? filename : filename.toString("utf-8");
 			if (!hasCronJobExtension(normalizedFilename)) {
@@ -212,6 +222,16 @@ export class CronScheduler {
 		this.watcher.on("error", (err) => {
 			this.handleWatcherError(err);
 		});
+	}
+
+	private startPolling() {
+		if (this.pollTimer) return;
+
+		const intervalMs = this.options.watchPollIntervalMs ?? 1000;
+		this.pollTimer = setInterval(() => {
+			this.syncJobsWithDirectory();
+		}, intervalMs);
+		this.pollTimer.unref?.();
 	}
 
 	private removeJobByFile(filename: string) {

@@ -26,6 +26,7 @@ import {
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
+import { applyBrowserStatusEvent } from "../browser-status-event.ts";
 import type { ComposerImageAttachment } from "../components/chat/composer-images.ts";
 import { ensureRunningChatSession } from "../ensure-running-chat-session.ts";
 import { fetchSidebarSummary, uploadPromptImages } from "../lib/api.ts";
@@ -746,7 +747,19 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					useSlashCommandsStore.getState().setSkills(event.skills);
 					return;
 				case "status":
-					useRuntimePopupStore.getState().openStatus(event.message);
+					applyBrowserStatusEvent({
+						activeAgentId: getActiveAgentId(),
+						closePopup: useRuntimePopupStore.getState().closePopup,
+						event,
+						finalizeMessage: (sessionKey, options) => {
+							useChatStore.getState().finalizeMessage(sessionKey, options);
+						},
+						openStatus: useRuntimePopupStore.getState().openStatus,
+						pushMessage: (sessionKey, message) => {
+							useChatStore.getState().pushMessage(sessionKey, message);
+						},
+						resolveCurrentSessionKey: getCurrentSessionKey,
+					});
 					return;
 				case "browser_sidebar_invalidated":
 					useRightPanelRefreshStore.getState().invalidate(event);

@@ -22,6 +22,8 @@ import {
 
 interface HistoryBlock {
 	type: string;
+	content?: unknown;
+	is_error?: boolean;
 	source?: {
 		data?: string;
 		media_type?: ImageMediaType;
@@ -48,6 +50,7 @@ export interface ClaudeHistoryMessage {
 	isVisibleInTranscriptOnly?: boolean;
 	isSidechain?: boolean;
 	teamName?: string;
+	toolUseResult?: unknown;
 }
 
 export type LoadClaudeHistory = (
@@ -128,11 +131,20 @@ export function normalizeClaudeHistory(
 			continue;
 		}
 
+		const timestamp = parseDisplayTimestamp(msg);
 		const content = getContent(msg.message);
+		if (msg.type === "user" && isRequestInterruptionEvent(msg, content)) {
+			pendingThinking = "";
+			pendingThinkingTimestamp = undefined;
+			pendingSystemPrompt = undefined;
+			result.push(
+				createStatusMessage("Request interrupted by user", timestamp),
+			);
+			continue;
+		}
 		if (content === undefined) {
 			continue;
 		}
-		const timestamp = parseDisplayTimestamp(msg);
 
 		if (
 			pendingThinking &&
@@ -160,9 +172,8 @@ export function normalizeClaudeHistory(
 		}
 
 		if (msg.type === "user" && typeof content === "string") {
-			const parsed = parsePromptWithReplyContext(
-				stripTaskNotifications(content),
-			);
+			const strippedContent = stripTaskNotifications(content);
+			const parsed = parsePromptWithReplyContext(strippedContent);
 			if (isOperationalHeartbeatTurn(parsed.prompt, parsed.replyContext)) {
 				pendingSystemPrompt = "heartbeat";
 				continue;
@@ -183,9 +194,8 @@ export function normalizeClaudeHistory(
 		}
 
 		if (msg.type === "user" && Array.isArray(content)) {
-			const parsed = parsePromptWithReplyContext(
-				stripTaskNotifications(extractText(content)),
-			);
+			const strippedText = stripTaskNotifications(extractText(content));
+			const parsed = parsePromptWithReplyContext(strippedText);
 			const images = extractImages(content);
 			if (
 				isOperationalHeartbeatTurn(parsed.prompt, parsed.replyContext, images)
@@ -273,6 +283,10 @@ export function normalizeClaudeHistory(
 
 const TASK_NOTIFICATION_PATTERN =
 	/\s*<task-notification>\s*[\s\S]*?\s*<\/task-notification>\s*/g;
+const REQUEST_INTERRUPTION_LINE_PATTERN =
+	/^(?:\[Request interrupted by user(?: for tool use)?\]|Request interrupted by user)$/;
+const REQUEST_INTERRUPTION_FRAGMENT_PATTERN =
+	/\[Request interrupted by user(?: for tool use)?\]|Request interrupted by user/;
 
 export function normalizeClaudeTranscript(
 	messages: ClaudeHistoryMessage[],
@@ -300,6 +314,7 @@ export function normalizeClaudeTranscript(
 
 		if (msg.type === "user") {
 			if (
+				isRequestInterruptionEvent(msg, content) ||
 				isCompactionCommand(content) ||
 				isCompactSummaryMessage(msg, content)
 			) {
@@ -424,6 +439,83 @@ function createRolloverMessage(): DisplaySystemMessage {
 		event: "rollover",
 		text: ROLLOVER_DISPLAY_LABEL,
 	};
+}
+
+function createStatusMessage(
+	text: string,
+	timestamp: number | undefined,
+): DisplaySystemMessage {
+	return {
+		kind: "system",
+		event: "status",
+		text,
+		timestamp,
+	};
+}
+
+function isRequestInterruptionEvent(
+	message: ClaudeHistoryMessage,
+	content: string | HistoryBlock[] | undefined,
+): boolean {
+	if (typeof content === "string") {
+		return isRequestInterruptionMarker(stripTaskNotifications(content));
+	}
+
+	if (Array.isArray(content)) {
+		if (
+			isRequestInterruptionMarker(stripTaskNotifications(extractText(content)))
+		) {
+			return true;
+		}
+
+		if (content.some(isRequestInterruptionToolResult)) {
+			return true;
+		}
+	}
+
+	return isInterruptedToolUseResult(message.toolUseResult);
+}
+
+function isRequestInterruptionMarker(text: string): boolean {
+	const marker = stripToolUseErrorTags(text);
+	return marker
+		.split(/\r?\n/)
+		.some((line) => REQUEST_INTERRUPTION_LINE_PATTERN.test(line.trim()));
+}
+
+function isRequestInterruptionToolResult(block: HistoryBlock): boolean {
+	return (
+		block.type === "tool_result" &&
+		block.is_error === true &&
+		containsRequestInterruptionMarker(block.content)
+	);
+}
+
+function isInterruptedToolUseResult(value: unknown): boolean {
+	if (containsRequestInterruptionMarker(value)) {
+		return true;
+	}
+
+	const record = asRecord(value);
+	return record?.interrupted === true;
+}
+
+function containsRequestInterruptionMarker(value: unknown): boolean {
+	if (typeof value !== "string") {
+		return false;
+	}
+
+	return REQUEST_INTERRUPTION_FRAGMENT_PATTERN.test(
+		stripToolUseErrorTags(value),
+	);
+}
+
+function stripToolUseErrorTags(text: string): string {
+	return text
+		.trim()
+		.replace(/^<tool_use_error>\s*/, "")
+		.replace(/\s*<\/tool_use_error>$/, "")
+		.trim();
 }
 
 function isOperationalHeartbeatTurn(
@@ -653,8 +745,14 @@ function extractImages(
 
 function extractText(blocks: HistoryBlock[]): string {
 	return blocks
-		.filter((block) => block.type === "text" && block.text)
-		.map((block) => block.text)
+		.filter((block) => block.type === "text")
+		.map((block) =>
+			typeof block.text === "string"
+				? block.text
+				: typeof block.content === "string"
+					? block.content
+					: "",
+		)
 		.join("");
 }
 

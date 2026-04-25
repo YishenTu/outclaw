@@ -103,6 +103,7 @@ export interface ImageEvent {
 export interface StatusEvent {
 	type: "status";
 	message: string;
+	presentation?: "popup" | "inline";
 }
 
 export interface ThinkingEvent {
@@ -287,10 +288,18 @@ export interface DisplayRolloverMessage {
 	text: string;
 }
 
+export interface DisplayStatusMessage {
+	kind: "system";
+	event: "status";
+	text: string;
+	timestamp?: number;
+}
+
 export type DisplaySystemMessage =
 	| DisplayCompactBoundaryMessage
 	| DisplayHeartbeatMessage
-	| DisplayRolloverMessage;
+	| DisplayRolloverMessage
+	| DisplayStatusMessage;
 
 export type DisplayMessage = DisplayChatMessage | DisplaySystemMessage;
 
