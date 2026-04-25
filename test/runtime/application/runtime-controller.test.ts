@@ -192,8 +192,10 @@ class BlockingFacade implements Facade {
 class AbortErrorFacade implements Facade {
 	providerId = PROVIDER_ID;
 	started = createDeferred();
+	lastParams: RunParams | undefined;
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		this.lastParams = params;
 		this.started.resolve();
 		await new Promise<void>((resolve) => {
 			params.abortController?.signal.addEventListener(
@@ -1949,6 +1951,63 @@ describe("RuntimeController", () => {
 				type: "error",
 				message: "AbortError: operation aborted",
 			});
+		});
+
+		test("interrupted fresh sessions remain replayable after restart", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new AbortErrorFacade();
+			const { controller } = createController({ facade, store });
+			const ws = mockWs();
+			const stopRequester = mockWs();
+			controller.handleOpen(ws);
+			controller.handleOpen(stopRequester);
+
+			controller.handleMessage(ws, prompt("slow task"));
+			await facade.started.promise;
+
+			const sessionId = facade.lastParams?.sessionId;
+			if (!sessionId) {
+				throw new Error("Expected interrupted run to have a session id");
+			}
+
+			controller.handleMessage(stopRequester, command("/stop"));
+			await new Promise((r) => setTimeout(r, 20));
+
+			expect(store.get(PROVIDER_ID, sessionId)?.title).toBe("slow task");
+			expect(store.getActiveSessionId(PROVIDER_ID)).toBe(sessionId);
+
+			const restored = createController({
+				store,
+				historyReader: async (id) => {
+					expect(id).toBe(sessionId);
+					return [
+						{
+							kind: "system",
+							event: "status",
+							text: "Request interrupted by user",
+						},
+					];
+				},
+			});
+			const restoredClient = mockWs();
+			restored.controller.handleOpen(restoredClient);
+			await new Promise((r) => setTimeout(r, 20));
+
+			expect(restoredClient.events()).toContainEqual({
+				type: "history_replay",
+				sdkSessionId: sessionId,
+				messages: [
+					{
+						kind: "system",
+						event: "status",
+						text: "Request interrupted by user",
+					},
+				],
+			});
+
+			store.close();
+			cleanupStore(TEST_DB);
 		});
 
 		test("/stop when nothing is running sends info message", async () => {

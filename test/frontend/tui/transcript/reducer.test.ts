@@ -468,6 +468,32 @@ describe("mapEventToActions", () => {
 		]);
 	});
 
+	test("history_replay renders status messages as plain inline info", () => {
+		const actions = mapEventToActions({
+			type: "history_replay",
+			sdkSessionId: "sdk-1",
+			messages: [
+				{
+					kind: "system",
+					event: "status",
+					text: "Request interrupted by user",
+				},
+			],
+		});
+		expect(actions).toEqual([
+			{
+				type: "replay",
+				messages: [
+					{
+						id: 1,
+						role: "info",
+						text: "Request interrupted by user",
+					},
+				],
+			},
+		]);
+	});
+
 	test("history_replay keeps heartbeat indicators compact", () => {
 		const actions = mapEventToActions({
 			type: "history_replay",

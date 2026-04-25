@@ -94,6 +94,32 @@ export class SessionService {
 		});
 	}
 
+	recordInterruptedRun(params: {
+		sessionId: string;
+		title: string;
+		model: string;
+		source: "agent" | "telegram" | "tui";
+	}) {
+		this.store?.setActiveSessionId(this.state.providerId, params.sessionId);
+		this.persistSession(params);
+		this.state.switchToSession(
+			{
+				agentId: "",
+				providerId: this.state.providerId,
+				sdkSessionId: params.sessionId,
+				ocSessionId: params.sessionId,
+				title: params.title,
+				model: params.model,
+				source: params.source,
+				tag: "chat",
+				createdAt: Date.now(),
+				lastActive: Date.now(),
+			},
+			undefined,
+		);
+		this.callbacks.onSessionStateChange?.();
+	}
+
 	recordAcceptedPromptTarget(
 		source: "telegram" | "tui",
 		telegramChatId?: number,

@@ -171,6 +171,21 @@ export class PromptDispatcher {
 			}
 		}
 
+		if (
+			abortController.signal.aborted &&
+			!completedEvent &&
+			!context.resumeSessionId &&
+			isVisible() &&
+			shouldPersistInterruptedRun(task.source)
+		) {
+			this.options.sessions.recordInterruptedRun({
+				sessionId: context.ocSessionId,
+				title: context.sessionTitle ?? "Untitled",
+				model: context.model,
+				source: toStoredSessionSource(task.source),
+			});
+		}
+
 		if (completedEvent) {
 			try {
 				await this.options.sessions.refreshTranscript(
@@ -235,6 +250,10 @@ function toStoredSessionSource(
 		return "agent";
 	}
 	return "tui";
+}
+
+function shouldPersistInterruptedRun(source: PromptSource): boolean {
+	return source === "browser" || source === "telegram" || source === "tui";
 }
 
 function toDisplayImages(
