@@ -592,6 +592,44 @@ prompt: do something
 		expect(scheduler.jobCount).toBe(0);
 	});
 
+	test("loads jobs with an explicit UTC offset timezone", () => {
+		const cronDir = makeCronDir();
+		writeJob(
+			cronDir,
+			"job.yaml",
+			`
+name: tz-job
+schedule: "0 9 * * *"
+timezone: UTC+8
+prompt: say hello
+				`.trim(),
+		);
+
+		const scheduler = createScheduler(cronDir);
+		scheduler.start();
+
+		expect(scheduler.jobCount).toBe(1);
+	});
+
+	test("skips jobs whose timezone is invalid", () => {
+		const cronDir = makeCronDir();
+		writeJob(
+			cronDir,
+			"bad-tz.yaml",
+			`
+name: bad-tz-job
+schedule: "0 9 * * *"
+timezone: America/New_York
+prompt: say hello
+				`.trim(),
+		);
+
+		const scheduler = createScheduler(cronDir);
+		scheduler.start();
+
+		expect(scheduler.jobCount).toBe(0);
+	});
+
 	test("stop cleans up all jobs", () => {
 		const cronDir = makeCronDir();
 		writeJob(cronDir, "job.yaml", SIMPLE_JOB);

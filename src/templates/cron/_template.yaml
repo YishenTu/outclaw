@@ -15,6 +15,8 @@
 #   enabled   — false to disable without deleting (default: true)
 #   model     — opus | sonnet | haiku (default: the agent's current model)
 #   effort    — low | medium | high | xhigh | max (default: runtime config)
+#   timezone  — UTC offset for the schedule: "UTC", "UTC+8", "UTC-7"
+#               (default: daemon's local timezone)
 #
 # Prompt guidelines:
 #   - Be specific about what to read, what to decide, what to write.
@@ -28,6 +30,7 @@ schedule: "0 9 * * 1"
 enabled: true
 # model: opus
 # effort: medium
+# timezone: UTC
 prompt: |
   <describe the task here — what to read, what to produce, what to write.>
 

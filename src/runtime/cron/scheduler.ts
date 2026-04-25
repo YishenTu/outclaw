@@ -8,7 +8,11 @@ import {
 } from "../../common/cron-job-file.ts";
 import { MODELS, resolveModelAlias } from "../../common/models.ts";
 import { extractError } from "../../common/protocol.ts";
-import { type CronJobConfig, parseJobConfig } from "./job-config.ts";
+import {
+	type CronJobConfig,
+	parseJobConfig,
+	parseUtcOffsetHours,
+} from "./job-config.ts";
 
 interface CronAgentRunResult {
 	sessionId?: string;
@@ -140,13 +144,21 @@ export class CronScheduler {
 		}
 
 		const telegramChatId = this.options.resolveTelegramChatId?.(config);
-		const cron = new Cron(config.schedule, () => {
-			const job = this.jobs.get(filename);
-			if (!job) {
-				return;
-			}
-			void this.executeJob(job);
-		});
+		const offsetHours =
+			config.timezone === undefined
+				? null
+				: parseUtcOffsetHours(config.timezone);
+		const cron = new Cron(
+			config.schedule,
+			offsetHours === null ? {} : { utcOffset: offsetHours * 60 },
+			() => {
+				const job = this.jobs.get(filename);
+				if (!job) {
+					return;
+				}
+				void this.executeJob(job);
+			},
+		);
 
 		this.jobs.set(filename, { filename, config, cron, telegramChatId });
 		this.filesByName.set(config.name, filename);

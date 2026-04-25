@@ -80,6 +80,58 @@ prompt: do something
 		);
 	});
 
+	test("parses timezone when provided", () => {
+		const yaml = `
+name: tz-job
+schedule: "0 9 * * *"
+timezone: UTC+8
+prompt: do something
+		`.trim();
+		const job = parseJobConfig(yaml);
+		expect(job.timezone).toBe("UTC+8");
+	});
+
+	test("accepts plain UTC", () => {
+		const yaml = `
+name: tz-job
+schedule: "0 9 * * *"
+timezone: UTC
+prompt: do something
+		`.trim();
+		const job = parseJobConfig(yaml);
+		expect(job.timezone).toBe("UTC");
+	});
+
+	test("defaults timezone to undefined when omitted", () => {
+		const yaml = `
+name: test-job
+schedule: "*/5 * * * *"
+prompt: do something
+		`.trim();
+		const job = parseJobConfig(yaml);
+		expect(job.timezone).toBeUndefined();
+	});
+
+	test("rejects IANA timezone names", () => {
+		const yaml = `
+name: test-job
+schedule: "*/5 * * * *"
+timezone: America/New_York
+prompt: do something
+		`.trim();
+		expect(() => parseJobConfig(yaml)).toThrow("Invalid timezone");
+	});
+
+	test("throws when timezone is malformed", () => {
+		const yaml = `
+name: test-job
+schedule: "*/5 * * * *"
+timezone: UTC+99
+prompt: do something
+		`.trim();
+		expect(() => parseJobConfig(yaml)).toThrow("Invalid timezone");
+	});
+
 	test("parses telegramUserId when provided", () => {
 		const yaml = `
 name: notify-job
@@ -135,5 +187,11 @@ prompt: do something
 		const reparsed = parseJobConfig(serializeJobConfig(parsed));
 
 		expect(reparsed).toEqual(parsed);
+	});
+
+	test("round-trips timezone through serialize", () => {
+		const parsed = parseJobConfig(`${VALID_YAML}\ntimezone: UTC-7`);
+		const reparsed = parseJobConfig(serializeJobConfig(parsed));
+		expect(reparsed.timezone).toBe("UTC-7");
 	});
 });
