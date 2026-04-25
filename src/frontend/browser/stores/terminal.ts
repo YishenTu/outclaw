@@ -29,6 +29,23 @@ export interface BrowserTerminalState {
 	setActiveTerminal: (agentId: string, terminalId: string) => void;
 }
 
+function createTerminalIdSuffix(now: number): string {
+	const browserCrypto = globalThis.crypto;
+	if (typeof browserCrypto?.randomUUID === "function") {
+		return browserCrypto.randomUUID();
+	}
+
+	if (typeof browserCrypto?.getRandomValues === "function") {
+		const bytes = new Uint8Array(16);
+		browserCrypto.getRandomValues(bytes);
+		return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+			"",
+		);
+	}
+
+	return `fallback-${now.toString(36)}`;
+}
+
 function createTerminalEntry(
 	agentId: string,
 	terminalNumber: number,
@@ -37,7 +54,7 @@ function createTerminalEntry(
 	return {
 		agentId,
 		createdAt: now,
-		id: `${agentId}-terminal-${terminalNumber}-${crypto.randomUUID()}`,
+		id: `${agentId}-terminal-${terminalNumber}-${createTerminalIdSuffix(now)}`,
 		name: terminalNumber === 1 ? "Terminal" : `Terminal ${terminalNumber}`,
 	};
 }

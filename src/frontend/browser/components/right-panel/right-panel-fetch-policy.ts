@@ -3,7 +3,9 @@ import type { UpperRightPanelTab } from "./right-panel-layout.ts";
 interface TreeFetchParams {
 	activeAgentId: string | null;
 	activeUpperTab: UpperRightPanelTab;
+	gitRevision: number;
 	loadedAgentId: string | null;
+	loadedGitRevision: number | null;
 	loadedRevision: number | null;
 	treeRevision: number;
 }
@@ -24,7 +26,10 @@ export function shouldFetchAgentTree(params: TreeFetchParams): boolean {
 	if (params.loadedAgentId !== params.activeAgentId) {
 		return true;
 	}
-	return params.loadedRevision !== params.treeRevision;
+	return (
+		params.loadedRevision !== params.treeRevision ||
+		params.loadedGitRevision !== params.gitRevision
+	);
 }
 
 export function shouldFetchGitStatus(params: GitFetchParams): boolean {

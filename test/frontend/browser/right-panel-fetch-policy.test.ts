@@ -10,7 +10,9 @@ describe("right panel fetch policy", () => {
 			shouldFetchAgentTree({
 				activeAgentId: "agent-alpha",
 				activeUpperTab: "files",
+				gitRevision: 0,
 				loadedAgentId: null,
+				loadedGitRevision: null,
 				loadedRevision: null,
 				treeRevision: 0,
 			}),
@@ -22,7 +24,9 @@ describe("right panel fetch policy", () => {
 			shouldFetchAgentTree({
 				activeAgentId: "agent-alpha",
 				activeUpperTab: "files",
+				gitRevision: 4,
 				loadedAgentId: "agent-alpha",
+				loadedGitRevision: 4,
 				loadedRevision: 2,
 				treeRevision: 2,
 			}),
@@ -34,7 +38,9 @@ describe("right panel fetch policy", () => {
 			shouldFetchAgentTree({
 				activeAgentId: "agent-beta",
 				activeUpperTab: "files",
+				gitRevision: 4,
 				loadedAgentId: "agent-alpha",
+				loadedGitRevision: 4,
 				loadedRevision: 2,
 				treeRevision: 2,
 			}),
@@ -46,9 +52,25 @@ describe("right panel fetch policy", () => {
 			shouldFetchAgentTree({
 				activeAgentId: "agent-alpha",
 				activeUpperTab: "files",
+				gitRevision: 4,
 				loadedAgentId: "agent-alpha",
+				loadedGitRevision: 4,
 				loadedRevision: 2,
 				treeRevision: 3,
+			}),
+		).toBe(true);
+	});
+
+	test("refetches the file tree when git status revision changes", () => {
+		expect(
+			shouldFetchAgentTree({
+				activeAgentId: "agent-alpha",
+				activeUpperTab: "files",
+				gitRevision: 5,
+				loadedAgentId: "agent-alpha",
+				loadedGitRevision: 4,
+				loadedRevision: 2,
+				treeRevision: 2,
 			}),
 		).toBe(true);
 	});
@@ -58,7 +80,9 @@ describe("right panel fetch policy", () => {
 			shouldFetchAgentTree({
 				activeAgentId: "agent-alpha",
 				activeUpperTab: "git",
+				gitRevision: 0,
 				loadedAgentId: null,
+				loadedGitRevision: null,
 				loadedRevision: null,
 				treeRevision: 0,
 			}),

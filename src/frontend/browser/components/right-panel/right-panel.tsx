@@ -174,6 +174,9 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const [loadedTreeRevision, setLoadedTreeRevision] = useState<number | null>(
 		null,
 	);
+	const [loadedTreeGitRevision, setLoadedTreeGitRevision] = useState<
+		number | null
+	>(null);
 	const [loadedGitRevision, setLoadedGitRevision] = useState<number | null>(
 		null,
 	);
@@ -191,6 +194,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 
 	useEffect(() => {
 		void treeRevision;
+		void gitRevision;
 
 		if (activeUpperTab !== "files") {
 			setTreeLoading(false);
@@ -203,6 +207,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			setTreeLoading(false);
 			setLoadedTreeAgentId(null);
 			setLoadedTreeRevision(null);
+			setLoadedTreeGitRevision(null);
 			return;
 		}
 
@@ -210,7 +215,9 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			!shouldFetchAgentTree({
 				activeAgentId,
 				activeUpperTab,
+				gitRevision,
 				loadedAgentId: loadedTreeAgentId,
+				loadedGitRevision: loadedTreeGitRevision,
 				loadedRevision: loadedTreeRevision,
 				treeRevision,
 			})
@@ -228,6 +235,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 					setTreeError(null);
 					setLoadedTreeAgentId(activeAgentId);
 					setLoadedTreeRevision(treeRevision);
+					setLoadedTreeGitRevision(gitRevision);
 				}
 			})
 			.catch((error) => {
@@ -238,6 +246,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 					);
 					setLoadedTreeAgentId(activeAgentId);
 					setLoadedTreeRevision(treeRevision);
+					setLoadedTreeGitRevision(gitRevision);
 				}
 			})
 			.finally(() => {
@@ -252,7 +261,9 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	}, [
 		activeAgentId,
 		activeUpperTab,
+		gitRevision,
 		loadedTreeAgentId,
+		loadedTreeGitRevision,
 		loadedTreeRevision,
 		treeRevision,
 	]);

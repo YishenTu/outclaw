@@ -40,6 +40,34 @@ describe("browser terminal store", () => {
 		);
 	});
 
+	test("createTerminal works without crypto.randomUUID", () => {
+		const originalCrypto = globalThis.crypto;
+		Object.defineProperty(globalThis, "crypto", {
+			configurable: true,
+			value: {
+				getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+			},
+			writable: true,
+		});
+
+		try {
+			const terminalId = store.getState().createTerminal("agent-a", {
+				now: 123,
+			});
+
+			expect(terminalId).toStartWith("agent-a-terminal-1-");
+			expect(store.getState().activeTerminalIdByAgent["agent-a"]).toBe(
+				terminalId,
+			);
+		} finally {
+			Object.defineProperty(globalThis, "crypto", {
+				configurable: true,
+				value: originalCrypto,
+				writable: true,
+			});
+		}
+	});
+
 	test("closeTerminal promotes the previous terminal when closing the active one", () => {
 		const firstTerminalId = store.getState().ensureTerminal("agent-a");
 		const secondTerminalId = store.getState().createTerminal("agent-a");
