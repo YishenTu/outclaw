@@ -25,6 +25,7 @@ export function ChatPanel() {
 	const model = useRuntimeStore((state) => state.model);
 	const effort = useRuntimeStore((state) => state.effort);
 	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
+	const runtimeRunning = useRuntimeStore((state) => state.running);
 	const activeAgent = agents.find((agent) => agent.agentId === activeAgentId);
 	const sessionKey =
 		activeAgentId === null
@@ -123,6 +124,7 @@ export function ChatPanel() {
 			<MessageInput
 				onSend={({ text, images }) => sendBrowserPrompt(text, images)}
 				interruptible={
+					runtimeRunning ||
 					(chatSession?.isStreaming ?? false) ||
 					(chatSession?.isThinking ?? false) ||
 					(chatSession?.isCompacting ?? false)

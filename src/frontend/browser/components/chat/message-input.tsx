@@ -12,6 +12,7 @@ import {
 	filterSupportedImageFiles,
 } from "./composer-images.ts";
 import { ContextGauge } from "./context-gauge.tsx";
+import { useGlobalStopShortcut } from "./global-stop-shortcut.ts";
 import { HeartbeatIndicator } from "./heartbeat-indicator.tsx";
 import { getImageThumbnailClassName } from "./image-thumbnail-styles.ts";
 import {
@@ -98,6 +99,8 @@ export function MessageInput({
 			textareaRef.current?.focus();
 		});
 	}
+
+	useGlobalStopShortcut(interruptible, () => sendCommand("/stop"));
 
 	useRuntimePopupShortcuts(runtimePopup, {
 		selectedIndex,
