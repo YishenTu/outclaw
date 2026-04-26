@@ -6,7 +6,7 @@ import type {
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
 import type { Config } from "../config.ts";
-import type { CronJobConfig } from "../cron/index.ts";
+import type { CronJobConfig, CronRunStartResult } from "../cron/index.ts";
 import { CronScheduler, createCronAgentRunner } from "../cron/index.ts";
 import { startMemoryIndexWatcher } from "../cron/memory-index-watcher.ts";
 import {
@@ -66,6 +66,12 @@ export interface AgentRuntime {
 	handleOpen(ws: WsClient): void;
 	name: string;
 	providerId: string;
+	runCronJob(params: { jobName: string }):
+		| CronRunStartResult
+		| {
+				status: "unavailable";
+				jobName: string;
+		  };
 	setCronResultHandler(
 		handler:
 			| ((params: {
@@ -200,6 +206,15 @@ export function createAgentRuntime(
 		handleMessage: controller.handleMessage,
 		handleOpen: controller.handleOpen,
 		name: options.name,
+		runCronJob(params) {
+			if (!cronScheduler) {
+				return {
+					status: "unavailable",
+					jobName: params.jobName,
+				};
+			}
+			return cronScheduler.startJob(params.jobName);
+		},
 		setCronResultHandler(handler) {
 			controller.setCronResultHandler(handler);
 		},

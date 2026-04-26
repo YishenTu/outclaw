@@ -232,6 +232,71 @@ describe("CronScheduler", () => {
 		]);
 	});
 
+	test("starts a manual job run without waiting for the agent result", async () => {
+		const cronDir = makeCronDir();
+		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
+
+		let releaseAgent: (() => void) | undefined;
+		const agentReleased = new Promise<void>((resolve) => {
+			releaseAgent = resolve;
+		});
+		const results: ScheduledCronResult[] = [];
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async () => {
+				await agentReleased;
+				return "manual result";
+			},
+			onResult: (event) => results.push(event),
+		});
+		scheduler.start();
+
+		const accepted = scheduler.startJob("test-job");
+
+		expect(accepted).toEqual({ status: "accepted", jobName: "test-job" });
+		expect(results).toEqual([]);
+
+		releaseAgent?.();
+		await waitForCondition(() => results.length === 1);
+
+		expect(results[0]).toMatchObject({
+			jobName: "test-job",
+			text: "manual result",
+		});
+	});
+
+	test("rejects a disabled manual job run before invoking the agent", () => {
+		const cronDir = makeCronDir();
+		writeJob(cronDir, "job.yaml", DISABLED_JOB);
+
+		let called = false;
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async () => {
+				called = true;
+				return "should not run";
+			},
+		});
+		scheduler.start();
+
+		expect(scheduler.startJob("disabled-job")).toEqual({
+			status: "disabled",
+			jobName: "disabled-job",
+		});
+		expect(called).toBe(false);
+	});
+
+	test("reports a missing manual job run by name", () => {
+		const cronDir = makeCronDir();
+		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
+
+		const scheduler = createScheduler(cronDir);
+		scheduler.start();
+
+		expect(scheduler.startJob("missing-job")).toEqual({
+			status: "not_found",
+			jobName: "missing-job",
+		});
+	});
+
 	test("includes the resolved telegram chat id in cron results", async () => {
 		const cronDir = makeCronDir();
 		writeJob(

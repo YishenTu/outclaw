@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { agentCommand } from "./cli/agent.ts";
 import { configCommand } from "./cli/config.ts";
+import { cronCommand } from "./cli/cron.ts";
 import { createDaemonCommands } from "./cli/daemon.ts";
 import { noteCommand } from "./cli/note.ts";
 import { onboardCommand } from "./cli/onboard.ts";
@@ -99,6 +100,12 @@ switch (command) {
 		break;
 	case "session":
 		await sessionCommand(argv);
+		break;
+	case "cron":
+		await cronCommand({
+			argv,
+			homeDir: HOME_DIR,
+		});
 		break;
 	case "note":
 		await noteCommand({ argv });

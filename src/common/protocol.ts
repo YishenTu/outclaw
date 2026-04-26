@@ -52,6 +52,12 @@ export interface AskMessage {
 	message: string;
 }
 
+export interface CronRunMessage {
+	type: "cron_run";
+	cwd: string;
+	jobName: string;
+}
+
 export type RuntimeClientType = "telegram" | "tui" | "browser" | "control";
 export type PromptSource =
 	| "telegram"
@@ -82,7 +88,8 @@ export type ClientMessage =
 	| PromptMessage
 	| CommandMessage
 	| RequestSkillsMessage
-	| AskMessage;
+	| AskMessage
+	| CronRunMessage;
 
 // --- Server → Client events ---
 
@@ -518,6 +525,16 @@ export interface AskErrorEvent {
 	message: string;
 }
 
+export interface CronRunResponseEvent {
+	type: "cron_run_response";
+	jobName: string;
+}
+
+export interface CronRunErrorEvent {
+	type: "cron_run_error";
+	message: string;
+}
+
 export type ServerEvent =
 	| TextEvent
 	| ThinkingEvent
@@ -546,7 +563,9 @@ export type ServerEvent =
 	| BrowserSidebarInvalidatedEvent
 	| SkillsUpdateEvent
 	| AskResponseEvent
-	| AskErrorEvent;
+	| AskErrorEvent
+	| CronRunResponseEvent
+	| CronRunErrorEvent;
 
 // --- Facade types (backend contract) ---
 

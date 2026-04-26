@@ -120,6 +120,7 @@ Reply `HEARTBEAT_OK` when there's nothing worth notifying — but don't default 
 
 Independent sessions triggered on a precise schedule, no shared history. Jobs live as YAML under `./cron/` — copy `cron/_template.yaml` to create a new one; it documents fields and prompt conventions.
 
+- Run `oc cron run <job-name>` from this workspace to manually trigger a job. The command is silent on success; the result follows the normal cron delivery path.
 - Reply `NO_REPLY` to suppress delivery when there's nothing meaningful to say.
 - Be concise — results are forwarded by the system.
 

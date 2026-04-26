@@ -27,6 +27,20 @@ interface CronExecutionResult {
 	text: string;
 }
 
+export type CronRunStartResult =
+	| {
+			status: "accepted";
+			jobName: string;
+	  }
+	| {
+			status: "disabled";
+			jobName: string;
+	  }
+	| {
+			status: "not_found";
+			jobName: string;
+	  };
+
 interface CronSchedulerOptions {
 	cronDir: string;
 	runAgent: (
@@ -84,6 +98,7 @@ export class CronScheduler {
 			job.cron.stop();
 		}
 		this.jobs.clear();
+		this.filesByName.clear();
 	}
 
 	async triggerJob(name: string) {
@@ -92,6 +107,33 @@ export class CronScheduler {
 		const job = this.jobs.get(filename);
 		if (!job) return;
 		await this.executeJob(job);
+	}
+
+	startJob(name: string): CronRunStartResult {
+		this.syncJobsWithDirectory();
+
+		const filename = this.filesByName.get(name);
+		const job = filename ? this.jobs.get(filename) : undefined;
+		if (job) {
+			void this.executeJob(job);
+			return {
+				status: "accepted",
+				jobName: job.config.name,
+			};
+		}
+
+		const disabled = this.findDisabledJob(name);
+		if (disabled) {
+			return {
+				status: "disabled",
+				jobName: disabled.name,
+			};
+		}
+
+		return {
+			status: "not_found",
+			jobName: name,
+		};
 	}
 
 	private syncJobsWithDirectory() {
@@ -253,6 +295,26 @@ export class CronScheduler {
 		this.watcher = undefined;
 		this.syncJobsWithDirectory();
 		this.startWatcher();
+	}
+
+	private findDisabledJob(name: string): CronJobConfig | undefined {
+		const files = this.readJobFiles();
+		if (!files) {
+			return undefined;
+		}
+
+		for (const filename of files) {
+			try {
+				const config = parseJobConfig(
+					readFileSync(join(this.options.cronDir, filename), "utf-8"),
+				);
+				if (config.name === name && !config.enabled) {
+					return config;
+				}
+			} catch {}
+		}
+
+		return undefined;
 	}
 }
 

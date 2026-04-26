@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	type BrowserSidebarInvalidatedEvent,
 	extractError,
@@ -25,7 +27,9 @@ interface SupervisorControllerOptions {
 
 interface IncomingMessage {
 	command?: string;
+	cwd?: string;
 	fromAgentId?: string;
+	jobName?: string;
 	message?: string;
 	to?: string;
 	type?: string;
@@ -98,6 +102,12 @@ export class SupervisorController {
 
 	private async handleControlMessage(ws: WsClient, message: string | Buffer) {
 		const data = this.tryParseMessage(message);
+
+		if (data?.type === "cron_run") {
+			this.handleCronRunMessage(ws, data);
+			return;
+		}
+
 		if (
 			data?.type !== "ask" ||
 			typeof data.fromAgentId !== "string" ||
@@ -140,6 +150,52 @@ export class SupervisorController {
 		} catch (error) {
 			this.sendAskError(ws, extractError(error));
 		}
+	}
+
+	private handleCronRunMessage(ws: WsClient, data: IncomingMessage) {
+		if (
+			data.type !== "cron_run" ||
+			typeof data.cwd !== "string" ||
+			typeof data.jobName !== "string" ||
+			data.jobName.trim() === ""
+		) {
+			this.sendCronRunError(ws, "Invalid cron run request");
+			return;
+		}
+
+		const runtime = this.resolveRuntimeFromCwd(data.cwd);
+		if (!runtime) {
+			this.sendCronRunError(ws, "cannot resolve agent from cwd");
+			return;
+		}
+
+		const result = runtime.runCronJob({
+			jobName: data.jobName.trim(),
+		});
+		if (result.status === "accepted") {
+			ws.send(
+				serialize({
+					type: "cron_run_response",
+					jobName: result.jobName,
+				}),
+			);
+			return;
+		}
+
+		if (result.status === "disabled") {
+			this.sendCronRunError(ws, `Cron job is disabled: ${result.jobName}`);
+			return;
+		}
+
+		if (result.status === "unavailable") {
+			this.sendCronRunError(
+				ws,
+				`Cron is not configured for agent: ${runtime.name}`,
+			);
+			return;
+		}
+
+		this.sendCronRunError(ws, `Cron job not found: ${result.jobName}`);
 	}
 
 	private handleAgentCommand(
@@ -234,6 +290,31 @@ export class SupervisorController {
 				message,
 			}),
 		);
+	}
+
+	private sendCronRunError(ws: WsClient, message: string) {
+		ws.send(
+			serialize({
+				type: "cron_run_error",
+				message,
+			}),
+		);
+	}
+
+	private resolveRuntimeFromCwd(cwd: string): AgentRuntime | undefined {
+		try {
+			const agentIdPath = join(cwd, ".agent-id");
+			if (!existsSync(agentIdPath)) {
+				return undefined;
+			}
+			const agentId = readFileSync(agentIdPath, "utf-8").trim();
+			if (!agentId) {
+				return undefined;
+			}
+			return this.options.registry.getById(agentId);
+		} catch {
+			return undefined;
+		}
 	}
 
 	private rememberAgentSelection(ws: WsClient, agentId: string) {

@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
 import { createSupervisor } from "../../../src/runtime/supervisor/create-supervisor.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
@@ -102,6 +105,37 @@ function collectUntilDone(ws: WebSocket) {
 			ws.addEventListener("message", listener);
 		},
 	);
+}
+
+function createCronAgentHome(agentId: string, prompt: string) {
+	const dir = mkdtempSync(join(tmpdir(), "outclaw-supervisor-cron-"));
+	mkdirSync(join(dir, "cron"), { recursive: true });
+	writeFileSync(join(dir, ".agent-id"), `${agentId}\n`);
+	writeFileSync(
+		join(dir, "cron", "daily.yaml"),
+		`
+name: daily
+schedule: "* * * * *"
+prompt: ${prompt}
+`.trim(),
+	);
+	return dir;
+}
+
+async function waitForCondition(
+	check: () => boolean | Promise<boolean>,
+	timeoutMs = 500,
+) {
+	const deadline = Date.now() + timeoutMs;
+
+	while (Date.now() < deadline) {
+		if (await check()) {
+			return;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+
+	throw new Error("Timed out waiting for condition");
 }
 
 describe("createSupervisor", () => {
@@ -623,6 +657,63 @@ describe("createSupervisor", () => {
 			type: "ask_response",
 			text: "from mimi",
 		});
+		ws.close();
+	});
+
+	test("control clients trigger cron jobs scoped by cwd agent id", async () => {
+		const raillyHome = createCronAgentHome("agent-railly", "run railly cron");
+		const mimiHome = createCronAgentHome("agent-mimi", "run mimi cron");
+		const raillyFacade = new MockFacade();
+		raillyFacade.textChunks = ["railly cron result"];
+		const mimiFacade = new MockFacade();
+		mimiFacade.textChunks = ["mimi cron result"];
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					cwd: raillyHome,
+					cronDir: join(raillyHome, "cron"),
+					promptHomeDir: raillyHome,
+					facade: raillyFacade,
+				}),
+				createAgentRuntime({
+					agentId: "agent-mimi",
+					name: "mimi",
+					cwd: mimiHome,
+					cronDir: join(mimiHome, "cron"),
+					promptHomeDir: mimiHome,
+					facade: mimiFacade,
+				}),
+			],
+		});
+		cleanup = async () => {
+			await supervisor.stop();
+			rmSync(raillyHome, { recursive: true, force: true });
+			rmSync(mimiHome, { recursive: true, force: true });
+		};
+		const ws = await connectControlWs(supervisor.port);
+
+		ws.send(
+			JSON.stringify({
+				type: "cron_run",
+				cwd: raillyHome,
+				jobName: "daily",
+			}),
+		);
+
+		expect(
+			await waitForEvent(ws, (event) => event.type === "cron_run_response"),
+		).toEqual({
+			type: "cron_run_response",
+			jobName: "daily",
+		});
+		await waitForCondition(() =>
+			raillyFacade.callOrder.includes("run railly cron"),
+		);
+		expect(mimiFacade.callOrder).toEqual([]);
+
 		ws.close();
 	});
 

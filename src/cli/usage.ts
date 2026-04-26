@@ -12,7 +12,7 @@ export function hasHelpFlag(values: string[]): boolean {
 
 export function formatUsage() {
 	return joinLines([
-		"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|session|note>",
+		"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|session|cron|note>",
 		"       oc start|restart [--lan] [--host HOST]",
 		"       oc onboard",
 		"       oc agent <list|create|config|rename|remove|ask|name>",
@@ -21,6 +21,7 @@ export function formatUsage() {
 		"       oc session list [--limit N] [--tag cron]",
 		"       oc session search <query> [--limit N]",
 		"       oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
+		"       oc cron run <cron-name>",
 		'       oc note "<content>" [--salience <tag>] [--hint <schema>]',
 		"",
 		"Quick start:",
@@ -204,6 +205,36 @@ export function formatConfigSecureUsage() {
 
 export function printConfigSecureUsage() {
 	console.log(formatConfigSecureUsage());
+}
+
+export function formatCronUsage() {
+	return joinLines([
+		"Usage: oc cron <run>",
+		"       oc cron run <cron-name>",
+		"",
+		"Commands:",
+		"       run    trigger a cron job in the running daemon",
+		"",
+		"Run inside an agent workspace so the agent can be resolved from cwd.",
+	]);
+}
+
+export function printCronUsage() {
+	console.log(formatCronUsage());
+}
+
+export function formatCronRunUsage() {
+	return joinLines([
+		"Usage: oc cron run <cron-name>",
+		"",
+		"Triggers a cron job in the running daemon.",
+		"Run inside an agent workspace so the agent can be resolved from cwd.",
+		"On success, prints nothing; cron delivery uses the normal cron path.",
+	]);
+}
+
+export function printCronRunUsage() {
+	console.log(formatCronRunUsage());
 }
 
 export function formatSessionUsage() {

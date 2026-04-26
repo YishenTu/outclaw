@@ -251,6 +251,20 @@ describe("CLI", () => {
 		expect(exitCode).toBe(0);
 	});
 
+	test("cron dash h prints cron-specific help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["cron", "-h"]);
+		expect(stdout).toContain("Usage: oc cron <run>");
+		expect(stdout).toContain("oc cron run <cron-name>");
+		expect(exitCode).toBe(0);
+	});
+
+	test("cron run dash h prints run help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["cron", "run", "-h"]);
+		expect(stdout).toContain("Usage: oc cron run <cron-name>");
+		expect(stdout).toContain("Triggers a cron job in the running daemon.");
+		expect(exitCode).toBe(0);
+	});
+
 	test("session list dash h prints list help and exits successfully", () => {
 		const { stdout, exitCode } = runCli(["session", "list", "-h"]);
 		expect(stdout).toContain("Usage: oc session list [--limit N] [--tag cron]");
@@ -951,6 +965,81 @@ describe("CLI", () => {
 			expect(result.stderr).toContain(
 				"agent ask connection closed before response",
 			);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("cron run sends a cwd-scoped control request and prints nothing on acceptance", async () => {
+		const agentHome = createAgentHome("railly", "agent-railly");
+		const server = createTestServer({
+			port: 0,
+			fetch(req, websocketServer) {
+				if (websocketServer.upgrade(req)) {
+					return;
+				}
+				return new Response("ok");
+			},
+			websocket: {
+				message(ws, rawMessage) {
+					const message = JSON.parse(String(rawMessage));
+					expect(message).toEqual({
+						type: "cron_run",
+						cwd: agentHome,
+						jobName: "memory-distill",
+					});
+					ws.send(
+						JSON.stringify({
+							type: "cron_run_response",
+							jobName: "memory-distill",
+						}),
+					);
+				},
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(["cron", "run", "memory-distill"], {
+				cwd: agentHome,
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("");
+			expect(result.stderr).toBe("");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("cron run prints daemon control errors to stderr", async () => {
+		const agentHome = createAgentHome("railly", "agent-railly");
+		const server = createTestServer({
+			port: 0,
+			fetch(req, websocketServer) {
+				if (websocketServer.upgrade(req)) {
+					return;
+				}
+				return new Response("ok");
+			},
+			websocket: {
+				message(ws) {
+					ws.send(
+						JSON.stringify({
+							type: "cron_run_error",
+							message: "Cron job not found: missing",
+						}),
+					);
+				},
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(["cron", "run", "missing"], {
+				cwd: agentHome,
+			});
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr).toContain("Cron job not found: missing");
 		} finally {
 			server.stop();
 		}
