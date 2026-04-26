@@ -20,6 +20,7 @@ export interface SessionsState {
 	setActiveSession: (agentId: string, session: SessionRef | null) => void;
 	renameSession: (session: SessionRef, title: string) => void;
 	deleteSession: (session: SessionRef) => void;
+	deleteSessionBySdkId: (sdkSessionId: string) => void;
 }
 
 function matchesSession(left: SessionRef, right: SessionRef): boolean {
@@ -76,6 +77,26 @@ export const useSessionsStore = create<SessionsState>((set) => ({
 							? null
 							: (activeSession ?? null),
 				},
+			};
+		}),
+	deleteSessionBySdkId: (sdkSessionId) =>
+		set((state) => {
+			const nextSessionsByAgent: Record<string, SessionEntry[]> = {};
+			for (const [agentId, sessions] of Object.entries(state.sessionsByAgent)) {
+				nextSessionsByAgent[agentId] = sessions.filter(
+					(entry) => entry.sdkSessionId !== sdkSessionId,
+				);
+			}
+			const nextActiveByAgent: Record<string, SessionRef | null> = {};
+			for (const [agentId, active] of Object.entries(
+				state.activeSessionByAgent,
+			)) {
+				nextActiveByAgent[agentId] =
+					active && active.sdkSessionId === sdkSessionId ? null : active;
+			}
+			return {
+				sessionsByAgent: nextSessionsByAgent,
+				activeSessionByAgent: nextActiveByAgent,
 			};
 		}),
 }));

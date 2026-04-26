@@ -519,6 +519,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				}
 				case "session_deleted": {
 					useRuntimePopupStore.getState().closePopup();
+					useSessionsStore.getState().deleteSessionBySdkId(event.sdkSessionId);
 					refreshSidebar();
 					return;
 				}

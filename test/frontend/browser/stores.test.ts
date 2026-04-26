@@ -186,6 +186,48 @@ describe("browser stores", () => {
 		).toBeNull();
 	});
 
+	test("sessions store removes sessions across agents by sdk session id", () => {
+		const REMOTE_SESSION: SessionEntry = {
+			agentId: "agent-b",
+			providerId: "claude",
+			sdkSessionId: "sdk-alpha",
+			title: "Remote alpha",
+			model: "sonnet",
+			lastActive: 70,
+		};
+		useSessionsStore
+			.getState()
+			.setSessions("agent-a", [
+				SESSION_ALPHA,
+				SESSION_BETA,
+				SESSION_OTHER_PROVIDER,
+			]);
+		useSessionsStore.getState().setSessions("agent-b", [REMOTE_SESSION]);
+		useSessionsStore.getState().setActiveSession("agent-a", {
+			agentId: "agent-a",
+			providerId: "claude",
+			sdkSessionId: "sdk-alpha",
+		});
+		useSessionsStore.getState().setActiveSession("agent-b", {
+			agentId: "agent-b",
+			providerId: "claude",
+			sdkSessionId: "sdk-alpha",
+		});
+
+		useSessionsStore.getState().deleteSessionBySdkId("sdk-alpha");
+
+		expect(useSessionsStore.getState().sessionsByAgent["agent-a"]).toEqual([
+			SESSION_BETA,
+		]);
+		expect(useSessionsStore.getState().sessionsByAgent["agent-b"]).toEqual([]);
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-a"],
+		).toBeNull();
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-b"],
+		).toBeNull();
+	});
+
 	test("tabs store preserves the permanent chat tab", () => {
 		useTabsStore.getState().openTab({
 			type: "file",
