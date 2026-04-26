@@ -5,7 +5,10 @@ import {
 	resolveOptionalUserId,
 } from "../config/env.ts";
 import { readStoredAgentConfig } from "../config.ts";
-import type { AgentConfig } from "./agent-config.ts";
+import {
+	type AgentConfig,
+	DEFAULT_ROLLOVER_IDLE_MINUTES,
+} from "./agent-config.ts";
 
 export type { AgentConfig, StoredAgentConfig } from "./agent-config.ts";
 
@@ -18,7 +21,8 @@ export function readAgentConfig(options: {
 
 	return {
 		rollover: {
-			idleMinutes: stored.rollover?.idleMinutes ?? 480,
+			idleMinutes:
+				stored.rollover?.idleMinutes ?? DEFAULT_ROLLOVER_IDLE_MINUTES,
 		},
 		telegram: {
 			botToken: resolveEnvString(stored.telegram?.botToken ?? ""),

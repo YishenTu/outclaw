@@ -253,7 +253,7 @@ describe("loadGlobalConfig", () => {
 				agents: {
 					"agent-railly": {
 						rollover: {
-							idleMinutes: 480,
+							idleMinutes: 240,
 						},
 						telegram: {
 							botToken: "token-a",
@@ -335,7 +335,7 @@ describe("loadGlobalConfig", () => {
 				agents: {
 					"agent-railly": {
 						rollover: {
-							idleMinutes: 480,
+							idleMinutes: 240,
 						},
 						telegram: {
 							botToken: "token-a",

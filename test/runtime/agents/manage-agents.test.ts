@@ -69,7 +69,7 @@ describe("agent management", () => {
 				agents: {
 					"agent-railly": {
 						rollover: {
-							idleMinutes: 480,
+							idleMinutes: 240,
 						},
 						telegram: {
 							allowedUsers: [2, 1],
@@ -115,7 +115,7 @@ describe("agent management", () => {
 				agents: {
 					"agent-railly": {
 						rollover: {
-							idleMinutes: 480,
+							idleMinutes: 240,
 						},
 						telegram: {
 							allowedUsers: [2, 1],
@@ -406,7 +406,7 @@ describe("agent management", () => {
 				agents: {
 					"agent-railly": {
 						rollover: {
-							idleMinutes: 480,
+							idleMinutes: 240,
 						},
 						telegram: {
 							allowedUsers: [],

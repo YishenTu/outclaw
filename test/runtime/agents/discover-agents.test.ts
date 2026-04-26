@@ -67,7 +67,7 @@ describe("agent discovery", () => {
 					configPath: join(homeDir, "config.json"),
 					config: {
 						rollover: {
-							idleMinutes: 480,
+							idleMinutes: 240,
 						},
 						telegram: {
 							botToken: "",
@@ -84,7 +84,7 @@ describe("agent discovery", () => {
 					configPath: join(homeDir, "config.json"),
 					config: {
 						rollover: {
-							idleMinutes: 480,
+							idleMinutes: 240,
 						},
 						telegram: {
 							botToken: "railly-token",
@@ -161,7 +161,7 @@ describe("agent config", () => {
 
 			expect(readAgentConfig({ agentId: "agent-railly", homeDir })).toEqual({
 				rollover: {
-					idleMinutes: 480,
+					idleMinutes: 240,
 				},
 				telegram: {
 					botToken: "bot-token",
@@ -195,7 +195,7 @@ describe("agent config", () => {
 
 			expect(readAgentConfig({ agentId: "agent-railly", homeDir })).toEqual({
 				rollover: {
-					idleMinutes: 480,
+					idleMinutes: 240,
 				},
 				telegram: {
 					botToken: "",
@@ -217,7 +217,7 @@ describe("agent config", () => {
 
 			expect(config).toEqual({
 				rollover: {
-					idleMinutes: 480,
+					idleMinutes: 240,
 				},
 				telegram: {
 					botToken: "",
@@ -231,7 +231,7 @@ describe("agent config", () => {
 				agents: {
 					"agent-railly": {
 						rollover: {
-							idleMinutes: 480,
+							idleMinutes: 240,
 						},
 						telegram: {
 							botToken: "",
@@ -312,7 +312,7 @@ describe("agent config", () => {
 				agents: {
 					"agent-railly": {
 						rollover: {
-							idleMinutes: 480,
+							idleMinutes: 240,
 						},
 						telegram: {
 							botToken: "$BOT_TOKEN",

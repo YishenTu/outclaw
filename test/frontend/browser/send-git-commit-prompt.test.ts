@@ -14,7 +14,9 @@ describe("sendGitCommitPrompt", () => {
 		});
 
 		expect(sent).toBe(true);
-		expect(calls).toEqual(["agent-alpha:Commit and push changes in ~/.outclaw."]);
+		expect(calls).toEqual([
+			"agent-alpha:Commit and push changes in ~/.outclaw.",
+		]);
 	});
 
 	test("does not send when there is no active agent", () => {

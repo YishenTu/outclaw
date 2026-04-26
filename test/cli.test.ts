@@ -1104,7 +1104,7 @@ describe("CLI", () => {
 			agents: {
 				"agent-railly": {
 					rollover: {
-						idleMinutes: 480,
+						idleMinutes: 240,
 					},
 					telegram: {
 						botToken: "$RAILLY_TELEGRAM_BOT_TOKEN",
@@ -1113,7 +1113,7 @@ describe("CLI", () => {
 				},
 				"agent-mimi": {
 					rollover: {
-						idleMinutes: 480,
+						idleMinutes: 240,
 					},
 					telegram: {
 						botToken: "$MIMI_TELEGRAM_BOT_TOKEN",

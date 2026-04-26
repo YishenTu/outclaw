@@ -20,9 +20,11 @@ export interface AgentConfig {
 	};
 }
 
+export const DEFAULT_ROLLOVER_IDLE_MINUTES = 4 * 60;
+
 export const DEFAULT_STORED_AGENT_CONFIG: StoredAgentConfig = {
 	rollover: {
-		idleMinutes: 480,
+		idleMinutes: DEFAULT_ROLLOVER_IDLE_MINUTES,
 	},
 	telegram: {
 		botToken: "",
@@ -48,7 +50,7 @@ export function normalizeStoredAgentConfig(
 			idleMinutes:
 				typeof rollover?.idleMinutes === "number"
 					? rollover.idleMinutes
-					: (DEFAULT_STORED_AGENT_CONFIG.rollover?.idleMinutes ?? 480),
+					: DEFAULT_ROLLOVER_IDLE_MINUTES,
 		},
 		telegram: {
 			...telegram,
