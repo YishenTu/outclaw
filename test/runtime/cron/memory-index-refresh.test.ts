@@ -78,6 +78,15 @@ function writeSchema(
 	writeFileSync(join(home, "schemas", name), content);
 }
 
+function writeSchemaFrontmatter(
+	home: string,
+	name: string,
+	frontmatter: string,
+): void {
+	const content = `---\n${frontmatter}\n---\n\n# Model\n\n---\n\n# Observations\n`;
+	writeFileSync(join(home, "schemas", name), content);
+}
+
 describe("refreshMemoryIndex", () => {
 	let tempHome: string | undefined;
 
@@ -175,6 +184,29 @@ Do not remove this outro.
 			"<!-- hot-schemas:begin -->\n- schema_project_outclaw.md — Mini OpenClaw — autonomous AI agent harness.\n<!-- hot-schemas:end -->",
 		);
 		expect(content).not.toContain("This body text should not be indexed.");
+	});
+
+	test("accepts quoted dates and inline comments in schema frontmatter", () => {
+		tempHome = createHome();
+		writeSchemaFrontmatter(
+			tempHome,
+			"schema_yaml_dates.md",
+			[
+				"name: yaml_dates",
+				"kind: topic",
+				"description: YAML date syntax stays valid.",
+				'last_observation_at: "2026-04-20"',
+				"last_synthesized: 2026-04-15 # last weekly run",
+			].join("\n"),
+		);
+		const today = new Date(2026, 3, 20);
+
+		refreshMemoryIndex({ memoryRoot: tempHome, now: today });
+
+		const content = readFileSync(schemaIndexPath(tempHome), "utf-8");
+		expect(content).toContain(
+			"- schema_yaml_dates.md — YAML date syntax stays valid.",
+		);
 	});
 
 	test("ranks schemas by last_observation_at descending within a tier", () => {

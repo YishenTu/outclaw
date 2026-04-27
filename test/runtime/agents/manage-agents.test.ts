@@ -210,6 +210,18 @@ describe("agent management", () => {
 					"utf-8",
 				),
 			).toContain("oc agent create <name>");
+			expect(
+				readFileSync(
+					join(
+						created.agentHomeDir,
+						"skills",
+						"oc",
+						"references",
+						"schema-memory.md",
+					),
+					"utf-8",
+				),
+			).toContain("oc schema stale");
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 		}

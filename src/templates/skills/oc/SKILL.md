@@ -1,11 +1,11 @@
 ---
 name: oc
-description: Use when operating the `oc` CLI for daemon control, agent management, config updates, agent-to-agent communication, past-session lookup, or capturing observations to memory (`oc note`). Also invoke when the user references a past or different session you need to inspect.
+description: Use when operating the `oc` CLI for daemon control, agent management, config updates, agent-to-agent communication, past-session lookup, memory capture (`oc note`), or schema-memory freshness checks (`oc schema`). Also invoke when the user references a past or different session you need to inspect.
 ---
 
 # oc
 
-Use the `oc` CLI to manage agents, control the daemon, rebuild the browser bundle, communicate across agents, inspect past sessions, and capture observations into memory.
+Use the `oc` CLI to manage agents, control the daemon, rebuild the browser bundle, communicate across agents, inspect past sessions, and work with agent memory.
 
 ## Quick Start
 
@@ -23,6 +23,7 @@ Use the `oc` CLI to manage agents, control the daemon, rebuild the browser bundl
 - The user asks about past sessions, transcripts, or cron run history -> read [references/session-lookup.md](references/session-lookup.md)
 - The user references a past or different session you need to inspect -> read [references/session-lookup.md](references/session-lookup.md)
 - You need to capture an observation to memory (the `oc note` write primitive for daily memory) -> read [references/memory-capture.md](references/memory-capture.md)
+- You need to check whether schema Models are behind their Observations, or identify schemas needing synthesis attention -> read [references/schema-memory.md](references/schema-memory.md)
 
 ## Gotchas
 
@@ -32,6 +33,7 @@ Use the `oc` CLI to manage agents, control the daemon, rebuild the browser bundl
 - `oc session list` defaults to 20 results. Use `--limit N` to see more.
 - `oc agent ask` blocks indefinitely unless `--timeout` is passed. On timeout it exits with code 124.
 - `oc cron run <cron-name>` is silent on accepted execution. The cron result uses the normal cron delivery path.
+- `oc schema stale` exits 0 even when it prints stale or broken schemas. Treat rows as information that needs attention, not as a shell failure.
 
 ## Response Style
 

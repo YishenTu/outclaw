@@ -56,6 +56,22 @@ function createAgentHome(name: string, agentId: string) {
 	return agentHome;
 }
 
+function writeSchema(
+	agentHome: string,
+	filename: string,
+	frontmatter: Record<string, string>,
+) {
+	const schemasDir = join(agentHome, "schemas");
+	mkdirSync(schemasDir, { recursive: true });
+	const body = Object.entries(frontmatter)
+		.map(([key, value]) => `${key}: ${value}`)
+		.join("\n");
+	writeFileSync(
+		join(schemasDir, filename),
+		`---\n${body}\n---\n\n# Model\n\n---\n\n# Observations\n`,
+	);
+}
+
 function seedSession(params: {
 	agentId: string;
 	providerId: string;
@@ -262,6 +278,13 @@ describe("CLI", () => {
 		const { stdout, exitCode } = runCli(["cron", "run", "-h"]);
 		expect(stdout).toContain("Usage: oc cron run <cron-name>");
 		expect(stdout).toContain("Triggers a cron job in the running daemon.");
+		expect(exitCode).toBe(0);
+	});
+
+	test("schema dash h prints schema-specific help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["schema", "-h"]);
+		expect(stdout).toContain("Usage: oc schema <status|stale>");
+		expect(stdout).toContain("oc schema status [--agent <name|id>] [--json]");
 		expect(exitCode).toBe(0);
 	});
 
@@ -797,6 +820,76 @@ describe("CLI", () => {
 		const { stdout, exitCode } = runCli(["agent", "railly"]);
 		expect(stdout).toContain("not running");
 		expect(exitCode).toBe(1);
+	});
+
+	test("schema status resolves the current agent from cwd .agent-id", () => {
+		const agentHome = createAgentHome("railly", "agent-railly");
+		writeSchema(agentHome, "food-and-drink.md", {
+			name: "food-and-drink",
+			kind: "topic",
+			last_observation_at: "2026-04-26",
+			last_synthesized: "2026-04-27",
+		});
+		writeSchema(agentHome, "working-with-yishen.md", {
+			name: "working-with-yishen",
+			kind: "topic",
+			last_observation_at: "2026-04-26",
+			last_synthesized: "2026-04-20",
+		});
+
+		const result = runCli(["schema", "status"], { cwd: agentHome });
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toBe(
+			[
+				"working-with-yishen  obs:2026-04-26  syn:2026-04-20  STALE",
+				"food-and-drink       obs:2026-04-26  syn:2026-04-27  fresh",
+			].join("\n"),
+		);
+		expect(existsSync(join(OUTCLAW_DIR, "config.json"))).toBe(false);
+	});
+
+	test("schema stale resolves --agent by name and emits json", () => {
+		const agentHome = createAgentHome("railly", "agent-railly");
+		writeSchema(agentHome, "fresh.md", {
+			name: "fresh",
+			kind: "topic",
+			last_observation_at: "2026-04-20",
+			last_synthesized: "2026-04-21",
+		});
+		writeSchema(agentHome, "stale.md", {
+			name: "stale",
+			kind: "topic",
+			last_observation_at: "2026-04-26",
+			last_synthesized: "2026-04-20",
+		});
+		writeSchema(agentHome, "broken.md", {
+			name: "broken",
+			kind: "topic",
+			last_observation_at: "2026-04-26",
+		});
+
+		const result = runCli(["schema", "stale", "--agent", "railly", "--json"], {
+			cwd: TEST_HOME,
+		});
+
+		expect(result.exitCode).toBe(0);
+		expect(JSON.parse(result.stdout)).toEqual([
+			{
+				name: "stale",
+				last_observation_at: "2026-04-26",
+				last_synthesized: "2026-04-20",
+				state: "STALE",
+			},
+			{
+				name: "broken",
+				last_observation_at: "2026-04-26",
+				last_synthesized: null,
+				state: "BROKEN",
+				reason: "missing last_synthesized",
+			},
+		]);
+		expect(existsSync(join(OUTCLAW_DIR, "config.json"))).toBe(false);
 	});
 
 	test("agent ask resolves sender from cwd and prints control response", async () => {

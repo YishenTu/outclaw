@@ -1,6 +1,10 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parse as parseYaml } from "yaml";
+import {
+	parseSchemaDescription,
+	parseSchemaFrontmatter,
+	readSchemaDateField,
+} from "../memory/schema-frontmatter.ts";
 
 const SCHEMAS_DIR = "schemas";
 const SCHEMA_INDEX_FILE = "index.md";
@@ -161,22 +165,16 @@ function parseSchemaEntry(
 		return undefined;
 	}
 
-	const frontmatter = extractFrontmatter(content);
-	if (!frontmatter) {
+	const parsed = parseSchemaFrontmatter(content);
+	if (parsed.status !== "ok") {
 		return undefined;
 	}
 
-	let parsed: Record<string, unknown>;
-	try {
-		parsed = parseYaml(frontmatter) ?? {};
-	} catch {
-		return undefined;
-	}
-
-	const rawDate = parsed.last_observation_at;
-	const isoDate =
-		typeof rawDate === "string" ? rawDate : formatIsoDate(rawDate);
-	if (!isoDate) {
+	const isoDate = readSchemaDateField(
+		parsed.frontmatter,
+		"last_observation_at",
+	).value;
+	if (isoDate === null) {
 		return undefined;
 	}
 
@@ -188,21 +186,10 @@ function parseSchemaEntry(
 	return {
 		filename,
 		lastObservationAt,
-		description: parseDescription(parsed) ?? deriveNameFallback(filename),
+		description:
+			parseSchemaDescription(parsed.frontmatter) ??
+			deriveNameFallback(filename),
 	};
-}
-
-function extractFrontmatter(content: string): string | undefined {
-	if (!content.startsWith("---\n")) return undefined;
-	const end = content.indexOf("\n---", 4);
-	if (end < 0) return undefined;
-	return content.slice(4, end);
-}
-
-function parseDescription(parsed: Record<string, unknown>): string | undefined {
-	const description =
-		typeof parsed.description === "string" ? parsed.description.trim() : "";
-	return description.length > 0 ? description : undefined;
 }
 
 function deriveNameFallback(filename: string): string {
@@ -217,16 +204,6 @@ function parseIsoDate(value: string): Date | undefined {
 	const day = Number(match[3]);
 	const date = new Date(year, month - 1, day);
 	return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-function formatIsoDate(value: unknown): string | undefined {
-	if (value instanceof Date && !Number.isNaN(value.getTime())) {
-		const year = value.getFullYear();
-		const month = String(value.getMonth() + 1).padStart(2, "0");
-		const day = String(value.getDate()).padStart(2, "0");
-		return `${year}-${month}-${day}`;
-	}
-	return undefined;
 }
 
 function diffDays(earlier: Date, later: Date): number {

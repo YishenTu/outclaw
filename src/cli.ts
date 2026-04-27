@@ -7,6 +7,7 @@ import { cronCommand } from "./cli/cron.ts";
 import { createDaemonCommands } from "./cli/daemon.ts";
 import { noteCommand } from "./cli/note.ts";
 import { onboardCommand } from "./cli/onboard.ts";
+import { schemaCommand } from "./cli/schema.ts";
 import { sessionCommand } from "./cli/session.ts";
 import {
 	isHelpFlag,
@@ -109,6 +110,12 @@ switch (command) {
 		break;
 	case "note":
 		await noteCommand({ argv });
+		break;
+	case "schema":
+		await schemaCommand({
+			argv,
+			homeDir: HOME_DIR,
+		});
 		break;
 	case "dev":
 		daemon.dev();

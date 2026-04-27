@@ -12,7 +12,7 @@ export function hasHelpFlag(values: string[]): boolean {
 
 export function formatUsage() {
 	return joinLines([
-		"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|session|cron|note>",
+		"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|session|cron|note|schema>",
 		"       oc start|restart [--lan] [--host HOST]",
 		"       oc onboard",
 		"       oc agent <list|create|config|rename|remove|ask|name>",
@@ -23,6 +23,7 @@ export function formatUsage() {
 		"       oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
 		"       oc cron run <cron-name>",
 		'       oc note "<content>" [--salience <tag>] [--hint <schema>]',
+		"       oc schema <status|stale> [--agent <name|id>] [--json]",
 		"",
 		"Quick start:",
 		"       first run:   oc build && oc start",
@@ -235,6 +236,38 @@ export function formatCronRunUsage() {
 
 export function printCronRunUsage() {
 	console.log(formatCronRunUsage());
+}
+
+export function formatSchemaUsage() {
+	return joinLines([
+		"Usage: oc schema <status|stale>",
+		"       oc schema status [--agent <name|id>] [--json]",
+		"       oc schema stale [--agent <name|id>] [--json]",
+		"",
+		"Commands:",
+		"       status   list all schemas with freshness state",
+		"       stale    list stale and broken schemas",
+		"",
+		"Run inside an agent workspace to inspect that agent's schemas.",
+	]);
+}
+
+export function printSchemaUsage() {
+	console.log(formatSchemaUsage());
+}
+
+export function formatSchemaStatusUsage() {
+	return joinLines([
+		"Usage: oc schema status [--agent <name|id>] [--json]",
+		"       oc schema stale [--agent <name|id>] [--json]",
+		"",
+		"Reads schemas/*.md and compares last_observation_at to last_synthesized.",
+		"Use --agent outside an agent workspace.",
+	]);
+}
+
+export function printSchemaStatusUsage() {
+	console.log(formatSchemaStatusUsage());
 }
 
 export function formatSessionUsage() {
