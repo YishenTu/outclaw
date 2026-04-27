@@ -176,9 +176,10 @@ describe("transcript components", () => {
 
 		try {
 			await flushUpdates();
-			expect(getOutput()).toContain("assistant reply");
-			expect(getOutput()).toContain("runtime status");
-			expect(getOutput()).toContain("✗ broken");
+			const output = stripVTControlCharacters(getOutput());
+			expect(output).toContain("assistant reply");
+			expect(output).toContain("runtime status");
+			expect(output).toContain("✗ broken");
 		} finally {
 			app.unmount();
 			app.cleanup();
@@ -200,7 +201,7 @@ describe("transcript components", () => {
 
 		try {
 			await flushUpdates();
-			const output = getOutput();
+			const output = stripVTControlCharacters(getOutput());
 			expect(output).toContain("\n");
 			expect(output).toContain("   ~ context compacted ~");
 		} finally {

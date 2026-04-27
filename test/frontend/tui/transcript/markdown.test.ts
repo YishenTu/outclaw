@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import { renderMarkdown } from "../../../../src/frontend/tui/transcript/markdown.ts";
 
-const ESC = "\x1b";
-const ANSI_RE = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
-
 function stripAnsi(text: string): string {
-	return text.replace(ANSI_RE, "");
+	return stripVTControlCharacters(text);
 }
 
 describe("renderMarkdown", () => {
@@ -37,7 +35,7 @@ describe("renderMarkdown", () => {
 
 	test("renders a lone triple backtick without losing surrounding text", () => {
 		const md = "before\n```\ncode line";
-		const result = renderMarkdown(md, 80);
+		const result = stripAnsi(renderMarkdown(md, 80));
 		expect(result).toContain("before");
 		expect(result).toContain("code line");
 	});
@@ -45,11 +43,11 @@ describe("renderMarkdown", () => {
 	test("strips ANSI escape sequences from input", () => {
 		const md = "hello \u001b[31mred\u001b[0m world";
 		const result = renderMarkdown(md, 80);
-		expect(result).toContain("hello");
-		expect(result).toContain("red");
-		expect(result).toContain("world");
+		const visibleResult = stripAnsi(result);
+		expect(visibleResult).toContain("hello");
+		expect(visibleResult).toContain("red");
+		expect(visibleResult).toContain("world");
 		expect(result).not.toContain("\u001b[31m");
-		expect(result).not.toContain("\u001b[0m");
 	});
 
 	test("strips C0 control characters but keeps newlines and tabs", () => {
