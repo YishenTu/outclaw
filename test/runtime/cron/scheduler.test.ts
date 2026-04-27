@@ -10,6 +10,7 @@ interface ScheduledCronResult {
 	jobName: string;
 	model: string;
 	sessionId?: string;
+	suppressDelivery?: boolean;
 	telegramChatId?: number;
 	text: string;
 }
@@ -505,23 +506,35 @@ prompt: do something
 		expect(receivedEffort).toBe("high");
 	});
 
-	test("suppresses NO_REPLY results", async () => {
+	test("marks NO_REPLY results as suppressed completions", async () => {
 		const cronDir = makeCronDir();
 		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
 
 		const results: ScheduledCronResult[] = [];
 		const scheduler = createScheduler(cronDir, {
-			runAgent: async () => "NO_REPLY",
+			runAgent: async () => ({
+				sessionId: "cron-session-123",
+				text: "NO_REPLY",
+			}),
 			onResult: (event) => results.push(event),
 		});
 		scheduler.start();
 
 		await scheduler.triggerJob("test-job");
 
-		expect(results).toEqual([]);
+		expect(results).toEqual([
+			{
+				jobName: "test-job",
+				model: "haiku",
+				sessionId: "cron-session-123",
+				suppressDelivery: true,
+				telegramChatId: undefined,
+				text: "",
+			},
+		]);
 	});
 
-	test("suppresses legacy no_reply results", async () => {
+	test("marks legacy no_reply results as suppressed completions", async () => {
 		const cronDir = makeCronDir();
 		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
 
@@ -534,10 +547,18 @@ prompt: do something
 
 		await scheduler.triggerJob("test-job");
 
-		expect(results).toEqual([]);
+		expect(results).toEqual([
+			{
+				jobName: "test-job",
+				model: "haiku",
+				suppressDelivery: true,
+				telegramChatId: undefined,
+				text: "",
+			},
+		]);
 	});
 
-	test("suppresses backtick-wrapped NO_REPLY results", async () => {
+	test("marks backtick-wrapped NO_REPLY results as suppressed completions", async () => {
 		const cronDir = makeCronDir();
 		writeJob(cronDir, "job.yaml", SIMPLE_JOB);
 
@@ -550,7 +571,15 @@ prompt: do something
 
 		await scheduler.triggerJob("test-job");
 
-		expect(results).toEqual([]);
+		expect(results).toEqual([
+			{
+				jobName: "test-job",
+				model: "haiku",
+				suppressDelivery: true,
+				telegramChatId: undefined,
+				text: "",
+			},
+		]);
 	});
 
 	test("delivers error results when agent fails", async () => {

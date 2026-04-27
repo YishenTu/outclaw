@@ -1568,6 +1568,48 @@ describe("RuntimeController", () => {
 			store.close();
 			cleanupStore(TEST_DB);
 		});
+
+		test("records suppressed cron runs without broadcasting or telegram delivery", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const delivered: Array<{
+				jobName: string;
+				telegramChatId: number;
+				text: string;
+			}> = [];
+			const { controller } = createController({
+				deliverCronResult: (params) => {
+					delivered.push(params);
+				},
+				store,
+			});
+			const tui = mockWs("tui");
+			controller.handleOpen(tui);
+
+			await controller.broadcastCronResult({
+				jobName: "bayern-match-check",
+				model: "haiku",
+				sessionId: "cron-session-silent",
+				suppressDelivery: true,
+				telegramChatId: 123,
+				text: "",
+			});
+
+			expect(
+				tui.events().filter((event) => event.type === "cron_result"),
+			).toEqual([]);
+			expect(delivered).toEqual([]);
+			expect(store.get(PROVIDER_ID, "cron-session-silent")).toMatchObject({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "cron-session-silent",
+				title: "bayern-match-check",
+				model: "haiku",
+				tag: "cron",
+			});
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
 	});
 
 	describe("session mutation during active run", () => {

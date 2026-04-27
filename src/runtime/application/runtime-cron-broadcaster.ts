@@ -7,6 +7,7 @@ interface CronExecutionResult {
 	jobName: string;
 	model: string;
 	sessionId?: string;
+	suppressDelivery?: boolean;
 	telegramChatId?: number;
 	text: string;
 }
@@ -37,6 +38,10 @@ export class RuntimeCronBroadcaster {
 				jobName: result.jobName,
 				model: result.model,
 			});
+		}
+
+		if (result.suppressDelivery) {
+			return;
 		}
 
 		const event: CronResultEvent = {

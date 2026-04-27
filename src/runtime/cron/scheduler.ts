@@ -23,6 +23,7 @@ interface CronExecutionResult {
 	jobName: string;
 	model: string;
 	sessionId?: string;
+	suppressDelivery?: boolean;
 	telegramChatId?: number;
 	text: string;
 }
@@ -225,7 +226,17 @@ export class CronScheduler {
 				await this.options.runAgent(job.config.prompt, model, effort),
 			);
 
-			if (isSuppressedCronResult(runResult.text)) return;
+			if (isSuppressedCronResult(runResult.text)) {
+				await this.options.onResult({
+					jobName: job.config.name,
+					model,
+					sessionId: runResult.sessionId,
+					suppressDelivery: true,
+					telegramChatId: job.telegramChatId,
+					text: "",
+				});
+				return;
+			}
 
 			await this.options.onResult({
 				jobName: job.config.name,

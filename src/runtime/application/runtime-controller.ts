@@ -93,6 +93,7 @@ export class RuntimeController {
 		jobName: string;
 		model: string;
 		sessionId?: string;
+		suppressDelivery?: boolean;
 		telegramChatId?: number;
 		text: string;
 	}) {
