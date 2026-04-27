@@ -238,6 +238,34 @@ export interface AgentSwitchedEvent {
 	name: string;
 }
 
+export type MemoryFileCommandName =
+	| "notes"
+	| "schema"
+	| "daily-memories"
+	| "working-files";
+
+export interface MemoryFileReference {
+	id: string;
+	name: string;
+	path: string;
+}
+
+export interface MemoryFileMenuEvent {
+	type: "memory_file_menu";
+	command: MemoryFileCommandName;
+	title: string;
+	rootPath: string;
+	files: MemoryFileReference[];
+}
+
+export interface MemoryFileContentEvent {
+	type: "memory_file_content";
+	command: MemoryFileCommandName;
+	name: string;
+	path: string;
+	content: string;
+}
+
 export interface RestartRequiredNotice {
 	kind: "restart_required";
 }
@@ -555,6 +583,8 @@ export type ServerEvent =
 	| SessionSwitchedEvent
 	| AgentMenuEvent
 	| AgentSwitchedEvent
+	| MemoryFileMenuEvent
+	| MemoryFileContentEvent
 	| RuntimeStatusEvent
 	| CompactingStartedEvent
 	| CompactingFinishedEvent

@@ -23,8 +23,10 @@ let bridge = {
 let createTelegramBridge = mock((_runtimeUrl: string) => bridge);
 let registerTelegramSessionHandlers = mock(() => {});
 let registerTelegramRuntimeCommands = mock(() => {});
+let registerTelegramMemoryHandlers = mock(() => {});
 let registerTelegramPromptCommands = mock(() => {});
 let registerTelegramModelShortcuts = mock(() => {});
+let handleTelegramMemoryTextCommand = mock(async () => false);
 let lastHeartbeatArgs: unknown[] = [];
 let lastTextMessageArgs: unknown[] = [];
 let lastPhotoMessageArgs: unknown[] = [];
@@ -146,8 +148,10 @@ function resetFakes() {
 	createTelegramBridge = mock((_runtimeUrl: string) => bridge);
 	registerTelegramSessionHandlers = mock(() => {});
 	registerTelegramRuntimeCommands = mock(() => {});
+	registerTelegramMemoryHandlers = mock(() => {});
 	registerTelegramPromptCommands = mock(() => {});
 	registerTelegramModelShortcuts = mock(() => {});
+	handleTelegramMemoryTextCommand = mock(async () => false);
 	lastHeartbeatArgs = [];
 	lastTextMessageArgs = [];
 	lastPhotoMessageArgs = [];
@@ -199,8 +203,14 @@ function createTestDependencies(params: {
 		handleTextMessage: (
 			...args: Parameters<typeof handleTelegramTextMessage>
 		) => handleTelegramTextMessage(...args),
+		handleMemoryTextCommand: (
+			...args: Parameters<typeof handleTelegramMemoryTextCommand>
+		) => handleTelegramMemoryTextCommand(...args),
 		logError: params.logError ?? (() => undefined),
 		logInfo: params.logInfo ?? (() => undefined),
+		registerMemoryHandlers: (
+			...args: Parameters<typeof registerTelegramMemoryHandlers>
+		) => registerTelegramMemoryHandlers(...args),
 		registerModelShortcuts: (
 			...args: Parameters<typeof registerTelegramModelShortcuts>
 		) => registerTelegramModelShortcuts(...args),
@@ -249,6 +259,10 @@ describe("startTelegramBot", () => {
 			expect.any(Function),
 		);
 		expect(registerTelegramRuntimeCommands).toHaveBeenCalledWith(
+			bot,
+			expect.any(Function),
+		);
+		expect(registerTelegramMemoryHandlers).toHaveBeenCalledWith(
 			bot,
 			expect.any(Function),
 		);
@@ -746,6 +760,36 @@ describe("startTelegramBot", () => {
 		service.stop();
 		expect(bot.stop).toHaveBeenCalledTimes(1);
 		expect(bridge.close).toHaveBeenCalledTimes(1);
+	});
+
+	test("intercepts hyphenated memory text commands before prompt handling", async () => {
+		handleTelegramMemoryTextCommand = mock(async () => true);
+		const service = startTelegramBot(
+			{
+				botId: "bot-a",
+				token: "telegram-token",
+				runtimeUrl: "ws://runtime",
+				allowedUsers: [1],
+				filesRoot: "/tmp/files",
+			},
+			createTestDependencies({}),
+		);
+
+		const bot = FakeBot.lastInstance as FakeBot;
+		const textCtx = {
+			chat: { id: 42 },
+			from: { id: 1 },
+			message: { text: "/working-files" },
+			reply: mock(async (_text: string, _options?: object) => undefined),
+			replyWithChatAction: mock(async () => undefined),
+			replyWithPhoto: mock(async () => undefined),
+		};
+		await bot.handlers.get("message:text")?.(textCtx);
+
+		expect(handleTelegramMemoryTextCommand).toHaveBeenCalledTimes(1);
+		expect(handleTelegramTextMessage).not.toHaveBeenCalled();
+
+		service.stop();
 	});
 
 	test("logs failure to leave a non-private chat but still skips processing", async () => {

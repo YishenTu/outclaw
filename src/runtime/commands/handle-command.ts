@@ -5,11 +5,13 @@ import type { SessionService } from "../application/session-service.ts";
 import type { ClientHub, WsClient } from "../transport/client-hub.ts";
 import { handleRuntimeSettingsCommand } from "./handle-runtime-settings-command.ts";
 import { handleSessionCommand } from "./handle-session-command.ts";
+import { handleMemoryFileCommand } from "./memory-files.ts";
 
 interface HandleRuntimeCommandOptions {
 	command: string;
 	createStatusEvent: () => RuntimeStatusEvent;
 	hub: ClientHub;
+	promptHomeDir?: string;
 	replayHistoryToAll: (sessionId: string) => Promise<void>;
 	sessions: SessionService;
 	state: RuntimeState;
@@ -25,6 +27,17 @@ export async function handleRuntimeCommand(
 ) {
 	try {
 		const command = options.command.trim();
+
+		if (
+			handleMemoryFileCommand({
+				command,
+				hub: options.hub,
+				promptHomeDir: options.promptHomeDir,
+				ws: options.ws,
+			})
+		) {
+			return;
+		}
 
 		if (command === "/status") {
 			options.hub.send(options.ws, {

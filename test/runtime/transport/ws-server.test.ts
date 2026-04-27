@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHeartbeatPrompt } from "../../../src/runtime/heartbeat/create-heartbeat-prompt.ts";
@@ -35,6 +41,17 @@ function connectBrowserWs(port: number): Promise<WebSocket> {
 	return new Promise((resolve) => {
 		const url = new URL(`ws://localhost:${port}`);
 		url.searchParams.set("client", "browser");
+		const ws = new WebSocket(url);
+		ws.onopen = () => resolve(ws);
+	});
+}
+
+function connectTelegramWs(port: number): Promise<WebSocket> {
+	return new Promise((resolve) => {
+		const url = new URL(`ws://localhost:${port}`);
+		url.searchParams.set("client", "telegram");
+		url.searchParams.set("telegramBotId", "bot-a");
+		url.searchParams.set("telegramUserId", "101");
 		const ws = new WebSocket(url);
 		ws.onopen = () => resolve(ws);
 	});
@@ -860,6 +877,168 @@ describe("Runtime server", () => {
 		expect(event.sessionId).toBe("mock-session-123");
 
 		ws.close();
+	});
+
+	test("telegram /notes lists and reads files from the agent memory root", async () => {
+		const promptHomeDir = createTempDir("mis-runtime-memory-notes-");
+		mkdirSync(join(promptHomeDir, "notes"), { recursive: true });
+		writeFileSync(
+			join(promptHomeDir, "notes", "todo.md"),
+			"# Todo\n- follow up\n",
+		);
+		writeFileSync(join(promptHomeDir, "notes", ".hidden.md"), "hidden\n");
+		const memoryServer = createRuntime({
+			port: 0,
+			facade: new MockFacade(),
+			promptHomeDir,
+		});
+
+		try {
+			const ws = await connectTelegramWs(memoryServer.port);
+			await waitForEvent(ws, (event) => event.type === "runtime_status");
+
+			ws.send(JSON.stringify({ type: "command", command: "/notes" }));
+			const menu = await waitForEvent(
+				ws,
+				(event) => event.type === "memory_file_menu",
+			);
+			expect(menu).toMatchObject({
+				type: "memory_file_menu",
+				command: "notes",
+				rootPath: "notes",
+				title: "Notes",
+			});
+			expect(menu.files).toEqual([
+				{
+					id: expect.any(String),
+					name: "todo.md",
+					path: "notes/todo.md",
+				},
+			]);
+
+			const file = (menu.files as Array<{ id: string }>)[0];
+			if (!file) {
+				throw new Error("Expected a listed note file");
+			}
+			ws.send(
+				JSON.stringify({
+					type: "command",
+					command: `/notes ${file.id}`,
+				}),
+			);
+			const content = await waitForEvent(
+				ws,
+				(event) => event.type === "memory_file_content",
+			);
+			expect(content).toEqual({
+				type: "memory_file_content",
+				command: "notes",
+				name: "todo.md",
+				path: "notes/todo.md",
+				content: "# Todo\n- follow up\n",
+			});
+
+			ws.close();
+		} finally {
+			await memoryServer.stop();
+			rmSync(promptHomeDir, { force: true, recursive: true });
+		}
+	});
+
+	test("telegram /working-files lists root working files in prompt order", async () => {
+		const promptHomeDir = createTempDir("mis-runtime-working-files-");
+		writeFileSync(join(promptHomeDir, "AGENTS.md"), "agents\n");
+		writeFileSync(join(promptHomeDir, "USER.md"), "user\n");
+		writeFileSync(join(promptHomeDir, "SOUL.md"), "soul\n");
+		writeFileSync(join(promptHomeDir, "MEMORY.md"), "memory\n");
+		const memoryServer = createRuntime({
+			port: 0,
+			facade: new MockFacade(),
+			promptHomeDir,
+		});
+
+		try {
+			const ws = await connectTelegramWs(memoryServer.port);
+			await waitForEvent(ws, (event) => event.type === "runtime_status");
+
+			ws.send(JSON.stringify({ type: "command", command: "/working-files" }));
+			const menu = await waitForEvent(
+				ws,
+				(event) => event.type === "memory_file_menu",
+			);
+			expect(menu).toMatchObject({
+				type: "memory_file_menu",
+				command: "working-files",
+				rootPath: ".",
+				title: "Working Files",
+			});
+			expect(
+				(menu.files as Array<{ name: string; path: string }>).map((file) => ({
+					name: file.name,
+					path: file.path,
+				})),
+			).toEqual([
+				{ name: "AGENTS.md", path: "AGENTS.md" },
+				{ name: "USER.md", path: "USER.md" },
+				{ name: "SOUL.md", path: "SOUL.md" },
+				{ name: "MEMORY.md", path: "MEMORY.md" },
+			]);
+
+			const userFile = (menu.files as Array<{ id: string; name: string }>).find(
+				(file) => file.name === "USER.md",
+			);
+			expect(userFile).toBeDefined();
+			ws.send(
+				JSON.stringify({
+					type: "command",
+					command: `/working-files ${userFile?.id}`,
+				}),
+			);
+			const content = await waitForEvent(
+				ws,
+				(event) => event.type === "memory_file_content",
+			);
+			expect(content).toMatchObject({
+				type: "memory_file_content",
+				command: "working-files",
+				name: "USER.md",
+				path: "USER.md",
+				content: "user\n",
+			});
+
+			ws.close();
+		} finally {
+			await memoryServer.stop();
+			rmSync(promptHomeDir, { force: true, recursive: true });
+		}
+	});
+
+	test("memory file runtime commands reject non-telegram command clients", async () => {
+		const promptHomeDir = createTempDir("mis-runtime-memory-non-telegram-");
+		mkdirSync(join(promptHomeDir, "notes"), { recursive: true });
+		writeFileSync(join(promptHomeDir, "notes", "todo.md"), "todo\n");
+		const memoryServer = createRuntime({
+			port: 0,
+			facade: new MockFacade(),
+			promptHomeDir,
+		});
+
+		try {
+			const ws = await connectWs(memoryServer.port);
+			await waitForEvent(ws, (event) => event.type === "runtime_status");
+
+			ws.send(JSON.stringify({ type: "command", command: "/notes" }));
+			const error = await waitForEvent(ws, (event) => event.type === "error");
+			expect(error).toEqual({
+				type: "error",
+				message: "Memory file commands are Telegram-only",
+			});
+
+			ws.close();
+		} finally {
+			await memoryServer.stop();
+			rmSync(promptHomeDir, { force: true, recursive: true });
+		}
 	});
 
 	test("wires the heartbeat scheduler through createRuntime", async () => {

@@ -98,6 +98,7 @@ export function createRuntimeController(
 		clients,
 		createStatusEvent: () => getStatusEvent(),
 		execution,
+		promptHomeDir: options.promptHomeDir,
 		restart: options.restart,
 		sessions: options.sessions,
 		state: options.state,

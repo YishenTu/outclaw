@@ -10,6 +10,7 @@ interface RuntimeControlPlaneOptions {
 	clients: RuntimeClientGateway;
 	createStatusEvent: () => import("../../common/protocol.ts").RuntimeStatusEvent;
 	execution: RuntimeExecutionCoordinator;
+	promptHomeDir?: string;
 	restart?: () => void;
 	sessions: SessionService;
 	state: RuntimeState;
@@ -35,6 +36,7 @@ export class RuntimeControlPlane {
 			command,
 			createStatusEvent: this.options.createStatusEvent,
 			hub: this.options.clients.clientHub,
+			promptHomeDir: this.options.promptHomeDir,
 			replayHistoryToAll: (sessionId) =>
 				this.options.clients.replayHistory(
 					this.options.clients.listClients(),

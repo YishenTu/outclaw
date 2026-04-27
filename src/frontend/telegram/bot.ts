@@ -20,6 +20,10 @@ import {
 	splitTelegramHtml,
 	TELEGRAM_MESSAGE_LIMIT,
 } from "./format.ts";
+import {
+	handleTelegramMemoryTextCommand,
+	registerTelegramMemoryHandlers,
+} from "./memory/register.ts";
 import { handleTelegramDocumentMessage } from "./messages/document.ts";
 import { sendTelegramHeartbeatResult } from "./messages/heartbeat-result.ts";
 import { handleTelegramPhotoMessage } from "./messages/photo.ts";
@@ -157,7 +161,7 @@ interface TelegramBotLike {
 		handler: (
 			ctx: Record<string, unknown> & {
 				from?: { id: number };
-				reply(text: string): Promise<unknown>;
+				reply(text: string, options?: object): Promise<unknown>;
 			},
 		) => Promise<void>,
 	): unknown;
@@ -198,9 +202,17 @@ interface TelegramBotDependencies {
 	handlePhotoMessage: typeof handleTelegramPhotoMessage;
 	handleTextMessage: typeof handleTelegramTextMessage;
 	handleVoiceMessage: typeof handleTelegramVoiceMessage;
+	handleMemoryTextCommand(
+		ctx: TelegramIncomingTextContext,
+		createBridge: TelegramBridgeFactory,
+	): Promise<boolean>;
 	logError(message: string): void;
 	logInfo(message: string): void;
 	registerModelShortcuts(
+		registrar: TelegramBotLike,
+		createBridge: TelegramBridgeFactory,
+	): void;
+	registerMemoryHandlers(
 		registrar: TelegramBotLike,
 		createBridge: TelegramBridgeFactory,
 	): void;
@@ -231,6 +243,13 @@ const DEFAULT_TELEGRAM_BOT_DEPENDENCIES: TelegramBotDependencies = {
 	handleTextMessage: (ctx, options) => handleTelegramTextMessage(ctx, options),
 	handleVoiceMessage: (ctx, options) =>
 		handleTelegramVoiceMessage(ctx, options),
+	handleMemoryTextCommand: (ctx, bridge) =>
+		handleTelegramMemoryTextCommand(
+			ctx as unknown as Parameters<typeof handleTelegramMemoryTextCommand>[0],
+			bridge as unknown as Parameters<
+				typeof handleTelegramMemoryTextCommand
+			>[1],
+		),
 	logError: (message) => console.error(message),
 	logInfo: (message) => console.log(message),
 	registerModelShortcuts: (registrar, bridge) =>
@@ -239,6 +258,13 @@ const DEFAULT_TELEGRAM_BOT_DEPENDENCIES: TelegramBotDependencies = {
 				typeof registerTelegramModelShortcuts
 			>[0],
 			bridge as unknown as Parameters<typeof registerTelegramModelShortcuts>[1],
+		),
+	registerMemoryHandlers: (registrar, bridge) =>
+		registerTelegramMemoryHandlers(
+			registrar as unknown as Parameters<
+				typeof registerTelegramMemoryHandlers
+			>[0],
+			bridge as unknown as Parameters<typeof registerTelegramMemoryHandlers>[1],
 		),
 	registerPromptCommands: (registrar, bridge) =>
 		registerTelegramPromptCommands(
@@ -382,10 +408,19 @@ export function startTelegramBot(
 
 	dependencies.registerSessionHandlers(bot, (ctx) => createContextBridge(ctx));
 	dependencies.registerRuntimeCommands(bot, (ctx) => createContextBridge(ctx));
+	dependencies.registerMemoryHandlers(bot, (ctx) => createContextBridge(ctx));
 	dependencies.registerPromptCommands(bot, (ctx) => createContextBridge(ctx));
 	dependencies.registerModelShortcuts(bot, (ctx) => createContextBridge(ctx));
 
 	bot.on("message:text", async (ctx) => {
+		if (
+			await dependencies.handleMemoryTextCommand(ctx, (context) =>
+				createContextBridge(context),
+			)
+		) {
+			return;
+		}
+
 		await dependencies.handleTextMessage(
 			{
 				chat: ctx.chat,
