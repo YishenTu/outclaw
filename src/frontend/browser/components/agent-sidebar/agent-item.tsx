@@ -19,6 +19,10 @@ interface AgentItemProps {
 	onToggle: () => void;
 }
 
+function formatAgentDisplayName(name: string): string {
+	return name.slice(0, 1).toUpperCase() + name.slice(1);
+}
+
 export function AgentItem({
 	agent,
 	isActive,
@@ -67,8 +71,8 @@ export function AgentItem({
 					) : (
 						<ChevronRight size={14} className="shrink-0" />
 					)}
-					<div className="min-w-0 flex-1 truncate text-[15px] font-semibold">
-						{agent.name}
+					<div className="min-w-0 flex-1 truncate font-display text-[15px] font-semibold capitalize">
+						{formatAgentDisplayName(agent.name)}
 					</div>
 				</button>
 				<div className="flex w-8 shrink-0 justify-end">

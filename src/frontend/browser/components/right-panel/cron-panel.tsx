@@ -34,10 +34,13 @@ export function CronPanelHeader() {
 	);
 }
 
-export function humanizeCronSchedule(schedule: string): string {
+export function humanizeCronSchedule(
+	schedule: string,
+	timezone?: string,
+): string {
 	const parts = schedule.trim().split(/\s+/);
 	if (parts.length !== 5) {
-		return schedule;
+		return appendCronTimezone(schedule, timezone);
 	}
 
 	const minute = parts[0];
@@ -46,7 +49,7 @@ export function humanizeCronSchedule(schedule: string): string {
 	const month = parts[3];
 	const dayOfWeek = parts[4];
 	if (!minute || !hour || !dayOfMonth || !month || !dayOfWeek) {
-		return schedule;
+		return appendCronTimezone(schedule, timezone);
 	}
 
 	if (
@@ -56,7 +59,7 @@ export function humanizeCronSchedule(schedule: string): string {
 		/^\*\/\d+$/.test(minute) &&
 		hour === "*"
 	) {
-		return `Every ${minute.slice(2)} min`;
+		return appendCronTimezone(`Every ${minute.slice(2)} min`, timezone);
 	}
 
 	if (
@@ -66,7 +69,7 @@ export function humanizeCronSchedule(schedule: string): string {
 		/^\d+$/.test(minute) &&
 		hour === "*"
 	) {
-		return `Hourly :${minute.padStart(2, "0")}`;
+		return appendCronTimezone(`Hourly :${minute.padStart(2, "0")}`, timezone);
 	}
 
 	if (
@@ -76,7 +79,7 @@ export function humanizeCronSchedule(schedule: string): string {
 		/^\d+$/.test(minute) &&
 		/^\*\/\d+$/.test(hour)
 	) {
-		return `Every ${hour.slice(2)} hr`;
+		return appendCronTimezone(`Every ${hour.slice(2)} hr`, timezone);
 	}
 
 	if (
@@ -86,7 +89,10 @@ export function humanizeCronSchedule(schedule: string): string {
 		/^\d+$/.test(minute) &&
 		/^\d+$/.test(hour)
 	) {
-		return `Daily ${formatCronTime(hour, minute)}`;
+		return appendCronTimezone(
+			`Daily ${formatCronTime(hour, minute)}`,
+			timezone,
+		);
 	}
 
 	if (
@@ -96,7 +102,10 @@ export function humanizeCronSchedule(schedule: string): string {
 		/^\d+$/.test(minute) &&
 		/^\d+$/.test(hour)
 	) {
-		return `Weekdays ${formatCronTime(hour, minute)}`;
+		return appendCronTimezone(
+			`Weekdays ${formatCronTime(hour, minute)}`,
+			timezone,
+		);
 	}
 
 	if (
@@ -106,7 +115,10 @@ export function humanizeCronSchedule(schedule: string): string {
 		/^\d+$/.test(minute) &&
 		/^\d+$/.test(hour)
 	) {
-		return `Weekly ${formatCronDayOfWeek(dayOfWeek)} ${formatCronTime(hour, minute)}`;
+		return appendCronTimezone(
+			`Weekly ${formatCronDayOfWeek(dayOfWeek)} ${formatCronTime(hour, minute)}`,
+			timezone,
+		);
 	}
 
 	if (
@@ -116,10 +128,18 @@ export function humanizeCronSchedule(schedule: string): string {
 		/^\d+$/.test(minute) &&
 		/^\d+$/.test(hour)
 	) {
-		return `Monthly day ${dayOfMonth} ${formatCronTime(hour, minute)}`;
+		return appendCronTimezone(
+			`Monthly day ${dayOfMonth} ${formatCronTime(hour, minute)}`,
+			timezone,
+		);
 	}
 
-	return schedule;
+	return appendCronTimezone(schedule, timezone);
+}
+
+function appendCronTimezone(label: string, timezone?: string): string {
+	const normalizedTimezone = timezone?.trim().toUpperCase();
+	return normalizedTimezone ? `${label} (${normalizedTimezone})` : label;
 }
 
 function formatCronTime(hour: string, minute: string): string {
@@ -277,7 +297,7 @@ export function CronPanel({
 									<span className="truncate">{entry.name}</span>
 								</div>
 								<div className="truncate text-xs text-dark-500">
-									{humanizeCronSchedule(entry.schedule)}
+									{humanizeCronSchedule(entry.schedule, entry.timezone)}
 								</div>
 							</button>
 							<button

@@ -387,6 +387,7 @@ export interface BrowserCronEntry {
 	name: string;
 	path: string;
 	schedule: string;
+	timezone?: string;
 	model?: string;
 	effort?: string;
 	enabled: boolean;

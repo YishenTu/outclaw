@@ -780,7 +780,7 @@ describe("createBrowserApi", () => {
 		const cronPath = join(cronDir, "daily.yaml");
 		writeFileSync(
 			cronPath,
-			"name: Daily\nschedule: 15 6 * * *\nmodel: haiku\nenabled: true\nprompt: Check inbox\n",
+			"name: Daily\nschedule: 15 6 * * *\ntimezone: UTC\nmodel: haiku\nenabled: true\nprompt: Check inbox\n",
 		);
 
 		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
@@ -805,6 +805,7 @@ describe("createBrowserApi", () => {
 			name: "Daily",
 			path: "cron/daily.yaml",
 			schedule: "15 6 * * *",
+			timezone: "UTC",
 			model: "haiku",
 			enabled: false,
 		});
@@ -814,6 +815,7 @@ describe("createBrowserApi", () => {
 				name: "Daily",
 				path: "cron/daily.yaml",
 				schedule: "15 6 * * *",
+				timezone: "UTC",
 				model: "haiku",
 				enabled: false,
 			},

@@ -277,16 +277,27 @@ function toBrowserCronEntry(
 		model?: string;
 		name: string;
 		schedule: string;
+		timezone?: string;
 	},
 ): BrowserCronEntry {
-	return {
+	const entry: BrowserCronEntry = {
 		name: config.name,
 		path: toRelativePath(rootDir, absolutePath),
 		schedule: config.schedule,
-		model: config.model,
-		effort: config.effort,
 		enabled: config.enabled,
 	};
+
+	if (config.timezone !== undefined) {
+		entry.timezone = config.timezone;
+	}
+	if (config.model !== undefined) {
+		entry.model = config.model;
+	}
+	if (config.effort !== undefined) {
+		entry.effort = config.effort;
+	}
+
+	return entry;
 }
 
 function requireAgent(

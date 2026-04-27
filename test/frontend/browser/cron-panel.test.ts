@@ -25,6 +25,10 @@ describe("cron panel helpers", () => {
 		expect(humanizeCronSchedule("15 6 * * *")).toBe("Daily 06:15");
 	});
 
+	test("appends timezone to humanized schedules when configured", () => {
+		expect(humanizeCronSchedule("13 2 * * *", "UTC")).toBe("Daily 02:13 (UTC)");
+	});
+
 	test("humanizes interval schedules", () => {
 		expect(humanizeCronSchedule("*/5 * * * *")).toBe("Every 5 min");
 	});
