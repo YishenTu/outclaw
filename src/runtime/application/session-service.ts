@@ -184,11 +184,9 @@ export class SessionService {
 		}
 
 		this.clearActiveSession();
-		this.store?.setRolloverNotice(
-			`Previous session auto-finalized after ${formatIdleWindow(
-				idleMinutes,
-			)} idle. Use /session to resume.`,
-		);
+		const notice = formatRolloverStartedNotice(idleMinutes);
+		this.store?.setRolloverNotice(notice);
+		return notice;
 	}
 
 	finishRolloverAttempt(params: { failed: boolean; idleMinutes: number }) {
@@ -196,17 +194,15 @@ export class SessionService {
 			return;
 		}
 
-		const expectedStartedMessage = `Previous session auto-finalized after ${formatIdleWindow(
+		const expectedStartedMessage = formatRolloverStartedNotice(
 			params.idleMinutes,
-		)} idle. Use /session to resume.`;
+		);
 		if (this.store?.getRolloverNotice() !== expectedStartedMessage) {
 			return;
 		}
 
 		this.store?.setRolloverNotice(
-			`Previous session auto-finalized after ${formatIdleWindow(
-				params.idleMinutes,
-			)} idle. Final check failed. Use /session to resume.`,
+			formatRolloverFailedNotice(params.idleMinutes),
 		);
 	}
 
@@ -324,6 +320,18 @@ export class SessionService {
 			lastActive: 0,
 		};
 	}
+}
+
+export function formatRolloverStartedNotice(idleMinutes: number): string {
+	return `Previous session auto-finalized after ${formatIdleWindow(
+		idleMinutes,
+	)} idle. A new session will begin with your next message. Use /session to resume.`;
+}
+
+function formatRolloverFailedNotice(idleMinutes: number): string {
+	return `Previous session auto-finalized after ${formatIdleWindow(
+		idleMinutes,
+	)} idle. Final check failed. A new session will begin with your next message. Use /session to resume.`;
 }
 
 function formatIdleWindow(idleMinutes: number): string {

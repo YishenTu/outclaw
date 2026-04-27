@@ -34,6 +34,10 @@ interface CreateAgentRuntimeOptions {
 			telegramChatId: number;
 		} & HeartbeatResult,
 	) => Promise<void> | void;
+	deliverRolloverNotice?: (params: {
+		telegramChatId: number;
+		text: string;
+	}) => Promise<void> | void;
 	defaultEffort?: EffortLevel;
 	facade: Facade;
 	getFrontendNotice?: () => FrontendNotice | undefined;
@@ -90,6 +94,14 @@ export interface AgentRuntime {
 			  ) => Promise<void> | void)
 			| undefined,
 	): void;
+	setRolloverNoticeHandler(
+		handler:
+			| ((params: {
+					telegramChatId: number;
+					text: string;
+			  }) => Promise<void> | void)
+			| undefined,
+	): void;
 	stop(): Promise<void>;
 }
 
@@ -116,6 +128,7 @@ export function createAgentRuntime(
 		restart: options.restart,
 		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
+		deliverRolloverNotice: options.deliverRolloverNotice,
 		promptHomeDir: options.promptHomeDir,
 		sessions,
 		state,
@@ -220,6 +233,9 @@ export function createAgentRuntime(
 		},
 		setHeartbeatResultHandler(handler) {
 			controller.setHeartbeatResultHandler(handler);
+		},
+		setRolloverNoticeHandler(handler) {
+			controller.setRolloverNoticeHandler(handler);
 		},
 		stop() {
 			if (!stopPromise) {

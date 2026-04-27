@@ -49,7 +49,7 @@ export class RuntimeSessionState {
 		return this.lastUserTarget;
 	}
 
-	createHeartbeatDeliveryTarget(): HeartbeatDeliveryTarget | undefined {
+	createLastUserDeliveryTarget(): HeartbeatDeliveryTarget | undefined {
 		if (!this.lastUserTarget) {
 			return undefined;
 		}
@@ -64,6 +64,10 @@ export class RuntimeSessionState {
 		return {
 			clientType: "tui",
 		};
+	}
+
+	createHeartbeatDeliveryTarget(): HeartbeatDeliveryTarget | undefined {
+		return this.createLastUserDeliveryTarget();
 	}
 
 	preparePrompt(prompt: string, images?: ImageRef[]) {

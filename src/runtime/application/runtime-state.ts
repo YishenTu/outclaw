@@ -127,7 +127,13 @@ export class RuntimeState {
 	createHeartbeatDeliveryTarget():
 		| import("../../common/protocol.ts").HeartbeatDeliveryTarget
 		| undefined {
-		return this.sessions.createHeartbeatDeliveryTarget();
+		return this.createLastUserDeliveryTarget();
+	}
+
+	createLastUserDeliveryTarget():
+		| import("../../common/protocol.ts").HeartbeatDeliveryTarget
+		| undefined {
+		return this.sessions.createLastUserDeliveryTarget();
 	}
 
 	preparePrompt(prompt: string, images?: ImageRef[]) {

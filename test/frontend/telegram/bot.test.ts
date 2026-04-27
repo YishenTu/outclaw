@@ -757,6 +757,19 @@ describe("startTelegramBot", () => {
 		expect(photoArg).toBeInstanceOf(FakeInputFile);
 		expect(photoArg.path).toBe("/tmp/chart.png");
 
+		await service.sendRolloverNotice({
+			telegramChatId: 7,
+			text: "Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
+		});
+		expect(bot.api.sendMessage).toHaveBeenCalledWith(
+			7,
+			"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
+			{
+				parse_mode: "HTML",
+				disable_notification: false,
+			},
+		);
+
 		service.stop();
 		expect(bot.stop).toHaveBeenCalledTimes(1);
 		expect(bridge.close).toHaveBeenCalledTimes(1);

@@ -124,6 +124,17 @@ export class RuntimeController {
 		this.promptDispatcher.setHeartbeatResultHandler(handler);
 	}
 
+	setRolloverNoticeHandler(
+		handler:
+			| ((params: {
+					telegramChatId: number;
+					text: string;
+			  }) => Promise<void> | void)
+			| undefined,
+	) {
+		this.execution.setRolloverNoticeHandler(handler);
+	}
+
 	handleClose = (ws: WsClient) => {
 		this.clients.handleClose(ws);
 	};

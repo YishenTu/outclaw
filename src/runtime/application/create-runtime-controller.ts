@@ -29,6 +29,10 @@ interface CreateRuntimeControllerOptions {
 			telegramChatId: number;
 		} & HeartbeatResult,
 	) => Promise<void> | void;
+	deliverRolloverNotice?: (params: {
+		telegramChatId: number;
+		text: string;
+	}) => Promise<void> | void;
 	facade: Facade;
 	getFrontendNotice?: () => FrontendNotice | undefined;
 	onExecutionStateChange?: () => void;
@@ -86,6 +90,7 @@ export function createRuntimeController(
 		streamingState,
 	});
 	const execution = new RuntimeExecutionCoordinator({
+		deliverRolloverNotice: options.deliverRolloverNotice,
 		onStatusChange: () => {
 			clients.broadcastStatus();
 			options.onExecutionStateChange?.();

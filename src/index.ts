@@ -199,6 +199,9 @@ function startMultiAgentDaemon(
 		runtime.setHeartbeatResultHandler((params) =>
 			botManager.sendHeartbeatResult(runtime.agentId, params),
 		);
+		runtime.setRolloverNoticeHandler((params) =>
+			botManager.sendRolloverNotice(runtime.agentId, params),
+		);
 	}
 
 	const restartRequiredWatcher = createRestartRequiredWatcher({

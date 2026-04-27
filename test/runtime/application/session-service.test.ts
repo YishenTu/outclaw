@@ -175,7 +175,7 @@ describe("SessionService", () => {
 		expect(store.getActiveSessionId(PROVIDER_ID)).toBeUndefined();
 		expect(state.sessionId).toBeUndefined();
 		expect(store.getRolloverNotice()).toBe(
-			"Previous session auto-finalized after 8h idle. Use /session to resume.",
+			"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
 		);
 
 		store.close();
@@ -193,7 +193,7 @@ describe("SessionService", () => {
 		});
 
 		expect(store.getRolloverNotice()).toBe(
-			"Previous session auto-finalized after 8h idle. Final check failed. Use /session to resume.",
+			"Previous session auto-finalized after 8h idle. Final check failed. A new session will begin with your next message. Use /session to resume.",
 		);
 
 		store.close();

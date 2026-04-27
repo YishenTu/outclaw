@@ -106,6 +106,18 @@ export function createTelegramBotManager(options: TelegramBotManagerOptions) {
 			}
 			await bot.service.sendHeartbeatResult(params);
 		},
+		async sendRolloverNotice(
+			agentId: string,
+			params: Parameters<
+				ReturnType<typeof startTelegramBot>["sendRolloverNotice"]
+			>[0],
+		) {
+			const bot = getStartedBot(startedBots, botIdByAgentId.get(agentId));
+			if (!bot) {
+				return;
+			}
+			await bot.service.sendRolloverNotice(params);
+		},
 		stop() {
 			for (const { bindings, service } of startedBots.values()) {
 				service.stop();

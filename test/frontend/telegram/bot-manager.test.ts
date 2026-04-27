@@ -11,6 +11,7 @@ describe("createTelegramBotManager", () => {
 		const startBot = mock((_options) => ({
 			sendCronResult: mock(async () => undefined),
 			sendHeartbeatResult: mock(async () => undefined),
+			sendRolloverNotice: mock(async () => undefined),
 			stop: mock(() => undefined),
 		}));
 		const manager = createTelegramBotManager({
@@ -76,11 +77,13 @@ describe("createTelegramBotManager", () => {
 		const botA = {
 			sendCronResult: mock(async () => undefined),
 			sendHeartbeatResult: mock(async () => undefined),
+			sendRolloverNotice: mock(async () => undefined),
 			stop: mock(() => undefined),
 		};
 		const botB = {
 			sendCronResult: mock(async () => undefined),
 			sendHeartbeatResult: mock(async () => undefined),
+			sendRolloverNotice: mock(async () => undefined),
 			stop: mock(() => undefined),
 		};
 		const fileBindingA = {
@@ -124,6 +127,10 @@ describe("createTelegramBotManager", () => {
 			text: "ping",
 			images: [],
 		});
+		await manager.sendRolloverNotice("agent-railly", {
+			telegramChatId: 44,
+			text: "Session rolled over",
+		});
 		await manager.sendCronResult("agent-missing", {
 			jobName: "noop",
 			telegramChatId: 33,
@@ -140,6 +147,10 @@ describe("createTelegramBotManager", () => {
 			text: "ping",
 			images: [],
 		});
+		expect(botA.sendRolloverNotice).toHaveBeenCalledWith({
+			telegramChatId: 44,
+			text: "Session rolled over",
+		});
 		expect(botB.sendCronResult).not.toHaveBeenCalled();
 
 		manager.stop();
@@ -154,6 +165,7 @@ describe("createTelegramBotManager", () => {
 		const startBot = mock((_options) => ({
 			sendCronResult: mock(async () => undefined),
 			sendHeartbeatResult: mock(async () => undefined),
+			sendRolloverNotice: mock(async () => undefined),
 			stop: mock(() => undefined),
 		}));
 		const manager = createTelegramBotManager({

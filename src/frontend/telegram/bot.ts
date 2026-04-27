@@ -638,6 +638,19 @@ export function startTelegramBot(
 				},
 			);
 		},
+		async sendRolloverNotice(params: { telegramChatId: number; text: string }) {
+			const html = markdownToTelegramHtml(params.text);
+			const chunks = splitTelegramHtml(
+				html || params.text,
+				TELEGRAM_MESSAGE_LIMIT,
+			);
+			for (const chunk of chunks) {
+				await bot.api.sendMessage(params.telegramChatId, chunk, {
+					parse_mode: "HTML",
+					disable_notification: false,
+				});
+			}
+		},
 		stop() {
 			bot.stop();
 			bridge.close();

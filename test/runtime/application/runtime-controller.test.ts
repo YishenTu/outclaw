@@ -54,6 +54,10 @@ function createController<TFacade extends Facade = MockFacade>(
 			telegramChatId: number;
 			text: string;
 		}) => Promise<void> | void;
+		deliverRolloverNotice?: (params: {
+			telegramChatId: number;
+			text: string;
+		}) => Promise<void> | void;
 		promptHomeDir?: string;
 		store?: SessionStore;
 		historyReader?: (id: string) => Promise<HistoryReplayEvent["messages"]>;
@@ -78,6 +82,7 @@ function createController<TFacade extends Facade = MockFacade>(
 			promptHomeDir: overrides.promptHomeDir,
 			deliverCronResult: overrides.deliverCronResult,
 			deliverHeartbeatResult: overrides.deliverHeartbeatResult,
+			deliverRolloverNotice: overrides.deliverRolloverNotice,
 			sessions,
 			state,
 		}),
@@ -1461,6 +1466,62 @@ describe("RuntimeController", () => {
 
 			expect(facade.callOrder).toContain("first heartbeat");
 			expect(facade.callOrder).not.toContain("second heartbeat");
+		});
+	});
+
+	describe("rollover", () => {
+		test("delivers a new-session notice to the last telegram chat when rollover starts", async () => {
+			const delivered: Array<{
+				telegramChatId: number;
+				text: string;
+			}> = [];
+			const { controller, facade } = createController({
+				deliverRolloverNotice: (params) => {
+					delivered.push(params);
+				},
+			});
+			const tg = mockWs("telegram");
+			controller.handleOpen(tg);
+			controller.handleMessage(
+				tg,
+				prompt("hello from tg", "telegram", [], 123),
+			);
+			await waitForDone(tg);
+
+			expect(controller.enqueueRollover("finalize old session", 480)).toBe(
+				true,
+			);
+			await drain(controller, facade);
+
+			expect(delivered).toEqual([
+				{
+					telegramChatId: 123,
+					text: "Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
+				},
+			]);
+		});
+
+		test("does not deliver rollover notices when the last target is tui", async () => {
+			const delivered: Array<{
+				telegramChatId: number;
+				text: string;
+			}> = [];
+			const { controller, facade } = createController({
+				deliverRolloverNotice: (params) => {
+					delivered.push(params);
+				},
+			});
+			const tui = mockWs("tui");
+			controller.handleOpen(tui);
+			controller.handleMessage(tui, prompt("hello from tui", "tui"));
+			await waitForDone(tui);
+
+			expect(controller.enqueueRollover("finalize old session", 480)).toBe(
+				true,
+			);
+			await drain(controller, facade);
+
+			expect(delivered).toEqual([]);
 		});
 	});
 

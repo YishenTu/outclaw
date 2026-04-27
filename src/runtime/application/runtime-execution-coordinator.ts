@@ -1,3 +1,4 @@
+import { extractError } from "../../common/protocol.ts";
 import { HeartbeatCoordinator } from "./heartbeat-coordinator.ts";
 import { MessageQueue } from "./message-queue.ts";
 import type { PromptDispatcher, PromptExecution } from "./prompt-dispatcher.ts";
@@ -11,6 +12,10 @@ interface HeartbeatTask {
 }
 
 interface RuntimeExecutionCoordinatorOptions {
+	deliverRolloverNotice?: (params: {
+		telegramChatId: number;
+		text: string;
+	}) => Promise<void> | void;
 	onStatusChange?: () => void;
 	promptDispatcher: Pick<PromptDispatcher, "run">;
 	sessions: Pick<
@@ -32,11 +37,16 @@ interface ExecutionLane {
 
 export class RuntimeExecutionCoordinator {
 	private heartbeatCoordinator = new HeartbeatCoordinator();
+	private deliverRolloverNotice:
+		| RuntimeExecutionCoordinatorOptions["deliverRolloverNotice"]
+		| undefined;
 	private lanes = new Map<string, ExecutionLane>();
 	private rolloverQueued = false;
 	private shuttingDown = false;
 
-	constructor(private readonly options: RuntimeExecutionCoordinatorOptions) {}
+	constructor(private readonly options: RuntimeExecutionCoordinatorOptions) {
+		this.deliverRolloverNotice = options.deliverRolloverNotice;
+	}
 
 	get isShuttingDown(): boolean {
 		return this.shuttingDown;
@@ -200,6 +210,12 @@ export class RuntimeExecutionCoordinator {
 		});
 	}
 
+	setRolloverNoticeHandler(
+		handler: RuntimeExecutionCoordinatorOptions["deliverRolloverNotice"],
+	) {
+		this.deliverRolloverNotice = handler;
+	}
+
 	setFireDeferredHeartbeat(handler: () => Promise<void> | void) {
 		this.heartbeatCoordinator.setFireDeferredHeartbeat(handler);
 	}
@@ -259,8 +275,12 @@ export class RuntimeExecutionCoordinator {
 				return;
 			}
 
-			this.options.sessions.beginRolloverAttempt(task.idleMinutes);
+			const deliveryTarget = this.options.state.createLastUserDeliveryTarget();
+			const notice = this.options.sessions.beginRolloverAttempt(
+				task.idleMinutes,
+			);
 			started = true;
+			void this.deliverRolloverStartedNotice(deliveryTarget, notice);
 			await this.runPromptInLane(
 				lane,
 				{
@@ -283,6 +303,30 @@ export class RuntimeExecutionCoordinator {
 				});
 			}
 			this.options.onStatusChange?.();
+		}
+	}
+
+	private async deliverRolloverStartedNotice(
+		target: ReturnType<RuntimeState["createLastUserDeliveryTarget"]>,
+		text: string,
+	) {
+		if (
+			target?.clientType !== "telegram" ||
+			target.telegramChatId === undefined ||
+			!this.deliverRolloverNotice
+		) {
+			return;
+		}
+
+		try {
+			await this.deliverRolloverNotice({
+				telegramChatId: target.telegramChatId,
+				text,
+			});
+		} catch (err) {
+			console.error(
+				`Failed to deliver rollover notice to Telegram: ${extractError(err)}`,
+			);
 		}
 	}
 
