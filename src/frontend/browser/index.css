@@ -1,6 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Share+Tech+Mono&display=swap");
 @import "highlight.js/styles/github-dark.css";
 @import "katex/dist/katex.min.css";
+@import "@xterm/xterm/css/xterm.css";
 
 .hljs {
 	background: transparent;
@@ -169,7 +170,7 @@ textarea {
 	height: 100%;
 }
 
-.xterm .xterm-viewport {
+.browser-terminal-shell .xterm .xterm-viewport {
 	/* biome-ignore lint/complexity/noImportantStyles: xterm sets overflow inline */
 	overflow-y: scroll !important;
 	overscroll-behavior: contain;
@@ -177,7 +178,8 @@ textarea {
 	-ms-overflow-style: none;
 }
 
-.xterm .xterm-viewport::-webkit-scrollbar {
+.browser-terminal-shell .xterm .xterm-viewport::-webkit-scrollbar {
+	display: none;
 	width: 0;
 	height: 0;
 }

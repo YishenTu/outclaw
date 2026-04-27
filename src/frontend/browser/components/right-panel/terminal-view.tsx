@@ -1,4 +1,3 @@
-import "@xterm/xterm/css/xterm.css";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useRef } from "react";
@@ -139,7 +138,7 @@ export function TerminalView({
 
 	return (
 		<div
-			className={`min-h-0 min-w-0 flex-1 overflow-hidden ${
+			className={`browser-terminal-shell min-h-0 min-w-0 flex-1 overflow-hidden ${
 				active ? "flex" : "hidden"
 			}`}
 			data-terminal-id={terminalId}

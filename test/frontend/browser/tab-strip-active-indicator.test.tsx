@@ -37,7 +37,6 @@ describe("browser tab strip active indicator", () => {
 		const html = renderToStaticMarkup(
 			<TerminalTabs
 				activeTerminalId="terminal-1"
-				canCloseTerminals={false}
 				onCloseTerminal={() => {}}
 				onCreateTerminal={() => {}}
 				onRenameTerminal={() => {}}
@@ -55,6 +54,28 @@ describe("browser tab strip active indicator", () => {
 
 		expect(html).toContain("h-0.5 bg-brand");
 		expect(html).not.toContain(ACTIVE_TAB_UNDERLINE_CLASS);
+	});
+
+	test("terminal tabs render close controls for a single terminal", () => {
+		const html = renderToStaticMarkup(
+			<TerminalTabs
+				activeTerminalId="terminal-1"
+				onCloseTerminal={() => {}}
+				onCreateTerminal={() => {}}
+				onRenameTerminal={() => {}}
+				onSelectTerminal={() => {}}
+				terminals={[
+					{
+						agentId: "agent-a",
+						id: "terminal-1",
+						name: "Terminal",
+						createdAt: 1,
+					},
+				]}
+			/>,
+		);
+
+		expect(html).toContain('aria-label="Close Terminal"');
 	});
 
 	test("right panel upper tabs use the thinner underline", () => {

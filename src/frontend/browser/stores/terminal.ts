@@ -50,13 +50,50 @@ function createTerminalEntry(
 	agentId: string,
 	terminalNumber: number,
 	now: number,
+	name: string,
 ): BrowserTerminalEntry {
 	return {
 		agentId,
 		createdAt: now,
 		id: `${agentId}-terminal-${terminalNumber}-${createTerminalIdSuffix(now)}`,
-		name: terminalNumber === 1 ? "Terminal" : `Terminal ${terminalNumber}`,
+		name,
 	};
+}
+
+function createDefaultTerminalName(displayNumber: number): string {
+	return displayNumber === 1 ? "Terminal" : `Terminal ${displayNumber}`;
+}
+
+function isDefaultTerminalName(name: string): boolean {
+	return /^Terminal(?: [1-9]\d*)?$/.test(name);
+}
+
+function resolveNextDefaultTerminalName(
+	terminals: BrowserTerminalEntry[],
+): string {
+	const existingNames = new Set(terminals.map((terminal) => terminal.name));
+	let displayNumber = 1;
+	while (existingNames.has(createDefaultTerminalName(displayNumber))) {
+		displayNumber += 1;
+	}
+
+	return createDefaultTerminalName(displayNumber);
+}
+
+function normalizeSingletonDefaultTerminalName(
+	terminals: BrowserTerminalEntry[],
+): BrowserTerminalEntry[] {
+	const terminal = terminals[0];
+	if (
+		terminals.length !== 1 ||
+		!terminal ||
+		terminal.name === "Terminal" ||
+		!isDefaultTerminalName(terminal.name)
+	) {
+		return terminals;
+	}
+
+	return [{ ...terminal, name: "Terminal" }];
 }
 
 function resolveNextActiveTerminal(
@@ -86,10 +123,40 @@ export function createTerminalStore() {
 		closeTerminal: (agentId, terminalId) =>
 			set((state) => {
 				const terminals = state.terminalsByAgent[agentId] ?? [];
+				if (!terminals.some((terminal) => terminal.id === terminalId)) {
+					return state;
+				}
+
 				const nextTerminals = terminals.filter(
 					(terminal) => terminal.id !== terminalId,
 				);
 				const activeTerminalId = state.activeTerminalIdByAgent[agentId];
+				if (nextTerminals.length === 0) {
+					const now = Date.now();
+					const nextTerminalNumber =
+						(state.nextTerminalNumberByAgent[agentId] ?? 0) + 1;
+					const replacement = createTerminalEntry(
+						agentId,
+						nextTerminalNumber,
+						now,
+						"Terminal",
+					);
+
+					return {
+						activeTerminalIdByAgent: {
+							...state.activeTerminalIdByAgent,
+							[agentId]: replacement.id,
+						},
+						nextTerminalNumberByAgent: {
+							...state.nextTerminalNumberByAgent,
+							[agentId]: nextTerminalNumber,
+						},
+						terminalsByAgent: {
+							...state.terminalsByAgent,
+							[agentId]: [replacement],
+						},
+					};
+				}
 
 				return {
 					activeTerminalIdByAgent: {
@@ -101,7 +168,7 @@ export function createTerminalStore() {
 					},
 					terminalsByAgent: {
 						...state.terminalsByAgent,
-						[agentId]: nextTerminals,
+						[agentId]: normalizeSingletonDefaultTerminalName(nextTerminals),
 					},
 				};
 			}),
@@ -111,7 +178,12 @@ export function createTerminalStore() {
 			const state = get();
 			const nextTerminalNumber =
 				(state.nextTerminalNumberByAgent[agentId] ?? 0) + 1;
-			const terminal = createTerminalEntry(agentId, nextTerminalNumber, now);
+			const terminal = createTerminalEntry(
+				agentId,
+				nextTerminalNumber,
+				now,
+				resolveNextDefaultTerminalName(state.terminalsByAgent[agentId] ?? []),
+			);
 
 			set((currentState) => ({
 				activeTerminalIdByAgent: {

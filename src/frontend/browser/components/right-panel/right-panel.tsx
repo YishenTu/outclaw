@@ -567,9 +567,6 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 						>
 							<TerminalTabs
 								activeTerminalId={activeTerminalId}
-								canCloseTerminals={
-									activeAgentId !== null && terminals.length > 1
-								}
 								leadingContent={
 									<button
 										type="button"

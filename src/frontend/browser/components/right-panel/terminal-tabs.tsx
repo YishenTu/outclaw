@@ -5,7 +5,6 @@ import type { BrowserTerminalEntry } from "../../stores/terminal.ts";
 
 interface TerminalTabsProps {
 	activeTerminalId: string | null;
-	canCloseTerminals: boolean;
 	leadingContent?: ReactNode;
 	onCloseTerminal: (terminalId: string) => void;
 	onCreateTerminal: () => void;
@@ -16,7 +15,6 @@ interface TerminalTabsProps {
 
 export function TerminalTabs({
 	activeTerminalId,
-	canCloseTerminals,
 	leadingContent,
 	onCloseTerminal,
 	onCreateTerminal,
@@ -148,16 +146,14 @@ export function TerminalTabs({
 								</button>
 							)}
 
-							{canCloseTerminals ? (
-								<button
-									type="button"
-									onClick={() => onCloseTerminal(terminal.id)}
-									className="flex items-center justify-center pl-2 text-dark-500 opacity-0 transition-opacity hover:text-dark-100 group-hover:opacity-100"
-									aria-label={`Close ${terminal.name}`}
-								>
-									<X size={14} />
-								</button>
-							) : null}
+							<button
+								type="button"
+								onClick={() => onCloseTerminal(terminal.id)}
+								className="flex items-center justify-center pl-2 text-dark-500 opacity-0 transition-opacity hover:text-dark-100 group-hover:opacity-100"
+								aria-label={`Close ${terminal.name}`}
+							>
+								<X size={14} />
+							</button>
 						</div>
 					);
 				})}

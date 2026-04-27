@@ -86,6 +86,47 @@ describe("browser terminal store", () => {
 		);
 	});
 
+	test("closeTerminal replaces the final terminal with a fresh active terminal", () => {
+		const closedTerminalId = store.getState().ensureTerminal("agent-a", {
+			now: 100,
+		});
+
+		store.getState().closeTerminal("agent-a", closedTerminalId);
+
+		const terminals = store.getState().terminalsByAgent["agent-a"] ?? [];
+		expect(terminals).toHaveLength(1);
+		expect(terminals[0]?.id).not.toBe(closedTerminalId);
+		expect(terminals[0]?.name).toBe("Terminal");
+		expect(store.getState().activeTerminalIdByAgent["agent-a"]).toBe(
+			terminals[0]?.id,
+		);
+	});
+
+	test("closeTerminal normalizes a remaining default singleton name", () => {
+		const firstTerminalId = store.getState().ensureTerminal("agent-a");
+		const secondTerminalId = store.getState().createTerminal("agent-a");
+
+		store.getState().closeTerminal("agent-a", firstTerminalId);
+
+		expect(
+			store.getState().terminalsByAgent["agent-a"]?.map((terminal) => ({
+				id: terminal.id,
+				name: terminal.name,
+			})),
+		).toEqual([{ id: secondTerminalId, name: "Terminal" }]);
+	});
+
+	test("createTerminal uses the next available default display name", () => {
+		const closedTerminalId = store.getState().ensureTerminal("agent-a");
+
+		store.getState().closeTerminal("agent-a", closedTerminalId);
+		store.getState().createTerminal("agent-a");
+
+		expect(
+			getTerminalNames(store.getState().terminalsByAgent["agent-a"]),
+		).toEqual(["Terminal", "Terminal 2"]);
+	});
+
 	test("terminal numbering and activation stay scoped per agent", () => {
 		store.getState().ensureTerminal("agent-a");
 		store.getState().createTerminal("agent-a");
