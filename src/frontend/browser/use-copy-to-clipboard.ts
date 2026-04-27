@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { copyTextToClipboard } from "./copy-text-to-clipboard.ts";
 
 const COPY_FEEDBACK_MS = 1200;
 
+export type ClipboardCopyStatus = "idle" | "copied" | "failed";
+
 export function useCopyToClipboard(): {
 	copied: boolean;
+	failed: boolean;
+	status: ClipboardCopyStatus;
 	copy: (value: string) => void;
 } {
-	const [copied, setCopied] = useState(false);
+	const [status, setStatus] = useState<ClipboardCopyStatus>("idle");
 	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
@@ -18,24 +23,22 @@ export function useCopyToClipboard(): {
 	}, []);
 
 	const copy = useCallback((value: string) => {
-		if (typeof navigator === "undefined" || !navigator.clipboard) {
-			return;
-		}
-
-		void navigator.clipboard
-			.writeText(value)
-			.then(() => {
-				setCopied(true);
-				if (timeoutRef.current !== null) {
-					clearTimeout(timeoutRef.current);
-				}
-				timeoutRef.current = setTimeout(() => {
-					setCopied(false);
-					timeoutRef.current = null;
-				}, COPY_FEEDBACK_MS);
-			})
-			.catch(() => {});
+		void copyTextToClipboard(value).then((copied) => {
+			setStatus(copied ? "copied" : "failed");
+			if (timeoutRef.current !== null) {
+				clearTimeout(timeoutRef.current);
+			}
+			timeoutRef.current = setTimeout(() => {
+				setStatus("idle");
+				timeoutRef.current = null;
+			}, COPY_FEEDBACK_MS);
+		});
 	}, []);
 
-	return { copied, copy };
+	return {
+		copied: status === "copied",
+		failed: status === "failed",
+		status,
+		copy,
+	};
 }

@@ -2,6 +2,7 @@ import {
 	CalendarDays,
 	Check,
 	Copy,
+	CopyX,
 	CornerDownLeft,
 	GitCommitHorizontal,
 	User,
@@ -33,7 +34,7 @@ export function GitSelectedCommitCard({
 }) {
 	const subject = commitSubject(commit.commit.message);
 	const parentShas = commit.parents.map((parent) => shortSha(parent.sha));
-	const { copied, copy } = useCopyToClipboard();
+	const { copied, failed, copy } = useCopyToClipboard();
 
 	return (
 		<section className="relative overflow-hidden rounded-lg border border-dark-800 bg-dark-950 shadow-[0_10px_28px_-16px_rgba(0,0,0,0.75)]">
@@ -44,13 +45,21 @@ export function GitSelectedCommitCard({
 				<button
 					type="button"
 					onClick={() => copy(commit.sha)}
-					aria-label={copied ? "Copied commit SHA" : "Copy commit SHA"}
-					title={copied ? "Copied" : "Copy full SHA"}
+					aria-label={
+						copied
+							? "Copied commit SHA"
+							: failed
+								? "Copy commit SHA failed"
+								: "Copy commit SHA"
+					}
+					title={copied ? "Copied" : failed ? "Copy failed" : "Copy full SHA"}
 					className="font-mono-ui inline-flex items-center gap-1.5 rounded border border-dark-800 bg-dark-950 px-1.5 py-0.5 text-[11px] tabular-nums text-dark-100 transition-colors hover:border-brand/60 hover:text-dark-50"
 				>
 					{shortSha(commit.sha)}
 					{copied ? (
 						<Check size={11} className="text-success" />
+					) : failed ? (
+						<CopyX size={11} className="text-danger" />
 					) : (
 						<Copy size={11} className="text-dark-500" />
 					)}

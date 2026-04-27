@@ -36,4 +36,18 @@ describe("assistant turn utility bar", () => {
 		expect(html).not.toContain("border-success/60");
 		expect(html).toContain("text-success");
 	});
+
+	test("renders a copy failure state", () => {
+		const html = renderToStaticMarkup(
+			<AssistantTurnCopyButton
+				copied={false}
+				disabled={false}
+				failed={true}
+				onClick={() => {}}
+			/>,
+		);
+
+		expect(html).toContain('aria-label="Copy failed"');
+		expect(html).toContain("text-danger");
+	});
 });

@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, CopyX } from "lucide-react";
 import { useCopyToClipboard } from "../../use-copy-to-clipboard.ts";
 
 const turnTimestampFormatter = new Intl.DateTimeFormat("en-US", {
@@ -21,7 +21,7 @@ export function AssistantTurnUtilityBar({
 	const canCopy = content.trim() !== "";
 	const durationLabel = formatTurnDuration(turnStartedAt, timestamp);
 	const timestampLabel = formatTurnTimestamp(timestamp);
-	const { copied, copy } = useCopyToClipboard();
+	const { copied, failed, copy } = useCopyToClipboard();
 
 	return (
 		<div className="font-mono-ui mt-2 flex items-center justify-between gap-3 px-3 text-[11px] uppercase tracking-[0.12em] text-dark-500">
@@ -32,6 +32,7 @@ export function AssistantTurnUtilityBar({
 				<AssistantTurnCopyButton
 					copied={copied}
 					disabled={!canCopy}
+					failed={failed}
 					onClick={() => copy(content)}
 				/>
 			</div>
@@ -51,24 +52,39 @@ export function AssistantTurnUtilityBar({
 export function AssistantTurnCopyButton({
 	copied,
 	disabled,
+	failed = false,
 	onClick,
 }: {
 	copied: boolean;
 	disabled: boolean;
+	failed?: boolean;
 	onClick: () => void;
 }) {
+	const label = copied
+		? "Copied final result"
+		: failed
+			? "Copy failed"
+			: "Copy final result";
+	const toneClass = copied
+		? "text-success"
+		: failed
+			? "text-danger"
+			: "text-dark-300 hover:text-dark-100";
+
 	return (
 		<button
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
-			aria-label={copied ? "Copied final result" : "Copy final result"}
+			aria-label={label}
 			className={`inline-flex items-center justify-center rounded p-1 transition-colors disabled:cursor-not-allowed disabled:text-dark-600 ${
-				copied ? "text-success" : "text-dark-300 hover:text-dark-100"
+				toneClass
 			}`}
 		>
 			{copied ? (
 				<Check size={11} strokeWidth={1.8} aria-hidden="true" />
+			) : failed ? (
+				<CopyX size={11} strokeWidth={1.8} aria-hidden="true" />
 			) : (
 				<Copy size={11} strokeWidth={1.8} aria-hidden="true" />
 			)}
