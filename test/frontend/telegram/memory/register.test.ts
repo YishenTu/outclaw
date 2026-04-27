@@ -121,6 +121,39 @@ describe("Telegram memory file handlers", () => {
 		});
 	});
 
+	test("working file content omits the filename heading", async () => {
+		const bridge = {
+			sendCommandAndWait: mock(async () => ({
+				type: "memory_file_content",
+				command: "working-files",
+				name: "USER.md",
+				path: "USER.md",
+				content: "User instructions\n",
+			})),
+		};
+		const reply = mock(async (_text: string, _options?: object) => undefined);
+
+		const handled = await handleTelegramMemoryTextCommand(
+			{
+				message: { text: "/working_files USER.md" },
+				reply,
+			},
+			() => bridge,
+		);
+
+		expect(handled).toBe(true);
+		expect(bridge.sendCommandAndWait).toHaveBeenCalledWith(
+			"/working-files USER.md",
+			expect.any(Set),
+		);
+		expect(reply.mock.calls[0]?.[0]).toContain("User instructions");
+		expect(reply.mock.calls[0]?.[0]).not.toContain("USER.md");
+		expect(reply.mock.calls[0]?.[1]).toEqual({
+			parse_mode: "HTML",
+			disable_notification: true,
+		});
+	});
+
 	test("exact hyphen text commands are handled before prompt streaming", async () => {
 		const bridge = {
 			sendCommandAndWait: mock(async () => ({

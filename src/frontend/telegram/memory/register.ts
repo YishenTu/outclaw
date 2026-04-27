@@ -234,7 +234,10 @@ async function sendMemoryFileContent(
 	ctx: Pick<TelegramMemoryCommandContext, "reply">,
 	event: MemoryFileContentEvent,
 ) {
-	const markdown = `# ${event.path}\n\n${event.content}`;
+	const markdown =
+		event.command === "working-files"
+			? event.content
+			: `# ${event.path}\n\n${event.content}`;
 	const html = markdownToTelegramHtml(markdown);
 	const chunks = splitTelegramHtml(html || markdown, TELEGRAM_MESSAGE_LIMIT);
 	for (const chunk of chunks) {
