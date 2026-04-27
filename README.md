@@ -4,7 +4,9 @@
 
 A mini [OpenClaw](https://github.com/openclaw/openclaw) rebuilt on the **Claude Agent SDK**. No API keys, no per-token billing — just a Claude subscription.
 
-The Claude Agent SDK handles the agent loop and built-in tools. A **skill system** extends the agent's abilities on top of that foundation.
+The Claude Agent SDK handles the agent loop and built-in tools. **Skill system** extends the agent's abilities on top of that foundation.
+
+Built in cli commands and schedule task templates handle internal management and **memory** system.
 
 ## Setup
 
