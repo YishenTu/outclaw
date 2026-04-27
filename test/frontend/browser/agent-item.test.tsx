@@ -4,7 +4,7 @@ import { AgentItem } from "../../../src/frontend/browser/components/agent-sideba
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
 describe("AgentItem", () => {
-	test("renders agent names as capitalized display labels", () => {
+	test("renders agent names as title-case labels in the default UI font", () => {
 		const html = renderToStaticMarkup(
 			<AgentItem
 				activeSession={null}
@@ -21,8 +21,12 @@ describe("AgentItem", () => {
 		);
 
 		expect(html).toContain(">Railly<");
-		expect(html).toContain("font-display");
-		expect(html).toContain("capitalize");
+		expect(html).toContain("truncate text-[15px]");
+		expect(html).not.toContain("font-semibold");
+		expect(html).not.toContain("truncate font-mono-ui text-[15px]");
+		expect(html).not.toContain("uppercase");
+		expect(html).not.toContain("truncate font-display text-[15px]");
+		expect(html).not.toContain(">RAILLY<");
 		expect(html).not.toContain(">railly<");
 	});
 });

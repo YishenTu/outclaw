@@ -71,7 +71,7 @@ export function AgentItem({
 					) : (
 						<ChevronRight size={14} className="shrink-0" />
 					)}
-					<div className="min-w-0 flex-1 truncate font-display text-[15px] font-semibold capitalize">
+					<div className="min-w-0 flex-1 truncate text-[15px]">
 						{formatAgentDisplayName(agent.name)}
 					</div>
 				</button>
