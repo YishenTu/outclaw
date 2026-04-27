@@ -34,7 +34,7 @@ const MODEL_LABELS: Record<ModelAlias, string> = {
 	haiku: "Haiku",
 };
 
-function resolveCurrentModelAlias(model: string | null): ModelAlias {
+export function resolveCurrentModelAlias(model: string | null): ModelAlias {
 	if (!model) {
 		return DEFAULT_MODEL as ModelAlias;
 	}
@@ -48,12 +48,20 @@ function resolveCurrentModelAlias(model: string | null): ModelAlias {
 	return DEFAULT_MODEL as ModelAlias;
 }
 
-function resolveCurrentEffort(effort: string | null): EffortLevel {
+export function resolveCurrentEffort(effort: string | null): EffortLevel {
 	return effort && isEffortLevel(effort) ? effort : DEFAULT_EFFORT;
 }
 
-function formatEffortLabel(effort: EffortLevel): string {
+export function formatEffortLabel(effort: EffortLevel): string {
 	return EFFORT_LABELS[effort];
+}
+
+export function visibleEffortLevelsForModel(
+	model: ModelAlias,
+): readonly EffortLevel[] {
+	return EFFORT_MENU_LEVELS.filter(
+		(level) => model === "opus" || !isOpusOnlyEffort(level),
+	);
 }
 
 interface ModelSelectorProps {
@@ -77,9 +85,7 @@ export function ModelSelector({
 	const effortRef = useRef<HTMLDivElement | null>(null);
 	const currentModel = resolveCurrentModelAlias(model);
 	const currentEffort = resolveCurrentEffort(effort);
-	const visibleEffortLevels = EFFORT_MENU_LEVELS.filter(
-		(level) => currentModel === "opus" || !isOpusOnlyEffort(level),
-	);
+	const visibleEffortLevels = visibleEffortLevelsForModel(currentModel);
 
 	useEffect(() => {
 		function handlePointerDown(event: MouseEvent) {

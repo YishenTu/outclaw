@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { UsageInfo } from "../../../../common/protocol.ts";
 import { useContextUsageStore } from "../../stores/context-usage.ts";
 import { useRuntimeStore } from "../../stores/runtime.ts";
 
@@ -12,7 +13,7 @@ interface ContextGaugeProps {
 	sessionKey: string | null;
 }
 
-function formatTokenCount(tokens: number): string {
+export function formatContextTokenCount(tokens: number): string {
 	if (tokens >= 1_000_000) {
 		return `${(tokens / 1_000_000).toFixed(1)}M`;
 	}
@@ -35,7 +36,7 @@ function polarToCartesian(
 	};
 }
 
-function describeArc(
+export function describeContextGaugeArc(
 	centerX: number,
 	centerY: number,
 	radius: number,
@@ -46,6 +47,17 @@ function describeArc(
 	const end = polarToCartesian(centerX, centerY, radius, startAngle);
 	const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
 	return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+}
+
+export function resolveContextUsagePercentage(
+	usage: Pick<UsageInfo, "contextTokens" | "contextWindow" | "percentage">,
+): number {
+	return usage.contextWindow > 0
+		? Math.min(
+				100,
+				Math.max(0, (usage.contextTokens / usage.contextWindow) * 100),
+			)
+		: usage.percentage;
 }
 
 export function ContextGauge({ sessionKey }: ContextGaugeProps) {
@@ -60,13 +72,7 @@ export function ContextGauge({ sessionKey }: ContextGaugeProps) {
 		return null;
 	}
 
-	const percentage =
-		usage.contextWindow > 0
-			? Math.min(
-					100,
-					Math.max(0, (usage.contextTokens / usage.contextWindow) * 100),
-				)
-			: usage.percentage;
+	const percentage = resolveContextUsagePercentage(usage);
 	const fillAngle = ARC_START + (percentage / 100) * (ARC_END - ARC_START);
 	const warning = percentage >= 80;
 
@@ -85,7 +91,13 @@ export function ContextGauge({ sessionKey }: ContextGaugeProps) {
 				viewBox={`0 0 ${SIZE} ${SIZE}`}
 			>
 				<path
-					d={describeArc(CENTER, CENTER, RADIUS, ARC_START, ARC_END)}
+					d={describeContextGaugeArc(
+						CENTER,
+						CENTER,
+						RADIUS,
+						ARC_START,
+						ARC_END,
+					)}
 					fill="none"
 					stroke={warning ? "rgb(var(--danger))" : "var(--dark-500)"}
 					strokeLinecap="round"
@@ -93,7 +105,13 @@ export function ContextGauge({ sessionKey }: ContextGaugeProps) {
 					opacity={0.35}
 				/>
 				<path
-					d={describeArc(CENTER, CENTER, RADIUS, ARC_START, fillAngle)}
+					d={describeContextGaugeArc(
+						CENTER,
+						CENTER,
+						RADIUS,
+						ARC_START,
+						fillAngle,
+					)}
 					fill="none"
 					stroke={warning ? "rgb(var(--danger))" : "rgb(var(--brand))"}
 					strokeLinecap="round"
@@ -103,8 +121,8 @@ export function ContextGauge({ sessionKey }: ContextGaugeProps) {
 			<span className="text-xs text-dark-400">{Math.round(percentage)}%</span>
 			{showTooltip && (
 				<div className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded border border-dark-800 bg-dark-900 px-2 py-1 text-xs text-dark-200 shadow-lg">
-					{formatTokenCount(usage.contextTokens)} /{" "}
-					{formatTokenCount(usage.contextWindow)}
+					{formatContextTokenCount(usage.contextTokens)} /{" "}
+					{formatContextTokenCount(usage.contextWindow)}
 				</div>
 			)}
 		</div>

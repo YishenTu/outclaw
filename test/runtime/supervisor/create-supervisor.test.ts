@@ -26,6 +26,21 @@ function connectBrowserWs(port: number, agent?: string): Promise<WebSocket> {
 	});
 }
 
+function connectBrowserRuntimeWs(
+	port: number,
+	agent?: string,
+): Promise<WebSocket> {
+	return new Promise((resolve) => {
+		const url = new URL(`ws://localhost:${port}/ws`);
+		url.searchParams.set("client", "browser");
+		if (agent) {
+			url.searchParams.set("agent", agent);
+		}
+		const ws = new WebSocket(url);
+		ws.onopen = () => resolve(ws);
+	});
+}
+
 function connectTelegramWs(
 	port: number,
 	params: {
@@ -183,6 +198,40 @@ describe("createSupervisor", () => {
 		expect((await events).find((event) => event.type === "text")?.text).toBe(
 			"mimi",
 		);
+
+		ws.close();
+	});
+
+	test("accepts browser runtime websocket clients on the /ws path", async () => {
+		const raillyFacade = new MockFacade();
+		raillyFacade.textChunks = ["from browser ws"];
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: raillyFacade,
+				}),
+			],
+		});
+		cleanup = () => supervisor.stop();
+
+		const ws = await connectBrowserRuntimeWs(supervisor.port, "railly");
+		expect(
+			await waitForEvent(ws, (event) => event.type === "runtime_status"),
+		).toMatchObject({
+			type: "runtime_status",
+			agentName: "railly",
+		});
+
+		const events = collectUntilDone(ws);
+		ws.send(JSON.stringify({ type: "prompt", prompt: "hello from browser" }));
+
+		expect((await events).find((event) => event.type === "text")?.text).toBe(
+			"from browser ws",
+		);
+		expect(raillyFacade.lastParams?.prompt).toBe("hello from browser");
 
 		ws.close();
 	});

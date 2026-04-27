@@ -11,13 +11,30 @@ import { join } from "node:path";
 import {
 	formatSchemaStatusRows,
 	loadSchemaStatuses,
+	schemaCommand,
 	selectSchemaStatuses,
 } from "../../src/cli/schema.ts";
+import { captureExitOutput } from "../helpers/capture-exit.ts";
 
 function createMemoryRoot(): string {
 	const root = mkdtempSync(join(tmpdir(), "outclaw-schema-"));
 	mkdirSync(join(root, "schemas"), { recursive: true });
 	return root;
+}
+
+function createHomeDir(): string {
+	return mkdtempSync(join(tmpdir(), "outclaw-schema-home-"));
+}
+
+function createAgentHome(
+	homeDir: string,
+	name: string,
+	agentId: string,
+): string {
+	const agentHome = join(homeDir, "agents", name);
+	mkdirSync(join(agentHome, "schemas"), { recursive: true });
+	writeFileSync(join(agentHome, ".agent-id"), `${agentId}\n`);
+	return agentHome;
 }
 
 function writeSchema(
@@ -47,12 +64,19 @@ function writeSchemaFrontmatter(
 
 describe("schema status", () => {
 	let tempRoot: string | undefined;
+	let tempHome: string | undefined;
+	const originalCwd = process.cwd();
 
 	afterEach(() => {
 		if (tempRoot && existsSync(tempRoot)) {
 			rmSync(tempRoot, { force: true, recursive: true });
 		}
 		tempRoot = undefined;
+		if (tempHome && existsSync(tempHome)) {
+			rmSync(tempHome, { force: true, recursive: true });
+		}
+		tempHome = undefined;
+		process.chdir(originalCwd);
 	});
 
 	test("loads schemas with freshness state and skips non-schema markdown files", () => {
@@ -235,6 +259,121 @@ describe("schema status", () => {
 				"working-with-yishen  obs:2026-04-26  syn:2026-04-20  STALE",
 				"broken-example       obs:?           syn:2026-04-20  BROKEN  (missing last_observation_at)",
 			].join("\n"),
+		);
+	});
+
+	test("schema command prints usage and validates arguments in-process", async () => {
+		tempHome = createHomeDir();
+
+		const missing = await captureExitOutput(() =>
+			schemaCommand({ argv: ["bun", "oc", "schema"], homeDir: tempHome ?? "" }),
+		);
+		expect(missing.code).toBe(1);
+		expect(missing.logs.join("\n")).toContain("Usage: oc schema");
+
+		for (const argv of [
+			["bun", "oc", "schema", "--help"],
+			["bun", "oc", "schema", "status", "--help"],
+			["bun", "oc", "schema", "stale", "--help"],
+		]) {
+			const output = await captureExitOutput(() =>
+				schemaCommand({ argv, homeDir: tempHome ?? "" }),
+			);
+			expect(output.code).toBe(0);
+			expect(output.logs.join("\n")).toContain("Usage:");
+		}
+
+		for (const [argv, error] of [
+			[["bun", "oc", "schema", "unknown"], "Usage: oc schema"],
+			[
+				["bun", "oc", "schema", "status", "--agent"],
+				"oc schema: --agent requires a value",
+			],
+			[
+				["bun", "oc", "schema", "status", "--unknown"],
+				'oc schema: unknown flag "--unknown"',
+			],
+			[
+				["bun", "oc", "schema", "status", "extra"],
+				'oc schema: unexpected argument "extra"',
+			],
+		] as const) {
+			const output = await captureExitOutput(() =>
+				schemaCommand({ argv: [...argv], homeDir: tempHome ?? "" }),
+			);
+			expect(output.code).toBe(1);
+			expect([...output.errors, ...output.logs].join("\n")).toContain(error);
+		}
+	});
+
+	test("schema command resolves agents by name or id and emits json", async () => {
+		tempHome = createHomeDir();
+		const agentHome = createAgentHome(tempHome, "railly", "agent-railly");
+		writeSchema(agentHome, "fresh.md", {
+			name: "fresh",
+			kind: "topic",
+			last_observation_at: "2026-04-20",
+			last_synthesized: "2026-04-21",
+		});
+		writeSchema(agentHome, "stale.md", {
+			name: "stale",
+			kind: "topic",
+			last_observation_at: "2026-04-26",
+			last_synthesized: "2026-04-20",
+		});
+
+		const byName = await captureExitOutput(() =>
+			schemaCommand({
+				argv: ["bun", "oc", "schema", "stale", "--agent", "railly", "--json"],
+				homeDir: tempHome ?? "",
+			}),
+		);
+		const byId = await captureExitOutput(() =>
+			schemaCommand({
+				argv: ["bun", "oc", "schema", "status", "--agent", "agent-railly"],
+				homeDir: tempHome ?? "",
+			}),
+		);
+
+		expect(byName.code).toBeUndefined();
+		expect(JSON.parse(byName.logs.join("\n"))).toEqual([
+			{
+				name: "stale",
+				last_observation_at: "2026-04-26",
+				last_synthesized: "2026-04-20",
+				state: "STALE",
+			},
+		]);
+		expect(byId.code).toBeUndefined();
+		expect(byId.logs.join("\n")).toContain("fresh");
+		expect(byId.logs.join("\n")).toContain("stale");
+	});
+
+	test("schema command reports unresolved cwd and agent selector errors", async () => {
+		tempHome = createHomeDir();
+		tempRoot = createMemoryRoot();
+		process.chdir(tempRoot);
+
+		const missingCwdAgent = await captureExitOutput(() =>
+			schemaCommand({
+				argv: ["bun", "oc", "schema", "status"],
+				homeDir: tempHome ?? "",
+			}),
+		);
+		expect(missingCwdAgent.code).toBe(1);
+		expect(missingCwdAgent.errors.join("\n")).toContain(
+			"cannot resolve current agent from cwd",
+		);
+
+		const missingSelector = await captureExitOutput(() =>
+			schemaCommand({
+				argv: ["bun", "oc", "schema", "status", "--agent", "missing"],
+				homeDir: tempHome ?? "",
+			}),
+		);
+		expect(missingSelector.code).toBe(1);
+		expect(missingSelector.errors.join("\n")).toContain(
+			"cannot read agents directory",
 		);
 	});
 });

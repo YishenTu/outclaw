@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendNote } from "../../src/cli/note.ts";
+import { appendNote, noteCommand } from "../../src/cli/note.ts";
+import { captureExitOutput } from "../helpers/capture-exit.ts";
 
 function createMemoryRoot(): string {
 	return mkdtempSync(join(tmpdir(), "outclaw-note-"));
@@ -17,13 +18,37 @@ function dailyPath(memoryRoot: string, date: Date): string {
 
 describe("appendNote", () => {
 	let tempRoot: string | undefined;
+	let originalSessionId: string | undefined;
+	let originalMemoryRoot: string | undefined;
+	let envCaptured = false;
 
 	afterEach(() => {
 		if (tempRoot && existsSync(tempRoot)) {
 			rmSync(tempRoot, { force: true, recursive: true });
 		}
 		tempRoot = undefined;
+		if (envCaptured) {
+			if (originalSessionId === undefined) {
+				delete process.env.OC_SESSION_ID;
+			} else {
+				process.env.OC_SESSION_ID = originalSessionId;
+			}
+			if (originalMemoryRoot === undefined) {
+				delete process.env.OC_MEMORY_ROOT;
+			} else {
+				process.env.OC_MEMORY_ROOT = originalMemoryRoot;
+			}
+		}
+		originalSessionId = undefined;
+		originalMemoryRoot = undefined;
+		envCaptured = false;
 	});
+
+	function captureEnv() {
+		originalSessionId = process.env.OC_SESSION_ID;
+		originalMemoryRoot = process.env.OC_MEMORY_ROOT;
+		envCaptured = true;
+	}
 
 	test("creates daily file with title, session stanza, and observation line", () => {
 		tempRoot = createMemoryRoot();
@@ -249,5 +274,89 @@ describe("appendNote", () => {
 		const content = readFileSync(dailyPath(tempRoot, now), "utf-8");
 		expect(content).toContain("- 14:32 [routine] first line [[outclaw]]\n");
 		expect(content).toContain("  second line\n");
+	});
+
+	test("note command prints help and validates parser errors in-process", async () => {
+		const help = await captureExitOutput(() =>
+			noteCommand({ argv: ["bun", "oc", "note", "--help"] }),
+		);
+		expect(help.code).toBe(0);
+		expect(help.logs.join("\n")).toContain('Usage: oc note "<content>"');
+
+		for (const [argv, error] of [
+			[
+				["bun", "oc", "note", "first", "second"],
+				"oc note: only one positional content argument is allowed",
+			],
+			[
+				["bun", "oc", "note", "--salience"],
+				"oc note: --salience requires a value",
+			],
+			[["bun", "oc", "note", "--hint"], "oc note: --hint requires a value"],
+			[
+				["bun", "oc", "note", "--unknown", "value"],
+				'oc note: unknown flag "--unknown"',
+			],
+		] as const) {
+			const output = await captureExitOutput(() =>
+				noteCommand({ argv: [...argv] }),
+			);
+			expect(output.code).toBe(1);
+			expect(output.errors.join("\n")).toContain(error);
+			expect(output.errors.join("\n")).toContain('Usage: oc note "<content>"');
+		}
+	});
+
+	test("note command requires session environment and surfaces append failures", async () => {
+		captureEnv();
+		delete process.env.OC_SESSION_ID;
+		delete process.env.OC_MEMORY_ROOT;
+
+		const missingEnv = await captureExitOutput(() =>
+			noteCommand({ argv: ["bun", "oc", "note", "remember this"] }),
+		);
+		expect(missingEnv.code).toBe(1);
+		expect(missingEnv.errors.join("\n")).toContain(
+			"OC_SESSION_ID and OC_MEMORY_ROOT must be set",
+		);
+
+		tempRoot = createMemoryRoot();
+		process.env.OC_SESSION_ID = "session-a";
+		process.env.OC_MEMORY_ROOT = tempRoot;
+		const badSalience = await captureExitOutput(() =>
+			noteCommand({
+				argv: ["bun", "oc", "note", "remember this", "--salience", "question"],
+			}),
+		);
+		expect(badSalience.code).toBe(1);
+		expect(badSalience.errors.join("\n")).toContain("unknown salience");
+	});
+
+	test("note command appends positional content without reading stdin", async () => {
+		captureEnv();
+		tempRoot = createMemoryRoot();
+		process.env.OC_SESSION_ID = "session-a";
+		process.env.OC_MEMORY_ROOT = tempRoot;
+
+		const output = await captureExitOutput(() =>
+			noteCommand({
+				argv: [
+					"bun",
+					"oc",
+					"note",
+					"command path",
+					"--salience",
+					"decision",
+					"--hint",
+					"outclaw",
+				],
+			}),
+		);
+
+		expect(output.code).toBeUndefined();
+		expect(output.errors).toEqual([]);
+		const content = readFileSync(dailyPath(tempRoot, new Date()), "utf-8");
+		expect(content).toContain("[decision] command path [[outclaw]]");
+		expect(content).toContain("## Session session-a |");
 	});
 });

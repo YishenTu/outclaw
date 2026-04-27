@@ -5,6 +5,7 @@ import type {
 } from "../../../src/common/protocol.ts";
 import {
 	applyConfigEntryEdits,
+	parseConfigDocument,
 	parseConfigEntries,
 } from "../../../src/frontend/browser/components/agent-sidebar/config-editor.ts";
 import { ConfigModalContent } from "../../../src/frontend/browser/components/agent-sidebar/config-panel.tsx";
@@ -78,6 +79,18 @@ const TEST_CONFIG_SCHEMA: BrowserConfigSchemaNode = {
 };
 
 describe("config panel", () => {
+	test("parses only object config documents", () => {
+		expect(parseConfigDocument('{"host":"127.0.0.1"}')).toEqual({
+			host: "127.0.0.1",
+		});
+		expect(() => parseConfigDocument("[]")).toThrow(
+			"Config file must contain a JSON object",
+		);
+		expect(() => parseConfigDocument("null")).toThrow(
+			"Config file must contain a JSON object",
+		);
+	});
+
 	test("uses code schema to keep typed leaves intact", () => {
 		expect(
 			parseConfigEntries(
@@ -135,6 +148,59 @@ describe("config panel", () => {
 				typeLabel: "number[] | string",
 				value: "[\n\t101,\n\t202\n]",
 				valueKind: "array",
+			},
+		]);
+	});
+
+	test("parses fallback entries for arrays, empty objects, nulls, and primitives", () => {
+		expect(
+			parseConfigEntries({
+				emptyArray: [],
+				emptyObject: {},
+				matrix: [[1], [2]],
+				nullable: null,
+				title: "outclaw",
+			}),
+		).toEqual([
+			{
+				displayItem: "emptyArray",
+				item: "emptyArray",
+				value: "[]",
+				valueKind: "array",
+			},
+			{
+				displayItem: "emptyObject",
+				item: "emptyObject",
+				value: "{}",
+				valueKind: "object",
+			},
+			{
+				displayItem: "matrix[0][0]",
+				item: "matrix[0][0]",
+				typeLabel: undefined,
+				value: "1",
+				valueKind: "number",
+			},
+			{
+				displayItem: "matrix[1][0]",
+				item: "matrix[1][0]",
+				typeLabel: undefined,
+				value: "2",
+				valueKind: "number",
+			},
+			{
+				displayItem: "nullable",
+				item: "nullable",
+				typeLabel: undefined,
+				value: "null",
+				valueKind: "null",
+			},
+			{
+				displayItem: "title",
+				item: "title",
+				typeLabel: undefined,
+				value: "outclaw",
+				valueKind: "string",
 			},
 		]);
 	});
@@ -239,6 +305,128 @@ describe("config panel", () => {
 		).toThrow(
 			"Expected environment variable reference like $NAME for agents.agent-railly.telegram.allowedUsers",
 		);
+	});
+
+	test("applies edited array, object, null, and union literal values", () => {
+		expect(
+			applyConfigEntryEdits(
+				{
+					features: {
+						enabled: false,
+						limit: 1,
+						metadata: { mode: "old" },
+						mode: "auto",
+						nullable: "value",
+						users: [1],
+					},
+				},
+				[
+					{
+						allowedValueKinds: ["boolean", "string"],
+						item: "features.enabled",
+						value: "true",
+						valueKind: "boolean",
+					},
+					{
+						allowedValueKinds: ["number", "string"],
+						item: "features.limit",
+						value: "2.5e1",
+						valueKind: "number",
+					},
+					{
+						item: "features.metadata",
+						value: '{"mode":"new"}',
+						valueKind: "object",
+					},
+					{
+						allowedValueKinds: ["null", "string"],
+						item: "features.nullable",
+						value: "null",
+						valueKind: "string",
+					},
+					{
+						item: "features.users",
+						value: "[2,3]",
+						valueKind: "array",
+					},
+				],
+			),
+		).toEqual({
+			features: {
+				enabled: true,
+				limit: 25,
+				metadata: { mode: "new" },
+				mode: "auto",
+				nullable: null,
+				users: [2, 3],
+			},
+		});
+	});
+
+	test("rejects invalid config edit paths and typed values", () => {
+		expect(() =>
+			applyConfigEntryEdits({ features: { enabled: true } }, [
+				{
+					item: "features.missing.enabled",
+					value: "false",
+					valueKind: "boolean",
+				},
+			]),
+		).toThrow("Missing config path: features.missing.enabled");
+		expect(() =>
+			applyConfigEntryEdits({ users: [1] }, [
+				{
+					item: "users[abc]",
+					value: "2",
+					valueKind: "number",
+				},
+			]),
+		).toThrow("Invalid config path: users[abc]");
+		expect(() =>
+			applyConfigEntryEdits({ users: [1] }, [
+				{
+					item: "users[0]",
+					value: "",
+					valueKind: "number",
+				},
+			]),
+		).toThrow("Invalid number for users[0]");
+		expect(() =>
+			applyConfigEntryEdits({ enabled: true }, [
+				{
+					item: "enabled",
+					value: "sometimes",
+					valueKind: "boolean",
+				},
+			]),
+		).toThrow("Invalid boolean for enabled");
+		expect(() =>
+			applyConfigEntryEdits({ nullable: null }, [
+				{
+					item: "nullable",
+					value: "nil",
+					valueKind: "null",
+				},
+			]),
+		).toThrow("Invalid null literal for nullable");
+		expect(() =>
+			applyConfigEntryEdits({ users: [1] }, [
+				{
+					item: "users",
+					value: '{"not":"array"}',
+					valueKind: "array",
+				},
+			]),
+		).toThrow("Config value must remain an array for users");
+		expect(() =>
+			applyConfigEntryEdits({ settings: { mode: "auto" } }, [
+				{
+					item: "settings",
+					value: "[1]",
+					valueKind: "object",
+				},
+			]),
+		).toThrow("Config value must remain an object for settings");
 	});
 
 	test("applies edited values back into the config document", () => {

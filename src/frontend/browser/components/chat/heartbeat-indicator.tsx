@@ -2,7 +2,10 @@ import { Heart } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRuntimeStore } from "../../stores/runtime.ts";
 
-function formatRemaining(targetTime: number, now: number): string {
+export function formatHeartbeatRemaining(
+	targetTime: number,
+	now: number,
+): string {
 	const remainingMs = Math.max(0, targetTime - now);
 	const totalSeconds = Math.ceil(remainingMs / 1000);
 
@@ -57,7 +60,7 @@ export function HeartbeatIndicator() {
 		<div className="ml-1 flex shrink-0 items-center gap-1">
 			<Heart size={13} className="text-pink-300" strokeWidth={1.8} />
 			<span className="text-xs text-dark-400">
-				{formatRemaining(nextHeartbeatAt, now)}
+				{formatHeartbeatRemaining(nextHeartbeatAt, now)}
 			</span>
 		</div>
 	);

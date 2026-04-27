@@ -29,4 +29,72 @@ describe("AgentItem", () => {
 		expect(html).not.toContain(">RAILLY<");
 		expect(html).not.toContain(">railly<");
 	});
+
+	test("renders expanded empty agents with a no-session hint", () => {
+		const html = renderToStaticMarkup(
+			<AgentItem
+				activeSession={null}
+				agent={{ agentId: "agent-railly", name: "railly" }}
+				dropIndicator="before"
+				isActive={false}
+				isDragging={true}
+				isExpanded={true}
+				onAttachRow={() => {}}
+				onRowPointerDown={() => {}}
+				onToggle={() => {}}
+				sessions={[]}
+			/>,
+		);
+
+		expect(html).toContain("No cached sessions for this agent yet.");
+		expect(html).toContain('aria-expanded="true"');
+		expect(html).toContain("opacity-60");
+		expect(html).toContain("border-dark-300/90");
+	});
+
+	test("renders expanded sessions and marks the active session", () => {
+		const html = renderToStaticMarkup(
+			<AgentItem
+				activeSession={{
+					agentId: "agent-railly",
+					providerId: "mock",
+					sdkSessionId: "sdk-active",
+				}}
+				agent={{ agentId: "agent-railly", name: "railly" }}
+				dropIndicator="after"
+				isActive={true}
+				isDragging={false}
+				isExpanded={true}
+				onAttachRow={() => {}}
+				onRowPointerDown={() => {}}
+				onToggle={() => {}}
+				sessions={[
+					{
+						agentId: "agent-railly",
+						providerId: "mock",
+						sdkSessionId: "sdk-active",
+						title: "Active work",
+						model: "mock-model",
+						lastActive: Date.now(),
+					},
+					{
+						agentId: "agent-railly",
+						providerId: "mock",
+						sdkSessionId: "sdk-old",
+						title: "Older work",
+						model: "mock-model",
+						lastActive: Date.now() - 86_400_000,
+					},
+				]}
+			/>,
+		);
+
+		expect(html).toContain("Active work");
+		expect(html).toContain("Older work");
+		expect(html).toContain('aria-label="Start new session for railly"');
+		expect(html).toContain('aria-label="Delete session Active work"');
+		expect(html).toContain("bg-brand");
+		expect(html).toContain("bg-dark-100");
+		expect(html).toContain("bottom-0");
+	});
 });
