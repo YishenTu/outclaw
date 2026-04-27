@@ -9,10 +9,12 @@ prompt: |
   ## Scope
 
   - Today's date: `bash: date`.
-  - List schemas: `bash: ls schemas/` (ignore files starting with `_`).
-  - For each schema file, read its frontmatter. If `last_observation_at <= last_synthesized`, skip. Otherwise, it needs synthesis.
+  - List the schemas that need work: `bash: oc schema stale`.
+  - That command emits one line per schema where `last_observation_at > last_synthesized` (STALE), plus any with malformed frontmatter (BROKEN).
+  - If output is empty, reply `NO_REPLY` — nothing to do.
+  - Only touch schemas in that list. Do not open or rewrite fresh schemas.
 
-  ## Schema shape
+  ## Schema shape (for reference)
 
   ```markdown
   ---
@@ -33,7 +35,7 @@ prompt: |
   ...
   ```
 
-  ## For each schema needing synthesis
+  ## For each STALE schema
 
   1. Read the current `# Model` and every `# Observations` entry dated after `last_synthesized`.
   2. Rewrite `# Model` so it reflects what those observations add or change:
@@ -43,6 +45,14 @@ prompt: |
   3. Update frontmatter: set `last_synthesized: <today>`, and preserve existing metadata such as `description` unless it is clearly wrong.
   4. Do NOT remove Observations — they're the audit trail. Optionally compress entries older than 30 days into one-line summaries if the log has grown unwieldy.
 
-  If new Observations don't actually change the Model, write nothing rather than churn.
+  If new Observations don't actually change the Model, write nothing rather than churn — but still bump `last_synthesized` so the schema drops off the stale list.
 
-  Reply with a summary of which schemas were resynthesized, or `NO_REPLY` if nothing needed work.
+  ## For each BROKEN schema
+
+  Frontmatter is missing or malformed. Inspect the file, repair the frontmatter (add missing date fields with reasonable values inferred from the Observations log, or fix invalid syntax), and only then synthesize if needed.
+
+  ## After
+
+  Re-run `bash: oc schema stale` to confirm the list is empty (or only contains schemas you intentionally left alone).
+
+  Reply with a one-line summary per schema touched, or `NO_REPLY` if nothing needed work.
