@@ -47,6 +47,67 @@ prompt: do something
 		expect(job.model).toBeUndefined();
 	});
 
+	test("parses a one-time runAt job config", () => {
+		const yaml = `
+name: one-time-job
+runAt: "2026-04-29T09:00:00+08:00"
+prompt: do something once
+		`.trim();
+		const job = parseJobConfig(yaml);
+		expect(job).toEqual({
+			name: "one-time-job",
+			runAt: "2026-04-29T09:00:00+08:00",
+			enabled: true,
+			prompt: "do something once",
+		});
+	});
+
+	test("throws when both schedule and runAt are provided", () => {
+		const yaml = `
+name: ambiguous-job
+schedule: "0 9 * * *"
+runAt: "2026-04-29T09:00:00+08:00"
+prompt: do something
+		`.trim();
+		expect(() => parseJobConfig(yaml)).toThrow(
+			"Provide exactly one of schedule or runAt",
+		);
+	});
+
+	test("throws when schedule is empty", () => {
+		const yaml = `
+name: empty-schedule-job
+schedule: ""
+prompt: do something
+		`.trim();
+		expect(() => parseJobConfig(yaml)).toThrow(
+			"schedule must be a non-empty string",
+		);
+	});
+
+	test("throws when runAt omits an explicit timezone offset", () => {
+		const yaml = `
+name: ambiguous-time-job
+runAt: "2026-04-29T09:00:00"
+prompt: do something
+		`.trim();
+		expect(() => parseJobConfig(yaml)).toThrow(
+			"runAt must be an ISO 8601 datetime with explicit Z or offset",
+		);
+	});
+
+	test("throws when timezone is provided for runAt", () => {
+		const yaml = `
+name: one-time-job
+runAt: "2026-04-29T09:00:00+08:00"
+timezone: UTC+8
+prompt: do something
+		`.trim();
+		expect(() => parseJobConfig(yaml)).toThrow(
+			"timezone can only be used with schedule",
+		);
+	});
+
 	test("parses thinking effort when provided", () => {
 		const yaml = `
 name: test-job
@@ -156,7 +217,7 @@ prompt: do something
 name: test-job
 prompt: do something
 `.trim();
-		expect(() => parseJobConfig(yaml)).toThrow("schedule");
+		expect(() => parseJobConfig(yaml)).toThrow("schedule or runAt");
 	});
 
 	test("throws when prompt is missing", () => {
@@ -193,5 +254,18 @@ prompt: do something
 		const parsed = parseJobConfig(`${VALID_YAML}\ntimezone: UTC-7`);
 		const reparsed = parseJobConfig(serializeJobConfig(parsed));
 		expect(reparsed.timezone).toBe("UTC-7");
+	});
+
+	test("round-trips runAt through serialize", () => {
+		const parsed = parseJobConfig(
+			`
+name: one-time-job
+runAt: "2026-04-29T09:00:00+08:00"
+enabled: true
+prompt: do something once
+		`.trim(),
+		);
+		const reparsed = parseJobConfig(serializeJobConfig(parsed));
+		expect(reparsed).toEqual(parsed);
 	});
 });

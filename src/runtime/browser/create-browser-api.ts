@@ -21,6 +21,7 @@ import type {
 	ImageRef,
 } from "../../common/protocol.ts";
 import { parseJobConfig, serializeJobConfig } from "../cron/job-config.ts";
+import { isRunAtExpired, resolveJobSchedule } from "../cron/schedule.ts";
 import { saveManagedImage } from "../files/managed-image-store.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
 import { BROWSER_CONFIG_SCHEMA } from "./config-schema.ts";
@@ -260,6 +261,7 @@ async function listCronEntries(rootDir: string): Promise<BrowserCronEntry[]> {
 					path: toRelativePath(rootDir, absolutePath),
 					schedule: "Invalid config",
 					enabled: false,
+					status: "invalid",
 					error:
 						error instanceof Error ? error.message : "Failed to parse cron job",
 				};
@@ -276,19 +278,26 @@ function toBrowserCronEntry(
 		enabled: boolean;
 		model?: string;
 		name: string;
-		schedule: string;
+		schedule?: string;
+		runAt?: string;
 		timezone?: string;
 	},
 ): BrowserCronEntry {
+	const schedule = resolveJobSchedule(config);
 	const entry: BrowserCronEntry = {
 		name: config.name,
 		path: toRelativePath(rootDir, absolutePath),
-		schedule: config.schedule,
+		schedule: schedule.kind === "once" ? schedule.runAt : schedule.expression,
+		scheduleKind: schedule.kind,
 		enabled: config.enabled,
+		status: resolveBrowserCronStatus(config.enabled, schedule),
 	};
 
 	if (config.timezone !== undefined) {
 		entry.timezone = config.timezone;
+	}
+	if (schedule.kind === "once") {
+		entry.runAt = schedule.runAt;
 	}
 	if (config.model !== undefined) {
 		entry.model = config.model;
@@ -298,6 +307,21 @@ function toBrowserCronEntry(
 	}
 
 	return entry;
+}
+
+function resolveBrowserCronStatus(
+	enabled: boolean,
+	schedule: ReturnType<typeof resolveJobSchedule>,
+): BrowserCronEntry["status"] {
+	if (!enabled) {
+		return "disabled";
+	}
+
+	if (schedule.kind === "once" && isRunAtExpired(schedule.runAt)) {
+		return "expired";
+	}
+
+	return "scheduled";
 }
 
 function requireAgent(

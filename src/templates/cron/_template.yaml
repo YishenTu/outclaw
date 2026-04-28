@@ -4,11 +4,16 @@
 #
 # REQUIRED fields:
 #   name      — unique identifier, kebab-case
-#   schedule  — cron expression: "minute hour day-of-month month day-of-week"
+#   schedule  — recurring cron expression: "minute hour day-of-month month day-of-week"
 #               examples:
 #                 "0 9 * * 1"     -> every Monday at 09:00
 #                 "*/30 * * * *"  -> every 30 minutes
 #                 "45 5 * * *"    -> every day at 05:45
+#   runAt     — one-time ISO 8601 datetime with explicit offset
+#               examples:
+#                 "2026-04-29T09:00:00+08:00"
+#                 "2026-04-29T01:00:00Z"
+#               Use exactly one of schedule or runAt.
 #   prompt    — the task description the agent reads when the cron fires
 #
 # OPTIONAL fields:
@@ -17,7 +22,8 @@
 #   effort    — low | medium | high | xhigh | max (default: runtime config)
 #   timezone  — UTC offset for the schedule: "UTC", "UTC+8", "UTC-7"
 #               (default: daemon's local timezone — leave this field OUT
-#               unless the user explicitly specifies a timezone)
+#               unless the user explicitly specifies a timezone; only valid
+#               with schedule, not runAt)
 #
 # Prompt guidelines:
 #   - Be specific about what to read, what to decide, what to write.
@@ -28,6 +34,8 @@
 
 name: <job-name>
 schedule: "0 9 * * 1"
+# For one-time jobs, replace schedule with:
+# runAt: "2026-04-29T09:00:00+08:00"
 enabled: true
 # model: opus
 # effort: medium

@@ -1,4 +1,10 @@
-import { existsSync, readdirSync, readFileSync, watch } from "node:fs";
+import {
+	existsSync,
+	readdirSync,
+	readFileSync,
+	watch,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { Cron } from "croner";
 import { type EffortLevel, isOpusOnlyEffort } from "../../common/commands.ts";
@@ -12,7 +18,13 @@ import {
 	type CronJobConfig,
 	parseJobConfig,
 	parseUtcOffsetHours,
+	serializeJobConfig,
 } from "./job-config.ts";
+import {
+	type CronSchedule,
+	isRunAtExpired,
+	resolveJobSchedule,
+} from "./schedule.ts";
 
 interface CronAgentRunResult {
 	sessionId?: string;
@@ -62,7 +74,9 @@ interface CronSchedulerOptions {
 
 interface ActiveJob {
 	filename: string;
+	content: string;
 	config: CronJobConfig;
+	schedule: CronSchedule;
 	cron: Cron;
 	telegramChatId?: number;
 }
@@ -172,6 +186,10 @@ export class CronScheduler {
 				join(this.options.cronDir, filename),
 				"utf-8",
 			);
+			if (this.jobs.get(filename)?.content === content) {
+				return;
+			}
+
 			const config = parseJobConfig(content);
 
 			if (!config.enabled) {
@@ -179,13 +197,24 @@ export class CronScheduler {
 				return;
 			}
 
-			this.registerJob(filename, config);
+			const schedule = resolveJobSchedule(config);
+			if (schedule.kind === "once" && isRunAtExpired(schedule.runAt)) {
+				this.removeJobByFile(filename);
+				return;
+			}
+
+			this.registerJob(filename, content, config, schedule);
 		} catch (err) {
 			console.warn(`Skipping cron job ${filename}: ${extractError(err)}`);
 		}
 	}
 
-	private registerJob(filename: string, config: CronJobConfig) {
+	private registerJob(
+		filename: string,
+		content: string,
+		config: CronJobConfig,
+		schedule: CronSchedule,
+	) {
 		this.removeJobByFile(filename);
 
 		const duplicateFile = this.filesByName.get(config.name);
@@ -195,23 +224,56 @@ export class CronScheduler {
 
 		const telegramChatId = this.options.resolveTelegramChatId?.(config);
 		const offsetHours =
-			config.timezone === undefined
+			schedule.kind !== "recurring" || schedule.timezone === undefined
 				? null
-				: parseUtcOffsetHours(config.timezone);
+				: parseUtcOffsetHours(schedule.timezone);
 		const cron = new Cron(
-			config.schedule,
+			schedule.kind === "once" ? schedule.runAt : schedule.expression,
 			offsetHours === null ? {} : { utcOffset: offsetHours * 60 },
 			() => {
 				const job = this.jobs.get(filename);
 				if (!job) {
 					return;
 				}
-				void this.executeJob(job);
+				this.handleScheduledJob(job);
 			},
 		);
 
-		this.jobs.set(filename, { filename, config, cron, telegramChatId });
+		this.jobs.set(filename, {
+			filename,
+			content,
+			config,
+			schedule,
+			cron,
+			telegramChatId,
+		});
 		this.filesByName.set(config.name, filename);
+	}
+
+	private handleScheduledJob(job: ActiveJob) {
+		if (job.schedule.kind === "once") {
+			this.disableOneTimeJob(job);
+		}
+
+		void this.executeJob(job);
+	}
+
+	private disableOneTimeJob(job: ActiveJob) {
+		try {
+			writeFileSync(
+				join(this.options.cronDir, job.filename),
+				serializeJobConfig({
+					...job.config,
+					enabled: false,
+				}),
+			);
+		} catch (err) {
+			console.warn(
+				`Failed to disable one-time cron job ${job.filename}: ${extractError(err)}`,
+			);
+		}
+
+		this.removeJobByFile(job.filename);
 	}
 
 	private async executeJob(job: ActiveJob) {

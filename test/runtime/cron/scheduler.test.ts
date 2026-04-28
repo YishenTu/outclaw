@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EffortLevel } from "../../../src/common/commands.ts";
@@ -59,6 +59,8 @@ schedule: "* * * * *"
 enabled: false
 prompt: should not run
 `.trim();
+
+const FUTURE_RUN_AT = "2999-01-23T09:00:00+00:00";
 
 describe("CronScheduler", () => {
 	const schedulers: CronScheduler[] = [];
@@ -179,6 +181,44 @@ describe("CronScheduler", () => {
 		expect(scheduler.jobCount).toBe(1);
 	});
 
+	test("loads future one-time runAt jobs", () => {
+		const cronDir = makeCronDir();
+		writeJob(
+			cronDir,
+			"once.yaml",
+			`
+name: one-time-job
+runAt: "${FUTURE_RUN_AT}"
+enabled: true
+prompt: say hello once
+				`.trim(),
+		);
+
+		const scheduler = createScheduler(cronDir);
+		scheduler.start();
+
+		expect(scheduler.jobCount).toBe(1);
+	});
+
+	test("does not schedule expired one-time runAt jobs", () => {
+		const cronDir = makeCronDir();
+		writeJob(
+			cronDir,
+			"expired.yaml",
+			`
+name: expired-job
+runAt: "2000-01-23T09:00:00+00:00"
+enabled: true
+prompt: should not run on startup
+				`.trim(),
+		);
+
+		const scheduler = createScheduler(cronDir);
+		scheduler.start();
+
+		expect(scheduler.jobCount).toBe(0);
+	});
+
 	test("handles empty cron directory", () => {
 		const cronDir = makeCronDir();
 		const scheduler = createScheduler(cronDir);
@@ -263,6 +303,62 @@ describe("CronScheduler", () => {
 			jobName: "test-job",
 			text: "manual result",
 		});
+	});
+
+	test("manual one-time job runs do not disable the config", async () => {
+		const cronDir = makeCronDir();
+		const cronPath = join(cronDir, "once.yaml");
+		writeJob(
+			cronDir,
+			"once.yaml",
+			`
+name: one-time-job
+runAt: "${FUTURE_RUN_AT}"
+enabled: true
+prompt: say hello once
+				`.trim(),
+		);
+
+		const results: ScheduledCronResult[] = [];
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async () => "manual one-time result",
+			onResult: (event) => results.push(event),
+		});
+		scheduler.start();
+
+		const accepted = scheduler.startJob("one-time-job");
+
+		expect(accepted).toEqual({ status: "accepted", jobName: "one-time-job" });
+		await waitForCondition(() => results.length === 1);
+		expect(readFileSync(cronPath, "utf8")).toContain("enabled: true");
+	});
+
+	test("scheduled one-time job disables itself after the scheduled attempt starts", async () => {
+		const cronDir = makeCronDir();
+		const cronPath = join(cronDir, "once.yaml");
+		const runAt = new Date(Date.now() + 1500).toISOString();
+		writeJob(
+			cronDir,
+			"once.yaml",
+			`
+name: one-time-job
+runAt: "${runAt}"
+enabled: true
+prompt: say hello once
+				`.trim(),
+		);
+
+		let called = false;
+		const scheduler = createScheduler(cronDir, {
+			runAgent: async () => {
+				called = true;
+				return "scheduled one-time result";
+			},
+		});
+		scheduler.start();
+
+		await waitForCondition(() => called, 3000);
+		expect(readFileSync(cronPath, "utf8")).toContain("enabled: false");
 	});
 
 	test("rejects a disabled manual job run before invoking the agent", () => {

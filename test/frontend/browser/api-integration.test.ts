@@ -110,6 +110,8 @@ describe("browser API client integration", () => {
 						path: "cron/daily.yaml",
 						prompt: "Reflect",
 						schedule: "* * * * *",
+						scheduleKind: "recurring",
+						status: "scheduled",
 					},
 				];
 			},
@@ -203,6 +205,8 @@ describe("browser API client integration", () => {
 					path: relativePath,
 					prompt: "Reflect",
 					schedule: "* * * * *",
+					scheduleKind: "recurring",
+					status: enabled ? "scheduled" : "disabled",
 				};
 			},
 		};

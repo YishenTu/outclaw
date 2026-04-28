@@ -415,10 +415,13 @@ export interface BrowserCronEntry {
 	name: string;
 	path: string;
 	schedule: string;
+	scheduleKind?: "recurring" | "once";
+	runAt?: string;
 	timezone?: string;
 	model?: string;
 	effort?: string;
 	enabled: boolean;
+	status: "scheduled" | "expired" | "disabled" | "invalid";
 	error?: string;
 }
 

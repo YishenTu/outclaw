@@ -9,6 +9,15 @@ Reach for this reference when:
 
 You can also proactively suggest a smoke-test run after creating or modifying a cron job, instead of waiting for the next scheduled tick.
 
+## Schedule Forms
+
+Cron YAML supports exactly one schedule field:
+
+- `schedule: "0 9 * * 1"` for recurring cron expressions.
+- `runAt: "2026-04-29T09:00:00+08:00"` for a one-time run.
+
+One-time `runAt` values must be ISO 8601 datetimes with explicit `Z` or numeric offset. Do not add `timezone` to a `runAt` job; offsets belong inside the `runAt` value. After a scheduled one-time job starts, Outclaw rewrites the YAML with `enabled: false`. A manual `oc cron run <cron-name>` does not consume or disable a one-time job.
+
 ## Commands
 
 | Command | Purpose |

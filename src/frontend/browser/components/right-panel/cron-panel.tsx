@@ -137,9 +137,47 @@ export function humanizeCronSchedule(
 	return appendCronTimezone(schedule, timezone);
 }
 
+export function humanizeCronEntrySchedule(entry: BrowserCronEntry): string {
+	if (entry.scheduleKind !== "once") {
+		return humanizeCronSchedule(entry.schedule, entry.timezone);
+	}
+
+	const runAt = entry.runAt ?? entry.schedule;
+	const formattedRunAt = formatRunAt(runAt);
+	const prefix = entry.status === "expired" ? "Expired" : "Once";
+	return `${prefix} ${formattedRunAt}`;
+}
+
 function appendCronTimezone(label: string, timezone?: string): string {
 	const normalizedTimezone = timezone?.trim().toUpperCase();
 	return normalizedTimezone ? `${label} (${normalizedTimezone})` : label;
+}
+
+function formatRunAt(runAt: string): string {
+	const match = runAt
+		.trim()
+		.match(
+			/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/,
+		);
+	if (!match) {
+		return runAt;
+	}
+
+	const [, date, time, offset] = match;
+	return `${date} ${time} ${formatIsoOffset(offset ?? "Z")}`;
+}
+
+function formatIsoOffset(offset: string): string {
+	if (offset === "Z" || offset === "+00:00" || offset === "-00:00") {
+		return "UTC";
+	}
+
+	const sign = offset.slice(0, 1);
+	const [hours = "", minutes = ""] = offset.slice(1).split(":");
+	const normalizedHours = String(Number.parseInt(hours, 10));
+	return minutes === "00"
+		? `UTC${sign}${normalizedHours}`
+		: `UTC${sign}${normalizedHours}:${minutes}`;
 }
 
 function formatCronTime(hour: string, minute: string): string {
@@ -189,7 +227,9 @@ export function buildFallbackCronEntries(
 				name: entry.name,
 				path: entry.path,
 				schedule: "Schedule unavailable",
+				scheduleKind: "recurring" as const,
 				enabled: true,
+				status: "scheduled" as const,
 			})) ?? []
 	);
 }
@@ -297,7 +337,7 @@ export function CronPanel({
 									<span className="truncate">{entry.name}</span>
 								</div>
 								<div className="truncate text-xs text-dark-500">
-									{humanizeCronSchedule(entry.schedule, entry.timezone)}
+									{humanizeCronEntrySchedule(entry)}
 								</div>
 							</button>
 							<button

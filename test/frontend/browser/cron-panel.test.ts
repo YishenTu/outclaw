@@ -3,6 +3,7 @@ import { createElement } from "react";
 import {
 	buildFallbackCronEntries,
 	CronPanelHeader,
+	humanizeCronEntrySchedule,
 	humanizeCronSchedule,
 } from "../../../src/frontend/browser/components/right-panel/cron-panel.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
@@ -57,6 +58,34 @@ describe("cron panel helpers", () => {
 		expect(humanizeCronSchedule("0 9 * * 1,3")).toBe("0 9 * * 1,3");
 	});
 
+	test("humanizes one-time schedules", () => {
+		expect(
+			humanizeCronEntrySchedule({
+				enabled: true,
+				name: "Once",
+				path: "cron/once.yaml",
+				schedule: "2026-04-29T09:00:00+08:00",
+				scheduleKind: "once",
+				runAt: "2026-04-29T09:00:00+08:00",
+				status: "scheduled",
+			}),
+		).toBe("Once 2026-04-29 09:00 UTC+8");
+	});
+
+	test("marks expired one-time schedules", () => {
+		expect(
+			humanizeCronEntrySchedule({
+				enabled: true,
+				name: "Expired",
+				path: "cron/expired.yaml",
+				schedule: "2000-01-23T09:00:00+00:00",
+				scheduleKind: "once",
+				runAt: "2000-01-23T09:00:00+00:00",
+				status: "expired",
+			}),
+		).toBe("Expired 2000-01-23 09:00 UTC");
+	});
+
 	test("fallback entries exclude template cron yaml files", () => {
 		expect(
 			buildFallbackCronEntries([
@@ -83,7 +112,9 @@ describe("cron panel helpers", () => {
 				name: "daily.yaml",
 				path: "cron/daily.yaml",
 				schedule: "Schedule unavailable",
+				scheduleKind: "recurring",
 				enabled: true,
+				status: "scheduled",
 			},
 		]);
 	});

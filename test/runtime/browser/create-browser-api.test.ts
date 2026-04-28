@@ -141,6 +141,8 @@ describe("createBrowserApi", () => {
 				name: "Daily",
 				path: "cron/daily.yaml",
 				schedule: "15 6 * * *",
+				scheduleKind: "recurring",
+				status: "scheduled",
 				model: "haiku",
 				effort: "high",
 				enabled: true,
@@ -805,9 +807,11 @@ describe("createBrowserApi", () => {
 			name: "Daily",
 			path: "cron/daily.yaml",
 			schedule: "15 6 * * *",
+			scheduleKind: "recurring",
 			timezone: "UTC",
 			model: "haiku",
 			enabled: false,
+			status: "disabled",
 		});
 
 		await expect(api.listAgentCron("agent-railly")).resolves.toEqual([
@@ -815,9 +819,106 @@ describe("createBrowserApi", () => {
 				name: "Daily",
 				path: "cron/daily.yaml",
 				schedule: "15 6 * * *",
+				scheduleKind: "recurring",
 				timezone: "UTC",
 				model: "haiku",
 				enabled: false,
+				status: "disabled",
+			},
+		]);
+
+		expect(readFileSync(cronPath, "utf8")).toContain("schedule: 15 6 * * *");
+
+		store.close();
+	});
+
+	test("updates one-time cron enabled state without losing runAt", async () => {
+		const root = createTempDir("outclaw-browser-cron-once-toggle-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const cronDir = join(agentHomeDir, "cron");
+		mkdirSync(cronDir, { recursive: true });
+		const cronPath = join(cronDir, "once.yaml");
+		writeFileSync(
+			cronPath,
+			'name: Once\nrunAt: "2999-01-23T09:00:00+00:00"\nenabled: true\nprompt: Check inbox once\n',
+		);
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.setAgentCronEnabled("agent-railly", "cron/once.yaml", false),
+		).resolves.toEqual({
+			name: "Once",
+			path: "cron/once.yaml",
+			schedule: "2999-01-23T09:00:00+00:00",
+			scheduleKind: "once",
+			runAt: "2999-01-23T09:00:00+00:00",
+			enabled: false,
+			status: "disabled",
+		});
+		expect(readFileSync(cronPath, "utf8")).toContain(
+			"runAt: 2999-01-23T09:00:00+00:00",
+		);
+		expect(readFileSync(cronPath, "utf8")).not.toContain("schedule:");
+
+		store.close();
+	});
+
+	test("marks expired one-time cron jobs in browser cron listings", async () => {
+		const root = createTempDir("outclaw-browser-cron-expired-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const cronDir = join(agentHomeDir, "cron");
+		mkdirSync(cronDir, { recursive: true });
+		writeFileSync(
+			join(cronDir, "expired.yaml"),
+			'name: Expired\nrunAt: "2000-01-23T09:00:00+00:00"\nenabled: true\nprompt: Check inbox once\n',
+		);
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(api.listAgentCron("agent-railly")).resolves.toEqual([
+			{
+				name: "Expired",
+				path: "cron/expired.yaml",
+				schedule: "2000-01-23T09:00:00+00:00",
+				scheduleKind: "once",
+				runAt: "2000-01-23T09:00:00+00:00",
+				enabled: true,
+				status: "expired",
 			},
 		]);
 
@@ -862,7 +963,9 @@ describe("createBrowserApi", () => {
 				name: "Daily",
 				path: "cron/daily.yaml",
 				schedule: "15 6 * * *",
+				scheduleKind: "recurring",
 				enabled: true,
+				status: "scheduled",
 			},
 		]);
 

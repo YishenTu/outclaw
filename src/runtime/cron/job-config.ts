@@ -4,10 +4,12 @@ import {
 	type EffortLevel,
 	isEffortLevel,
 } from "../../common/commands.ts";
+import { validateRunAt } from "./schedule.ts";
 
 export interface CronJobConfig {
 	name: string;
-	schedule: string;
+	schedule?: string;
+	runAt?: string;
 	model?: string;
 	effort?: EffortLevel;
 	enabled: boolean;
@@ -20,8 +22,21 @@ export function parseJobConfig(yamlContent: string): CronJobConfig {
 	const raw = parse(yamlContent);
 
 	if (!raw?.name) throw new Error("Missing required field: name");
-	if (!raw.schedule) throw new Error("Missing required field: schedule");
+	const hasSchedule = raw.schedule !== undefined && raw.schedule !== null;
+	const hasRunAt = raw.runAt !== undefined && raw.runAt !== null;
+	if (hasSchedule === hasRunAt) {
+		throw new Error("Provide exactly one of schedule or runAt");
+	}
 	if (!raw.prompt) throw new Error("Missing required field: prompt");
+	if (hasRunAt && raw.timezone !== undefined) {
+		throw new Error("timezone can only be used with schedule");
+	}
+	if (
+		hasSchedule &&
+		(typeof raw.schedule !== "string" || raw.schedule.trim() === "")
+	) {
+		throw new Error("schedule must be a non-empty string");
+	}
 	if (raw.effort !== undefined && !isEffortLevel(raw.effort)) {
 		throw new Error(
 			`Invalid effort: ${raw.effort}. Valid: ${EFFORT_LEVELS.join(", ")}`,
@@ -38,7 +53,8 @@ export function parseJobConfig(yamlContent: string): CronJobConfig {
 
 	return {
 		name: raw.name,
-		schedule: raw.schedule,
+		schedule: hasSchedule ? raw.schedule : undefined,
+		runAt: hasRunAt ? validateRunAt(raw.runAt) : undefined,
 		model: raw.model ?? undefined,
 		effort: raw.effort ?? undefined,
 		enabled: raw.enabled ?? true,
@@ -69,8 +85,13 @@ export function parseUtcOffsetHours(value: unknown): number | null {
 export function serializeJobConfig(config: CronJobConfig): string {
 	const raw: Record<string, unknown> = {
 		name: config.name,
-		schedule: config.schedule,
 	};
+
+	if (config.schedule !== undefined) {
+		raw.schedule = config.schedule;
+	} else if (config.runAt !== undefined) {
+		raw.runAt = config.runAt;
+	}
 
 	if (config.model) {
 		raw.model = config.model;
