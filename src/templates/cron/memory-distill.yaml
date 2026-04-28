@@ -24,6 +24,7 @@ prompt: |
   - User profile facts — those belong in USER.md.
   - Routine task logs, one-off operations, or anything already captured elsewhere.
   - Anything re-derivable by reading a file or running a command.
+  - Single-incident postmortems or specific troubleshooting stories. A lesson only earns Standing Notes status if it would plausibly apply to multiple future situations across different topics — not just the next time the same incident recurs. When in doubt, leave it in the daily memory.
 
   Remove outdated entries from Standing Notes that no longer apply.
 
