@@ -24,6 +24,10 @@ export function applySidebarSummary(summary: BrowserAgentsResponse) {
 		summary.agents.map((agent) => ({
 			agentId: agent.agentId,
 			name: agent.name,
+			terminalRunCommand:
+				typeof agent.terminalRunCommand === "string"
+					? agent.terminalRunCommand
+					: "",
 		})),
 	);
 

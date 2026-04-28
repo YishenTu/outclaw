@@ -24,6 +24,9 @@ export function readAgentConfig(options: {
 			idleMinutes:
 				stored.rollover?.idleMinutes ?? DEFAULT_ROLLOVER_IDLE_MINUTES,
 		},
+		terminal: {
+			runCommand: stored.terminal?.runCommand ?? "",
+		},
 		telegram: {
 			botToken: resolveEnvString(stored.telegram?.botToken ?? ""),
 			allowedUsers: resolveAllowedUsers(stored.telegram?.allowedUsers ?? []),

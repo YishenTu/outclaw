@@ -5,6 +5,7 @@ const AGENT_ORDER_STORAGE_KEY = "outclaw.browser.agent_order";
 export interface AgentEntry {
 	agentId: string;
 	name: string;
+	terminalRunCommand?: string;
 }
 
 export type AgentReorderPosition = "before" | "after";

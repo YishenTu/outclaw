@@ -142,6 +142,7 @@ function startMultiAgentDaemon(
 					name: agent.name,
 					homeDir: agent.homeDir,
 					providerId: runtime.providerId,
+					terminalRunCommand: agent.config.terminal.runCommand,
 				};
 			}),
 			filesRoot,

@@ -110,6 +110,55 @@ describe("createBrowserSidebarWatcher", () => {
 		watcher.stop();
 	});
 
+	test("treats config.json changes as git invalidations", () => {
+		vi.useFakeTimers();
+		const watchers = new Map<string, FakeWatcher>();
+		const events: Array<{
+			agentId?: string;
+			sections: string[];
+			type: string;
+		}> = [];
+		const watcher = createBrowserSidebarWatcher({
+			agents: [
+				{
+					agentId: "agent-alpha",
+					rootDir: "/workspace/agents/alpha",
+				},
+			],
+			gitRoot: "/workspace",
+			onInvalidate: (event) => {
+				events.push({
+					type: event.type,
+					agentId: event.agentId,
+					sections: [...event.sections],
+				});
+			},
+			watchFactory: (path, _options, listener) => {
+				const fakeWatcher: FakeWatcher = {
+					close() {},
+					emit(filename) {
+						listener("change", filename);
+					},
+				};
+				watchers.set(path, fakeWatcher);
+				return fakeWatcher;
+			},
+		});
+
+		watcher.start();
+		watchers.get("/workspace")?.emit("config.json");
+		vi.advanceTimersByTime(100);
+
+		expect(events).toEqual([
+			{
+				type: "browser_sidebar_invalidated",
+				sections: ["git"],
+			},
+		]);
+
+		watcher.stop();
+	});
+
 	test("ignores .git index churn caused by status reads", () => {
 		vi.useFakeTimers();
 		const watchers = new Map<string, FakeWatcher>();

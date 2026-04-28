@@ -100,7 +100,7 @@ export function ConfigModalContent({
 						disabled={isLoading || isSaving || entries.length === 0}
 						className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-dark-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						{isSaving ? "Saving…" : "Save changes"}
+						{isSaving ? "Saving…" : "Save and restart"}
 					</button>
 				</footer>
 			</div>

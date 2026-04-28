@@ -6,6 +6,7 @@ import type {
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
+	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 	ImageMediaType,
 	RuntimeClientType,
@@ -54,6 +55,10 @@ interface CreateSupervisorOptions {
 		writeConfigFile(
 			document: Record<string, unknown>,
 		): Promise<BrowserConfigResponse>;
+		writeAgentTerminalRunCommand?(
+			agentId: string,
+			command: string,
+		): Promise<BrowserTerminalRunCommandResponse>;
 		readAgentFile(
 			agentId: string,
 			relativePath: string,
@@ -340,7 +345,7 @@ async function handleBrowserApiRequest(
 		}
 
 		const agentMatch = url.pathname.match(
-			/^\/api\/agents\/([^/]+)\/(tree|files|cron)$/,
+			/^\/api\/agents\/([^/]+)\/(tree|files|cron|terminal-run-command)$/,
 		);
 		if (!agentMatch) {
 			return jsonError("Not found", 404);
@@ -348,6 +353,25 @@ async function handleBrowserApiRequest(
 
 		const [, encodedAgentId, resource] = agentMatch;
 		const agentId = decodeURIComponent(encodedAgentId ?? "");
+		if (resource === "terminal-run-command") {
+			if (req.method === "PATCH") {
+				if (!browserApi.writeAgentTerminalRunCommand) {
+					return jsonError("Terminal run command API is not configured", 404);
+				}
+				const body = (await req.json().catch(() => undefined)) as
+					| { command?: unknown }
+					| undefined;
+				if (typeof body?.command !== "string") {
+					return jsonError("Missing terminal run command", 400);
+				}
+				return Response.json(
+					await browserApi.writeAgentTerminalRunCommand(agentId, body.command),
+				);
+			}
+
+			return jsonError("Method not allowed", 405);
+		}
+
 		if (resource === "cron" && req.method === "PATCH") {
 			const body = (await req.json().catch(() => undefined)) as
 				| { enabled?: boolean; path?: string }
@@ -384,11 +408,13 @@ async function handleBrowserApiRequest(
 				? 404
 				: message === "Path is required"
 					? 400
-					: message.startsWith("Path escapes") ||
-							message === "Path escapes cron directory" ||
-							message === "Path does not reference a file"
+					: message === "Terminal run command must be a single line"
 						? 400
-						: 500;
+						: message.startsWith("Path escapes") ||
+								message === "Path escapes cron directory" ||
+								message === "Path does not reference a file"
+							? 400
+							: 500;
 		return jsonError(message, status);
 	}
 }

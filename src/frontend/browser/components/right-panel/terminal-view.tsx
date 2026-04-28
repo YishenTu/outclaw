@@ -5,7 +5,18 @@ import { useCallback, useEffect, useRef } from "react";
 interface TerminalViewProps {
 	active: boolean;
 	agentId: string;
+	onRunRequestDispatched?: (requestId: number) => void;
+	runRequest?: TerminalRunRequest | null;
 	terminalId: string;
+}
+
+export interface TerminalRunRequest {
+	command: string;
+	id: number;
+}
+
+export function toTerminalRunInput(command: string): string {
+	return `${command}\r`;
 }
 
 function buildTerminalUrl(agentId: string): string {
@@ -18,6 +29,8 @@ function buildTerminalUrl(agentId: string): string {
 export function TerminalView({
 	active,
 	agentId,
+	onRunRequestDispatched,
+	runRequest,
 	terminalId,
 }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -25,10 +38,16 @@ export function TerminalView({
 	const fitAddonRef = useRef<FitAddon | null>(null);
 	const socketRef = useRef<WebSocket | null>(null);
 	const activeRef = useRef(active);
+	const onRunRequestDispatchedRef = useRef(onRunRequestDispatched);
+	const pendingRunRequestRef = useRef<TerminalRunRequest | null>(null);
 
 	useEffect(() => {
 		activeRef.current = active;
 	}, [active]);
+
+	useEffect(() => {
+		onRunRequestDispatchedRef.current = onRunRequestDispatched;
+	}, [onRunRequestDispatched]);
 
 	const sendResize = useCallback(() => {
 		const terminal = terminalRef.current;
@@ -44,6 +63,16 @@ export function TerminalView({
 				rows: terminal.rows,
 			}),
 		);
+	}, []);
+
+	const sendTerminalInput = useCallback((input: string): boolean => {
+		const socket = socketRef.current;
+		if (!socket || socket.readyState !== WebSocket.OPEN) {
+			return false;
+		}
+
+		socket.send(input);
+		return true;
 	}, []);
 
 	useEffect(() => {
@@ -91,6 +120,14 @@ export function TerminalView({
 		socketRef.current = socket;
 		socket.onopen = () => {
 			sendResize();
+			const pendingRunRequest = pendingRunRequestRef.current;
+			if (
+				pendingRunRequest &&
+				sendTerminalInput(toTerminalRunInput(pendingRunRequest.command))
+			) {
+				pendingRunRequestRef.current = null;
+				onRunRequestDispatchedRef.current?.(pendingRunRequest.id);
+			}
 		};
 		socket.onmessage = (event) => {
 			terminal.write(String(event.data));
@@ -118,7 +155,21 @@ export function TerminalView({
 			resizeObserver.disconnect();
 			terminal.dispose();
 		};
-	}, [agentId, sendResize]);
+	}, [agentId, sendResize, sendTerminalInput]);
+
+	useEffect(() => {
+		if (!runRequest) {
+			return;
+		}
+
+		if (sendTerminalInput(toTerminalRunInput(runRequest.command))) {
+			pendingRunRequestRef.current = null;
+			onRunRequestDispatchedRef.current?.(runRequest.id);
+			return;
+		}
+
+		pendingRunRequestRef.current = runRequest;
+	}, [runRequest, sendTerminalInput]);
 
 	useEffect(() => {
 		if (!active) {

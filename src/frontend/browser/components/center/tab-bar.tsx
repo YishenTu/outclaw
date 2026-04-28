@@ -7,13 +7,20 @@ import {
 	PanelRightClose,
 	X,
 } from "lucide-react";
-import { useTabsStore } from "../../stores/tabs.ts";
+import { type Tab, useTabsStore } from "../../stores/tabs.ts";
 
 interface TabBarProps {
 	leftCollapsed?: boolean;
 	rightCollapsed?: boolean;
 	onExpandLeft?: () => void;
 	onExpandRight?: () => void;
+}
+
+interface TabBarViewProps extends TabBarProps {
+	activeTabId: string;
+	closeTab: (tabId: string) => void;
+	setActiveTab: (tabId: string) => void;
+	tabs: Tab[];
 }
 
 export function TabBar({
@@ -27,6 +34,30 @@ export function TabBar({
 	const closeTab = useTabsStore((state) => state.closeTab);
 	const setActiveTab = useTabsStore((state) => state.setActiveTab);
 
+	return (
+		<TabBarView
+			activeTabId={activeTabId}
+			closeTab={closeTab}
+			leftCollapsed={leftCollapsed}
+			onExpandLeft={onExpandLeft}
+			onExpandRight={onExpandRight}
+			rightCollapsed={rightCollapsed}
+			setActiveTab={setActiveTab}
+			tabs={tabs}
+		/>
+	);
+}
+
+export function TabBarView({
+	activeTabId,
+	closeTab,
+	leftCollapsed = false,
+	rightCollapsed = false,
+	onExpandLeft,
+	onExpandRight,
+	setActiveTab,
+	tabs,
+}: TabBarViewProps) {
 	return (
 		<div className="flex h-12 items-stretch border-b border-dark-800 bg-dark-950 px-3">
 			{leftCollapsed && onExpandLeft && (
@@ -42,53 +73,59 @@ export function TabBar({
 			<div className="flex min-w-0 flex-1 items-stretch gap-2 overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 				{tabs.map((tab) => {
 					const active = tab.id === activeTabId;
+					if (tab.type === "chat") {
+						return (
+							<div
+								key={tab.id}
+								className={`font-mono-ui group relative flex shrink-0 items-center px-2 pt-px text-[12px] uppercase tracking-[0.12em] transition-colors ${
+									active ? "text-dark-50" : "text-dark-500 hover:text-dark-200"
+								}`}
+							>
+								{active ? (
+									<span className="absolute bottom-0 left-0 right-0 -mb-px h-0.5 bg-brand" />
+								) : null}
+								<button
+									type="button"
+									onClick={() => setActiveTab(tab.id)}
+									className="flex h-full items-center gap-2"
+								>
+									<CenterTabContent tab={tab} />
+								</button>
+							</div>
+						);
+					}
+
 					return (
 						<div
 							key={tab.id}
-							className={`font-mono-ui group relative flex shrink-0 items-center gap-2 px-2 pt-px text-[12px] uppercase tracking-[0.12em] transition-colors ${
+							className={`font-mono-ui group relative grid shrink-0 items-stretch pt-px text-[12px] uppercase tracking-[0.12em] transition-colors ${
 								active ? "text-dark-50" : "text-dark-500 hover:text-dark-200"
 							}`}
 						>
-							{active && (
+							{active ? (
 								<span className="absolute bottom-0 left-0 right-0 -mb-px h-0.5 bg-brand" />
-							)}
+							) : null}
+							<span
+								aria-hidden="true"
+								className="invisible col-start-1 row-start-1 flex h-full max-w-52 items-center gap-2 overflow-hidden px-2 leading-none"
+							>
+								<CenterTabContent tab={tab} />
+							</span>
 							<button
 								type="button"
 								onClick={() => setActiveTab(tab.id)}
-								className="flex h-full items-center gap-2"
+								className="absolute inset-0 flex h-full min-w-0 items-center overflow-hidden px-2 pr-2 transition-[padding] group-hover:pr-6"
 							>
-								{tab.type === "chat" ? (
-									<span className="inline-flex items-center gap-2 text-[14px] leading-none">
-										<MessageSquareText size={14} />
-										Chat
-									</span>
-								) : tab.type === "git-commit" ? (
-									<span className="inline-flex max-w-52 items-center gap-2 leading-none">
-										<GitCommitHorizontal size={14} />
-										<span className="truncate">{tab.title}</span>
-									</span>
-								) : tab.type === "git-diff" ? (
-									<span className="inline-flex items-center gap-2 leading-none">
-										<GitBranch size={14} />
-										{tab.path}
-									</span>
-								) : (
-									<span className="inline-flex items-center gap-2 leading-none">
-										<FileText size={14} />
-										{tab.path}
-									</span>
-								)}
+								<CenterTabContent tab={tab} />
 							</button>
-							{tab.type !== "chat" && (
-								<button
-									type="button"
-									onClick={() => closeTab(tab.id)}
-									className="rounded p-0.5 text-dark-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-dark-100"
-									aria-label={`Close ${tab.type === "git-commit" ? tab.title : tab.path}`}
-								>
-									<X size={13} />
-								</button>
-							)}
+							<button
+								type="button"
+								onClick={() => closeTab(tab.id)}
+								className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-0.5 text-dark-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-dark-100"
+								aria-label={`Close ${tab.type === "git-commit" ? tab.title : tab.path}`}
+							>
+								<X size={13} />
+							</button>
 						</div>
 					);
 				})}
@@ -104,5 +141,41 @@ export function TabBar({
 				</button>
 			)}
 		</div>
+	);
+}
+
+function CenterTabContent({ tab }: { tab: Tab }) {
+	if (tab.type === "chat") {
+		return (
+			<span className="inline-flex min-w-0 items-center gap-2 text-[14px] leading-none">
+				<MessageSquareText size={14} className="shrink-0" />
+				<span className="min-w-0 truncate">Chat</span>
+			</span>
+		);
+	}
+
+	if (tab.type === "git-commit") {
+		return (
+			<span className="inline-flex min-w-0 items-center gap-2 leading-none">
+				<GitCommitHorizontal size={14} className="shrink-0" />
+				<span className="min-w-0 truncate">{tab.title}</span>
+			</span>
+		);
+	}
+
+	if (tab.type === "git-diff") {
+		return (
+			<span className="inline-flex min-w-0 items-center gap-2 leading-none">
+				<GitBranch size={14} className="shrink-0" />
+				<span className="min-w-0 truncate">{tab.path}</span>
+			</span>
+		);
+	}
+
+	return (
+		<span className="inline-flex min-w-0 items-center gap-2 leading-none">
+			<FileText size={14} className="shrink-0" />
+			<span className="min-w-0 truncate">{tab.path}</span>
+		</span>
 	);
 }

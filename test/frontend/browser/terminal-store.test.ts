@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
 	type BrowserTerminalEntry,
 	createTerminalStore,
+	selectActiveTerminalTab,
+	selectRunTerminalCommand,
 } from "../../../src/frontend/browser/stores/terminal.ts";
 
 function getTerminalNames(entries: BrowserTerminalEntry[] | undefined) {
@@ -26,6 +28,35 @@ describe("browser terminal store", () => {
 		expect(store.getState().activeTerminalIdByAgent["agent-a"]).toBe(
 			firstTerminalId,
 		);
+		expect(selectActiveTerminalTab(store.getState(), "agent-a")).toBe(
+			"terminal",
+		);
+	});
+
+	test("run tab selection does not replace the selected terminal", () => {
+		const terminalId = store.getState().ensureTerminal("agent-a");
+
+		store.getState().setActiveRunTerminal("agent-a");
+
+		expect(selectActiveTerminalTab(store.getState(), "agent-a")).toBe("run");
+		expect(store.getState().activeTerminalIdByAgent["agent-a"]).toBe(
+			terminalId,
+		);
+		expect(selectRunTerminalCommand(store.getState(), "agent-a")).toBeNull();
+	});
+
+	test("executing the run tab marks it active without losing terminal state", () => {
+		const terminalId = store.getState().ensureTerminal("agent-a");
+
+		store.getState().executeRunTerminal("agent-a", "bun test");
+
+		expect(selectActiveTerminalTab(store.getState(), "agent-a")).toBe("run");
+		expect(store.getState().activeTerminalIdByAgent["agent-a"]).toBe(
+			terminalId,
+		);
+		expect(selectRunTerminalCommand(store.getState(), "agent-a")).toBe(
+			"bun test",
+		);
 	});
 
 	test("createTerminal appends a new active terminal for the current agent", () => {
@@ -37,6 +68,9 @@ describe("browser terminal store", () => {
 		).toEqual(["Terminal", "Terminal 2"]);
 		expect(store.getState().activeTerminalIdByAgent["agent-a"]).toBe(
 			nextTerminalId,
+		);
+		expect(selectActiveTerminalTab(store.getState(), "agent-a")).toBe(
+			"terminal",
 		);
 	});
 

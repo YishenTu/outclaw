@@ -366,6 +366,95 @@ describe("createSupervisor browser routes", () => {
 		);
 	});
 
+	test("updates the agent terminal run command over HTTP", async () => {
+		let command = "bun test";
+		const supervisor = createSupervisor({
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+				}),
+			],
+			browserApi: {
+				getAgentTerminalCwd: () => undefined,
+				listAgentCron: async () => [],
+				listAgentTree: async () => [],
+				listAgents: () => ({
+					activeAgentId: "agent-railly",
+					agents: [],
+				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async () => {
+					throw new Error("Not implemented");
+				},
+				readAgentFile: async (_agentId, path) => ({
+					path,
+					kind: "text",
+					content: "# Agent\n",
+					truncated: false,
+				}),
+				writeAgentTerminalRunCommand: async (_agentId, nextCommand) => {
+					command = nextCommand;
+					return { command };
+				},
+				readGitDiff: async () => ({
+					path: "config.json",
+					diff: "",
+				}),
+				readGitCommit: async () => ({
+					sha: "abc1234",
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
+				readGitStatus: async () => ({
+					initialized: true,
+					root: "/tmp/.outclaw",
+					branch: "main",
+					ahead: 0,
+					behind: 0,
+					clean: true,
+					graph: { commits: [], branchHeads: [] },
+					files: [],
+				}),
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
+				}),
+				setAgentCronEnabled: async () => {
+					throw new Error("Not implemented");
+				},
+			},
+			port: 0,
+		});
+		cleanup = () => supervisor.stop();
+
+		const writeResponse = await fetch(
+			`http://localhost:${supervisor.port}/api/agents/agent-railly/terminal-run-command`,
+			{
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+				},
+				body: JSON.stringify({
+					command: "bun run check",
+				}),
+			},
+		);
+
+		expect(writeResponse.status).toBe(200);
+		await expect(writeResponse.json()).resolves.toEqual({
+			command: "bun run check",
+		});
+	});
+
 	test("initializes the git repo over HTTP", async () => {
 		let initCalls = 0;
 		const supervisor = createSupervisor({

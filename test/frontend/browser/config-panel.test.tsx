@@ -518,7 +518,7 @@ describe("config panel", () => {
 		expect(html).not.toContain("agents.agent-railly.telegram.botToken");
 		expect(html).toContain('value="secret"');
 		expect(html).toContain('aria-label="Config modal"');
-		expect(html).toContain("Save changes");
+		expect(html).toContain("Save and restart");
 		expect(html).toContain("scrollbar-none flex-1 overflow-y-auto px-5 py-4");
 		expect(html).toContain('class="flex min-w-0 flex-col items-start gap-0.5"');
 	});
@@ -634,6 +634,6 @@ describe("config panel", () => {
 
 		expect(html).toContain("Failed to save config");
 		expect(html).toContain('value="oops"');
-		expect(html).toContain("Save changes");
+		expect(html).toContain("Save and restart");
 	});
 });

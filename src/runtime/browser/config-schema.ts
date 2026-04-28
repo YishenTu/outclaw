@@ -53,6 +53,16 @@ export const BROWSER_CONFIG_SCHEMA: BrowserConfigSchemaNode = {
 							},
 						},
 					},
+					terminal: {
+						kind: "object",
+						properties: {
+							runCommand: {
+								kind: "leaf",
+								editorKinds: ["string"],
+								typeLabel: "string",
+							},
+						},
+					},
 					telegram: {
 						kind: "object",
 						properties: {

@@ -15,11 +15,13 @@ import type {
 	BrowserGitGraphCommit,
 	BrowserGitInitializedResponse,
 	BrowserGitStatusResponse,
+	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 	BrowserTreeEntryGitStatus,
 	ImageMediaType,
 	ImageRef,
 } from "../../common/protocol.ts";
+import { readStoredAgentConfig, writeStoredAgentConfig } from "../config.ts";
 import { parseJobConfig, serializeJobConfig } from "../cron/job-config.ts";
 import { isRunAtExpired, resolveJobSchedule } from "../cron/schedule.ts";
 import { saveManagedImage } from "../files/managed-image-store.ts";
@@ -35,6 +37,7 @@ interface BrowserApiAgent {
 	name: string;
 	homeDir: string;
 	providerId: string;
+	terminalRunCommand: string;
 }
 
 interface CreateBrowserApiOptions {
@@ -56,6 +59,10 @@ export interface BrowserApi {
 	writeConfigFile(
 		document: Record<string, unknown>,
 	): Promise<BrowserConfigResponse>;
+	writeAgentTerminalRunCommand(
+		agentId: string,
+		command: string,
+	): Promise<BrowserTerminalRunCommandResponse>;
 	readAgentFile(
 		agentId: string,
 		relativePath: string,
@@ -75,7 +82,7 @@ export interface BrowserApi {
 }
 
 export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
-	const agentsById = new Map(
+	const agentsById = new Map<string, BrowserApiAgent>(
 		options.agents.map((agent) => [agent.agentId, agent] as const),
 	);
 	const ignoredGitPaths = normalizeGitPaths(options.ignoredGitPaths ?? []);
@@ -87,8 +94,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		listAgents() {
 			return {
 				activeAgentId: options.getRememberedAgentId(),
-				agents: options.agents
-					.slice()
+				agents: [...agentsById.values()]
 					.sort((left, right) => left.name.localeCompare(right.name))
 					.map((agent) => {
 						const store = options.storesByAgent.get(agent.agentId);
@@ -104,6 +110,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 						return {
 							agentId: agent.agentId,
 							name: agent.name,
+							terminalRunCommand: agent.terminalRunCommand,
 							activeSession: activeSessionId
 								? {
 										providerId: agent.providerId,
@@ -160,6 +167,21 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			return {
 				...(await readBrowserFile(options.homeDir, absolutePath)),
 				schema: BROWSER_CONFIG_SCHEMA,
+			};
+		},
+		async writeAgentTerminalRunCommand(agentId, command) {
+			const agent = requireAgent(agentsById, agentId);
+			const nextCommand = normalizeTerminalRunCommand(command);
+			const stored = readStoredAgentConfig(options.homeDir, agentId);
+			writeStoredAgentConfig(options.homeDir, agentId, {
+				...stored,
+				terminal: {
+					...(stored.terminal ?? {}),
+					runCommand: nextCommand,
+				},
+			});
+			return {
+				command: agent.terminalRunCommand,
 			};
 		},
 		async readAgentFile(agentId, relativePath) {
@@ -230,6 +252,14 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			);
 		},
 	};
+}
+
+function normalizeTerminalRunCommand(command: string): string {
+	const nextCommand = command.trim();
+	if (nextCommand.includes("\n") || nextCommand.includes("\r")) {
+		throw new Error("Terminal run command must be a single line");
+	}
+	return nextCommand;
 }
 
 async function listCronEntries(rootDir: string): Promise<BrowserCronEntry[]> {

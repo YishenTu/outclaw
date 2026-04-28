@@ -398,6 +398,7 @@ export interface BrowserSessionSummary {
 export interface BrowserAgentSummary {
 	agentId: string;
 	name: string;
+	terminalRunCommand?: string;
 	activeSession?: {
 		providerId: string;
 		sdkSessionId: string;
@@ -408,6 +409,10 @@ export interface BrowserAgentSummary {
 export interface BrowserAgentsResponse {
 	activeAgentId?: string;
 	agents: BrowserAgentSummary[];
+}
+
+export interface BrowserTerminalRunCommandResponse {
+	command: string;
 }
 
 export type BrowserTreeEntryGitStatus = "modified" | "new";

@@ -52,6 +52,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => "agent-railly",
@@ -66,6 +67,7 @@ describe("createBrowserApi", () => {
 				{
 					agentId: "agent-railly",
 					name: "railly",
+					terminalRunCommand: "",
 					activeSession: {
 						providerId: "claude",
 						sdkSessionId: "sdk-1",
@@ -108,6 +110,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -197,6 +200,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -243,6 +247,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -291,6 +296,175 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("writes the per-agent terminal run command without mutating the runtime snapshot", async () => {
+		const root = createTempDir("outclaw-browser-run-command-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+		writeFileSync(
+			join(root, "config.json"),
+			JSON.stringify(
+				{
+					agents: {
+						"agent-railly": {
+							terminal: {
+								runCommand: "bun test",
+							},
+						},
+					},
+				},
+				null,
+				"\t",
+			),
+		);
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "bun test",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		expect(api.listAgents().agents[0]?.terminalRunCommand).toBe("bun test");
+		await expect(
+			api.writeAgentTerminalRunCommand("agent-railly", "  bun run check  "),
+		).resolves.toEqual({
+			command: "bun test",
+		});
+		expect(api.listAgents().agents[0]?.terminalRunCommand).toBe("bun test");
+		expect(
+			JSON.parse(readFileSync(join(root, "config.json"), "utf-8")),
+		).toMatchObject({
+			agents: {
+				"agent-railly": {
+					terminal: {
+						runCommand: "bun run check",
+					},
+				},
+			},
+		});
+
+		store.close();
+	});
+
+	test("keeps the terminal run command tied to the running runtime snapshot", async () => {
+		const root = createTempDir("outclaw-browser-run-command-snapshot-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+		writeFileSync(
+			join(root, "config.json"),
+			JSON.stringify(
+				{
+					agents: {
+						"agent-railly": {
+							terminal: {
+								runCommand: "bun test",
+							},
+						},
+					},
+				},
+				null,
+				"\t",
+			),
+		);
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "bun test",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		writeFileSync(
+			join(root, "config.json"),
+			JSON.stringify(
+				{
+					agents: {
+						"agent-railly": {
+							terminal: {},
+						},
+					},
+				},
+				null,
+				"\t",
+			),
+		);
+
+		expect(api.listAgents().agents[0]?.terminalRunCommand).toBe("bun test");
+
+		const restartedAfterExternalEditApi = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+		expect(
+			restartedAfterExternalEditApi.listAgents().agents[0]?.terminalRunCommand,
+		).toBe("");
+
+		await expect(
+			api.writeAgentTerminalRunCommand("agent-railly", "bun run check"),
+		).resolves.toEqual({
+			command: "bun test",
+		});
+		expect(api.listAgents().agents[0]?.terminalRunCommand).toBe("bun test");
+
+		const restartedApi = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "bun run check",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+		expect(restartedApi.listAgents().agents[0]?.terminalRunCommand).toBe(
+			"bun run check",
+		);
+
+		store.close();
+	});
+
 	test("stores uploaded browser prompt images under the managed files root", async () => {
 		const root = createTempDir("outclaw-browser-upload-");
 		cleanupPaths.push(root);
@@ -308,6 +482,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			filesRoot,
@@ -373,6 +548,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -445,6 +621,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -554,6 +731,7 @@ describe("createBrowserApi", () => {
 						name: "railly",
 						homeDir: agentHomeDir,
 						providerId: "claude",
+						terminalRunCommand: "",
 					},
 				],
 				getRememberedAgentId: () => undefined,
@@ -627,6 +805,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -683,6 +862,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -743,6 +923,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -793,6 +974,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -854,6 +1036,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -902,6 +1085,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -950,6 +1134,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -1001,6 +1186,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -1042,6 +1228,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -1071,6 +1258,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -1105,6 +1293,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,
@@ -1151,6 +1340,7 @@ describe("createBrowserApi", () => {
 					name: "railly",
 					homeDir: agentHomeDir,
 					providerId: "claude",
+					terminalRunCommand: "",
 				},
 			],
 			getRememberedAgentId: () => undefined,

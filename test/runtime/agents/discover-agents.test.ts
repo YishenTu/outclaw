@@ -69,6 +69,9 @@ describe("agent discovery", () => {
 						rollover: {
 							idleMinutes: 240,
 						},
+						terminal: {
+							runCommand: "",
+						},
 						telegram: {
 							botToken: "",
 							allowedUsers: [33],
@@ -85,6 +88,9 @@ describe("agent discovery", () => {
 					config: {
 						rollover: {
 							idleMinutes: 240,
+						},
+						terminal: {
+							runCommand: "",
 						},
 						telegram: {
 							botToken: "railly-token",
@@ -163,6 +169,9 @@ describe("agent config", () => {
 				rollover: {
 					idleMinutes: 240,
 				},
+				terminal: {
+					runCommand: "",
+				},
 				telegram: {
 					botToken: "bot-token",
 					allowedUsers: [101, 202],
@@ -197,6 +206,9 @@ describe("agent config", () => {
 				rollover: {
 					idleMinutes: 240,
 				},
+				terminal: {
+					runCommand: "",
+				},
 				telegram: {
 					botToken: "",
 					allowedUsers: [101, 202],
@@ -218,6 +230,9 @@ describe("agent config", () => {
 			expect(config).toEqual({
 				rollover: {
 					idleMinutes: 240,
+				},
+				terminal: {
+					runCommand: "",
 				},
 				telegram: {
 					botToken: "",
@@ -278,11 +293,43 @@ describe("agent config", () => {
 				rollover: {
 					idleMinutes: 90,
 				},
+				terminal: {
+					runCommand: "",
+				},
 				telegram: {
 					botToken: "",
 					allowedUsers: [],
 					defaultCronUserId: undefined,
 				},
+			});
+		} finally {
+			rmSync(homeDir, { recursive: true });
+		}
+	});
+
+	test("reads removed terminal run commands as empty runtime config", () => {
+		const homeDir = tmp();
+		try {
+			createAgent(homeDir, "railly", "agent-railly");
+			writeFileSync(
+				join(homeDir, "config.json"),
+				JSON.stringify({
+					agents: {
+						"agent-railly": {
+							terminal: {},
+							telegram: {
+								botToken: "",
+								allowedUsers: [],
+							},
+						},
+					},
+				}),
+			);
+
+			expect(
+				readAgentConfig({ agentId: "agent-railly", homeDir }).terminal,
+			).toEqual({
+				runCommand: "",
 			});
 		} finally {
 			rmSync(homeDir, { recursive: true });

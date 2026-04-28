@@ -7,6 +7,7 @@ import type {
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
 	BrowserImageUploadResponse,
+	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 } from "../../../common/protocol.ts";
 
@@ -77,6 +78,26 @@ export async function updateAgentCronEnabled(
 				enabled,
 			}),
 		}),
+	);
+}
+
+export async function updateAgentTerminalRunCommand(
+	agentId: string,
+	command: string,
+): Promise<BrowserTerminalRunCommandResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/agents/${encodeURIComponent(agentId)}/terminal-run-command`,
+			{
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+				},
+				body: JSON.stringify({
+					command,
+				}),
+			},
+		),
 	);
 }
 

@@ -12,6 +12,7 @@ import type {
 	BrowserGitStatusResponse,
 	BrowserTreeEntry,
 } from "../../../../common/protocol.ts";
+import { requestConfigRestart } from "../../config-save-restart.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import { fetchAgentTree, fetchGitStatus, initGitRepo } from "../../lib/api.ts";
 import { sendGitCommitPrompt } from "../../send-git-commit-prompt.ts";
@@ -29,7 +30,9 @@ import {
 import { useTabsStore } from "../../stores/tabs.ts";
 import {
 	selectActiveTerminalId,
+	selectActiveTerminalTab,
 	selectAgentTerminals,
+	selectRunTerminalCommand,
 	useTerminalStore,
 } from "../../stores/terminal.ts";
 import { ActiveTabUnderline } from "../active-tab-underline.tsx";
@@ -45,7 +48,14 @@ import {
 	type UpperRightPanelTab,
 } from "./right-panel-layout.ts";
 import { TerminalPanel } from "./terminal-panel.tsx";
+import { TerminalRunPanel } from "./terminal-run-panel.tsx";
 import { TerminalTabs } from "./terminal-tabs.tsx";
+import type { TerminalRunRequest } from "./terminal-view.tsx";
+import {
+	resolveHeaderTerminalRunAction,
+	resolveSavedTerminalRunCommand,
+	useAgentTerminalRunCommand,
+} from "./use-agent-terminal-run-command.ts";
 
 const TAB_LABELS: Record<UpperRightPanelTab, string> = {
 	files: "Files",
@@ -115,7 +125,11 @@ export function RightPanelUpperTabs({
 }
 
 export function RightPanel({ onCollapse }: RightPanelProps) {
-	const { sendPromptToAgent } = useWs();
+	const { sendCommand, sendPromptToAgent } = useWs();
+	const requestRestartAfterConfigSave = useCallback(
+		() => requestConfigRestart(sendCommand),
+		[sendCommand],
+	);
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
 	const activeAgent = useAgentsStore(
 		(state) =>
@@ -150,11 +164,28 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const activeTerminalId = useTerminalStore((state) =>
 		selectActiveTerminalId(state, activeAgentId),
 	);
+	const activeTerminalTab = useTerminalStore((state) =>
+		selectActiveTerminalTab(state, activeAgentId),
+	);
+	const runTerminalCommand = useTerminalStore((state) =>
+		selectRunTerminalCommand(state, activeAgentId),
+	);
 	const createTerminal = useTerminalStore((state) => state.createTerminal);
 	const closeTerminal = useTerminalStore((state) => state.closeTerminal);
+	const executeRunTerminal = useTerminalStore(
+		(state) => state.executeRunTerminal,
+	);
 	const renameTerminal = useTerminalStore((state) => state.renameTerminal);
+	const setActiveRunTerminal = useTerminalStore(
+		(state) => state.setActiveRunTerminal,
+	);
 	const setActiveTerminal = useTerminalStore(
 		(state) => state.setActiveTerminal,
+	);
+	const runCommand = useAgentTerminalRunCommand(
+		activeAgentId,
+		activeAgent?.terminalRunCommand ?? "",
+		requestRestartAfterConfigSave,
 	);
 	const [tree, setTree] = useState<BrowserTreeEntry[]>([]);
 	const [treeLoading, setTreeLoading] = useState(false);
@@ -180,7 +211,11 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const [loadedGitRevision, setLoadedGitRevision] = useState<number | null>(
 		null,
 	);
+	const [runRequestsByAgent, setRunRequestsByAgent] = useState<
+		Record<string, TerminalRunRequest>
+	>({});
 	const contentRef = useRef<HTMLDivElement | null>(null);
+	const nextRunRequestIdRef = useRef(0);
 	const treeRevision = useRightPanelRefreshStore((state) =>
 		selectAgentTreeRevision(state, activeAgentId),
 	);
@@ -388,6 +423,88 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		bumpGitRevision();
 	}, [activeAgentId, bumpGitRevision, bumpTreeRevision]);
 
+	const dispatchRunCommand = useCallback(
+		(agentId: string, command: string) => {
+			executeRunTerminal(agentId, command);
+			nextRunRequestIdRef.current += 1;
+			setRunRequestsByAgent((current) => ({
+				...current,
+				[agentId]: {
+					command,
+					id: nextRunRequestIdRef.current,
+				},
+			}));
+		},
+		[executeRunTerminal],
+	);
+
+	const handleHeaderRunCommand = useCallback(() => {
+		if (!activeAgentId) {
+			return;
+		}
+
+		const agentId = activeAgentId;
+		setActiveRunTerminal(agentId);
+
+		const action = resolveHeaderTerminalRunAction({
+			command: runCommand.command,
+		});
+
+		if (action.type === "select") {
+			return;
+		}
+
+		dispatchRunCommand(agentId, action.command);
+	}, [
+		activeAgentId,
+		dispatchRunCommand,
+		runCommand.command,
+		setActiveRunTerminal,
+	]);
+
+	const handleRunPanelCommand = useCallback(async () => {
+		if (!activeAgentId) {
+			return;
+		}
+
+		const agentId = activeAgentId;
+		setActiveRunTerminal(agentId);
+
+		const command = resolveSavedTerminalRunCommand(runCommand.command);
+		if (!command) {
+			return;
+		}
+
+		dispatchRunCommand(agentId, command);
+	}, [activeAgentId, dispatchRunCommand, runCommand, setActiveRunTerminal]);
+
+	const handleRunPanelSaveCommand = useCallback(async () => {
+		if (!activeAgentId) {
+			return;
+		}
+
+		setActiveRunTerminal(activeAgentId);
+		await runCommand.saveDraftCommand();
+	}, [activeAgentId, runCommand, setActiveRunTerminal]);
+
+	const handleRunRequestDispatched = useCallback(
+		(requestId: number) => {
+			if (!activeAgentId) {
+				return;
+			}
+
+			setRunRequestsByAgent((current) => {
+				if (current[activeAgentId]?.id !== requestId) {
+					return current;
+				}
+
+				const { [activeAgentId]: _dispatched, ...nextRequests } = current;
+				return nextRequests;
+			});
+		},
+		[activeAgentId],
+	);
+
 	const handleResizeMouseDown = useCallback(
 		(event: React.MouseEvent<HTMLButtonElement>) => {
 			event.preventDefault();
@@ -567,6 +684,8 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 						>
 							<TerminalTabs
 								activeTerminalId={activeTerminalId}
+								activeTab={activeTerminalTab}
+								canRunCommand={Boolean(activeAgentId) && !runCommand.saving}
 								leadingContent={
 									<button
 										type="button"
@@ -592,6 +711,14 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 										renameTerminal(activeAgentId, terminalId, name);
 									}
 								}}
+								onRunCommand={() => {
+									handleHeaderRunCommand();
+								}}
+								onSelectRun={() => {
+									if (activeAgentId) {
+										setActiveRunTerminal(activeAgentId);
+									}
+								}}
 								onSelectTerminal={(terminalId) => {
 									if (activeAgentId) {
 										setActiveTerminal(activeAgentId, terminalId);
@@ -600,7 +727,40 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 								terminals={terminals}
 							/>
 							<div className="min-h-0 flex-1 overflow-hidden">
-								<TerminalPanel agentId={activeAgentId} active />
+								<TerminalRunPanel
+									active={activeTerminalTab === "run"}
+									agentId={activeAgentId}
+									command={runCommand.command}
+									draftCommand={runCommand.draftCommand}
+									error={runCommand.error}
+									executedCommand={runTerminalCommand}
+									onDraftCommandChange={runCommand.setDraftCommand}
+									onRun={() => {
+										void handleRunPanelCommand();
+									}}
+									onSave={() => {
+										void handleRunPanelSaveCommand();
+									}}
+									onRunRequestDispatched={handleRunRequestDispatched}
+									runRequest={
+										activeAgentId
+											? (runRequestsByAgent[activeAgentId] ?? null)
+											: null
+									}
+									saving={runCommand.saving}
+								/>
+								<div
+									className={
+										activeTerminalTab === "terminal"
+											? "h-full"
+											: "hidden h-full"
+									}
+								>
+									<TerminalPanel
+										agentId={activeAgentId}
+										active={activeTerminalTab === "terminal"}
+									/>
+								</div>
 							</div>
 						</div>
 					</>

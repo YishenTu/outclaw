@@ -82,6 +82,7 @@ describe("browser runtime server events", () => {
 				{
 					agentId: "agent-railly",
 					name: "railly",
+					terminalRunCommand: "bun test",
 					activeSession: {
 						providerId: "mock",
 						sdkSessionId: "sdk-active",
@@ -100,6 +101,13 @@ describe("browser runtime server events", () => {
 		});
 
 		expect(useAgentsStore.getState().activeAgentId).toBe("agent-railly");
+		expect(useAgentsStore.getState().agents).toEqual([
+			{
+				agentId: "agent-railly",
+				name: "railly",
+				terminalRunCommand: "bun test",
+			},
+		]);
 		expect(useSessionsStore.getState().sessionsByAgent["agent-railly"]).toEqual(
 			[
 				{

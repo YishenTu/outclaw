@@ -1,5 +1,6 @@
 import { PanelLeftOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { requestConfigRestart } from "../../config-save-restart.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import { fetchConfigFile, updateConfigFile } from "../../lib/api.ts";
 import type { AgentReorderPosition } from "../../stores/agents.ts";
@@ -304,9 +305,16 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 						schema: configFile.schema,
 					}),
 				);
+				const restartError = requestConfigRestart(sendCommand);
+				if (restartError) {
+					setConfigErrorMode("save");
+					setConfigError(restartError);
+					return;
+				}
+
+				setConfigOpen(false);
 				setConfigError(null);
 				setConfigErrorMode("load");
-				setConfigOpen(false);
 			})
 			.catch((error) => {
 				setConfigErrorMode("save");
@@ -317,7 +325,7 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 			.finally(() => {
 				setConfigSaving(false);
 			});
-	}, [agents, configDocument, configEntries]);
+	}, [agents, configDocument, configEntries, sendCommand]);
 
 	return (
 		<div className="relative flex h-full flex-col bg-dark-950">

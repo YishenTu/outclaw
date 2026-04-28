@@ -22,6 +22,8 @@ interface CreateBrowserSidebarWatcherOptions {
 
 const DEFAULT_DEBOUNCE_MS = 75;
 const SECTION_ORDER = ["git", "tree", "cron"] as const;
+type BrowserSidebarInvalidationSection =
+	BrowserSidebarInvalidatedEvent["sections"][number];
 
 function normalizePath(path: string): string {
 	return resolve(path);
@@ -62,16 +64,16 @@ function isIgnorableGitMetadataPath(
 }
 
 function sortSections(
-	sections: Iterable<"tree" | "cron" | "git">,
-): Array<"tree" | "cron" | "git"> {
+	sections: Iterable<BrowserSidebarInvalidationSection>,
+): BrowserSidebarInvalidatedEvent["sections"] {
 	const nextSections = new Set(sections);
 	return SECTION_ORDER.filter((section) => nextSections.has(section));
 }
 
 function queueSection(
-	pendingByAgent: Map<string, Set<"tree" | "cron" | "git">>,
+	pendingByAgent: Map<string, Set<BrowserSidebarInvalidationSection>>,
 	agentId: string,
-	sections: Array<"tree" | "cron" | "git">,
+	sections: BrowserSidebarInvalidatedEvent["sections"],
 ) {
 	const pending = pendingByAgent.get(agentId) ?? new Set();
 	for (const section of sections) {
@@ -93,7 +95,10 @@ export function createBrowserSidebarWatcher(
 		(agent) => !isPathWithin(normalizedGitRoot, agent.rootDir),
 	);
 	const handles: WatchHandle[] = [];
-	const pendingByAgent = new Map<string, Set<"tree" | "cron" | "git">>();
+	const pendingByAgent = new Map<
+		string,
+		Set<BrowserSidebarInvalidationSection>
+	>();
 	let pendingGit = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -103,7 +108,7 @@ export function createBrowserSidebarWatcher(
 		if (pendingGit) {
 			options.onInvalidate({
 				type: "browser_sidebar_invalidated",
-				sections: ["git"],
+				sections: sortSections(["git"]),
 			});
 			pendingGit = false;
 		}
@@ -149,7 +154,10 @@ export function createBrowserSidebarWatcher(
 				continue;
 			}
 			matchedAgent = true;
-			const sections: Array<"tree" | "cron" | "git"> = ["git", "tree"];
+			const sections: BrowserSidebarInvalidatedEvent["sections"] = [
+				"git",
+				"tree",
+			];
 			if (isCronPath(agent.rootDir, absolutePath)) {
 				sections.push("cron");
 			}
@@ -165,7 +173,7 @@ export function createBrowserSidebarWatcher(
 	const handleExternalAgentChange =
 		(agent: { agentId: string; rootDir: string }) =>
 		(filename: WatchFilename) => {
-			const sections: Array<"tree" | "cron" | "git"> = ["tree"];
+			const sections: BrowserSidebarInvalidatedEvent["sections"] = ["tree"];
 			if (
 				filename === null ||
 				isCronPath(agent.rootDir, toAbsolutePath(agent.rootDir, filename) ?? "")

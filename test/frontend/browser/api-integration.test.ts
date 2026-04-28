@@ -85,6 +85,7 @@ describe("browser API client integration", () => {
 					{
 						agentId: "agent-railly",
 						name: "railly",
+						terminalRunCommand: "bun test",
 						activeSession: {
 							providerId: "mock",
 							sdkSessionId: "sdk-active",
@@ -231,6 +232,7 @@ describe("browser API client integration", () => {
 				{
 					agentId: "agent-railly",
 					name: "railly",
+					terminalRunCommand: "bun test",
 					activeSession: {
 						providerId: "mock",
 						sdkSessionId: "sdk-active",

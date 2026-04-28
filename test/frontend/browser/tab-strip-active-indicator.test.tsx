@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { ACTIVE_TAB_UNDERLINE_CLASS } from "../../../src/frontend/browser/components/active-tab-underline.tsx";
-import { TabBar } from "../../../src/frontend/browser/components/center/tab-bar.tsx";
+import {
+	TabBar,
+	TabBarView,
+} from "../../../src/frontend/browser/components/center/tab-bar.tsx";
 import { RightPanelUpperTabs } from "../../../src/frontend/browser/components/right-panel/right-panel.tsx";
 import { TerminalTabs } from "../../../src/frontend/browser/components/right-panel/terminal-tabs.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
@@ -33,13 +36,41 @@ describe("browser tab strip active indicator", () => {
 		expect(html).not.toContain(ACTIVE_TAB_UNDERLINE_CLASS);
 	});
 
+	test("center close buttons do not reserve tab width while hidden", () => {
+		const html = renderToStaticMarkup(
+			<TabBarView
+				activeTabId="agent-a:notes/very-long-file-name.md"
+				closeTab={() => {}}
+				setActiveTab={() => {}}
+				tabs={[
+					{ type: "chat", id: "chat" },
+					{
+						type: "file",
+						id: "agent-a:notes/very-long-file-name.md",
+						agentId: "agent-a",
+						path: "notes/very-long-file-name.md",
+					},
+				]}
+			/>,
+		);
+
+		expect(html).toContain("invisible");
+		expect(html).toContain("absolute right-1");
+		expect(html).toContain("group-hover:pr-6");
+		expect(html).toContain('aria-label="Close notes/very-long-file-name.md"');
+	});
+
 	test("terminal tabs keep the existing underline thickness", () => {
 		const html = renderToStaticMarkup(
 			<TerminalTabs
 				activeTerminalId="terminal-1"
+				activeTab="terminal"
+				canRunCommand={true}
 				onCloseTerminal={() => {}}
 				onCreateTerminal={() => {}}
 				onRenameTerminal={() => {}}
+				onRunCommand={() => {}}
+				onSelectRun={() => {}}
 				onSelectTerminal={() => {}}
 				terminals={[
 					{
@@ -60,9 +91,13 @@ describe("browser tab strip active indicator", () => {
 		const html = renderToStaticMarkup(
 			<TerminalTabs
 				activeTerminalId="terminal-1"
+				activeTab="terminal"
+				canRunCommand={true}
 				onCloseTerminal={() => {}}
 				onCreateTerminal={() => {}}
 				onRenameTerminal={() => {}}
+				onRunCommand={() => {}}
+				onSelectRun={() => {}}
 				onSelectTerminal={() => {}}
 				terminals={[
 					{
@@ -76,6 +111,99 @@ describe("browser tab strip active indicator", () => {
 		);
 
 		expect(html).toContain('aria-label="Close Terminal"');
+	});
+
+	test("terminal close buttons do not reserve tab width while hidden", () => {
+		const html = renderToStaticMarkup(
+			<TerminalTabs
+				activeTerminalId="terminal-1"
+				activeTab="terminal"
+				canRunCommand={true}
+				onCloseTerminal={() => {}}
+				onCreateTerminal={() => {}}
+				onRenameTerminal={() => {}}
+				onRunCommand={() => {}}
+				onSelectRun={() => {}}
+				onSelectTerminal={() => {}}
+				terminals={[
+					{
+						agentId: "agent-a",
+						id: "terminal-1",
+						name: "Build Shell",
+						createdAt: 1,
+					},
+				]}
+			/>,
+		);
+
+		expect(html).toContain("invisible");
+		expect(html).toContain("absolute right-0");
+		expect(html).toContain("group-hover:pr-5");
+		expect(html).toContain('aria-label="Close Build Shell"');
+	});
+
+	test("terminal tabs render a fixed run tab and header run button", () => {
+		const html = renderToStaticMarkup(
+			<TerminalTabs
+				activeTerminalId="terminal-1"
+				activeTab="run"
+				canRunCommand={true}
+				onCloseTerminal={() => {}}
+				onCreateTerminal={() => {}}
+				onRenameTerminal={() => {}}
+				onRunCommand={() => {}}
+				onSelectRun={() => {}}
+				onSelectTerminal={() => {}}
+				terminals={[
+					{
+						agentId: "agent-a",
+						id: "terminal-1",
+						name: "Terminal",
+						createdAt: 1,
+					},
+				]}
+			/>,
+		);
+
+		expect(html).toContain(">Run</button>");
+		expect(html).toContain('aria-label="Select run tab"');
+		expect(html).toContain("relative flex shrink-0");
+		expect(html).toContain("h-full min-w-0 font-mono-ui");
+		expect(html).toContain('aria-label="Run command"');
+		expect(html).toContain("flex items-center justify-center");
+		expect(html).toContain("h-0.5 bg-brand");
+	});
+
+	test("terminal tabs keep space between tab labels", () => {
+		const html = renderToStaticMarkup(
+			<TerminalTabs
+				activeTerminalId="terminal-1"
+				activeTab="terminal"
+				canRunCommand={true}
+				onCloseTerminal={() => {}}
+				onCreateTerminal={() => {}}
+				onRenameTerminal={() => {}}
+				onRunCommand={() => {}}
+				onSelectRun={() => {}}
+				onSelectTerminal={() => {}}
+				terminals={[
+					{
+						agentId: "agent-a",
+						id: "terminal-1",
+						name: "Terminal",
+						createdAt: 1,
+					},
+					{
+						agentId: "agent-a",
+						id: "terminal-2",
+						name: "Terminal 2",
+						createdAt: 2,
+					},
+				]}
+			/>,
+		);
+
+		expect(html).toContain("items-stretch gap-3 overflow-x-auto");
 	});
 
 	test("right panel upper tabs use the thinner underline", () => {

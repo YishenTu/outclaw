@@ -7,13 +7,17 @@ export interface BrowserTerminalEntry {
 	name: string;
 }
 
+export type BrowserTerminalTab = "run" | "terminal";
+
 interface TerminalCreationOptions {
 	now?: number;
 }
 
 export interface BrowserTerminalState {
 	activeTerminalIdByAgent: Record<string, string | null>;
+	activeTerminalTabByAgent: Record<string, BrowserTerminalTab>;
 	nextTerminalNumberByAgent: Record<string, number>;
+	runTerminalCommandByAgent: Record<string, string | null>;
 	terminalsByAgent: Record<string, BrowserTerminalEntry[]>;
 
 	closeTerminal: (agentId: string, terminalId: string) => void;
@@ -21,11 +25,13 @@ export interface BrowserTerminalState {
 		agentId: string,
 		options?: TerminalCreationOptions,
 	) => string;
+	executeRunTerminal: (agentId: string, command: string) => void;
 	ensureTerminal: (
 		agentId: string,
 		options?: TerminalCreationOptions,
 	) => string;
 	renameTerminal: (agentId: string, terminalId: string, name: string) => void;
+	setActiveRunTerminal: (agentId: string) => void;
 	setActiveTerminal: (agentId: string, terminalId: string) => void;
 }
 
@@ -117,7 +123,9 @@ function resolveNextActiveTerminal(
 export function createTerminalStore() {
 	return create<BrowserTerminalState>((set, get) => ({
 		activeTerminalIdByAgent: {},
+		activeTerminalTabByAgent: {},
 		nextTerminalNumberByAgent: {},
+		runTerminalCommandByAgent: {},
 		terminalsByAgent: {},
 
 		closeTerminal: (agentId, terminalId) =>
@@ -146,6 +154,13 @@ export function createTerminalStore() {
 						activeTerminalIdByAgent: {
 							...state.activeTerminalIdByAgent,
 							[agentId]: replacement.id,
+						},
+						activeTerminalTabByAgent: {
+							...state.activeTerminalTabByAgent,
+							[agentId]:
+								state.activeTerminalTabByAgent[agentId] === "run"
+									? "run"
+									: "terminal",
 						},
 						nextTerminalNumberByAgent: {
 							...state.nextTerminalNumberByAgent,
@@ -190,6 +205,10 @@ export function createTerminalStore() {
 					...currentState.activeTerminalIdByAgent,
 					[agentId]: terminal.id,
 				},
+				activeTerminalTabByAgent: {
+					...currentState.activeTerminalTabByAgent,
+					[agentId]: "terminal",
+				},
 				nextTerminalNumberByAgent: {
 					...currentState.nextTerminalNumberByAgent,
 					[agentId]: nextTerminalNumber,
@@ -209,11 +228,18 @@ export function createTerminalStore() {
 		ensureTerminal: (agentId, options) => {
 			const existingTerminalId = get().terminalsByAgent[agentId]?.[0]?.id;
 			if (existingTerminalId) {
-				if ((get().activeTerminalIdByAgent[agentId] ?? null) === null) {
+				if (
+					(get().activeTerminalIdByAgent[agentId] ?? null) === null ||
+					get().activeTerminalTabByAgent[agentId] === undefined
+				) {
 					set((state) => ({
 						activeTerminalIdByAgent: {
 							...state.activeTerminalIdByAgent,
 							[agentId]: existingTerminalId,
+						},
+						activeTerminalTabByAgent: {
+							...state.activeTerminalTabByAgent,
+							[agentId]: state.activeTerminalTabByAgent[agentId] ?? "terminal",
 						},
 					}));
 				}
@@ -222,6 +248,18 @@ export function createTerminalStore() {
 
 			return get().createTerminal(agentId, options);
 		},
+
+		executeRunTerminal: (agentId, command) =>
+			set((state) => ({
+				activeTerminalTabByAgent: {
+					...state.activeTerminalTabByAgent,
+					[agentId]: "run",
+				},
+				runTerminalCommandByAgent: {
+					...state.runTerminalCommandByAgent,
+					[agentId]: command,
+				},
+			})),
 
 		renameTerminal: (agentId, terminalId, name) =>
 			set((state) => {
@@ -247,6 +285,14 @@ export function createTerminalStore() {
 				};
 			}),
 
+		setActiveRunTerminal: (agentId) =>
+			set((state) => ({
+				activeTerminalTabByAgent: {
+					...state.activeTerminalTabByAgent,
+					[agentId]: "run",
+				},
+			})),
+
 		setActiveTerminal: (agentId, terminalId) =>
 			set((state) => {
 				const terminals = state.terminalsByAgent[agentId] ?? [];
@@ -258,6 +304,10 @@ export function createTerminalStore() {
 					activeTerminalIdByAgent: {
 						...state.activeTerminalIdByAgent,
 						[agentId]: terminalId,
+					},
+					activeTerminalTabByAgent: {
+						...state.activeTerminalTabByAgent,
+						[agentId]: "terminal",
 					},
 				};
 			}),
@@ -282,4 +332,20 @@ export function selectActiveTerminalId(
 	agentId: string | null,
 ) {
 	return agentId ? (state.activeTerminalIdByAgent[agentId] ?? null) : null;
+}
+
+export function selectActiveTerminalTab(
+	state: BrowserTerminalState,
+	agentId: string | null,
+): BrowserTerminalTab {
+	return agentId
+		? (state.activeTerminalTabByAgent[agentId] ?? "terminal")
+		: "terminal";
+}
+
+export function selectRunTerminalCommand(
+	state: BrowserTerminalState,
+	agentId: string | null,
+) {
+	return agentId ? (state.runTerminalCommandByAgent[agentId] ?? null) : null;
 }

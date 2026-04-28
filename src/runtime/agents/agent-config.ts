@@ -2,6 +2,9 @@ export interface StoredAgentConfig {
 	rollover?: {
 		idleMinutes?: number;
 	};
+	terminal?: {
+		runCommand?: string;
+	};
 	telegram?: {
 		botToken?: string;
 		allowedUsers?: number[] | string;
@@ -12,6 +15,9 @@ export interface StoredAgentConfig {
 export interface AgentConfig {
 	rollover: {
 		idleMinutes: number;
+	};
+	terminal: {
+		runCommand: string;
 	};
 	telegram: {
 		botToken: string;
@@ -41,6 +47,7 @@ export function normalizeStoredAgentConfig(
 ): StoredAgentConfig & Record<string, unknown> {
 	const document = isObject(raw) ? raw : {};
 	const rollover = isObject(document.rollover) ? document.rollover : undefined;
+	const terminal = isObject(document.terminal) ? document.terminal : undefined;
 	const telegram = isObject(document.telegram) ? document.telegram : {};
 
 	return {
@@ -52,6 +59,17 @@ export function normalizeStoredAgentConfig(
 					? rollover.idleMinutes
 					: DEFAULT_ROLLOVER_IDLE_MINUTES,
 		},
+		...(terminal
+			? {
+					terminal: {
+						...terminal,
+						runCommand:
+							typeof terminal.runCommand === "string"
+								? terminal.runCommand
+								: "",
+					},
+				}
+			: {}),
 		telegram: {
 			...telegram,
 			botToken:
