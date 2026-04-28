@@ -301,6 +301,15 @@ export interface DisplayChatMessage {
 	images?: DisplayImage[];
 	replyContext?: ReplyContext;
 	timestamp?: number;
+	assistantTurn?: AssistantTurnMetadata;
+}
+
+export type AssistantTurnSource = "user" | "heartbeat" | "rollover";
+
+export interface AssistantTurnMetadata {
+	source: AssistantTurnSource;
+	startedAt?: number;
+	durationMs?: number;
 }
 
 export interface DisplayCompactBoundaryMessage {

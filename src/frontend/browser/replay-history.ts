@@ -4,6 +4,7 @@ import {
 	isOperationalHeartbeatPrompt,
 } from "../../common/heartbeat-prompt.ts";
 import type {
+	AssistantTurnMetadata,
 	DisplayChatMessage,
 	DisplayMessage,
 } from "../../common/protocol.ts";
@@ -72,7 +73,7 @@ export function normalizeReplayHistory(
 		normalized.push(message);
 	}
 
-	return normalized;
+	return lockReplayAssistantTurns(normalized);
 }
 
 function normalizeOperationalReplayPair(params: {
@@ -165,4 +166,96 @@ function isOperationalNoopResult(
 	return kind === "heartbeat"
 		? isHeartbeatNoopResult(text)
 		: isRolloverNoopResult(text);
+}
+
+function lockReplayAssistantTurns(
+	messages: DisplayMessage[],
+): DisplayMessage[] {
+	const locked = [...messages];
+	let userTurnStartedAt: number | undefined;
+	let candidateAssistantIndex: number | undefined;
+	let pendingOperationalSource: "heartbeat" | "rollover" | undefined;
+
+	const lockCandidate = () => {
+		if (
+			candidateAssistantIndex === undefined ||
+			userTurnStartedAt === undefined
+		) {
+			candidateAssistantIndex = undefined;
+			return;
+		}
+
+		const message = locked[candidateAssistantIndex];
+		if (
+			!isAssistantMessage(message) ||
+			message.timestamp === undefined ||
+			message.timestamp < userTurnStartedAt
+		) {
+			candidateAssistantIndex = undefined;
+			return;
+		}
+
+		locked[candidateAssistantIndex] = withAssistantTurn(message, {
+			source: "user",
+			startedAt: userTurnStartedAt,
+			durationMs: message.timestamp - userTurnStartedAt,
+		});
+		candidateAssistantIndex = undefined;
+	};
+
+	for (let index = 0; index < locked.length; index += 1) {
+		const message = locked[index];
+		if (!message) {
+			continue;
+		}
+
+		if (isUserMessage(message)) {
+			lockCandidate();
+			userTurnStartedAt = message.timestamp;
+			pendingOperationalSource = undefined;
+			continue;
+		}
+
+		if (
+			message.kind === "system" &&
+			(message.event === "heartbeat" || message.event === "rollover")
+		) {
+			lockCandidate();
+			pendingOperationalSource = message.event;
+			continue;
+		}
+
+		if (!isAssistantMessage(message)) {
+			continue;
+		}
+
+		if (pendingOperationalSource) {
+			locked[index] = withAssistantTurn(message, {
+				source: pendingOperationalSource,
+			});
+			pendingOperationalSource = undefined;
+			continue;
+		}
+
+		if (userTurnStartedAt !== undefined) {
+			candidateAssistantIndex = index;
+		}
+	}
+
+	lockCandidate();
+	return locked;
+}
+
+function withAssistantTurn(
+	message: AssistantMessage,
+	assistantTurn: AssistantTurnMetadata,
+): AssistantMessage {
+	if (message.assistantTurn) {
+		return message;
+	}
+
+	return {
+		...message,
+		assistantTurn,
+	};
 }

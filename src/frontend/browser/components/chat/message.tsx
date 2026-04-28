@@ -9,7 +9,6 @@ import { ThinkingBlock } from "./thinking-block.tsx";
 interface MessageProps {
 	message: DisplayMessage;
 	showUtilityBar?: boolean;
-	turnStartedAt?: number;
 }
 
 type ChatImage = NonNullable<
@@ -61,11 +60,7 @@ function renderImageGallery(images: ChatImage[], role: "user" | "assistant") {
 	);
 }
 
-export function Message({
-	message,
-	showUtilityBar = false,
-	turnStartedAt,
-}: MessageProps) {
+export function Message({ message, showUtilityBar = false }: MessageProps) {
 	if (message.kind === "system") {
 		if (message.event === "heartbeat") {
 			return (
@@ -138,8 +133,8 @@ export function Message({
 				{showUtilityBar ? (
 					<AssistantTurnUtilityBar
 						content={message.content}
+						durationMs={message.assistantTurn?.durationMs}
 						timestamp={message.timestamp}
-						turnStartedAt={turnStartedAt}
 					/>
 				) : null}
 			</div>

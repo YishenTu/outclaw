@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
-import type { DisplayImage, DisplayMessage } from "../../../common/protocol.ts";
+import type {
+	AssistantTurnMetadata,
+	DisplayImage,
+	DisplayMessage,
+} from "../../../common/protocol.ts";
 import { normalizeReplayHistory } from "../replay-history.ts";
 
 export interface ChatSession {
@@ -421,6 +425,9 @@ function finalizeSessionMessages(
 						? session.heartbeatStreamingImages
 						: undefined,
 				timestamp: options?.timestamp,
+				assistantTurn: {
+					source: "heartbeat" as const,
+				},
 			},
 		];
 	}
@@ -445,9 +452,50 @@ function finalizeSessionMessages(
 							? session.streamingImages
 							: undefined,
 					timestamp: options?.timestamp,
+					assistantTurn: createUserAssistantTurn(
+						session.messages,
+						options?.timestamp,
+					),
 				},
 			]
 		: session.messages;
+}
+
+function createUserAssistantTurn(
+	messages: DisplayMessage[],
+	completedAt: number | undefined,
+): AssistantTurnMetadata | undefined {
+	if (completedAt === undefined) {
+		return undefined;
+	}
+
+	const startedAt = findPreviousUserTimestamp(messages);
+	if (startedAt === undefined || completedAt < startedAt) {
+		return undefined;
+	}
+
+	return {
+		source: "user",
+		startedAt,
+		durationMs: completedAt - startedAt,
+	};
+}
+
+function findPreviousUserTimestamp(
+	messages: DisplayMessage[],
+): number | undefined {
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (
+			message?.kind === "chat" &&
+			message.role === "user" &&
+			message.timestamp !== undefined
+		) {
+			return message.timestamp;
+		}
+	}
+
+	return undefined;
 }
 
 function dropPendingHeartbeatIndicator(

@@ -9,17 +9,17 @@ const turnTimestampFormatter = new Intl.DateTimeFormat("en-US", {
 
 interface AssistantTurnUtilityBarProps {
 	content: string;
+	durationMs?: number;
 	timestamp?: number;
-	turnStartedAt?: number;
 }
 
 export function AssistantTurnUtilityBar({
 	content,
+	durationMs,
 	timestamp,
-	turnStartedAt,
 }: AssistantTurnUtilityBarProps) {
 	const canCopy = content.trim() !== "";
-	const durationLabel = formatTurnDuration(turnStartedAt, timestamp);
+	const durationLabel = formatTurnDuration(durationMs);
 	const timestampLabel = formatTurnTimestamp(timestamp);
 	const { copied, failed, copy } = useCopyToClipboard();
 
@@ -93,21 +93,13 @@ export function AssistantTurnCopyButton({
 }
 
 function formatTurnDuration(
-	turnStartedAt: number | undefined,
-	timestamp: number | undefined,
+	durationMs: number | undefined,
 ): string | undefined {
-	if (
-		turnStartedAt === undefined ||
-		timestamp === undefined ||
-		timestamp < turnStartedAt
-	) {
+	if (durationMs === undefined || durationMs < 0) {
 		return undefined;
 	}
 
-	const totalSeconds = Math.max(
-		0,
-		Math.round((timestamp - turnStartedAt) / 1000),
-	);
+	const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
 	if (totalSeconds < 60) {
 		return `${totalSeconds}s`;
 	}

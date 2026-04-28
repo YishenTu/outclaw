@@ -470,6 +470,11 @@ describe("browser runtime server events", () => {
 					},
 				],
 				timestamp: Date.parse("2026-04-27T00:00:00.000Z"),
+				assistantTurn: {
+					source: "user",
+					startedAt: Date.parse("2026-04-27T00:00:00.000Z"),
+					durationMs: 0,
+				},
 			},
 		]);
 		expect(session?.isCompacting).toBe(false);

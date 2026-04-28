@@ -5,7 +5,8 @@ import { MessageList } from "../../../src/frontend/browser/components/chat/messa
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
 describe("browser message list", () => {
-	test("renders an assistant utility bar with derived duration and timestamp", () => {
+	test("renders an assistant utility bar with locked duration and timestamp", () => {
+		const userTimestamp = Date.parse("2025-01-15T14:30:00.000Z");
 		const assistantTimestamp = Date.parse("2025-01-15T14:31:04.000Z");
 		const html = renderToStaticMarkup(
 			<MessageList
@@ -14,13 +15,18 @@ describe("browser message list", () => {
 						kind: "chat",
 						role: "user",
 						content: "hello",
-						timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+						timestamp: userTimestamp,
 					},
 					{
 						kind: "chat",
 						role: "assistant",
 						content: "world",
 						timestamp: assistantTimestamp,
+						assistantTurn: {
+							source: "user",
+							startedAt: userTimestamp,
+							durationMs: assistantTimestamp - userTimestamp,
+						},
 					},
 				]}
 				streamingText=""
@@ -43,6 +49,7 @@ describe("browser message list", () => {
 	});
 
 	test("shows the copy action only on the final assistant message in a turn", () => {
+		const userTimestamp = Date.parse("2025-01-15T14:30:00.000Z");
 		const firstAssistantTimestamp = Date.parse("2025-01-15T14:30:30.000Z");
 		const finalAssistantTimestamp = Date.parse("2025-01-15T14:31:04.000Z");
 		const html = renderToStaticMarkup(
@@ -52,7 +59,7 @@ describe("browser message list", () => {
 						kind: "chat",
 						role: "user",
 						content: "hello",
-						timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+						timestamp: userTimestamp,
 					},
 					{
 						kind: "chat",
@@ -65,6 +72,11 @@ describe("browser message list", () => {
 						role: "assistant",
 						content: "final",
 						timestamp: finalAssistantTimestamp,
+						assistantTurn: {
+							source: "user",
+							startedAt: userTimestamp,
+							durationMs: finalAssistantTimestamp - userTimestamp,
+						},
 					},
 				]}
 				streamingText=""
@@ -91,6 +103,61 @@ describe("browser message list", () => {
 		expect(copyCount).toBe(1);
 		expect(html).toContain(finalTimestamp);
 		expect(html).not.toContain(intermediateTimestamp);
+	});
+
+	test("keeps a locked user turn duration when a later heartbeat result appears", () => {
+		const userTimestamp = Date.parse("2025-01-15T14:30:00.000Z");
+		const assistantTimestamp = Date.parse("2025-01-15T14:33:20.000Z");
+		const heartbeatTimestamp = Date.parse("2025-01-15T14:40:30.000Z");
+		const html = renderToStaticMarkup(
+			<MessageList
+				messages={[
+					{
+						kind: "chat",
+						role: "user",
+						content: "hello",
+						timestamp: userTimestamp,
+					},
+					{
+						kind: "chat",
+						role: "assistant",
+						content: "done",
+						timestamp: assistantTimestamp,
+						assistantTurn: {
+							source: "user",
+							startedAt: userTimestamp,
+							durationMs: assistantTimestamp - userTimestamp,
+						},
+					},
+					{
+						kind: "system",
+						event: "heartbeat",
+						text: "Heartbeat",
+					},
+					{
+						kind: "chat",
+						role: "assistant",
+						content: "Heartbeat result",
+						timestamp: heartbeatTimestamp,
+						assistantTurn: {
+							source: "heartbeat",
+						},
+					},
+				]}
+				streamingText=""
+				streamingThinking=""
+				isStreaming={false}
+				isCompacting={false}
+				thinkingStartedAt={null}
+			/>,
+		);
+
+		const copyCount = (html.match(/aria-label="Copy final result"/g) ?? [])
+			.length;
+
+		expect(copyCount).toBe(1);
+		expect(html).toContain("3m 20s");
+		expect(html).not.toContain("10m 30s");
 	});
 
 	test("renders streaming assistant text as markdown", () => {

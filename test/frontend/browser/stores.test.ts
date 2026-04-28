@@ -491,6 +491,11 @@ describe("browser stores", () => {
 				role: "assistant",
 				content: "world",
 				timestamp: replyTimestamp.getTime(),
+				assistantTurn: {
+					source: "user",
+					startedAt: promptTimestamp.getTime(),
+					durationMs: replyTimestamp.getTime() - promptTimestamp.getTime(),
+				},
 			},
 		]);
 	});
@@ -697,6 +702,77 @@ describe("browser stores", () => {
 				kind: "chat",
 				role: "assistant",
 				content: "Updated inbox triage notes.",
+				assistantTurn: {
+					source: "heartbeat",
+				},
+			},
+		]);
+	});
+
+	test("chat store locks replayed user turn durations before operational turns", () => {
+		const userTimestamp = Date.parse("2025-01-15T14:30:00.000Z");
+		const assistantTimestamp = Date.parse("2025-01-15T14:33:20.000Z");
+		const heartbeatTimestamp = Date.parse("2025-01-15T14:40:30.000Z");
+
+		useChatStore.getState().replaceHistory("agent-a:claude:sdk-alpha", [
+			{
+				kind: "chat",
+				role: "user",
+				content: "hello",
+				timestamp: userTimestamp,
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "done",
+				timestamp: assistantTimestamp,
+			},
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Heartbeat result",
+				timestamp: heartbeatTimestamp,
+			},
+		]);
+
+		expect(
+			useChatStore.getState().getMessages("agent-a:claude:sdk-alpha"),
+		).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "hello",
+				timestamp: userTimestamp,
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "done",
+				timestamp: assistantTimestamp,
+				assistantTurn: {
+					source: "user",
+					startedAt: userTimestamp,
+					durationMs: assistantTimestamp - userTimestamp,
+				},
+			},
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Heartbeat result",
+				timestamp: heartbeatTimestamp,
+				assistantTurn: {
+					source: "heartbeat",
+				},
 			},
 		]);
 	});
@@ -981,6 +1057,72 @@ describe("browser stores", () => {
 				role: "assistant",
 				content: "Updated inbox triage notes.",
 				thinking: "checking tasks",
+				assistantTurn: {
+					source: "heartbeat",
+				},
+			},
+		]);
+	});
+
+	test("chat store locks user turn duration before later heartbeat output", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+		const userTimestamp = Date.parse("2025-01-15T14:30:00.000Z");
+		const assistantTimestamp = Date.parse("2025-01-15T14:33:20.000Z");
+		const heartbeatTimestamp = Date.parse("2025-01-15T14:40:30.000Z");
+
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "hello",
+			timestamp: userTimestamp,
+		});
+		useChatStore.getState().appendText(sessionKey, "done");
+		useChatStore.getState().finalizeMessage(sessionKey, {
+			timestamp: assistantTimestamp,
+		});
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "system",
+			event: "heartbeat",
+			text: "Heartbeat",
+		});
+		useChatStore.getState().appendText(sessionKey, "Heartbeat result");
+		useChatStore.getState().finalizeMessage(sessionKey, {
+			timestamp: heartbeatTimestamp,
+		});
+
+		expect(useChatStore.getState().getMessages(sessionKey)).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "hello",
+				timestamp: userTimestamp,
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "done",
+				thinking: undefined,
+				timestamp: assistantTimestamp,
+				assistantTurn: {
+					source: "user",
+					startedAt: userTimestamp,
+					durationMs: assistantTimestamp - userTimestamp,
+				},
+			},
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Heartbeat result",
+				thinking: undefined,
+				timestamp: heartbeatTimestamp,
+				assistantTurn: {
+					source: "heartbeat",
+				},
 			},
 		]);
 	});
