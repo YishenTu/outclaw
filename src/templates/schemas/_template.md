@@ -5,12 +5,15 @@ kind: <project | initiative | person | topic>
 description: <one-line router summary for MEMORY.md>
 last_observation_at: <YYYY-MM-DD>
 last_synthesized: <YYYY-MM-DD>
+# OPTIONAL but useful:
+# aliases: [variant-1, variant-2]   # alternate names that resolve to this file's [[wikilink]] target
 # Any other fields are fine; the runtime ignores them.
 ---
 
 # Model
 
 <!-- REQUIRED: this heading exists. -->
+<!-- Wrap proper-noun entities (people, places, projects, products, tools, named events, schema/note filenames) in [[X]] when writing prose. -->
 <!-- SUGGESTED subsections below — adapt to the entity kind, drop what doesn't fit. -->
 
 ## What

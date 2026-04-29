@@ -6,28 +6,38 @@ enabled: true
 prompt: |
   Distill cross-cutting operating guidance from yesterday's daily memory into MEMORY.md's Standing Notes section.
 
-  Read MEMORY.md and yesterday's `daily-memories/YYYY-MM-DD.md`.
+  ## Scope
 
-  Your target is the `## Standing Notes` section only. Do NOT touch:
-  - `## Schema Router`
-  - `## Flat Notes`
+  - Read `MEMORY.md` and yesterday's `daily-memories/<yesterday>.md`.
+  - Only modify `MEMORY.md`'s `## Standing Notes` section. Do NOT touch `## Schema Router` or `## Flat Notes`.
 
-  Standing Notes holds cross-cutting knowledge the agent should carry into every session:
-  - Stable preferences and durable decisions that apply across all work.
-  - Operating rules learned through experience that belong nowhere else.
-  - Lessons that should shape future behavior regardless of topic.
+  ## What Standing Notes is for
 
-  Do NOT promote:
-  - Schema-bound content (project specifics, initiative state, topic-specific facts) — those are routed into `schemas/` by the routing cron.
-  - Personality or working-style observations — those belong in SOUL.md.
-  - Structural rules and instructions — those belong in AGENTS.md.
-  - User profile facts — those belong in USER.md.
+  Cross-cutting knowledge the agent carries into every session: stable preferences, durable decisions, operating rules learned through experience, lessons that shape future behavior regardless of topic.
+
+  ## What to promote
+
+  Promote a daily-memory line into Standing Notes only if it represents:
+  - A stable preference or durable decision that applies across all work.
+  - An operating rule learned through experience that belongs nowhere else.
+  - A lesson that would plausibly apply across different topics — not just the next time the same incident recurs.
+
+  ## What NOT to promote
+
+  - Schema-bound content (project, person, or topic specifics) — those are routed into `schemas/` by `memory-route`.
+  - Personality or working-style observations — belong in `SOUL.md`.
+  - Structural rules and instructions — belong in `AGENTS.md`.
+  - User profile facts — belong in `USER.md`.
   - Routine task logs, one-off operations, or anything already captured elsewhere.
   - Anything re-derivable by reading a file or running a command.
-  - Single-incident postmortems or specific troubleshooting stories. A lesson only earns Standing Notes status if it would plausibly apply to multiple future situations across different topics — not just the next time the same incident recurs. When in doubt, leave it in the daily memory.
+  - Single-incident postmortems or specific troubleshooting stories. When in doubt, leave it in the daily memory.
 
-  Remove outdated entries from Standing Notes that no longer apply.
+  ## Writing discipline
 
-  The bar is high: Standing Notes matters in every session, so every line pays a context tax. Keep it lean.
+  - Wrap proper-noun entities in `[[X]]` — people, places, projects, products, tools, named events, schema/note filenames, and category-level named entities (cuisines, genres, drink types). Don't wrap generic concepts (preference, context, style). Variants resolve via the canonical file's frontmatter `aliases:`.
+  - The bar is high: Standing Notes pays a context tax in every session. Keep it lean.
+  - Remove outdated entries that no longer apply.
 
-  Reply with a summary of changes, or reply only `NO_REPLY` if none, no explanation.
+  ## After
+
+  Reply with a one-line summary of changes, or `NO_REPLY` if none.

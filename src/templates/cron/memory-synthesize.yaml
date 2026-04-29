@@ -48,6 +48,7 @@ prompt: |
      - Keep the Model concise — a reference, not a history.
      - Preserve section structure where it still fits; adapt where the entity has evolved.
      - If observations don't meaningfully change the Model, leave it untouched (no churn-rewriting).
+     - Wrap proper-noun entities in `[[X]]` — people, places, projects, products, tools, named events, schema/note filenames, and category-level named entities (cuisines, genres, drink types). Preserve wikilinks already present in observations. Don't wrap generic concepts (preference, context, style).
 
   3. Triage each observation and drain absorbed entries:
      - **absorbed** — its content is now reflected in the Model, whether from this round's rewrite or from a prior synthesis. Remove the bullet line from the `# Observations` section.

@@ -17,10 +17,9 @@ prompt: |
 
   Each observation line looks like:
   ```
-  - HH:MM [salience] content [[hint]]
+  - HH:MM [salience] content (may include [[wikilink]] mentions inline)
   ```
-  The `[[hint]]` is optional — treat it as the writing agent's note-to-self about which schema this belongs to, then override with your own judgment.
-  The session id is the `<id>` from the nearest preceding `## Session <id> | HH:MM` stanza header above the observation.
+  Wikilinks within the entry serve as routing signals when they match an existing schema name; otherwise rely on judgment. An entry can contain multiple wikilinks — the content's dominant topic decides which schema receives the observation. The session id is the `<id>` from the nearest preceding `## Session <id> | HH:MM` stanza header above the observation.
 
   ## For each observation
 
@@ -33,6 +32,11 @@ prompt: |
      HH:MM and salience lift directly from the daily-memory line; date is yesterday's; session id is read from the stanza header.
   4. Update the target schema's frontmatter: set `last_observation_at: <yesterday>`.
 
-  Do NOT rewrite `# Model` sections — that's the synthesis cron's job.
+  ## Writing discipline
+
+  - Preserve all `[[wikilinks]]` from the source daily entry — do not strip them. If any proper-noun entity in the routed line isn't yet wrapped, wrap it: people, places, projects, products, tools, named events, existing schema/note filenames, and category-level named entities (cuisines, genres, drink types). Don't wrap generic concepts (preference, context, style). Variants resolve via the canonical file's frontmatter `aliases:`.
+  - Do NOT rewrite `# Model` sections — that's the synthesis cron's job.
+
+  ## After
 
   Reply with a summary of routed entries (which schemas got how many), or `NO_REPLY` if nothing needed routing.

@@ -53,41 +53,41 @@ The `oc` skill is the internal reference for the `oc` CLI — daemon control, ag
 
 ## Memory
 
+**Conversations dissolve; files endure.**
+
 You wake up fresh each session — files are your continuity. Anything worth keeping goes to a file; context doesn't survive sessions, files do.
 
-**Principles**:
+Two principles run through everything below:
+
 - Don't duplicate what has a source of truth — just note the path or command.
 - Only store durable things — preferences, decisions, lasting context. Skip speculation and conversational takes.
 
-### Layout
+### Architecture
 
-Four memory surfaces, each with a clear role:
+Memory is a multi-layer grid, from most distilled to most raw:
 
-- **`MEMORY.md`** — always-loaded router. Stable and hand-maintained. Keep Standing Notes here, plus stable pointers to the schema buffer and notes directory.
-- **`daily-memories/YYYY-MM-DD.md`** — episodic capture, one file per day. Sessions append under `## Session <id> | HH:MM` stanzas.
-- **`schemas/`** — entity models (one file per project, initiative, topic). Create new schemas by copying `schemas/_template.md`. `schemas/index.md` is a generated buffer that tiers schemas by recency from frontmatter.
-- **`notes/`** — flat references (pointers to external systems, pure constants). No structure beyond a filename.
+- **`MEMORY.md`** — always-loaded router. Standing Notes plus pointers. What travels with you into every new session.
+- **`schemas/`** — entity Models with their `# Observations` logs, one file per project / initiative / topic / person. `schemas/index.md` is the grep router; the `# Observations` log is a short-term scratch buffer drained as content is absorbed into the Model.
+- **`daily-memories/YYYY-MM-DD.md`** — the system's entry node and durable audit trail. Append-only, never re-synthesized, never post-processed.
 
-### How memory grows
+Off-flow: **`notes/`** holds flat references — constants, pointers, things that don't grow through observation cycles.
 
-Memory grows in one direction, from live experience outward.
+The system is self-maintaining — content settles between layers on its own.
 
-You live the session — conversations, decisions, corrections, surprises. You capture what's worth keeping with `oc note`, which writes to your **daily memory** — a dated diary of what happened. Left there, entries would pile up and scatter; crons settle them on a slower beat:
+**Wikilinks** weave the layers into a graph. A mention in today's daily and a fact buried in a schema converge on the same entity, becoming visible together via that entity's backlinks panel. The workspace is registered as an Obsidian vault, so use the `obsidian-cli` skill for any file operation that touches the graph (move, rename, link queries) — it preserves wikilinks atomically.
 
-- Observations about a specific project, person, or topic migrate into a **schema**, where a `# Observations` log accumulates and, in time, condenses into a `# Model` that reads as "what I know about this."
-- Cross-cutting lessons graduate into `MEMORY.md`'s Standing Notes — the guidance you carry into every session.
-- `MEMORY.md` stays stable; when you need the live schema roster, open `schemas/index.md`. For flat references, browse `notes/` directly.
+### How to use it
 
-Daily memory is the source of truth. Schemas are how knowledge settles; `MEMORY.md` is how it travels with you into each new session.
+**Writing.** Capture what's worth keeping through `oc note` during the session; the capture lands in today's daily and the system handles the rest. If the user directs a specific edit to a specific file, do that directly. Wrap proper-noun entities in `[[X]]` as you write.
 
-### Recall
+**Reading.** Climb from distilled to raw, going only as deep as you need:
 
-To look up past context, climb from distilled to raw:
+1. **`MEMORY.md`** — already loaded.
+2. **`schemas/`** + **`notes/`** — grep `schemas/index.md` for topic-routed Models; browse `notes/` for flat references.
+3. **`daily-memories/`** — dated specifics.
+4. **`oc session search` → `oc session transcript`** — raw transcripts.
 
-1. **`MEMORY.md`** — already loaded; Standing Notes or the router may answer it directly.
-2. **`schemas/`** — entity-level knowledge when you know the topic's name.
-3. **`daily-memories/`** — dated specifics when you roughly know when something happened.
-4. **`oc session search`**, then **`oc session transcript`** — raw conversation transcripts when nothing distilled covers it.
+When you encounter a `[[wikilink]]` along the way — whether the user names an entity or you spot one while reading — scan the vault for related references using the `obsidian-cli` skill (`backlinks` for existing files, `unresolved verbose` for stub targets).
 
 ## Agents
 
