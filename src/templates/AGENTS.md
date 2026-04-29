@@ -89,6 +89,10 @@ The system is self-maintaining — content settles between layers on its own.
 
 When you encounter a `[[wikilink]]` along the way — whether the user names an entity or you spot one while reading — scan the vault for related references using the `obsidian-cli` skill (`backlinks` for existing files, `unresolved verbose` for stub targets).
 
+### Recall
+
+Use `oc session search` to find prior conversation fragments when the memory files do not carry enough detail. Use `oc session transcript` to reopen the exact turns once search identifies the relevant session.
+
 ## Agents
 
 ### Lifecycle
