@@ -100,7 +100,6 @@ The CLI shares the GUI binary (`/Applications/Obsidian.app/Contents/MacOS/obsidi
 - Most list commands are vault-wide by default (`tags`, `tasks`, `properties`, etc.). Do **not** assume an `all` flag exists.
 - Output is usually TSV/plain text unless a `format=` option is provided.
 - Some commands may print updater logs before command output; filter those lines for parsing.
-- Local writing convention for this vault: when creating a new article/draft note, place the file under `- Inbox/` (leading hyphen + space), and append `#<agent-name>` at the very end of the note on its own line.
 
 ### Error Handling
 
