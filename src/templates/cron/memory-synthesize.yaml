@@ -4,7 +4,7 @@ model: opus
 effort: xhigh
 enabled: true
 prompt: |
-  Synthesize fresh Models for schemas whose Observations have moved ahead of their last synthesis.
+  Synthesize fresh Models for schemas whose Observations have moved ahead of their last synthesis, then drain the observation log of anything now reflected in the Model.
 
   ## Scope
 
@@ -13,6 +13,10 @@ prompt: |
   - That command emits one line per schema where `last_observation_at > last_synthesized` (STALE), plus any with malformed frontmatter (BROKEN).
   - If output is empty, reply `NO_REPLY` — nothing to do.
   - Only touch schemas in that list. Do not open or rewrite fresh schemas.
+
+  ## Mental model
+
+  Observations are a short-term scratch buffer of inputs not yet absorbed into the Model. The audit trail lives in daily memory, not in observations — each observation's `[sess:id]` points back to its source there. Anything still in the log is in-flight; once absorbed into the Model, drain it.
 
   ## Schema shape (for reference)
 
@@ -37,22 +41,32 @@ prompt: |
 
   ## For each STALE schema
 
-  1. Read the current `# Model` and every `# Observations` entry dated after `last_synthesized`.
+  1. Read the current `# Model` and every entry currently under `# Observations` (all of them are in-flight).
+
   2. Rewrite `# Model` so it reflects what those observations add or change:
      - Resolve contradictions — newer evidence wins; annotate "superseded" where useful.
      - Keep the Model concise — a reference, not a history.
      - Preserve section structure where it still fits; adapt where the entity has evolved.
-  3. Update frontmatter: set `last_synthesized: <today>`, and preserve existing metadata such as `description` unless it is clearly wrong.
-  4. Do NOT remove Observations — they're the audit trail. Optionally compress entries older than 30 days into one-line summaries if the log has grown unwieldy.
+     - If observations don't meaningfully change the Model, leave it untouched (no churn-rewriting).
 
-  If new Observations don't actually change the Model, write nothing rather than churn — but still bump `last_synthesized` so the schema drops off the stale list.
+  3. Triage each observation and drain absorbed entries:
+     - **absorbed** — its content is now reflected in the Model, whether from this round's rewrite or from a prior synthesis. Remove the bullet line from the `# Observations` section.
+     - **deferred** — contradicts an existing Model claim, is a single ambiguous signal, or otherwise needs more evidence before being absorbed. Keep the bullet verbatim, in place. It will be reconsidered next pass.
+
+     **When in doubt, defer.** Drain is irreversible (the audit trail lives in daily memory, but the local context here is lost). Defer is cheap.
+
+     Note: even if the Model didn't change in step 2, observations may still be absorbed (their content was already reflected in the Model from a prior synthesis). Run this triage every time.
+
+  4. After draining, briefly re-read the schema to confirm clean state: the `# Observations` heading is still present (even if the section is empty), and there are no stray formatting artifacts.
+
+  5. Update frontmatter: set `last_synthesized: <today>`, preserve existing metadata such as `description` unless clearly wrong.
 
   ## For each BROKEN schema
 
-  Frontmatter is missing or malformed. Inspect the file, repair the frontmatter (add missing date fields with reasonable values inferred from the Observations log, or fix invalid syntax), and only then synthesize if needed.
+  Frontmatter is missing or malformed. Inspect the file, repair the frontmatter (add missing date fields with reasonable values inferred from the Observations log, or fix invalid syntax), and only then proceed with the STALE flow if applicable.
 
   ## After
 
   Re-run `bash: oc schema stale` to confirm the list is empty (or only contains schemas you intentionally left alone).
 
-  Reply with a one-line summary per schema touched, or `NO_REPLY` if nothing needed work.
+  Reply with a one-line summary per schema touched (e.g. `food-and-drink: 4 absorbed, 1 deferred, model updated` or `working-with-yishen: 2 absorbed, model unchanged`), or `NO_REPLY` if nothing needed work.
