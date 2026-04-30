@@ -50,11 +50,11 @@ prompt: |
      - If observations don't meaningfully change the Model, leave it untouched (no churn-rewriting).
      - Wrap proper-noun entities in `[[X]]` — people, places, projects, products, tools, named events, schema/note filenames, and category-level named entities (cuisines, genres, drink types). Preserve wikilinks already present in observations. Don't wrap generic concepts (preference, context, style).
 
-  3. Triage each observation and drain absorbed entries:
-     - **absorbed** — its content is now reflected in the Model, whether from this round's rewrite or from a prior synthesis. Remove the bullet line from the `# Observations` section.
-     - **deferred** — contradicts an existing Model claim, is a single ambiguous signal, or otherwise needs more evidence before being absorbed. Keep the bullet verbatim, in place. It will be reconsidered next pass.
+  3. Triage each observation and drain absorbed entries. Triage **records** what step 2 already did — it does not re-decide whether content was used.
+     - **absorbed** — its content informed the Model rewrite in step 2, OR was already reflected in the Model from a prior synthesis. Remove the bullet line from the `# Observations` section. **If you drew on an observation while writing step 2, it is absorbed by definition** — you cannot enrich the Model from an observation and then defer it. That is the failure mode this rule exists to prevent.
+     - **deferred** — you explicitly chose NOT to fold this observation into the Model in step 2 (it contradicts an existing claim, is a single ambiguous signal, or needs more evidence). Keep the bullet verbatim, in place. It will be reconsidered next pass.
 
-     **When in doubt, defer.** Drain is irreversible (the audit trail lives in daily memory, but the local context here is lost). Defer is cheap.
+     **"When in doubt, defer" applies only to observations you did not use in step 2.** It is not a fallback for observations you did use but feel uncertain about — those are absorbed. Drain is irreversible at the schema level, but the audit trail lives in daily memory; the trace is never lost.
 
      Note: even if the Model didn't change in step 2, observations may still be absorbed (their content was already reflected in the Model from a prior synthesis). Run this triage every time.
 
