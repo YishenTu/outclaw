@@ -1,5 +1,5 @@
 name: memory-synthesize
-schedule: "17 6 * * 0"
+schedule: "17 6 * * 2,4,6"
 model: opus
 effort: xhigh
 enabled: true
