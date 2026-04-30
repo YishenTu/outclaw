@@ -656,6 +656,7 @@ export interface RunParams {
 
 export interface Facade {
 	providerId: string;
+	prepareWorkspace?(promptHomeDir: string): void;
 	run(params: RunParams): AsyncIterable<FacadeEvent>;
 	readHistory?(sessionId: string): Promise<DisplayMessage[]>;
 	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;

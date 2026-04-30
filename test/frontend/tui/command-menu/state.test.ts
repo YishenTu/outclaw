@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { listSlashCommands } from "../../../../src/common/commands.ts";
 import {
 	BUILTIN_COMMANDS,
 	MAX_VISIBLE_ITEMS,
@@ -27,6 +28,16 @@ describe("BUILTIN_COMMANDS", () => {
 	test("includes /exit", () => {
 		const commands = BUILTIN_COMMANDS.map((c) => c.command);
 		expect(commands).toContain("/exit");
+	});
+
+	test("mirrors the command catalog for builtin discoverability", () => {
+		expect(BUILTIN_COMMANDS.filter((item) => item.command !== "/exit")).toEqual(
+			listSlashCommands().map((command) => ({
+				command: `/${command.command}`,
+				description: command.description,
+				transport: command.transport,
+			})),
+		);
 	});
 
 	test("every item has a command and description", () => {

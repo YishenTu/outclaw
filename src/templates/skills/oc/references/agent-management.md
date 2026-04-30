@@ -5,8 +5,8 @@
 | Command | Purpose |
 | --- | --- |
 | `oc agent list` | List all agents |
-| `oc agent create <name>` | Create a new agent workspace |
-| `oc agent config <name>` | Update an existing agent's settings |
+| `oc agent create <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]` | Create a new agent workspace |
+| `oc agent config <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]` | Update an existing agent's settings |
 | `oc agent rename <old-name> <new-name>` | Rename an agent |
 | `oc agent remove <name>` | Remove an agent |
 | `oc agent ask --to <target> [--timeout <seconds>] "<message>"` | Send a message from the current agent workspace to another agent |
@@ -23,7 +23,7 @@ Always use `oc agent create` to create agents. Never create an agent by manually
 When the user asks to create an agent, ask whether they want to connect it to Telegram. If so, walk them through the [Telegram setup](#telegram-setup) steps.
 
 ```bash
-oc agent create <name> [--bot-token <token>] [--users <telegram-user-id>,...] [--default-cron-user <telegram-user-id>]
+oc agent create <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]
 ```
 
 ## Telegram Setup
@@ -40,10 +40,11 @@ Once the user provides both values, pass them via `oc agent create` or `oc agent
 To add or change Telegram settings on an existing agent:
 
 ```bash
-oc agent config <name> [--bot-token <token>] [--users <telegram-user-id>,...] [--default-cron-user <telegram-user-id>]
+oc agent config <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]
 ```
 
 Only the flags you pass are updated — omitted fields are preserved.
+Use `--rollover-idle` to set the per-agent idle rollover threshold in minutes.
 
 ## Config Schema
 
@@ -53,6 +54,9 @@ Agent settings are stored in `~/.outclaw/config.json` under the `agents` key, ke
 {
   "agents": {
     "<agent-id>": {
+      "rollover": {
+        "idleMinutes": 240
+      },
       "telegram": {
         "botToken": "<token>",
         "allowedUsers": [123456789],
@@ -65,6 +69,7 @@ Agent settings are stored in `~/.outclaw/config.json` under the `agents` key, ke
 
 | Field | Type | Description |
 | --- | --- | --- |
+| `rollover.idleMinutes` | number | Per-agent idle minutes before session rollover |
 | `telegram.botToken` | string | Telegram bot token from BotFather |
 | `telegram.allowedUsers` | number[] | Telegram user IDs permitted to interact with this agent |
 | `telegram.defaultCronUserId` | number (optional) | Default Telegram user to receive cron results |

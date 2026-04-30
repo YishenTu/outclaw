@@ -64,6 +64,14 @@ interface ReadClaudeHistoryOptions {
 	claudeProjectsDir?: string;
 }
 
+interface ClaudeConversationRecord {
+	content?: string | HistoryBlock[];
+	displayTimestamp?: number;
+	index: number;
+	message: ClaudeHistoryMessage;
+	type: string;
+}
+
 export async function readClaudeHistory(
 	options: ReadClaudeHistoryOptions,
 ): Promise<DisplayMessage[]> {
@@ -110,29 +118,24 @@ export function normalizeClaudeHistory(
 	messages: ClaudeHistoryMessage[],
 ): DisplayMessage[] {
 	const result: DisplayMessage[] = [];
+	const records = normalizeClaudeConversation(messages);
 	let pendingThinking = "";
 	let pendingThinkingTimestamp: number | undefined;
 	let pendingSystemPrompt: "heartbeat" | "rollover" | undefined;
 
-	for (let index = 0; index < messages.length; index++) {
-		const msg = messages[index];
-		if (!msg) {
-			continue;
-		}
-		if (msg.isMeta || msg.isSidechain || msg.teamName) {
-			continue;
-		}
+	for (const record of records) {
+		const msg = record.message;
 
 		if (msg.type === "system") {
-			const entry = extractCompactBoundary(msg, messages[index + 1]);
+			const entry = extractCompactBoundary(msg, messages[record.index + 1]);
 			if (entry) {
 				result.push(entry);
 			}
 			continue;
 		}
 
-		const timestamp = parseDisplayTimestamp(msg);
-		const content = getContent(msg.message);
+		const timestamp = record.displayTimestamp;
+		const content = record.content;
 		if (msg.type === "user" && isRequestInterruptionEvent(msg, content)) {
 			pendingThinking = "";
 			pendingThinkingTimestamp = undefined;
@@ -227,7 +230,7 @@ export function normalizeClaudeHistory(
 		if (msg.type === "assistant" && Array.isArray(content)) {
 			const text = stripTaskNotifications(extractText(content));
 			const thinking = extractThinking(content);
-			if (isSyntheticNoResponseReply(text, msg, messages, index)) {
+			if (isSyntheticNoResponseReply(text, msg, messages, record.index)) {
 				pendingThinking = "";
 				pendingThinkingTimestamp = undefined;
 				pendingSystemPrompt = undefined;
@@ -292,22 +295,15 @@ export function normalizeClaudeTranscript(
 	messages: ClaudeHistoryMessage[],
 ): TranscriptTurn[] {
 	const result: TranscriptTurn[] = [];
+	const records = normalizeClaudeConversation(messages);
 
-	for (let index = 0; index < messages.length; index++) {
-		const msg = messages[index];
-		if (!msg) {
-			continue;
-		}
-		if (
-			msg.isMeta ||
-			msg.isSidechain ||
-			msg.teamName ||
-			msg.type === "system"
-		) {
+	for (const record of records) {
+		const msg = record.message;
+		if (msg.type === "system") {
 			continue;
 		}
 
-		const content = getContent(msg.message);
+		const content = record.content;
 		if (content === undefined) {
 			continue;
 		}
@@ -374,18 +370,22 @@ export function normalizeClaudeTranscript(
 
 		const timestamp = parseTranscriptTimestamp(msg);
 		if (typeof content === "string") {
-			if (content) {
+			const text = stripTaskNotifications(content);
+			if (text) {
 				result.push({
 					role: "assistant",
-					content,
+					content: text,
 					timestamp,
 				});
 			}
 			continue;
 		}
 
-		const text = extractText(content);
-		if (!text || isSyntheticNoResponseReply(text, msg, messages, index)) {
+		const text = stripTaskNotifications(extractText(content));
+		if (
+			!text ||
+			isSyntheticNoResponseReply(text, msg, messages, record.index)
+		) {
 			continue;
 		}
 
@@ -397,6 +397,29 @@ export function normalizeClaudeTranscript(
 	}
 
 	return result;
+}
+
+function normalizeClaudeConversation(
+	messages: ClaudeHistoryMessage[],
+): ClaudeConversationRecord[] {
+	const records: ClaudeConversationRecord[] = [];
+
+	for (let index = 0; index < messages.length; index++) {
+		const message = messages[index];
+		if (!message || message.isMeta || message.isSidechain || message.teamName) {
+			continue;
+		}
+
+		records.push({
+			content: getContent(message.message),
+			displayTimestamp: parseDisplayTimestamp(message),
+			index,
+			message,
+			type: message.type,
+		});
+	}
+
+	return records;
 }
 
 function extractCompactBoundary(

@@ -1,12 +1,11 @@
 import { autoRetry } from "@grammyjs/auto-retry";
 import { Bot, type Context, InputFile } from "grammy";
-import type { ImageRef, ReplyContext } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import {
-	createTelegramBridge,
-	type StreamChunk,
-	type TelegramBridgeRouting,
-} from "./bridge/client.ts";
+	createAllowedUsersMiddleware,
+	createPrivateChatMiddleware,
+} from "./authorization.ts";
+import { createTelegramBridge } from "./bridge/client.ts";
 import { TELEGRAM_COMMANDS } from "./commands/catalog.ts";
 import { registerTelegramPromptCommands } from "./commands/prompt.ts";
 import { registerTelegramRuntimeCommands } from "./commands/runtime.ts";
@@ -16,120 +15,31 @@ import type {
 	TelegramMessageFileRecord,
 } from "./files/message-file-ref.ts";
 import {
-	markdownToTelegramHtml,
-	splitTelegramHtml,
-	TELEGRAM_MESSAGE_LIMIT,
-} from "./format.ts";
-import {
 	handleTelegramMemoryTextCommand,
 	registerTelegramMemoryHandlers,
 } from "./memory/register.ts";
+import {
+	registerTelegramMessageHandlers,
+	type TelegramIncomingDocumentContext,
+	type TelegramIncomingPhotoContext,
+	type TelegramIncomingTextContext,
+	type TelegramIncomingVoiceContext,
+	type TelegramMessageHandlerDependencies,
+} from "./message-handlers.ts";
 import { handleTelegramDocumentMessage } from "./messages/document.ts";
 import { sendTelegramHeartbeatResult } from "./messages/heartbeat-result.ts";
 import { handleTelegramPhotoMessage } from "./messages/photo.ts";
 import { handleTelegramTextMessage } from "./messages/text.ts";
 import { handleTelegramVoiceMessage } from "./messages/voice.ts";
+import { createTelegramOutboundSender } from "./outbound-notifications.ts";
+import {
+	createTelegramContextBridge,
+	type TelegramBridgeFactory,
+	type TelegramBridgeLike,
+} from "./routing.ts";
 import { registerTelegramSessionHandlers } from "./sessions/register.ts";
 
 type MyContext = Context;
-type TelegramTextHandlerContext = Parameters<
-	typeof handleTelegramTextMessage
->[0];
-type TelegramPhotoHandlerContext = Parameters<
-	typeof handleTelegramPhotoMessage
->[0];
-type TelegramDocumentHandlerContext = Parameters<
-	typeof handleTelegramDocumentMessage
->[0];
-type TelegramVoiceHandlerContext = Parameters<
-	typeof handleTelegramVoiceMessage
->[0];
-type TelegramPromptStream = Parameters<
-	typeof handleTelegramTextMessage
->[1]["streamPrompt"];
-type TelegramImageEvent = Parameters<
-	NonNullable<Parameters<TelegramPromptStream>[2]>
->[0];
-
-interface TelegramIncomingTextContext {
-	chat: TelegramTextHandlerContext["chat"];
-	from?: { id: number };
-	message: TelegramTextHandlerContext["message"];
-	reply: TelegramTextHandlerContext["reply"];
-	replyWithChatAction: TelegramTextHandlerContext["replyWithChatAction"];
-	replyWithPhoto: TelegramTextHandlerContext["replyWithPhoto"];
-	sendMessage: TelegramTextHandlerContext["sendMessage"];
-	editMessageText: TelegramTextHandlerContext["editMessageText"];
-}
-
-interface TelegramIncomingPhotoContext {
-	api: {
-		getFile(fileId: string): Promise<{ file_path?: string }>;
-		editMessageText(
-			chatId: number,
-			messageId: number,
-			text: string,
-			options?: object,
-		): Promise<unknown>;
-	};
-	chat: TelegramPhotoHandlerContext["chat"];
-	from?: { id: number };
-	message: TelegramPhotoHandlerContext["message"];
-	reply: TelegramPhotoHandlerContext["reply"];
-	replyWithChatAction: TelegramPhotoHandlerContext["replyWithChatAction"];
-	replyWithPhoto: TelegramPhotoHandlerContext["replyWithPhoto"];
-	sendMessage: TelegramPhotoHandlerContext["sendMessage"];
-	editMessageText: TelegramPhotoHandlerContext["editMessageText"];
-}
-
-interface TelegramIncomingDocumentContext {
-	api: {
-		getFile(fileId: string): Promise<{ file_path?: string }>;
-	};
-	chat: TelegramDocumentHandlerContext["chat"];
-	from?: { id: number };
-	message: TelegramDocumentHandlerContext["message"];
-	reply: TelegramDocumentHandlerContext["reply"];
-	replyWithChatAction: TelegramDocumentHandlerContext["replyWithChatAction"];
-	replyWithPhoto: TelegramDocumentHandlerContext["replyWithPhoto"];
-	sendMessage: TelegramDocumentHandlerContext["sendMessage"];
-	editMessageText: TelegramDocumentHandlerContext["editMessageText"];
-}
-
-interface TelegramIncomingVoiceContext {
-	api: {
-		getFile(fileId: string): Promise<{ file_path?: string }>;
-	};
-	chat: TelegramVoiceHandlerContext["chat"];
-	from?: { id: number };
-	message: TelegramVoiceHandlerContext["message"];
-	reply: TelegramVoiceHandlerContext["reply"];
-	replyWithChatAction: TelegramVoiceHandlerContext["replyWithChatAction"];
-	replyWithPhoto: TelegramVoiceHandlerContext["replyWithPhoto"];
-	sendMessage: TelegramVoiceHandlerContext["sendMessage"];
-	editMessageText: TelegramVoiceHandlerContext["editMessageText"];
-}
-
-interface TelegramBridgeLike {
-	close(): void;
-	sendCommandAndWait(
-		command: string,
-		expectedTypes?: ReadonlySet<string>,
-		routing?: TelegramBridgeRouting,
-	): Promise<{ type: string; [key: string]: unknown }>;
-	stream(
-		prompt: string,
-		images?: ImageRef[],
-		onImage?: (event: TelegramImageEvent) => void | Promise<void>,
-		telegramChatId?: number,
-		replyContext?: ReplyContext,
-		routing?: TelegramBridgeRouting,
-	): AsyncIterable<StreamChunk>;
-}
-
-type TelegramBridgeFactory = (ctx: {
-	from?: { id: number };
-}) => TelegramBridgeLike;
 
 interface TelegramBotLike {
 	readonly api: {
@@ -193,19 +103,11 @@ interface TelegramBotLike {
 	stop(): unknown;
 }
 
-interface TelegramBotDependencies {
+interface TelegramBotDependencies extends TelegramMessageHandlerDependencies {
 	createAutoRetryMiddleware(): unknown;
 	createBot(token: string): TelegramBotLike;
 	createBridge(runtimeUrl: string): TelegramBridgeLike;
 	createInputFile(path: string): unknown;
-	handleDocumentMessage: typeof handleTelegramDocumentMessage;
-	handlePhotoMessage: typeof handleTelegramPhotoMessage;
-	handleTextMessage: typeof handleTelegramTextMessage;
-	handleVoiceMessage: typeof handleTelegramVoiceMessage;
-	handleMemoryTextCommand(
-		ctx: TelegramIncomingTextContext,
-		createBridge: TelegramBridgeFactory,
-	): Promise<boolean>;
 	logError(message: string): void;
 	logInfo(message: string): void;
 	registerModelShortcuts(
@@ -328,67 +230,20 @@ export function startTelegramBot(
 	bot.api.config.use(dependencies.createAutoRetryMiddleware());
 
 	bot.use(
-		async (
-			ctx: {
-				chat?: { id: number; type: string };
-			},
-			next: () => Promise<unknown>,
-		) => {
-			if (ctx.chat && ctx.chat.type !== "private") {
-				try {
-					await bot.api.leaveChat(ctx.chat.id);
-				} catch (err) {
-					dependencies.logError(
-						`Failed to leave non-private Telegram chat ${ctx.chat.id}: ${extractError(err)}`,
-					);
-				}
-				return;
-			}
-			return next();
-		},
+		createPrivateChatMiddleware({
+			leaveChat: (chatId) => bot.api.leaveChat(chatId),
+			logError: dependencies.logError,
+		}),
 	);
-
-	const allowed = new Set(allowedUsers);
-	bot.use(
-		async (
-			ctx: {
-				from?: { id: number };
-				message?: { text?: string };
-			},
-			next: () => Promise<unknown>,
-		) => {
-			if (ctx.message?.text?.trim() === "/start") {
-				return next();
-			}
-			if (ctx.from && allowed.has(ctx.from.id)) {
-				return next();
-			}
-		},
-	);
+	bot.use(createAllowedUsersMiddleware(allowedUsers));
 
 	const bridge = dependencies.createBridge(runtimeUrl);
-	const createContextBridge = (ctx: { from?: { id: number } }) => ({
-		close: () => undefined,
-		sendCommandAndWait: (
-			command: string,
-			expectedTypes?: ReadonlySet<string>,
-		) =>
-			bridge.sendCommandAndWait(command, expectedTypes, {
-				telegramBotId: botId,
-				telegramUserId: ctx.from?.id,
-			}),
-		stream: (
-			prompt: string,
-			images?: ImageRef[],
-			onImage?: (event: TelegramImageEvent) => void | Promise<void>,
-			telegramChatId?: number,
-			replyContext?: ReplyContext,
-		) =>
-			bridge.stream(prompt, images, onImage, telegramChatId, replyContext, {
-				telegramBotId: botId,
-				telegramUserId: ctx.from?.id,
-			}),
-	});
+	const createContextBridge = (ctx: { from?: { id: number } }) =>
+		createTelegramContextBridge({
+			botId,
+			bridge,
+			from: ctx.from,
+		});
 
 	void bot.api.setMyCommands(TELEGRAM_COMMANDS).catch((err) => {
 		dependencies.logError(
@@ -412,245 +267,30 @@ export function startTelegramBot(
 	dependencies.registerPromptCommands(bot, (ctx) => createContextBridge(ctx));
 	dependencies.registerModelShortcuts(bot, (ctx) => createContextBridge(ctx));
 
-	bot.on("message:text", async (ctx) => {
-		if (
-			await dependencies.handleMemoryTextCommand(ctx, (context) =>
-				createContextBridge(context),
-			)
-		) {
-			return;
-		}
-
-		await dependencies.handleTextMessage(
-			{
-				chat: ctx.chat,
-				message: ctx.message,
-				reply: (text) => ctx.reply(text),
-				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
-				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
-				sendMessage: (text, options) =>
-					bot.api.sendMessage(ctx.chat.id, text, options),
-				editMessageText: (messageId, text, options) =>
-					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
-			},
-			{
-				resolveMessageFile,
-				rememberMessageFile,
-				streamPrompt: (prompt, images, onImage, replyContext) =>
-					createContextBridge(ctx).stream(
-						prompt,
-						images,
-						onImage,
-						ctx.chat.id,
-						replyContext,
-					),
-			},
-		);
-	});
-
-	bot.on("message:photo", async (ctx) => {
-		const largestPhoto = ctx.message.photo.at(-1);
-		if (!largestPhoto) {
-			await ctx.reply("[error] Telegram photo message is missing photo sizes");
-			return;
-		}
-
-		await dependencies.handlePhotoMessage(
-			{
-				chat: ctx.chat,
-				getFile: () => ctx.api.getFile(largestPhoto.file_id),
-				message: ctx.message,
-				reply: (text) => ctx.reply(text),
-				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
-				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
-				sendMessage: (text, options) =>
-					bot.api.sendMessage(ctx.chat.id, text, options),
-				editMessageText: (messageId, text, options) =>
-					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
-			},
-			{
-				resolveMessageFile,
-				rememberMessageFile,
-				token,
-				filesRoot,
-				streamPrompt: (prompt, images, onImage, replyContext) =>
-					createContextBridge(ctx).stream(
-						prompt,
-						images,
-						onImage,
-						ctx.chat.id,
-						replyContext,
-					),
-			},
-		);
-	});
-
-	bot.on("message:document", async (ctx) => {
-		await dependencies.handleDocumentMessage(
-			{
-				chat: ctx.chat,
-				getFile: () => ctx.api.getFile(ctx.message.document.file_id),
-				message: ctx.message,
-				reply: (text) => ctx.reply(text),
-				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
-				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
-				sendMessage: (text, options) =>
-					bot.api.sendMessage(ctx.chat.id, text, options),
-				editMessageText: (messageId, text, options) =>
-					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
-			},
-			{
-				resolveMessageFile,
-				rememberMessageFile,
-				token,
-				filesRoot,
-				streamPrompt: (prompt, images, onImage, replyContext) =>
-					createContextBridge(ctx).stream(
-						prompt,
-						images,
-						onImage,
-						ctx.chat.id,
-						replyContext,
-					),
-			},
-		);
-	});
-
-	bot.on("message:voice", async (ctx) => {
-		const voice = ctx.message.voice;
-		if (!voice) {
-			await ctx.reply(
-				"[error] Telegram voice message is missing audio payload",
-			);
-			return;
-		}
-
-		await dependencies.handleVoiceMessage(
-			{
-				chat: ctx.chat,
-				getFile: () => ctx.api.getFile(voice.file_id),
-				message: ctx.message,
-				reply: (text) => ctx.reply(text),
-				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
-				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
-				sendMessage: (text, options) =>
-					bot.api.sendMessage(ctx.chat.id, text, options),
-				editMessageText: (messageId, text, options) =>
-					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
-			},
-			{
-				resolveMessageFile,
-				rememberMessageFile,
-				token,
-				filesRoot,
-				streamPrompt: (prompt, images, onImage, replyContext) =>
-					createContextBridge(ctx).stream(
-						prompt,
-						images,
-						onImage,
-						ctx.chat.id,
-						replyContext,
-					),
-			},
-		);
-	});
-
-	bot.on("message:audio", async (ctx) => {
-		const audio = ctx.message.audio;
-		if (!audio) {
-			await ctx.reply(
-				"[error] Telegram audio message is missing audio payload",
-			);
-			return;
-		}
-
-		await dependencies.handleVoiceMessage(
-			{
-				chat: ctx.chat,
-				getFile: () => ctx.api.getFile(audio.file_id),
-				message: ctx.message,
-				reply: (text) => ctx.reply(text),
-				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
-				replyWithPhoto: (photo, options) => ctx.replyWithPhoto(photo, options),
-				sendMessage: (text, options) =>
-					bot.api.sendMessage(ctx.chat.id, text, options),
-				editMessageText: (messageId, text, options) =>
-					bot.api.editMessageText(ctx.chat.id, messageId, text, options),
-			},
-			{
-				resolveMessageFile,
-				rememberMessageFile,
-				token,
-				filesRoot,
-				streamPrompt: (prompt, images, onImage, replyContext) =>
-					createContextBridge(ctx).stream(
-						prompt,
-						images,
-						onImage,
-						ctx.chat.id,
-						replyContext,
-					),
-			},
-		);
+	registerTelegramMessageHandlers({
+		bot,
+		createBridge: createContextBridge,
+		dependencies,
+		filesRoot,
+		rememberMessageFile,
+		resolveMessageFile,
+		token,
 	});
 
 	bot.start();
 
 	dependencies.logInfo("Telegram bot started");
+	const outbound = createTelegramOutboundSender({
+		api: bot.api,
+		createInputFile: dependencies.createInputFile,
+		rememberMessageFile,
+		sendHeartbeatResult: dependencies.sendHeartbeatResult,
+	});
 
 	return {
-		async sendCronResult(params: {
-			jobName: string;
-			telegramChatId: number;
-			text: string;
-		}) {
-			const raw = params.text.trim()
-				? `[cron] ${params.jobName}\n${params.text}`
-				: `[cron] ${params.jobName}`;
-			const html = markdownToTelegramHtml(raw);
-			const chunks = splitTelegramHtml(html || raw, TELEGRAM_MESSAGE_LIMIT);
-			for (const chunk of chunks) {
-				await bot.api.sendMessage(params.telegramChatId, chunk, {
-					parse_mode: "HTML",
-					disable_notification: true,
-				});
-			}
-		},
-		async sendHeartbeatResult(params: {
-			telegramChatId: number;
-			text: string;
-			images: Array<{ path: string; caption?: string }>;
-		}) {
-			await dependencies.sendHeartbeatResult(
-				{
-					sendMessage: (chatId, text, options) =>
-						bot.api.sendMessage(chatId, text, options),
-					sendPhoto: (chatId, path, options) =>
-						bot.api.sendPhoto(
-							chatId,
-							dependencies.createInputFile(path),
-							options,
-						),
-				},
-				{
-					...params,
-					rememberMessageFile,
-				},
-			);
-		},
-		async sendRolloverNotice(params: { telegramChatId: number; text: string }) {
-			const html = markdownToTelegramHtml(params.text);
-			const chunks = splitTelegramHtml(
-				html || params.text,
-				TELEGRAM_MESSAGE_LIMIT,
-			);
-			for (const chunk of chunks) {
-				await bot.api.sendMessage(params.telegramChatId, chunk, {
-					parse_mode: "HTML",
-					disable_notification: false,
-				});
-			}
-		},
+		sendCronResult: outbound.sendCronResult,
+		sendHeartbeatResult: outbound.sendHeartbeatResult,
+		sendRolloverNotice: outbound.sendRolloverNotice,
 		stop() {
 			bot.stop();
 			bridge.close();

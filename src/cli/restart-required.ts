@@ -1,11 +1,11 @@
-import { join } from "node:path";
+import { createOutclawLayout } from "../common/layout.ts";
 import { PidManager } from "../runtime/process/pid-manager.ts";
 
 export const RESTART_REQUIRED_MESSAGE =
 	"Restart required. Changes won't update until the runtime restarts.";
 
 export function maybeMarkRestartRequired(homeDir: string): boolean {
-	const pid = new PidManager(join(homeDir, "daemon.pid"));
+	const pid = new PidManager(createOutclawLayout({ homeDir }).pidPath);
 	if (!pid.isRunning()) {
 		return false;
 	}

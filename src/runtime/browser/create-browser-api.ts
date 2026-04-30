@@ -1,7 +1,4 @@
-import { type Dirent, realpathSync } from "node:fs";
-import { readdir, readFile, writeFile } from "node:fs/promises";
-import { relative, resolve, sep } from "node:path";
-import { isCronJobFile } from "../../common/cron-job-file.ts";
+import { writeFile } from "node:fs/promises";
 import type {
 	BrowserAgentsResponse,
 	BrowserConfigResponse,
@@ -9,36 +6,35 @@ import type {
 	BrowserFileResponse,
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
-	BrowserGitFileStatus,
-	BrowserGitGraph,
-	BrowserGitGraphBranchHead,
-	BrowserGitGraphCommit,
-	BrowserGitInitializedResponse,
 	BrowserGitStatusResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
-	BrowserTreeEntryGitStatus,
 	ImageMediaType,
 	ImageRef,
 } from "../../common/protocol.ts";
 import { readStoredAgentConfig, writeStoredAgentConfig } from "../config.ts";
-import { parseJobConfig, serializeJobConfig } from "../cron/job-config.ts";
-import { isRunAtExpired, resolveJobSchedule } from "../cron/schedule.ts";
 import { saveManagedImage } from "../files/managed-image-store.ts";
 import type { SessionStore } from "../persistence/session-store.ts";
+import {
+	type BrowserApiAgent,
+	listBrowserAgents,
+} from "./agent-sidebar-read-model.ts";
 import { BROWSER_CONFIG_SCHEMA } from "./config-schema.ts";
+import { listCronEntries, setCronEnabled } from "./cron-workbench.ts";
+import { listTreeEntries } from "./file-tree-workbench.ts";
+import {
+	initGitRepo as initGitRepoWorkbench,
+	normalizeGitPaths,
+	readAgentTreeGitStatuses,
+	readGitCommit as readGitCommitWorkbench,
+	readGitDiff as readGitDiffWorkbench,
+	readGitStatus as readGitStatusWorkbench,
+} from "./git-workbench.ts";
+import {
+	resolveExistingPathWithinRoot,
+	resolveWritablePathWithinRoot,
+} from "./path-safety.ts";
 import { readBrowserFile } from "./read-browser-file.ts";
-
-const MAX_GIT_GRAPH_COMMITS = 30;
-const TREE_IGNORED_NAMES = new Set([".git", ".DS_Store"]);
-
-interface BrowserApiAgent {
-	agentId: string;
-	name: string;
-	homeDir: string;
-	providerId: string;
-	terminalRunCommand: string;
-}
 
 interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
@@ -92,35 +88,11 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			return agentsById.get(agentId)?.homeDir;
 		},
 		listAgents() {
-			return {
-				activeAgentId: options.getRememberedAgentId(),
-				agents: [...agentsById.values()]
-					.sort((left, right) => left.name.localeCompare(right.name))
-					.map((agent) => {
-						const store = options.storesByAgent.get(agent.agentId);
-						const sessions =
-							store?.list(50, "chat").map((session) => ({
-								providerId: session.providerId,
-								sdkSessionId: session.sdkSessionId,
-								title: session.title,
-								model: session.model,
-								lastActive: session.lastActive,
-							})) ?? [];
-						const activeSessionId = store?.getActiveSessionId(agent.providerId);
-						return {
-							agentId: agent.agentId,
-							name: agent.name,
-							terminalRunCommand: agent.terminalRunCommand,
-							activeSession: activeSessionId
-								? {
-										providerId: agent.providerId,
-										sdkSessionId: activeSessionId,
-									}
-								: undefined,
-							sessions,
-						};
-					}),
-			};
+			return listBrowserAgents({
+				agents: agentsById.values(),
+				getRememberedAgentId: options.getRememberedAgentId,
+				storesByAgent: options.storesByAgent,
+			});
 		},
 		async listAgentCron(agentId) {
 			const agent = requireAgent(agentsById, agentId);
@@ -128,15 +100,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		},
 		async setAgentCronEnabled(agentId, relativePath, enabled) {
 			const agent = requireAgent(agentsById, agentId);
-			const absolutePath = resolveWithinCronDirectory(
-				agent.homeDir,
-				relativePath,
-			);
-			const content = await readFile(absolutePath, "utf8");
-			const config = parseJobConfig(content);
-			const nextConfig = { ...config, enabled };
-			await writeFile(absolutePath, serializeJobConfig(nextConfig), "utf8");
-			return toBrowserCronEntry(agent.homeDir, absolutePath, nextConfig);
+			return await setCronEnabled(agent.homeDir, relativePath, enabled);
 		},
 		async listAgentTree(agentId) {
 			const agent = requireAgent(agentsById, agentId);
@@ -148,7 +112,10 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			return await listTreeEntries(agent.homeDir, agent.homeDir, gitStatuses);
 		},
 		async readConfigFile() {
-			const absolutePath = resolveWithinRoot(options.homeDir, "config.json");
+			const absolutePath = resolveExistingPathWithinRoot(
+				options.homeDir,
+				"config.json",
+			);
 			return {
 				...(await readBrowserFile(options.homeDir, absolutePath)),
 				schema: BROWSER_CONFIG_SCHEMA,
@@ -158,7 +125,10 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			if (!isPlainObject(document)) {
 				throw new Error("Config document must be a JSON object");
 			}
-			const absolutePath = resolveWithinRoot(options.homeDir, "config.json");
+			const absolutePath = resolveWritablePathWithinRoot(
+				options.homeDir,
+				"config.json",
+			);
 			await writeFile(
 				absolutePath,
 				`${JSON.stringify(document, null, "\t")}\n`,
@@ -186,55 +156,23 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		},
 		async readAgentFile(agentId, relativePath) {
 			const agent = requireAgent(agentsById, agentId);
-			const absolutePath = resolveWithinRoot(agent.homeDir, relativePath);
+			const absolutePath = resolveExistingPathWithinRoot(
+				agent.homeDir,
+				relativePath,
+			);
 			return await readBrowserFile(agent.homeDir, absolutePath);
 		},
 		async readGitStatus() {
-			if (!isGitRepo(options.gitRoot)) {
-				return { initialized: false, root: options.gitRoot };
-			}
-			const output = runGit(
-				options.gitRoot,
-				["status", "--porcelain=v1", "--branch", "--untracked-files=all"],
-				false,
-			);
-			return parseGitStatus(
-				output,
-				options.gitRoot,
-				readGitGraphData(options.gitRoot),
-				ignoredGitPaths,
-			);
+			return readGitStatusWorkbench(options.gitRoot, ignoredGitPaths);
 		},
 		async initGitRepo() {
-			if (!isGitRepo(options.gitRoot)) {
-				runGit(options.gitRoot, ["init"], false);
-			}
-			return this.readGitStatus();
+			return initGitRepoWorkbench(options.gitRoot, ignoredGitPaths);
 		},
 		async readGitCommit(sha) {
-			return readGitCommit(options.gitRoot, sha);
+			return readGitCommitWorkbench(options.gitRoot, sha);
 		},
 		async readGitDiff(path) {
-			const absolutePath = resolveWithinRoot(options.gitRoot, path);
-			const relativePath = toRelativePath(options.gitRoot, absolutePath);
-			let diff = runGit(
-				options.gitRoot,
-				["diff", "--no-ext-diff", "--binary", "HEAD", "--", relativePath],
-				false,
-			);
-
-			if (diff.trim() === "") {
-				diff = runProcess(
-					["git", "diff", "--no-index", "--binary", "/dev/null", absolutePath],
-					options.gitRoot,
-					true,
-				);
-			}
-
-			return {
-				path: relativePath,
-				diff,
-			};
+			return readGitDiffWorkbench(options.gitRoot, path);
 		},
 		async uploadImages(images) {
 			if (!options.filesRoot) {
@@ -262,98 +200,6 @@ function normalizeTerminalRunCommand(command: string): string {
 	return nextCommand;
 }
 
-async function listCronEntries(rootDir: string): Promise<BrowserCronEntry[]> {
-	const cronDir = resolve(rootDir, "cron");
-	let entries: Dirent[];
-	try {
-		entries = await readdir(cronDir, { withFileTypes: true });
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-			return [];
-		}
-		throw error;
-	}
-
-	const cronFiles = entries
-		.filter((entry) => entry.isFile() && isCronJobFile(entry.name))
-		.sort((left, right) => left.name.localeCompare(right.name));
-
-	return await Promise.all(
-		cronFiles.map(async (entry) => {
-			const absolutePath = resolve(cronDir, entry.name);
-			const content = await readFile(absolutePath, "utf8");
-			try {
-				const config = parseJobConfig(content);
-				return toBrowserCronEntry(rootDir, absolutePath, config);
-			} catch (error) {
-				return {
-					name: entry.name,
-					path: toRelativePath(rootDir, absolutePath),
-					schedule: "Invalid config",
-					enabled: false,
-					status: "invalid",
-					error:
-						error instanceof Error ? error.message : "Failed to parse cron job",
-				};
-			}
-		}),
-	);
-}
-
-function toBrowserCronEntry(
-	rootDir: string,
-	absolutePath: string,
-	config: {
-		effort?: string;
-		enabled: boolean;
-		model?: string;
-		name: string;
-		schedule?: string;
-		runAt?: string;
-		timezone?: string;
-	},
-): BrowserCronEntry {
-	const schedule = resolveJobSchedule(config);
-	const entry: BrowserCronEntry = {
-		name: config.name,
-		path: toRelativePath(rootDir, absolutePath),
-		schedule: schedule.kind === "once" ? schedule.runAt : schedule.expression,
-		scheduleKind: schedule.kind,
-		enabled: config.enabled,
-		status: resolveBrowserCronStatus(config.enabled, schedule),
-	};
-
-	if (config.timezone !== undefined) {
-		entry.timezone = config.timezone;
-	}
-	if (schedule.kind === "once") {
-		entry.runAt = schedule.runAt;
-	}
-	if (config.model !== undefined) {
-		entry.model = config.model;
-	}
-	if (config.effort !== undefined) {
-		entry.effort = config.effort;
-	}
-
-	return entry;
-}
-
-function resolveBrowserCronStatus(
-	enabled: boolean,
-	schedule: ReturnType<typeof resolveJobSchedule>,
-): BrowserCronEntry["status"] {
-	if (!enabled) {
-		return "disabled";
-	}
-
-	if (schedule.kind === "once" && isRunAtExpired(schedule.runAt)) {
-		return "expired";
-	}
-
-	return "scheduled";
-}
-
 function requireAgent(
 	agentsById: Map<string, BrowserApiAgent>,
 	agentId: string,
@@ -367,682 +213,4 @@ function requireAgent(
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-async function listTreeEntries(
-	rootDir: string,
-	currentDir: string,
-	gitStatuses: ReadonlyMap<string, BrowserTreeEntryGitStatus>,
-): Promise<BrowserTreeEntry[]> {
-	const entries = await readdir(currentDir, { withFileTypes: true });
-	const visibleEntries = entries
-		.filter((entry) => !TREE_IGNORED_NAMES.has(entry.name))
-		.sort((left, right) => {
-			if (left.isDirectory() && !right.isDirectory()) {
-				return -1;
-			}
-			if (!left.isDirectory() && right.isDirectory()) {
-				return 1;
-			}
-			return left.name.localeCompare(right.name);
-		});
-
-	return await Promise.all(
-		visibleEntries.map(async (entry) => {
-			const absolutePath = resolve(currentDir, entry.name);
-			const path = toRelativePath(rootDir, absolutePath);
-			if (entry.isDirectory()) {
-				const children = await listTreeEntries(
-					rootDir,
-					absolutePath,
-					gitStatuses,
-				);
-				const gitStatus = aggregateTreeEntryGitStatus(children);
-				return {
-					children,
-					kind: "directory" as const,
-					name: entry.name,
-					path,
-					...(gitStatus ? { gitStatus } : {}),
-				};
-			}
-
-			const gitStatus = gitStatuses.get(path);
-			return {
-				kind: "file" as const,
-				name: entry.name,
-				path,
-				...(gitStatus ? { gitStatus } : {}),
-			};
-		}),
-	);
-}
-
-function readAgentTreeGitStatuses(
-	gitRoot: string,
-	agentHomeDir: string,
-	ignoredGitPaths: readonly string[],
-): Map<string, BrowserTreeEntryGitStatus> {
-	const relativeAgentRoot = toRelativeDescendantPath(gitRoot, agentHomeDir);
-	if (relativeAgentRoot === undefined) {
-		return new Map();
-	}
-
-	try {
-		const output = runGit(
-			gitRoot,
-			[
-				"status",
-				"--porcelain=v1",
-				"--untracked-files=all",
-				"--",
-				relativeAgentRoot === "" ? "." : relativeAgentRoot,
-			],
-			false,
-		);
-		return toAgentTreeGitStatuses(output, relativeAgentRoot, ignoredGitPaths);
-	} catch {
-		return new Map();
-	}
-}
-
-function toAgentTreeGitStatuses(
-	output: string,
-	relativeAgentRoot: string,
-	ignoredGitPaths: readonly string[],
-): Map<string, BrowserTreeEntryGitStatus> {
-	const statuses = new Map<string, BrowserTreeEntryGitStatus>();
-	const fileLines = output
-		.split(/\r?\n/)
-		.map((line) => line.trimEnd())
-		.filter((line) => line !== "");
-
-	for (const line of fileLines) {
-		const fileStatus = parseGitFileStatusLine(line);
-		if (!fileStatus) {
-			continue;
-		}
-		if (isIgnoredGitPath(fileStatus.path, ignoredGitPaths)) {
-			continue;
-		}
-		const gitStatus = classifyTreeEntryGitStatus(fileStatus);
-		if (!gitStatus) {
-			continue;
-		}
-		const path = toAgentTreeRelativePath(fileStatus.path, relativeAgentRoot);
-		if (!path) {
-			continue;
-		}
-		statuses.set(path, mergeTreeEntryGitStatus(statuses.get(path), gitStatus));
-	}
-
-	return statuses;
-}
-
-function toAgentTreeRelativePath(
-	gitRelativePath: string,
-	relativeAgentRoot: string,
-): string | undefined {
-	if (relativeAgentRoot === "") {
-		return gitRelativePath;
-	}
-
-	const prefix = `${relativeAgentRoot}/`;
-	if (!gitRelativePath.startsWith(prefix)) {
-		return undefined;
-	}
-
-	return gitRelativePath.slice(prefix.length);
-}
-
-function classifyTreeEntryGitStatus(
-	fileStatus: BrowserGitFileStatus,
-): BrowserTreeEntryGitStatus | undefined {
-	if (
-		fileStatus.indexStatus === "?" ||
-		fileStatus.worktreeStatus === "?" ||
-		fileStatus.indexStatus === "A" ||
-		fileStatus.worktreeStatus === "A"
-	) {
-		return "new";
-	}
-
-	if (fileStatus.indexStatus !== " " || fileStatus.worktreeStatus !== " ") {
-		return "modified";
-	}
-
-	return undefined;
-}
-
-function mergeTreeEntryGitStatus(
-	current: BrowserTreeEntryGitStatus | undefined,
-	incoming: BrowserTreeEntryGitStatus,
-): BrowserTreeEntryGitStatus {
-	if (current === "new" || incoming === "new") {
-		return "new";
-	}
-	return incoming;
-}
-
-function aggregateTreeEntryGitStatus(
-	children: BrowserTreeEntry[],
-): BrowserTreeEntryGitStatus | undefined {
-	if (children.some((child) => child.gitStatus === "new")) {
-		return "new";
-	}
-	if (children.some((child) => child.gitStatus === "modified")) {
-		return "modified";
-	}
-	return undefined;
-}
-
-function resolveWithinRoot(rootDir: string, targetPath: string): string {
-	if (targetPath.trim() === "") {
-		throw new Error("Path is required");
-	}
-
-	const resolvedRoot = resolve(rootDir);
-	const resolvedTarget = resolve(resolvedRoot, targetPath);
-	if (
-		resolvedTarget !== resolvedRoot &&
-		!resolvedTarget.startsWith(`${resolvedRoot}${sep}`)
-	) {
-		throw new Error("Path escapes agent home");
-	}
-	return resolvedTarget;
-}
-
-function resolveWithinCronDirectory(
-	rootDir: string,
-	targetPath: string,
-): string {
-	const cronDir = resolve(rootDir, "cron");
-	const resolvedTarget = resolveWithinRoot(rootDir, targetPath);
-	if (
-		resolvedTarget !== cronDir &&
-		!resolvedTarget.startsWith(`${cronDir}${sep}`)
-	) {
-		throw new Error("Path escapes cron directory");
-	}
-
-	return resolvedTarget;
-}
-
-function toRelativePath(rootDir: string, absolutePath: string): string {
-	return relative(rootDir, absolutePath).split(sep).join("/");
-}
-
-function toRelativeDescendantPath(
-	rootDir: string,
-	absolutePath: string,
-): string | undefined {
-	const resolvedRoot = resolve(rootDir);
-	const resolvedTarget = resolve(absolutePath);
-	if (resolvedTarget === resolvedRoot) {
-		return "";
-	}
-	if (!resolvedTarget.startsWith(`${resolvedRoot}${sep}`)) {
-		return undefined;
-	}
-	return relative(resolvedRoot, resolvedTarget).split(sep).join("/");
-}
-
-function runGit(
-	cwd: string,
-	args: string[],
-	allowExitCodeOne: boolean,
-): string {
-	return runProcess(["git", ...args], cwd, allowExitCodeOne);
-}
-
-function isGitRepo(cwd: string): boolean {
-	const result = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
-		cwd,
-		stderr: "pipe",
-		stdout: "pipe",
-	});
-	if (result.exitCode !== 0) {
-		return false;
-	}
-
-	return (
-		canonicalizePath(result.stdout.toString().trim()) === canonicalizePath(cwd)
-	);
-}
-
-function canonicalizePath(path: string): string {
-	try {
-		return realpathSync.native(path);
-	} catch {
-		return resolve(path);
-	}
-}
-
-function hasGitHeadCommit(root: string): boolean {
-	const result = Bun.spawnSync(
-		["git", "rev-parse", "--verify", "HEAD^{commit}"],
-		{
-			cwd: root,
-			stderr: "pipe",
-			stdout: "pipe",
-		},
-	);
-	return result.exitCode === 0;
-}
-
-function runProcess(
-	cmd: string[],
-	cwd: string,
-	allowExitCodeOne: boolean,
-): string {
-	const result = Bun.spawnSync(cmd, {
-		cwd,
-		stderr: "pipe",
-		stdout: "pipe",
-	});
-	if (result.exitCode === 0 || (allowExitCodeOne && result.exitCode === 1)) {
-		return result.stdout.toString();
-	}
-
-	throw new Error(
-		result.stderr.toString().trim() || `Command failed: ${cmd[0]}`,
-	);
-}
-
-function readGitCommit(root: string, sha: string): BrowserGitCommitResponse {
-	const resolvedSha = resolveGitCommitSha(root, sha);
-	const metadata = runGit(
-		root,
-		[
-			"show",
-			"--no-patch",
-			`--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%B`,
-			resolvedSha,
-		],
-		false,
-	).trimEnd();
-	const [resolved, parentsValue, authorName, authorEmail, authorDate, message] =
-		metadata.split("\x1f");
-	if (
-		resolved === undefined ||
-		parentsValue === undefined ||
-		authorName === undefined ||
-		authorEmail === undefined ||
-		authorDate === undefined ||
-		message === undefined
-	) {
-		throw new Error(`Failed to parse commit metadata: ${resolvedSha}`);
-	}
-
-	const parents = parentsValue
-		.split(" ")
-		.filter((parent) => parent !== "")
-		.map((parentSha) => ({
-			sha: parentSha,
-		}));
-	const diff =
-		parents[0] === undefined
-			? runGit(
-					root,
-					["show", "--format=", "--no-ext-diff", "--binary", resolvedSha],
-					false,
-				)
-			: runGit(
-					root,
-					["diff", "--no-ext-diff", "--binary", parents[0].sha, resolvedSha],
-					false,
-				);
-
-	return {
-		sha: resolved,
-		author: {
-			name: authorName,
-			email: authorEmail,
-			date: authorDate,
-		},
-		message: message.trimEnd(),
-		parents,
-		diff,
-	};
-}
-
-function resolveGitCommitSha(root: string, sha: string): string {
-	try {
-		return runGit(
-			root,
-			["rev-parse", "--verify", `${sha}^{commit}`],
-			false,
-		).trim();
-	} catch {
-		throw new Error(`Unknown commit: ${sha}`);
-	}
-}
-
-function parseGitStatus(
-	output: string,
-	root: string,
-	graph: BrowserGitGraph,
-	ignoredGitPaths: readonly string[],
-): BrowserGitInitializedResponse {
-	const lines = output
-		.split(/\r?\n/)
-		.map((line) => line.trimEnd())
-		.filter((line) => line !== "");
-	const branchLine = lines.find((line) => line.startsWith("## "));
-	const fileLines = lines.filter((line) => !line.startsWith("## "));
-
-	const { ahead, behind, branch } = parseGitBranchStatusLine(branchLine);
-	const hasHeadCommit = hasGitHeadCommit(root);
-
-	const files = fileLines
-		.map((line) => parseGitFileStatusLine(line))
-		.filter((file): file is BrowserGitFileStatus => file !== undefined)
-		.filter((file) => !isIgnoredGitPath(file.path, ignoredGitPaths))
-		.map((file) => ({
-			...file,
-			...readGitFileLineCounts(root, file, hasHeadCommit),
-		}));
-
-	return {
-		initialized: true,
-		root,
-		branch,
-		ahead,
-		behind,
-		clean: files.length === 0,
-		graph,
-		files,
-	};
-}
-
-function parseGitBranchStatusLine(branchLine: string | undefined): {
-	ahead: number;
-	behind: number;
-	branch: string | null;
-} {
-	if (!branchLine) {
-		return {
-			ahead: 0,
-			behind: 0,
-			branch: null,
-		};
-	}
-
-	const unbornMatch = branchLine.match(
-		/^## (?:No commits yet on|Initial commit on) (.+)$/,
-	);
-	if (unbornMatch) {
-		return {
-			ahead: 0,
-			behind: 0,
-			branch: unbornMatch[1] ?? null,
-		};
-	}
-
-	const aheadMatch = branchLine.match(/ahead (\d+)/);
-	const behindMatch = branchLine.match(/behind (\d+)/);
-	const summary = branchLine.slice(3).split("...")[0]?.trim() ?? "";
-	return {
-		ahead: Number(aheadMatch?.[1] ?? 0),
-		behind: Number(behindMatch?.[1] ?? 0),
-		branch: summary === "" || summary.startsWith("HEAD") ? null : summary,
-	};
-}
-
-function parseGitFileStatusLine(
-	line: string,
-): BrowserGitFileStatus | undefined {
-	if (line.length < 4) {
-		return undefined;
-	}
-
-	const indexStatus = line.slice(0, 1);
-	const worktreeStatus = line.slice(1, 2);
-	const rawPath = line.slice(3);
-	const renamedParts = rawPath.split(" -> ");
-	return {
-		path: renamedParts[1] ?? renamedParts[0] ?? rawPath,
-		indexStatus,
-		worktreeStatus,
-		additions: 0,
-		deletions: 0,
-		renamedFrom:
-			renamedParts.length > 1 ? (renamedParts[0] ?? rawPath) : undefined,
-	};
-}
-
-function readGitFileLineCounts(
-	root: string,
-	file: BrowserGitFileStatus,
-	hasHeadCommit: boolean,
-): { additions: number; deletions: number } {
-	if (!hasHeadCommit) {
-		if (file.indexStatus === "?" || file.worktreeStatus === "?") {
-			const absolutePath = resolveWithinRoot(root, file.path);
-			const untrackedOutput = runProcess(
-				["git", "diff", "--no-index", "--numstat", "/dev/null", absolutePath],
-				root,
-				true,
-			);
-			return (
-				parseGitNumstatOutput(untrackedOutput) ?? { additions: 0, deletions: 0 }
-			);
-		}
-
-		const paths = file.renamedFrom
-			? [file.renamedFrom, file.path]
-			: [file.path];
-		const stagedCounts = parseGitNumstatOutput(
-			runGit(
-				root,
-				["diff", "--cached", "--numstat", "-M", "--", ...paths],
-				false,
-			),
-		);
-		const worktreeCounts = parseGitNumstatOutput(
-			runGit(root, ["diff", "--numstat", "-M", "--", ...paths], false),
-		);
-		return sumGitNumstatCounts(stagedCounts, worktreeCounts);
-	}
-
-	const trackedOutput = runGit(
-		root,
-		[
-			"diff",
-			"--numstat",
-			"-M",
-			"HEAD",
-			"--",
-			...(file.renamedFrom ? [file.renamedFrom, file.path] : [file.path]),
-		],
-		false,
-	);
-	const trackedCounts = parseGitNumstatOutput(trackedOutput);
-	if (trackedCounts) {
-		return trackedCounts;
-	}
-
-	if (file.indexStatus === "?" || file.worktreeStatus === "?") {
-		const absolutePath = resolveWithinRoot(root, file.path);
-		const untrackedOutput = runProcess(
-			["git", "diff", "--no-index", "--numstat", "/dev/null", absolutePath],
-			root,
-			true,
-		);
-		return (
-			parseGitNumstatOutput(untrackedOutput) ?? { additions: 0, deletions: 0 }
-		);
-	}
-
-	return { additions: 0, deletions: 0 };
-}
-
-function sumGitNumstatCounts(
-	left: { additions: number; deletions: number } | undefined,
-	right: { additions: number; deletions: number } | undefined,
-): { additions: number; deletions: number } {
-	return {
-		additions: (left?.additions ?? 0) + (right?.additions ?? 0),
-		deletions: (left?.deletions ?? 0) + (right?.deletions ?? 0),
-	};
-}
-
-function parseGitNumstatOutput(
-	output: string,
-): { additions: number; deletions: number } | undefined {
-	const lines = output
-		.split(/\r?\n/)
-		.map((line) => line.trimEnd())
-		.filter((line) => line !== "");
-	if (lines.length === 0) {
-		return undefined;
-	}
-
-	let additions = 0;
-	let deletions = 0;
-	for (const line of lines) {
-		const [rawAdditions, rawDeletions] = line.split("\t");
-		additions += parseGitNumstatCount(rawAdditions);
-		deletions += parseGitNumstatCount(rawDeletions);
-	}
-	return { additions, deletions };
-}
-
-function parseGitNumstatCount(value: string | undefined): number {
-	if (!value || value === "-") {
-		return 0;
-	}
-	const count = Number.parseInt(value, 10);
-	return Number.isFinite(count) ? count : 0;
-}
-
-function normalizeGitPaths(paths: readonly string[]): string[] {
-	return paths
-		.map((path) => path.split(sep).join("/").replace(/\/+$/, ""))
-		.filter((path) => path !== "");
-}
-
-function isIgnoredGitPath(
-	path: string,
-	ignoredGitPaths: readonly string[],
-): boolean {
-	const normalizedPath = normalizeGitPaths([path])[0];
-	if (!normalizedPath) {
-		return false;
-	}
-
-	return ignoredGitPaths.some(
-		(ignoredPath) =>
-			normalizedPath === ignoredPath ||
-			normalizedPath.startsWith(`${ignoredPath}/`),
-	);
-}
-
-function readGitGraphData(root: string): BrowserGitGraph {
-	return {
-		commits: readGitGraphCommits(root),
-		branchHeads: readGitGraphBranchHeads(root),
-	};
-}
-
-function readGitGraphCommits(root: string): BrowserGitGraphCommit[] {
-	const result = Bun.spawnSync(
-		[
-			"git",
-			"log",
-			"--all",
-			`-${MAX_GIT_GRAPH_COMMITS}`,
-			"--format=%H%x1f%P%x1f%an%x1f%aI%x1f%s",
-			"--no-color",
-		],
-		{
-			cwd: root,
-			stderr: "pipe",
-			stdout: "pipe",
-		},
-	);
-	if (result.exitCode !== 0) {
-		return [];
-	}
-
-	return result.stdout
-		.toString()
-		.trimEnd()
-		.split(/\r?\n/)
-		.filter((line) => line !== "")
-		.map((line) => parseGitGraphCommitLine(line))
-		.filter((commit): commit is BrowserGitGraphCommit => commit !== undefined);
-}
-
-function parseGitGraphCommitLine(
-	line: string,
-): BrowserGitGraphCommit | undefined {
-	const [sha, parentsValue, authorName, authorDate, message] =
-		line.split("\x1f");
-	if (
-		sha === undefined ||
-		authorName === undefined ||
-		authorDate === undefined ||
-		message === undefined
-	) {
-		return undefined;
-	}
-
-	return {
-		sha,
-		commit: {
-			author: {
-				name: authorName,
-				date: authorDate,
-			},
-			message,
-		},
-		parents:
-			parentsValue
-				?.split(" ")
-				.filter((parent) => parent !== "")
-				.map((sha) => ({
-					sha,
-				})) ?? [],
-	};
-}
-
-function readGitGraphBranchHeads(root: string): BrowserGitGraphBranchHead[] {
-	const result = Bun.spawnSync(
-		[
-			"git",
-			"for-each-ref",
-			"refs/heads",
-			"--format=%(refname:short)\t%(objectname)",
-		],
-		{
-			cwd: root,
-			stderr: "pipe",
-			stdout: "pipe",
-		},
-	);
-	if (result.exitCode !== 0) {
-		return [];
-	}
-
-	return result.stdout
-		.toString()
-		.trimEnd()
-		.split(/\r?\n/)
-		.filter((line) => line !== "")
-		.map((line): BrowserGitGraphBranchHead | undefined => {
-			const [name, sha] = line.split("\t");
-			if (!name || !sha) {
-				return undefined;
-			}
-			return {
-				name,
-				commit: {
-					sha,
-				},
-			};
-		})
-		.filter(
-			(branch): branch is BrowserGitGraphBranchHead => branch !== undefined,
-		);
 }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ImageRef } from "../../../src/common/protocol.ts";
 import { dispatchBrowserPrompt } from "../../../src/frontend/browser/send-browser-prompt.ts";
+import { dispatchBrowserTextPrompt } from "../../../src/frontend/browser/send-browser-text-prompt.ts";
 
 function createAttachment(id: string) {
 	return {
@@ -114,5 +115,101 @@ describe("dispatchBrowserPrompt", () => {
 			"upload:start",
 			"runtime-error:Conversation changed while images were uploading. Please resend.",
 		]);
+	});
+});
+
+describe("dispatchBrowserTextPrompt", () => {
+	test("sends prompt text through the active socket and pins the live session", () => {
+		const socket = { id: "socket-1" };
+		const calls: string[] = [];
+
+		const sent = dispatchBrowserTextPrompt({
+			input: "  /compact  ",
+			getActiveAgentId: () => "agent-a",
+			getCurrentSessionKey: () => "agent-a:claude:sdk-alpha",
+			getSocket: () => socket,
+			isSocketOpen: (candidate): candidate is typeof socket =>
+				candidate === socket,
+			pinSession: (sessionKey) => calls.push(`pin:${sessionKey}`),
+			pushUserMessage: (sessionKey, message) => {
+				calls.push(`push:${sessionKey}:${message.content}`);
+			},
+			sendCommand: (command) => {
+				calls.push(`command:${command}`);
+				return true;
+			},
+			sendPrompt: (target, prompt) => {
+				calls.push(`prompt:${target === socket}:${prompt}`);
+			},
+			setRuntimeError: (error) => calls.push(`runtime:${error}`),
+			setSessionError: (sessionKey, error) => {
+				calls.push(`session:${sessionKey}:${error}`);
+			},
+			startAssistantTurn: (sessionKey) => calls.push(`start:${sessionKey}`),
+		});
+
+		expect(sent).toBe(true);
+		expect(calls).toEqual([
+			"prompt:true:/compact",
+			"pin:agent-a:claude:sdk-alpha",
+			"push:agent-a:claude:sdk-alpha:/compact",
+			"start:agent-a:claude:sdk-alpha",
+			"session:agent-a:claude:sdk-alpha:null",
+			"runtime:null",
+		]);
+	});
+
+	test("routes runtime commands without creating a chat turn", () => {
+		const calls: string[] = [];
+		const socket = { id: "socket-1" };
+
+		const sent = dispatchBrowserTextPrompt({
+			input: " /status ",
+			getActiveAgentId: () => "agent-a",
+			getCurrentSessionKey: () => "agent-a:claude:sdk-alpha",
+			getSocket: () => socket,
+			isSocketOpen: (candidate): candidate is typeof socket =>
+				candidate === socket,
+			pinSession: (sessionKey) => calls.push(`pin:${sessionKey}`),
+			pushUserMessage: () => calls.push("push"),
+			sendCommand: (command) => {
+				calls.push(`command:${command}`);
+				return true;
+			},
+			sendPrompt: () => calls.push("prompt"),
+			setRuntimeError: (error) => calls.push(`runtime:${error}`),
+			setSessionError: (sessionKey, error) => {
+				calls.push(`session:${sessionKey}:${error}`);
+			},
+			startAssistantTurn: (sessionKey) => calls.push(`start:${sessionKey}`),
+		});
+
+		expect(sent).toBe(true);
+		expect(calls).toEqual(["command:/status"]);
+	});
+
+	test("surfaces disconnected errors before mutating chat state", () => {
+		const calls: string[] = [];
+		type TestSocket = { id: string };
+
+		const sent = dispatchBrowserTextPrompt<TestSocket>({
+			input: "hello",
+			getActiveAgentId: () => "agent-a",
+			getCurrentSessionKey: () => "agent-a:claude:sdk-alpha",
+			getSocket: () => null,
+			isSocketOpen: (candidate): candidate is TestSocket => candidate !== null,
+			pinSession: (sessionKey) => calls.push(`pin:${sessionKey}`),
+			pushUserMessage: () => calls.push("push"),
+			sendCommand: () => true,
+			sendPrompt: () => calls.push("prompt"),
+			setRuntimeError: (error) => calls.push(`runtime:${error}`),
+			setSessionError: (sessionKey, error) => {
+				calls.push(`session:${sessionKey}:${error}`);
+			},
+			startAssistantTurn: (sessionKey) => calls.push(`start:${sessionKey}`),
+		});
+
+		expect(sent).toBe(false);
+		expect(calls).toEqual(["runtime:Runtime disconnected"]);
 	});
 });

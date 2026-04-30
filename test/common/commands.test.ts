@@ -4,11 +4,16 @@ import {
 	DEFAULT_EFFORT,
 	DEFAULT_MODEL,
 	EFFORT_LEVELS,
+	effortLevelsForModel,
 	findSlashCommand,
+	isEffortAllowedForModel,
 	isEffortLevel,
 	isPromptSlashCommand,
 	isRuntimeCommand,
+	listSlashCommands,
 	PROMPT_COMMANDS,
+	resolveCompatibleEffort,
+	routeSlashCommand,
 	SLASH_COMMANDS,
 } from "../../src/common/commands.ts";
 import { isModelAlias, MODEL_ALIAS_LIST } from "../../src/common/models.ts";
@@ -85,6 +90,14 @@ describe("isPromptSlashCommand", () => {
 });
 
 describe("SLASH_COMMANDS", () => {
+	test("lists commands by transport without duplicating catalog entries", () => {
+		expect(listSlashCommands()).toEqual(SLASH_COMMANDS);
+		expect(listSlashCommands("runtime")).toEqual(
+			SLASH_COMMANDS.filter((command) => command.transport === "runtime"),
+		);
+		expect(listSlashCommands("prompt")).toEqual(PROMPT_COMMANDS);
+	});
+
 	test("/compact has prompt transport", () => {
 		const compact = SLASH_COMMANDS.find((c) => c.command === "compact");
 		expect(compact?.transport).toBe("prompt");
@@ -93,6 +106,42 @@ describe("SLASH_COMMANDS", () => {
 	test("runtime commands have runtime transport", () => {
 		const model = SLASH_COMMANDS.find((c) => c.command === "model");
 		expect(model?.transport).toBe("runtime");
+	});
+});
+
+describe("routeSlashCommand", () => {
+	test("keeps prompt and runtime routing behind the catalog", () => {
+		expect(routeSlashCommand("/compact")).toEqual({
+			command: "compact",
+			source: "catalog",
+			transport: "prompt",
+		});
+
+		for (const command of [
+			"status",
+			"model",
+			"thinking",
+			"agent",
+			"session",
+			"new",
+			"stop",
+			"restart",
+		]) {
+			expect(routeSlashCommand(`/${command} arg`)).toEqual({
+				command,
+				source: "catalog",
+				transport: "runtime",
+			});
+		}
+	});
+
+	test("routes model alias shortcuts as runtime-only commands", () => {
+		expect(routeSlashCommand("/sonnet")).toEqual({
+			command: "sonnet",
+			source: "model_alias",
+			transport: "runtime",
+		});
+		expect(routeSlashCommand("/sonnet extra")).toBeUndefined();
 	});
 });
 
@@ -135,6 +184,51 @@ describe("canonicalizePromptSlashCommand", () => {
 	test("does not canonicalize runtime or unknown commands", () => {
 		expect(canonicalizePromptSlashCommand("/model")).toBeUndefined();
 		expect(canonicalizePromptSlashCommand("/unknown")).toBeUndefined();
+	});
+});
+
+describe("effort compatibility", () => {
+	test("allows opus-only effort only for opus model ids or aliases", () => {
+		expect(isEffortAllowedForModel("xhigh", "opus")).toBe(true);
+		expect(isEffortAllowedForModel("xhigh", "claude-opus-4-7[1m]")).toBe(true);
+		expect(isEffortAllowedForModel("xhigh", "sonnet")).toBe(false);
+		expect(isEffortAllowedForModel("max", "sonnet")).toBe(true);
+	});
+
+	test("resolves incompatible effort through an explicit compatible fallback", () => {
+		expect(
+			resolveCompatibleEffort({
+				effort: "xhigh",
+				fallbackEffort: "low",
+				model: "haiku",
+			}),
+		).toBe("low");
+		expect(
+			resolveCompatibleEffort({
+				effort: "xhigh",
+				fallbackEffort: "xhigh",
+				model: "haiku",
+			}),
+		).toBe(DEFAULT_EFFORT);
+		expect(
+			resolveCompatibleEffort({
+				effort: "xhigh",
+				fallbackEffort: "high",
+				model: "sonnet",
+			}),
+		).toBe("high");
+	});
+
+	test("filters visible effort levels with the shared compatibility rule", () => {
+		expect(effortLevelsForModel("sonnet", ["max", "xhigh", "high"])).toEqual([
+			"max",
+			"high",
+		]);
+		expect(effortLevelsForModel("opus", ["max", "xhigh", "high"])).toEqual([
+			"max",
+			"xhigh",
+			"high",
+		]);
 	});
 });
 

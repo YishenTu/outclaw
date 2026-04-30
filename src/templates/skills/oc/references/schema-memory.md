@@ -6,11 +6,11 @@ Use `oc schema` when you need to know whether schema Models are caught up with t
 
 | Command | Purpose |
 | --- | --- |
-| `oc schema status` | Show every real schema with its freshness state |
-| `oc schema stale` | Show only schemas that need attention: `STALE` and `BROKEN` |
+| `oc schema status [--agent <name\|id>] [--json]` | Show every real schema with its freshness state |
+| `oc schema stale [--agent <name\|id>] [--json]` | Show only schemas that need attention: `STALE` and `BROKEN` |
 | `oc schema status --json` | Emit machine-readable status rows |
 | `oc schema stale --json` | Emit machine-readable stale/broken rows |
-| `oc schema status --agent <name-or-id>` | Inspect a specific agent from outside its workspace |
+| `oc schema status --agent <name\|id>` | Inspect a specific agent from outside its workspace |
 
 Run without `--agent` from inside the agent workspace. Use `--agent` when you are acting as a human from some other directory.
 

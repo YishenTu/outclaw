@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import {
 	existsSync,
@@ -9,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { prepareAgentWorkspace } from "../../../src/backend/agent-workspace.ts";
+import { ClaudeAdapter } from "../../../src/backend/adapters/claude.ts";
 import { createAgent as createAgentBase } from "../../../src/runtime/agents/create-agent.ts";
 import { listAgents } from "../../../src/runtime/agents/list-agents.ts";
 import { readAgentId } from "../../../src/runtime/agents/read-agent-id.ts";
@@ -32,13 +33,18 @@ function createTemplatesDir() {
 }
 
 const REPO_TEMPLATES_DIR = join(import.meta.dir, "../../../src/templates");
+const claudeWorkspaceAdapter = new ClaudeAdapter();
+
+function prepareWorkspace(agentHomeDir: string) {
+	claudeWorkspaceAdapter.prepareWorkspace(agentHomeDir);
+}
 
 function createAgent(
 	options: Omit<Parameters<typeof createAgentBase>[0], "prepareWorkspace">,
 ) {
 	return createAgentBase({
 		...options,
-		prepareWorkspace: prepareAgentWorkspace,
+		prepareWorkspace,
 	});
 }
 
@@ -371,6 +377,10 @@ describe("agent management", () => {
 				templatesDir: REPO_TEMPLATES_DIR,
 				createAgentId: () => "agent-railly",
 			});
+			writeFileSync(
+				join(homeDir, "agents", "railly", "MEMORY.md"),
+				"Remember ~/.outclaw/agents/railly/ as historical prose only.\n",
+			);
 
 			const renamed = renameAgent({
 				homeDir,
@@ -387,8 +397,48 @@ describe("agent management", () => {
 			expect(readFileSync(join(renamed, "AGENTS.md"), "utf-8")).not.toContain(
 				"~/.outclaw/agents/railly/",
 			);
+			expect(readFileSync(join(renamed, "MEMORY.md"), "utf-8")).toBe(
+				"Remember ~/.outclaw/agents/railly/ as historical prose only.\n",
+			);
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
+		}
+	});
+
+	test("agent lifecycle mutations reject invalid selector names consistently", () => {
+		const homeDir = createHomeDir();
+		const templatesDir = createTemplatesDir();
+		try {
+			createAgent({
+				homeDir,
+				name: "railly",
+				templatesDir,
+				createAgentId: () => "agent-railly",
+			});
+
+			expect(() =>
+				updateAgent({
+					homeDir,
+					name: "Railly",
+					botToken: "token-b",
+				}),
+			).toThrow("Invalid agent name: Railly");
+			expect(() =>
+				renameAgent({
+					homeDir,
+					oldName: "railly",
+					newName: "Mimi",
+				}),
+			).toThrow("Invalid agent name: Mimi");
+			expect(() => removeAgent({ homeDir, name: "Mimi" })).toThrow(
+				"Invalid agent name: Mimi",
+			);
+			expect(readAgentId(join(homeDir, "agents", "railly"))).toBe(
+				"agent-railly",
+			);
+		} finally {
+			rmSync(homeDir, { force: true, recursive: true });
+			rmSync(templatesDir, { force: true, recursive: true });
 		}
 	});
 
@@ -681,6 +731,20 @@ describe("agent management", () => {
 					title: "Mimi chat",
 					model: "haiku",
 				});
+				raillyStore.replaceTranscript("claude", "sdk-railly", [
+					{
+						role: "user",
+						content: "railly searchable transcript",
+						timestamp: 100,
+					},
+				]);
+				mimiStore.replaceTranscript("claude", "sdk-mimi", [
+					{
+						role: "assistant",
+						content: "mimi searchable transcript",
+						timestamp: 200,
+					},
+				]);
 				mimiStore.setActiveSessionId("claude", "sdk-mimi");
 				mimiStore.setLastUserTarget({
 					kind: "telegram",
@@ -699,6 +763,25 @@ describe("agent management", () => {
 				expect(routeStore.getAgentId("bot-a", 101)).toBeUndefined();
 				expect(raillyStore.get("claude", "sdk-railly")).toBeDefined();
 				expect(routeStore.getAgentId("bot-a", 202)).toBe("agent-railly");
+				const db = new Database(dbPath, { readonly: true });
+				try {
+					expect(
+						db
+							.query(
+								`SELECT agent_id, body_text
+								 FROM transcript_turns
+								 ORDER BY agent_id`,
+							)
+							.all(),
+					).toEqual([
+						{
+							agent_id: "agent-railly",
+							body_text: "railly searchable transcript",
+						},
+					]);
+				} finally {
+					db.close();
+				}
 			} finally {
 				globalStore.close();
 				raillyStore.close();

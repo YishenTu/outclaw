@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { assertValidAgentName } from "../../common/agent-name.ts";
+import { createOutclawLayout } from "../../common/layout.ts";
 
 interface RenameAgentOptions {
 	homeDir: string;
@@ -12,9 +13,9 @@ export function renameAgent(options: RenameAgentOptions) {
 	assertValidAgentName(options.oldName);
 	assertValidAgentName(options.newName);
 
-	const agentsDir = join(options.homeDir, "agents");
-	const currentPath = join(agentsDir, options.oldName);
-	const nextPath = join(agentsDir, options.newName);
+	const layout = createOutclawLayout({ homeDir: options.homeDir });
+	const currentPath = layout.agent(options.oldName).homeDir;
+	const nextPath = layout.agent(options.newName).homeDir;
 	if (!existsSync(currentPath)) {
 		throw new Error(`Agent does not exist: ${options.oldName}`);
 	}

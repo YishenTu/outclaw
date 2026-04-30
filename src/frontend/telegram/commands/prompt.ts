@@ -1,5 +1,5 @@
 import type { BotCommand } from "grammy/types";
-import { PROMPT_COMMANDS } from "../../../common/commands.ts";
+import { listSlashCommands } from "../../../common/commands.ts";
 import type {
 	ImageEvent,
 	ImageRef,
@@ -47,6 +47,8 @@ export interface TelegramPromptCommandBridge {
 type TelegramPromptCommandBridgeFactory = (
 	ctx: TelegramPromptCommandContext,
 ) => TelegramPromptCommandBridge;
+
+const PROMPT_COMMANDS = listSlashCommands("prompt");
 
 export const TELEGRAM_PROMPT_COMMANDS: BotCommand[] = PROMPT_COMMANDS.map(
 	(command) => ({

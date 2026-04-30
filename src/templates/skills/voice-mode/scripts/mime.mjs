@@ -1,3 +1,5 @@
+import { VoiceToolError } from "./errors.mjs";
+
 export function resolveAudioMime(path, declaredMime) {
 	const extension = fileExtension(path);
 	switch (extension) {
@@ -19,7 +21,16 @@ export function resolveAudioMime(path, declaredMime) {
 		case "aif":
 			return "audio/aiff";
 		default:
-			return declaredMime ?? "application/octet-stream";
+			if (declaredMime?.startsWith("audio/")) {
+				return declaredMime;
+			}
+			if (declaredMime) {
+				throw new VoiceToolError(
+					`unsupported audio MIME type: ${declaredMime}`,
+					3,
+				);
+			}
+			throw new VoiceToolError(`unsupported audio file type: ${path}`, 3);
 	}
 }
 

@@ -2,8 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { EffortLevel } from "../../common/commands.ts";
 import { resolveModelAlias } from "../../common/models.ts";
 import type { Facade } from "../../common/protocol.ts";
-import { assembleSystemPrompt } from "../prompt/assemble-system-prompt.ts";
-import { buildSessionEnv } from "../prompt/session-env.ts";
+import { runFacadePrompt } from "../application/facade-runner.ts";
 
 export interface CronAgentRunResult {
 	sessionId?: string;
@@ -22,34 +21,37 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 		model?: string,
 		effort?: EffortLevel,
 	): Promise<CronAgentRunResult> => {
-		const systemPrompt = await assembleSystemPrompt(options.promptHomeDir);
 		const resolvedModel = model ? resolveModelAlias(model) : undefined;
 		const sessionId = randomUUID();
-		const sessionEnv = buildSessionEnv(options.promptHomeDir, sessionId);
 
 		let resultText = "";
 		let completedSessionId: string | undefined;
+		let runError: Error | undefined;
 
-		for await (const event of options.facade.run({
-			prompt,
-			systemPrompt,
-			sessionId,
+		await runFacadePrompt({
 			cwd: options.cwd,
-			model: resolvedModel,
 			effort,
+			emit: (event) => {
+				if (event.type === "text") {
+					resultText += event.text;
+				}
+				if (event.type === "error") {
+					runError = new Error(event.message);
+				}
+				if (event.type === "done") {
+					completedSessionId = event.sessionId;
+				}
+			},
+			facade: options.facade,
+			model: resolvedModel,
+			ocSessionId: sessionId,
+			prompt,
+			promptHomeDir: options.promptHomeDir,
 			stream: false,
-			sessionEnv,
-		})) {
-			if (event.type === "text") {
-				resultText += event.text;
-			}
-			if (event.type === "error") {
-				throw new Error(event.message);
-			}
-			if (event.type === "done") {
-				completedSessionId = event.sessionId;
-				break;
-			}
+		});
+
+		if (runError) {
+			throw runError;
 		}
 
 		return {

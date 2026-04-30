@@ -5,7 +5,7 @@
 ## Usage
 
 ```
-oc note "<content>"                         # short note
+oc note "<content>" [--salience <tag>] [--hint <schema>]
 oc note --salience <tag> "<content>"        # tag the observation
 oc note --hint <schema> "<content>"         # note-to-self for the routing cron
 oc note <<'EOF'                             # multi-line via stdin / heredoc

@@ -1,4 +1,4 @@
-import { RUNTIME_COMMANDS } from "../../../common/commands.ts";
+import { listSlashCommands } from "../../../common/commands.ts";
 import type { RuntimeStatusEvent } from "../../../common/protocol.ts";
 import { formatStatusCompact } from "../../../common/status.ts";
 
@@ -49,7 +49,10 @@ interface TelegramRuntimeCommandDefinition {
 }
 
 const COMMAND_DESCRIPTIONS = new Map(
-	RUNTIME_COMMANDS.map((command) => [command.command, command.description]),
+	listSlashCommands("runtime").map((command) => [
+		command.command,
+		command.description,
+	]),
 );
 
 function getCommandDescription(command: TelegramCommandName): string {

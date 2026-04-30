@@ -109,10 +109,10 @@ export class RuntimeSessionState {
 		}
 
 		this.activeSessionId = params.session.sdkSessionId;
-		// The persisted SDK session id is the canonical id for Claude-backed
-		// sessions. Older rows may still carry a legacy ocSessionId alias; keep
-		// selector compatibility in the store, but export the canonical id to the
-		// runtime/tool env so new notes and transcript lookup converge.
+		// The persisted provider session id is canonical. Older rows may still
+		// carry a legacy ocSessionId alias; keep selector compatibility in the
+		// store, but export the canonical id to the runtime/tool env so new notes
+		// and transcript lookup converge.
 		this.activeOcSessionId = params.session.sdkSessionId;
 		this.currentTitle = params.session.title;
 		this.activeSessionSource =

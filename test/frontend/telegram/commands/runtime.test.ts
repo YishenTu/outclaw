@@ -1,5 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
-import { RUNTIME_COMMANDS } from "../../../../src/common/commands.ts";
+import {
+	listSlashCommands,
+	RUNTIME_COMMANDS,
+} from "../../../../src/common/commands.ts";
 import { TELEGRAM_COMMANDS } from "../../../../src/frontend/telegram/commands/catalog.ts";
 import {
 	executeTelegramRuntimeCommand,
@@ -12,6 +15,20 @@ describe("Telegram runtime commands", () => {
 		const advertised = new Set(TELEGRAM_COMMANDS.map((c) => c.command));
 		for (const rc of RUNTIME_COMMANDS) {
 			expect(advertised.has(rc.command)).toBe(true);
+		}
+	});
+
+	test("advertises each command catalog builtin exactly once", () => {
+		for (const command of listSlashCommands()) {
+			const matches = TELEGRAM_COMMANDS.filter(
+				(entry) => entry.command === command.command,
+			);
+			expect(matches).toEqual([
+				{
+					command: command.command,
+					description: command.description,
+				},
+			]);
 		}
 	});
 

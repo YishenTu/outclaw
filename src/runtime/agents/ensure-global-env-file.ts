@@ -1,8 +1,8 @@
 import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { createOutclawLayout } from "../../common/layout.ts";
 
 export function ensureGlobalEnvFile(homeDir: string) {
-	const envPath = join(homeDir, ".env");
+	const envPath = createOutclawLayout({ homeDir }).envPath;
 	if (!existsSync(envPath)) {
 		writeFileSync(envPath, "");
 	}

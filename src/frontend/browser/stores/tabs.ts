@@ -1,4 +1,12 @@
 import { create } from "zustand";
+import {
+	activateBrowserTabState,
+	CHAT_TAB,
+	closeAllBrowserFileTabsState,
+	closeBrowserTabState,
+	openBrowserTabState,
+	setBrowserTabScrollPositionState,
+} from "./tab-policy.ts";
 
 export type Tab =
 	| { type: "chat"; id: "chat" }
@@ -18,56 +26,15 @@ export interface TabsState {
 	setScrollPosition: (tabId: string, scrollTop: number) => void;
 }
 
-const CHAT_TAB: Tab = { type: "chat", id: "chat" };
-
 export const useTabsStore = create<TabsState>((set) => ({
 	tabs: [CHAT_TAB],
 	activeTabId: CHAT_TAB.id,
 	scrollPositions: {},
-	openTab: (tab) =>
-		set((state) => {
-			if (tab.type === "chat") {
-				return { activeTabId: CHAT_TAB.id };
-			}
-			const exists = state.tabs.some((entry) => entry.id === tab.id);
-			return {
-				tabs: exists ? state.tabs : [...state.tabs, tab],
-				activeTabId: tab.id,
-			};
-		}),
-	closeTab: (tabId) =>
-		set((state) => {
-			if (tabId === CHAT_TAB.id) {
-				return state;
-			}
-			const nextTabs = state.tabs.filter((tab) => tab.id !== tabId);
-			const fallbackTab = nextTabs[nextTabs.length - 1] ?? CHAT_TAB;
-			const { [tabId]: _discardedScroll, ...nextScrollPositions } =
-				state.scrollPositions;
-			return {
-				tabs: nextTabs.length > 0 ? nextTabs : [CHAT_TAB],
-				activeTabId:
-					state.activeTabId === tabId ? fallbackTab.id : state.activeTabId,
-				scrollPositions: nextScrollPositions,
-			};
-		}),
+	openTab: (tab) => set((state) => openBrowserTabState(state, tab)),
+	closeTab: (tabId) => set((state) => closeBrowserTabState(state, tabId)),
 	setActiveTab: (tabId) =>
-		set((state) =>
-			state.tabs.some((tab) => tab.id === tabId)
-				? { activeTabId: tabId }
-				: state,
-		),
-	closeAllFileTabs: () =>
-		set({
-			tabs: [CHAT_TAB],
-			activeTabId: CHAT_TAB.id,
-			scrollPositions: {},
-		}),
+		set((state) => activateBrowserTabState(state, tabId)),
+	closeAllFileTabs: () => set(closeAllBrowserFileTabsState()),
 	setScrollPosition: (tabId, scrollTop) =>
-		set((state) => ({
-			scrollPositions: {
-				...state.scrollPositions,
-				[tabId]: scrollTop,
-			},
-		})),
+		set((state) => setBrowserTabScrollPositionState(state, tabId, scrollTop)),
 }));

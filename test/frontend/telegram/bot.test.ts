@@ -274,6 +274,29 @@ describe("startTelegramBot", () => {
 			bot,
 			expect.any(Function),
 		);
+		const runtimeCommandRegistrations = registerTelegramRuntimeCommands.mock
+			.calls as unknown as Array<
+			[unknown, (ctx: { from?: { id: number } }) => typeof bridge]
+		>;
+		const commandBridgeFactory = runtimeCommandRegistrations[0]?.[1];
+		expect(commandBridgeFactory).toBeDefined();
+		const expectedStatusTypes = new Set(["runtime_status"]);
+		await (
+			commandBridgeFactory?.({ from: { id: 77 } }) as {
+				sendCommandAndWait(
+					command: string,
+					expectedTypes?: ReadonlySet<string>,
+				): Promise<unknown>;
+			}
+		).sendCommandAndWait("/status", expectedStatusTypes);
+		expect(bridge.sendCommandAndWait).toHaveBeenCalledWith(
+			"/status",
+			expectedStatusTypes,
+			{
+				telegramBotId: "bot-a",
+				telegramUserId: 77,
+			},
+		);
 		expect(bot.start).toHaveBeenCalledTimes(1);
 		expect(log).toHaveBeenCalledWith("Telegram bot started");
 
@@ -358,6 +381,7 @@ describe("startTelegramBot", () => {
 
 		const textCtx = {
 			chat: { id: 42 },
+			from: { id: 1 },
 			message: { text: "hello" },
 			reply: mock(async () => undefined),
 			replyWithChatAction: mock(async () => undefined),
@@ -387,7 +411,7 @@ describe("startTelegramBot", () => {
 			},
 			{
 				telegramBotId: "bot-a",
-				telegramUserId: undefined,
+				telegramUserId: 1,
 			},
 		);
 		const textHandlerCtx = lastTextMessageArgs[0] as {
@@ -439,6 +463,7 @@ describe("startTelegramBot", () => {
 				getFile: mock(async (_fileId: string) => ({ file_path: "photo.jpg" })),
 			},
 			chat: { id: 7 },
+			from: { id: 2 },
 			message: {
 				photo: [{ file_id: "small" }, { file_id: "large" }],
 			},
@@ -475,7 +500,7 @@ describe("startTelegramBot", () => {
 			},
 			{
 				telegramBotId: "bot-a",
-				telegramUserId: undefined,
+				telegramUserId: 2,
 			},
 		);
 		await (
@@ -535,6 +560,7 @@ describe("startTelegramBot", () => {
 				})),
 			},
 			chat: { id: 8 },
+			from: { id: 3 },
 			message: {
 				caption: "analyse this",
 				document: { file_id: "doc-1", file_name: "report.pdf" },
@@ -570,7 +596,7 @@ describe("startTelegramBot", () => {
 			{ text: "previous doc" },
 			{
 				telegramBotId: "bot-a",
-				telegramUserId: undefined,
+				telegramUserId: 3,
 			},
 		);
 		await (
@@ -627,6 +653,7 @@ describe("startTelegramBot", () => {
 				})),
 			},
 			chat: { id: 9 },
+			from: { id: 4 },
 			message: {
 				voice: {
 					file_id: "voice-1",
@@ -666,7 +693,7 @@ describe("startTelegramBot", () => {
 			{ text: "previous voice" },
 			{
 				telegramBotId: "bot-a",
-				telegramUserId: undefined,
+				telegramUserId: 4,
 			},
 		);
 

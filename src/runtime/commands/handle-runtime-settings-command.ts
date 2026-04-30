@@ -1,12 +1,12 @@
 import {
 	EFFORT_LEVELS,
+	isEffortAllowedForModel,
 	isEffortLevel,
-	isOpusOnlyEffort,
 } from "../../common/commands.ts";
 import {
+	contextWindowSwitchLimitForAlias,
 	isModelAlias,
 	MODEL_ALIAS_LIST,
-	MODELS,
 	type ModelAlias,
 } from "../../common/models.ts";
 import type {
@@ -72,8 +72,15 @@ function handleModelCommand(
 
 	const usage = options.state.usage;
 	if (usage) {
-		const targetWindow = MODELS[modelArg].contextWindow;
-		const cap = Math.round(targetWindow * 0.8);
+		const cap = contextWindowSwitchLimitForAlias(modelArg);
+		if (!cap) {
+			sendError(
+				options.hub,
+				options.ws,
+				`Invalid model: ${modelArg}. Valid: ${MODEL_ALIAS_LIST.join(", ")}`,
+			);
+			return;
+		}
 		if (usage.contextTokens > cap) {
 			sendError(
 				options.hub,
@@ -113,7 +120,7 @@ function handleThinkingCommand(
 		return;
 	}
 
-	if (isOpusOnlyEffort(effortArg) && options.state.model !== "opus") {
+	if (!isEffortAllowedForModel(effortArg, options.state.model)) {
 		sendError(
 			options.hub,
 			options.ws,

@@ -1,7 +1,6 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { createOutclawLayout } from "../../../common/layout.ts";
 
-const HOME_DIR = join(homedir(), ".outclaw");
+const HOME_DIR = createOutclawLayout().homeDir;
 
 const GIT_BRANCH_ARGS = ["git", "rev-parse", "--abbrev-ref", "HEAD"];
 const GIT_STATUS_ARGS = [

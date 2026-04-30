@@ -1,0 +1,84 @@
+import { describe, expect, test } from "bun:test";
+import {
+	projectRuntimeInfoEvent,
+	projectRuntimeStatus,
+} from "../../../src/frontend/tui/runtime-status-projection.ts";
+
+describe("TUI runtime status projection", () => {
+	test("projects runtime status into status-bar info", () => {
+		expect(
+			projectRuntimeStatus({
+				event: {
+					type: "runtime_status",
+					agentName: "railly",
+					model: "sonnet",
+					effort: "think",
+					running: true,
+					notice: { kind: "restart_required" },
+					usage: {
+						inputTokens: 0,
+						outputTokens: 0,
+						cacheCreationTokens: 0,
+						cacheReadTokens: 0,
+						contextTokens: 1200,
+						contextWindow: 200000,
+						maxOutputTokens: 32000,
+						percentage: 1,
+					},
+					nextHeartbeatAt: 12345,
+					heartbeatDeferred: true,
+				},
+				previous: {},
+			}),
+		).toEqual({
+			agentName: "railly",
+			running: true,
+			runtimeInfo: {
+				agentName: "railly",
+				model: "sonnet",
+				effort: "think",
+				notice: "Restart required",
+				contextTokens: 1200,
+				contextWindow: 200000,
+				nextHeartbeatAt: 12345,
+				heartbeatDeferred: true,
+			},
+		});
+	});
+
+	test("preserves known agent name when status omits it", () => {
+		expect(
+			projectRuntimeStatus({
+				event: {
+					type: "runtime_status",
+					model: "opus",
+					effort: "high",
+					running: false,
+				},
+				knownAgentName: "mimi",
+				previous: { agentName: "older" },
+			}).runtimeInfo.agentName,
+		).toBe("mimi");
+	});
+
+	test("applies incremental agent, model, and effort events", () => {
+		expect(
+			projectRuntimeInfoEvent(
+				{ agentName: "old", model: "sonnet", effort: "think" },
+				{ type: "agent_switched", agentId: "agent-a", name: "railly" },
+			),
+		).toEqual({ agentName: "railly", model: "sonnet", effort: "think" });
+		expect(
+			projectRuntimeInfoEvent(
+				{ agentName: "railly", model: "sonnet", effort: "think" },
+				{ type: "model_changed", model: "opus" },
+			).model,
+		).toBe("opus");
+		expect(
+			projectRuntimeInfoEvent(
+				{ agentName: "railly", model: "opus", effort: "think" },
+				{ type: "effort_changed", effort: "ultrathink" },
+			).effort,
+		).toBe("ultrathink");
+	});
+});

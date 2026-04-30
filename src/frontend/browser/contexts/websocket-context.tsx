@@ -8,10 +8,6 @@ import {
 	useRef,
 } from "react";
 import {
-	canonicalizePromptSlashCommand,
-	isRuntimeCommand,
-} from "../../../common/commands.ts";
-import {
 	extractError,
 	parseMessage,
 	type ServerEvent,
@@ -23,23 +19,23 @@ import {
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
+import { createBrowserLiveRunBridge } from "../browser-live-run-bridge.ts";
+import { createBrowserSocketLifecycle } from "../browser-socket-lifecycle.ts";
+import { createBrowserSwitchDispatcher } from "../browser-switch-dispatcher.ts";
 import type { ComposerImageAttachment } from "../components/chat/composer-images.ts";
 import { fetchSidebarSummary, uploadPromptImages } from "../lib/api.ts";
-import {
-	createLiveRunSessionRouter,
-	pinLiveRunSessionKey,
-	routeLiveRunSessionKey,
-} from "../live-run-session.ts";
 import {
 	applySidebarSummary,
 	handleBrowserServerEvent,
 } from "../runtime-server-events.ts";
 import { dispatchBrowserPrompt as dispatchBrowserPromptMessage } from "../send-browser-prompt.ts";
+import { dispatchBrowserTextPrompt } from "../send-browser-text-prompt.ts";
 import {
 	sendBrowserPromptToAgent as dispatchBrowserPromptToAgent,
 	sendPromptToAgent as dispatchPromptToAgent,
 } from "../send-prompt-to-agent.ts";
 import { resolveCurrentBrowserSessionKey } from "../session.ts";
+import { createSidebarRefreshCoordinator } from "../sidebar-refresh.ts";
 import { createSidebarRefreshGate } from "../sidebar-refresh-gate.ts";
 import type { AgentEntry } from "../stores/agents.ts";
 import { useAgentsStore } from "../stores/agents.ts";
@@ -123,31 +119,12 @@ function getCurrentSessionKey(agentId: string): string {
 
 export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 	const wsRef = useRef<WebSocket | null>(null);
-	const liveRunSessionRef = useRef(createLiveRunSessionRouter());
 	const sidebarRefreshGateRef = useRef(createSidebarRefreshGate());
-
-	const pinObservedSessionKey = useCallback(
-		(agentId: string, observedSessionId?: string) =>
-			pinLiveRunSessionKey({
-				agentId,
-				fallbackSessionKey: getCurrentSessionKey(agentId),
-				observedSessionId,
-				providerId: useRuntimeStore.getState().providerId,
-				router: liveRunSessionRef.current,
-			}),
-		[],
-	);
-
-	const routeObservedSessionKey = useCallback(
-		(agentId: string, observedSessionId?: string) =>
-			routeLiveRunSessionKey({
-				agentId,
-				fallbackSessionKey: getCurrentSessionKey(agentId),
-				observedSessionId,
-				providerId: useRuntimeStore.getState().providerId,
-				router: liveRunSessionRef.current,
-			}),
-		[],
+	const liveRunBridgeRef = useRef(
+		createBrowserLiveRunBridge({
+			getCurrentSessionKey,
+			getProviderId: () => useRuntimeStore.getState().providerId,
+		}),
 	);
 
 	const sendCommand = useCallback((command: string): boolean => {
@@ -166,74 +143,54 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 		}
 	}, []);
 
+	const sidebarRefreshCoordinator = useMemo(
+		() =>
+			createSidebarRefreshCoordinator({
+				applySidebarSummary,
+				fetchSidebarSummary,
+				gate: sidebarRefreshGateRef.current,
+				getSocket: () => wsRef.current,
+				isSocketOpen: isRuntimeSocketOpen,
+				sendRequestSkills,
+				setRuntimeError: (error) => {
+					useRuntimeStore.getState().setError(error);
+				},
+			}),
+		[],
+	);
+
 	const refreshSidebar = useCallback(() => {
-		const requestId = sidebarRefreshGateRef.current.startRequest();
-		void fetchSidebarSummary()
-			.then((summary) => {
-				if (!sidebarRefreshGateRef.current.isCurrent(requestId)) {
-					return;
-				}
-				applySidebarSummary(summary);
-			})
-			.catch((error) => {
-				if (!sidebarRefreshGateRef.current.isCurrent(requestId)) {
-					return;
-				}
-				useRuntimeStore.getState().setError(extractError(error));
-			});
-
-		const ws = wsRef.current;
-		if (!isRuntimeSocketOpen(ws)) {
-			return;
-		}
-
-		try {
-			sendRequestSkills(ws);
-		} catch (error) {
-			useRuntimeStore.getState().setError(extractError(error));
-		}
-	}, []);
+		sidebarRefreshCoordinator.refresh();
+	}, [sidebarRefreshCoordinator]);
 
 	const sendPrompt = useCallback(
-		(input: string): boolean => {
-			const trimmed = input.trim();
-			if (trimmed === "") {
-				return false;
-			}
-
-			if (isRuntimeCommand(trimmed)) {
-				return sendCommand(trimmed);
-			}
-
-			const agentId = getActiveAgentId();
-			const ws = wsRef.current;
-			if (!agentId || !isRuntimeSocketOpen(ws)) {
-				useRuntimeStore.getState().setError("Runtime disconnected");
-				return false;
-			}
-
-			const prompt = canonicalizePromptSlashCommand(trimmed) ?? trimmed;
-
-			try {
-				sendRuntimePrompt(ws, prompt);
-			} catch (error) {
-				useRuntimeStore.getState().setError(extractError(error));
-				return false;
-			}
-
-			const sessionKey = getCurrentSessionKey(agentId);
-			liveRunSessionRef.current.pin(sessionKey);
-			useChatStore.getState().pushMessage(sessionKey, {
-				kind: "chat",
-				role: "user",
-				content: prompt,
-				timestamp: Date.now(),
-			});
-			useChatStore.getState().startAssistantTurn(sessionKey);
-			useChatStore.getState().setError(sessionKey, null);
-			useRuntimeStore.getState().setError(null);
-			return true;
-		},
+		(input: string): boolean =>
+			dispatchBrowserTextPrompt({
+				input,
+				getActiveAgentId,
+				getCurrentSessionKey,
+				getSocket: () => wsRef.current,
+				isSocketOpen: isRuntimeSocketOpen,
+				pinSession: (sessionKey) => {
+					liveRunBridgeRef.current.pinSession(sessionKey);
+				},
+				pushUserMessage: (sessionKey, message) => {
+					useChatStore.getState().pushMessage(sessionKey, message);
+				},
+				sendCommand,
+				sendPrompt: (ws, prompt) => {
+					sendRuntimePrompt(ws, prompt);
+				},
+				setRuntimeError: (error) => {
+					useRuntimeStore.getState().setError(error);
+				},
+				setSessionError: (sessionKey, error) => {
+					useChatStore.getState().setError(sessionKey, error);
+				},
+				startAssistantTurn: (sessionKey) => {
+					useChatStore.getState().startAssistantTurn(sessionKey);
+				},
+			}),
 		[sendCommand],
 	);
 
@@ -250,7 +207,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				getSocket: () => wsRef.current,
 				isSocketOpen: isRuntimeSocketOpen,
 				pinSession: (sessionKey) => {
-					liveRunSessionRef.current.pin(sessionKey);
+					liveRunBridgeRef.current.pinSession(sessionKey);
 				},
 				pushMessage: (sessionKey, message) => {
 					useChatStore.getState().pushMessage(sessionKey, message);
@@ -315,100 +272,71 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 		[sendBrowserPrompt, sendCommand],
 	);
 
-	const switchAgent = useCallback(
-		(agentName: string): boolean => sendCommand(`/agent ${agentName}`),
+	const switchDispatcher = useMemo(
+		() =>
+			createBrowserSwitchDispatcher({
+				getRuntimeAgentName: () => useRuntimeStore.getState().agentName,
+				sendCommand,
+			}),
 		[sendCommand],
 	);
 
-	const switchSession = useCallback(
-		(agentName: string, session: SessionEntry): boolean => {
-			const runtime = useRuntimeStore.getState();
-			if (
-				runtime.agentName !== agentName &&
-				!sendCommand(`/agent ${agentName}`)
-			) {
-				return false;
-			}
+	const switchAgent = useCallback(
+		(agentName: string): boolean => switchDispatcher.switchAgent(agentName),
+		[switchDispatcher],
+	);
 
-			return sendCommand(`/session ${session.sdkSessionId}`);
-		},
-		[sendCommand],
+	const switchSession = useCallback(
+		(agentName: string, session: SessionEntry): boolean =>
+			switchDispatcher.switchSession(agentName, session),
+		[switchDispatcher],
 	);
 
 	const handleServerEvent = useCallback(
 		(event: ServerEvent) => {
 			handleBrowserServerEvent(event, {
 				clearLiveRunSessions: () => {
-					liveRunSessionRef.current.clear();
+					liveRunBridgeRef.current.clearLiveRunSessions();
 				},
 				completeLiveRunSession: (nextSessionKey, currentSessionKey) =>
-					liveRunSessionRef.current.complete(nextSessionKey, currentSessionKey),
+					liveRunBridgeRef.current.completeLiveRunSession(
+						nextSessionKey,
+						currentSessionKey,
+					),
 				getActiveAgentId,
 				getCurrentSessionKey,
 				invalidateSidebarRefresh: () => {
-					sidebarRefreshGateRef.current.invalidate();
+					sidebarRefreshCoordinator.invalidate();
 				},
-				pinObservedSessionKey,
+				pinObservedSessionKey: liveRunBridgeRef.current.pinObservedSessionKey,
 				refreshSidebar,
-				routeObservedSessionKey,
+				routeObservedSessionKey:
+					liveRunBridgeRef.current.routeObservedSessionKey,
 			});
 		},
-		[pinObservedSessionKey, refreshSidebar, routeObservedSessionKey],
+		[refreshSidebar, sidebarRefreshCoordinator],
 	);
 
 	useEffect(() => {
-		let cancelled = false;
-		let retryTimer: ReturnType<typeof setTimeout> | null = null;
+		const lifecycle = createBrowserSocketLifecycle<WebSocket>({
+			applyEvent: handleServerEvent,
+			openSocket: () => openRuntimeSocket(buildBrowserRuntimeUrl(), "browser"),
+			onConnected: refreshSidebar,
+			parseMessage: (data) => parseMessage(data) as ServerEvent,
+			setConnectionStatus: (status) => {
+				useRuntimeStore.getState().setConnectionStatus(status);
+			},
+			setCurrentSocket: (socket) => {
+				wsRef.current = socket;
+			},
+			setRuntimeError: (error) => {
+				useRuntimeStore.getState().setError(error);
+			},
+		});
 
-		function connect() {
-			if (cancelled) {
-				return;
-			}
+		lifecycle.start();
 
-			const socket = openRuntimeSocket(buildBrowserRuntimeUrl(), "browser");
-			const { ws } = socket;
-			wsRef.current = ws;
-			useRuntimeStore.getState().setConnectionStatus("connecting");
-			void socket.ready.catch(() => {
-				// onclose handles reconnect scheduling.
-			});
-
-			ws.onopen = () => {
-				useRuntimeStore.getState().setConnectionStatus("connected");
-				useRuntimeStore.getState().setError(null);
-				refreshSidebar();
-			};
-
-			ws.onclose = () => {
-				if (cancelled) {
-					return;
-				}
-				if (wsRef.current === ws) {
-					wsRef.current = null;
-				}
-				useRuntimeStore.getState().setConnectionStatus("disconnected");
-				retryTimer = setTimeout(connect, 3000);
-			};
-
-			ws.onerror = () => {
-				// close will follow and schedule reconnect.
-			};
-
-			ws.onmessage = (message) => {
-				handleServerEvent(parseMessage(String(message.data)) as ServerEvent);
-			};
-		}
-
-		connect();
-
-		return () => {
-			cancelled = true;
-			if (retryTimer) {
-				clearTimeout(retryTimer);
-			}
-			wsRef.current?.close();
-			wsRef.current = null;
-		};
+		return () => lifecycle.stop();
 	}, [handleServerEvent, refreshSidebar]);
 
 	useEffect(() => {

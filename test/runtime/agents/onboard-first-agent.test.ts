@@ -8,9 +8,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { prepareAgentWorkspace } from "../../../src/backend/agent-workspace.ts";
+import { ClaudeAdapter } from "../../../src/backend/adapters/claude.ts";
 import { completeAgentOnboarding } from "../../../src/runtime/agents/complete-agent-onboarding.ts";
 import { readAgentId } from "../../../src/runtime/agents/read-agent-id.ts";
+
+const claudeWorkspaceAdapter = new ClaudeAdapter();
+
+function prepareWorkspace(agentHomeDir: string) {
+	claudeWorkspaceAdapter.prepareWorkspace(agentHomeDir);
+}
 
 function createHomeDir() {
 	return mkdtempSync(join(tmpdir(), "outclaw-onboard-"));
@@ -35,7 +41,7 @@ describe("agent onboarding", () => {
 				createAgentId: () => "agent-railly",
 				homeDir,
 				name: "railly",
-				prepareWorkspace: prepareAgentWorkspace,
+				prepareWorkspace,
 				templatesDir,
 			});
 
@@ -79,7 +85,7 @@ describe("agent onboarding", () => {
 				createAgentId: () => "agent-railly",
 				homeDir,
 				name: "railly",
-				prepareWorkspace: prepareAgentWorkspace,
+				prepareWorkspace,
 				templatesDir,
 			});
 

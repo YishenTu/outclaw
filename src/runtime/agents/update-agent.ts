@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { assertValidAgentName } from "../../common/agent-name.ts";
+import { createOutclawLayout } from "../../common/layout.ts";
 import {
 	loadSharedEnv,
 	resolveAllowedUsers,
@@ -26,7 +26,9 @@ interface UpdateAgentOptions {
 export function updateAgent(options: UpdateAgentOptions) {
 	assertValidAgentName(options.name);
 
-	const agentHomeDir = join(options.homeDir, "agents", options.name);
+	const agentHomeDir = createOutclawLayout({
+		homeDir: options.homeDir,
+	}).agent(options.name).homeDir;
 	if (!existsSync(agentHomeDir)) {
 		throw new Error(`Agent does not exist: ${options.name}`);
 	}

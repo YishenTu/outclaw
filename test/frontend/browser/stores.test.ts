@@ -656,6 +656,46 @@ describe("browser stores", () => {
 		]);
 	});
 
+	test("chat store restores streaming snapshots into the heartbeat channel when a heartbeat indicator is pending", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+		useChatStore.getState().replaceHistory(sessionKey, [
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+		]);
+
+		useChatStore.getState().restoreStreamingState(sessionKey, {
+			images: [
+				{
+					kind: "managed",
+					path: "/tmp/heartbeat.png",
+					mediaType: "image/png",
+				},
+			],
+			text: "checked tasks",
+			thinking: "inspect",
+		});
+
+		const session = useChatStore.getState().getSession(sessionKey);
+		expect(session).toMatchObject({
+			heartbeatPending: true,
+			heartbeatStreamingText: "checked tasks",
+			heartbeatStreamingThinking: "inspect",
+			streamingText: "",
+			streamingThinking: "",
+		});
+		expect(session?.heartbeatStreamingImages).toEqual([
+			{
+				kind: "managed",
+				path: "/tmp/heartbeat.png",
+				mediaType: "image/png",
+			},
+		]);
+		expect(session?.streamingImages).toEqual([]);
+	});
+
 	test("chat store hides replayed heartbeat noop turns", () => {
 		useChatStore.getState().replaceHistory("agent-a:claude:sdk-alpha", [
 			{

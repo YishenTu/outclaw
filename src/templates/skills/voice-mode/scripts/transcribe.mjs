@@ -173,7 +173,7 @@ export function extractTranscript(response) {
 		.trim();
 }
 
-async function withTimeout(promise, timeoutMs) {
+export async function withTimeout(promise, timeoutMs) {
 	let timer;
 	try {
 		return await Promise.race([

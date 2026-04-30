@@ -1,5 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeAdapter } from "../../../src/backend/adapters/claude.ts";
@@ -42,6 +48,23 @@ describe("ClaudeAdapter", () => {
 		expect(adapter.run).toBeFunction();
 		expect(adapter.readHistory).toBeFunction();
 		expect(adapter.readTranscript).toBeFunction();
+		expect(adapter.prepareWorkspace).toBeFunction();
+	});
+
+	test("prepareWorkspace creates the Claude skills symlink", () => {
+		const promptHomeDir = mkdtempSync(
+			join(tmpdir(), "outclaw-claude-workspace-"),
+		);
+		try {
+			const { adapter } = createAdapter();
+
+			adapter.prepareWorkspace(promptHomeDir);
+
+			expect(existsSync(join(promptHomeDir, "skills"))).toBe(true);
+			expect(existsSync(join(promptHomeDir, ".claude", "skills"))).toBe(true);
+		} finally {
+			rmSync(promptHomeDir, { recursive: true, force: true });
+		}
 	});
 
 	test("run() returns an async iterable", async () => {
@@ -423,6 +446,92 @@ describe("ClaudeAdapter", () => {
 			options?: { sessionId?: string };
 		};
 		expect(args.options?.sessionId).toBe("sdk-stable");
+	});
+
+	test("assembles SDK options with tools, stream mode, abort controller, and merged environment", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "result",
+					session_id: "sdk-options",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+		const abortController = new AbortController();
+		const previousPath = process.env.PATH;
+		process.env.OUTCLAW_CLAUDE_OPTIONS_TEST = "from-process";
+
+		try {
+			const { adapter } = createAdapter({ query });
+
+			for await (const _event of adapter.run({
+				prompt: "hello",
+				abortController,
+				cwd: "/tmp/outclaw",
+				effort: "high",
+				model: "sonnet",
+				sessionEnv: {
+					OC_SESSION_ID: "oc-123",
+					PATH: "/custom/bin",
+				},
+				sessionId: "sdk-options",
+				stream: false,
+				systemPrompt: "system",
+			})) {
+				// Drain
+			}
+		} finally {
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			delete process.env.OUTCLAW_CLAUDE_OPTIONS_TEST;
+		}
+
+		const args = query.mock.calls[0]?.[0] as {
+			options: {
+				abortController?: AbortController;
+				allowDangerouslySkipPermissions?: boolean;
+				cwd?: string;
+				effort?: string;
+				env?: Record<string, string>;
+				includePartialMessages?: boolean;
+				model?: string;
+				permissionMode?: string;
+				sessionId?: string;
+				systemPrompt?: string;
+				tools?: string[];
+			};
+		};
+
+		expect(args.options).toMatchObject({
+			abortController,
+			allowDangerouslySkipPermissions: true,
+			cwd: "/tmp/outclaw",
+			effort: "high",
+			includePartialMessages: false,
+			model: "sonnet",
+			permissionMode: "bypassPermissions",
+			sessionId: "sdk-options",
+			systemPrompt: "system",
+			tools: [
+				"Bash",
+				"Read",
+				"Write",
+				"Edit",
+				"Glob",
+				"Grep",
+				"WebSearch",
+				"WebFetch",
+				"Skill",
+			],
+		});
+		expect(args.options.env?.OUTCLAW_CLAUDE_OPTIONS_TEST).toBe("from-process");
+		expect(args.options.env?.OC_SESSION_ID).toBe("oc-123");
+		expect(args.options.env?.PATH).toBe("/custom/bin");
 	});
 
 	test("streams text deltas and merges usage from the main assistant message with result model metadata", async () => {

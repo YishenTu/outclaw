@@ -7,13 +7,17 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { Cron } from "croner";
-import { type EffortLevel, isOpusOnlyEffort } from "../../common/commands.ts";
+import type { EffortLevel } from "../../common/commands.ts";
 import {
 	hasCronJobExtension,
 	isCronJobFile,
 } from "../../common/cron-job-file.ts";
-import { MODELS, resolveModelAlias } from "../../common/models.ts";
 import { extractError } from "../../common/protocol.ts";
+import {
+	CronExecutionPolicy,
+	type CronExecutionResult,
+	type CronRunStartResult,
+} from "./execution-policy.ts";
 import {
 	type CronJobConfig,
 	parseJobConfig,
@@ -26,33 +30,7 @@ import {
 	resolveJobSchedule,
 } from "./schedule.ts";
 
-interface CronAgentRunResult {
-	sessionId?: string;
-	text: string;
-}
-
-interface CronExecutionResult {
-	jobName: string;
-	model: string;
-	sessionId?: string;
-	suppressDelivery?: boolean;
-	telegramChatId?: number;
-	text: string;
-}
-
-export type CronRunStartResult =
-	| {
-			status: "accepted";
-			jobName: string;
-	  }
-	| {
-			status: "disabled";
-			jobName: string;
-	  }
-	| {
-			status: "not_found";
-			jobName: string;
-	  };
+export type { CronRunStartResult } from "./execution-policy.ts";
 
 interface CronSchedulerOptions {
 	cronDir: string;
@@ -60,7 +38,7 @@ interface CronSchedulerOptions {
 		prompt: string,
 		model?: string,
 		effort?: EffortLevel,
-	) => Promise<string | CronAgentRunResult>;
+	) => Promise<string | { sessionId?: string; text: string }>;
 	onResult: (result: CronExecutionResult) => Promise<void> | void;
 	getDefaultModel: () => string;
 	getDefaultEffort: () => EffortLevel;
@@ -87,9 +65,16 @@ export class CronScheduler {
 	private pollTimer: ReturnType<typeof setInterval> | undefined;
 	private watcher: ReturnType<typeof watch> | undefined;
 	private options: CronSchedulerOptions;
+	private executionPolicy: CronExecutionPolicy;
 
 	constructor(options: CronSchedulerOptions) {
 		this.options = options;
+		this.executionPolicy = new CronExecutionPolicy({
+			getDefaultEffort: options.getDefaultEffort,
+			getDefaultModel: options.getDefaultModel,
+			onResult: options.onResult,
+			runAgent: options.runAgent,
+		});
 	}
 
 	get jobCount(): number {
@@ -121,7 +106,7 @@ export class CronScheduler {
 		if (!filename) return;
 		const job = this.jobs.get(filename);
 		if (!job) return;
-		await this.executeJob(job);
+		await this.executionPolicy.runScheduledJob(job);
 	}
 
 	startJob(name: string): CronRunStartResult {
@@ -129,26 +114,11 @@ export class CronScheduler {
 
 		const filename = this.filesByName.get(name);
 		const job = filename ? this.jobs.get(filename) : undefined;
-		if (job) {
-			void this.executeJob(job);
-			return {
-				status: "accepted",
-				jobName: job.config.name,
-			};
-		}
-
-		const disabled = this.findDisabledJob(name);
-		if (disabled) {
-			return {
-				status: "disabled",
-				jobName: disabled.name,
-			};
-		}
-
-		return {
-			status: "not_found",
-			jobName: name,
-		};
+		return this.executionPolicy.startManualRun(
+			name,
+			job,
+			this.findDisabledJob(name),
+		);
 	}
 
 	private syncJobsWithDirectory() {
@@ -255,7 +225,7 @@ export class CronScheduler {
 			this.disableOneTimeJob(job);
 		}
 
-		void this.executeJob(job);
+		void this.executionPolicy.runScheduledJob(job);
 	}
 
 	private disableOneTimeJob(job: ActiveJob) {
@@ -274,47 +244,6 @@ export class CronScheduler {
 		}
 
 		this.removeJobByFile(job.filename);
-	}
-
-	private async executeJob(job: ActiveJob) {
-		const model = job.config.model ?? this.options.getDefaultModel();
-		const effort = normalizeCronEffort(
-			model,
-			job.config.effort ?? this.options.getDefaultEffort(),
-		);
-
-		try {
-			const runResult = normalizeRunResult(
-				await this.options.runAgent(job.config.prompt, model, effort),
-			);
-
-			if (isSuppressedCronResult(runResult.text)) {
-				await this.options.onResult({
-					jobName: job.config.name,
-					model,
-					sessionId: runResult.sessionId,
-					suppressDelivery: true,
-					telegramChatId: job.telegramChatId,
-					text: "",
-				});
-				return;
-			}
-
-			await this.options.onResult({
-				jobName: job.config.name,
-				model,
-				sessionId: runResult.sessionId,
-				telegramChatId: job.telegramChatId,
-				text: runResult.text,
-			});
-		} catch (err) {
-			await this.options.onResult({
-				jobName: job.config.name,
-				model,
-				telegramChatId: job.telegramChatId,
-				text: `[error] ${extractError(err)}`,
-			});
-		}
 	}
 
 	private startWatcher() {
@@ -389,32 +318,4 @@ export class CronScheduler {
 
 		return undefined;
 	}
-}
-
-function normalizeRunResult(
-	result: string | CronAgentRunResult,
-): CronAgentRunResult {
-	if (typeof result === "string") {
-		return {
-			text: result,
-		};
-	}
-
-	return result;
-}
-
-function isSuppressedCronResult(text: string): boolean {
-	return text.trim().replace(/`/g, "").toUpperCase() === "NO_REPLY";
-}
-
-function normalizeCronEffort(model: string, effort: EffortLevel): EffortLevel {
-	if (isOpusOnlyEffort(effort) && !isCronOpusModel(model)) {
-		return "high";
-	}
-
-	return effort;
-}
-
-function isCronOpusModel(model: string): boolean {
-	return resolveModelAlias(model) === MODELS.opus.id;
 }

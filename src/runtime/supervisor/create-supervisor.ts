@@ -1,23 +1,22 @@
-import type {
-	BrowserAgentsResponse,
-	BrowserConfigResponse,
-	BrowserCronEntry,
-	BrowserFileResponse,
-	BrowserGitCommitResponse,
-	BrowserGitDiffResponse,
-	BrowserGitStatusResponse,
-	BrowserTerminalRunCommandResponse,
-	BrowserTreeEntry,
-	ImageMediaType,
-	RuntimeClientType,
-} from "../../common/protocol.ts";
+import type { RuntimeClientType } from "../../common/protocol.ts";
 import type { AgentRuntime } from "../application/create-agent-runtime.ts";
 import { createBrowserSidebarWatcher } from "../browser/browser-sidebar-watcher.ts";
 import { TerminalRelay } from "../browser/terminal-relay.ts";
 import { AgentRuntimeRegistry } from "./agent-runtime-registry.ts";
+import {
+	type BrowserApi,
+	handleBrowserApiRequest,
+} from "./browser-api-router.ts";
 import { type BrowserApp, serveBrowserApp } from "./browser-app.ts";
 import { ClientAgentBinding } from "./client-agent-binding.ts";
 import { SupervisorController } from "./supervisor-controller.ts";
+import { handleTerminalGatewayRequest } from "./terminal-gateway.ts";
+import {
+	isRuntimeSocketPath,
+	isWebSocketUpgradeRequest,
+	resolveRuntimeClientType,
+	resolveTelegramUserId,
+} from "./websocket-routing.ts";
 
 interface SupervisorSocketData {
 	clientType: RuntimeClientType;
@@ -46,36 +45,7 @@ interface TelegramRoutingOptions {
 interface CreateSupervisorOptions {
 	agents: AgentRuntime[];
 	browserApp?: BrowserApp;
-	browserApi?: {
-		getAgentTerminalCwd(agentId: string): string | undefined;
-		listAgents(): BrowserAgentsResponse;
-		listAgentCron(agentId: string): Promise<BrowserCronEntry[]>;
-		listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
-		readConfigFile(): Promise<BrowserConfigResponse>;
-		writeConfigFile(
-			document: Record<string, unknown>,
-		): Promise<BrowserConfigResponse>;
-		writeAgentTerminalRunCommand?(
-			agentId: string,
-			command: string,
-		): Promise<BrowserTerminalRunCommandResponse>;
-		readAgentFile(
-			agentId: string,
-			relativePath: string,
-		): Promise<BrowserFileResponse>;
-		initGitRepo(): Promise<BrowserGitStatusResponse>;
-		readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
-		readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
-		readGitStatus(): Promise<BrowserGitStatusResponse>;
-		uploadImages?(
-			images: Array<{ bytes: Uint8Array; mediaType: ImageMediaType }>,
-		): Promise<Array<{ path: string; mediaType: ImageMediaType }>>;
-		setAgentCronEnabled(
-			agentId: string,
-			relativePath: string,
-			enabled: boolean,
-		): Promise<BrowserCronEntry>;
-	};
+	browserApi?: BrowserApi;
 	browserWatch?: {
 		agents: Array<{
 			agentId: string;
@@ -126,26 +96,12 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 			}
 
 			if (url.pathname === "/terminal") {
-				if (!isWebSocketUpgradeRequest(req)) {
-					return new Response("outclaw runtime", { status: 200 });
-				}
-				const agentId = url.searchParams.get("agentId") ?? undefined;
-				const terminalCwd =
-					agentId && options.browserApi
-						? options.browserApi.getAgentTerminalCwd(agentId)
-						: undefined;
-				if (
-					server.upgrade(req, {
-						data: {
-							clientType: "browser",
-							socketType: "terminal",
-							terminalCwd,
-						},
-					})
-				) {
-					return;
-				}
-				return new Response("WebSocket upgrade failed", { status: 400 });
+				return handleTerminalGatewayRequest(
+					req,
+					url,
+					server,
+					options.browserApi,
+				);
 			}
 
 			if (isRuntimeSocketPath(url.pathname)) {
@@ -174,7 +130,7 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 				return new Response("outclaw runtime", { status: 200 });
 			}
 
-			const clientType = resolveClientType(url);
+			const clientType = resolveRuntimeClientType(url);
 			const requestedAgentName = url.searchParams.get("agent") ?? undefined;
 			const telegramBotId = url.searchParams.get("telegramBotId") ?? undefined;
 			const telegramUserId = resolveTelegramUserId(url);
@@ -274,220 +230,4 @@ function isListenError(error: unknown): boolean {
 		error !== null &&
 		(error as { code?: unknown }).code === "EADDRINUSE"
 	);
-}
-
-async function handleBrowserApiRequest(
-	req: Request,
-	url: URL,
-	browserApi: CreateSupervisorOptions["browserApi"],
-) {
-	if (!browserApi) {
-		return jsonError("Browser API is not configured", 404);
-	}
-
-	try {
-		if (url.pathname === "/api/agents") {
-			return Response.json(browserApi.listAgents());
-		}
-
-		if (url.pathname === "/api/config") {
-			if (req.method === "PATCH") {
-				const body = (await req.json().catch(() => undefined)) as
-					| { document?: Record<string, unknown> }
-					| undefined;
-				if (!body?.document) {
-					return jsonError("Missing config document", 400);
-				}
-				return Response.json(await browserApi.writeConfigFile(body.document));
-			}
-			return Response.json(await browserApi.readConfigFile());
-		}
-
-		if (url.pathname === "/api/git/status") {
-			return Response.json(await browserApi.readGitStatus());
-		}
-
-		if (url.pathname === "/api/git/init") {
-			if (req.method !== "POST") {
-				return jsonError("Method not allowed", 405);
-			}
-			return Response.json(await browserApi.initGitRepo());
-		}
-
-		if (url.pathname === "/api/git/diff") {
-			const path = url.searchParams.get("path");
-			if (!path) {
-				return jsonError("Missing path query parameter", 400);
-			}
-			return Response.json(await browserApi.readGitDiff(path));
-		}
-
-		if (url.pathname === "/api/git/commit") {
-			const sha = url.searchParams.get("sha");
-			if (!sha) {
-				return jsonError("Missing sha query parameter", 400);
-			}
-			return Response.json(await browserApi.readGitCommit(sha));
-		}
-
-		if (url.pathname === "/api/images") {
-			if (req.method !== "POST") {
-				return jsonError("Method not allowed", 405);
-			}
-			if (!browserApi.uploadImages) {
-				return jsonError("Image upload is not configured", 404);
-			}
-
-			const images = await readUploadedImages(req);
-			return Response.json({
-				images: await browserApi.uploadImages(images),
-			});
-		}
-
-		const agentMatch = url.pathname.match(
-			/^\/api\/agents\/([^/]+)\/(tree|files|cron|terminal-run-command)$/,
-		);
-		if (!agentMatch) {
-			return jsonError("Not found", 404);
-		}
-
-		const [, encodedAgentId, resource] = agentMatch;
-		const agentId = decodeURIComponent(encodedAgentId ?? "");
-		if (resource === "terminal-run-command") {
-			if (req.method === "PATCH") {
-				if (!browserApi.writeAgentTerminalRunCommand) {
-					return jsonError("Terminal run command API is not configured", 404);
-				}
-				const body = (await req.json().catch(() => undefined)) as
-					| { command?: unknown }
-					| undefined;
-				if (typeof body?.command !== "string") {
-					return jsonError("Missing terminal run command", 400);
-				}
-				return Response.json(
-					await browserApi.writeAgentTerminalRunCommand(agentId, body.command),
-				);
-			}
-
-			return jsonError("Method not allowed", 405);
-		}
-
-		if (resource === "cron" && req.method === "PATCH") {
-			const body = (await req.json().catch(() => undefined)) as
-				| { enabled?: boolean; path?: string }
-				| undefined;
-			if (!body?.path || typeof body.enabled !== "boolean") {
-				return jsonError("Missing cron path or enabled state", 400);
-			}
-			return Response.json(
-				await browserApi.setAgentCronEnabled(agentId, body.path, body.enabled),
-			);
-		}
-
-		if (req.method !== "GET") {
-			return jsonError("Method not allowed", 405);
-		}
-
-		if (resource === "tree") {
-			return Response.json(await browserApi.listAgentTree(agentId));
-		}
-		if (resource === "cron") {
-			return Response.json(await browserApi.listAgentCron(agentId));
-		}
-
-		const path = url.searchParams.get("path");
-		if (!path) {
-			return jsonError("Missing path query parameter", 400);
-		}
-		return Response.json(await browserApi.readAgentFile(agentId, path));
-	} catch (error) {
-		const message = error instanceof Error ? error.message : "Unexpected error";
-		const status =
-			message.startsWith("Unknown agent:") ||
-			message.startsWith("Unknown commit:")
-				? 404
-				: message === "Path is required"
-					? 400
-					: message === "Terminal run command must be a single line"
-						? 400
-						: message.startsWith("Path escapes") ||
-								message === "Path escapes cron directory" ||
-								message === "Path does not reference a file"
-							? 400
-							: 500;
-		return jsonError(message, status);
-	}
-}
-
-function jsonError(message: string, status: number) {
-	return Response.json(
-		{
-			error: message,
-		},
-		{ status },
-	);
-}
-
-async function readUploadedImages(req: Request) {
-	const formData = await req.formData();
-	const files = formData.getAll("images");
-	const images: Array<{ bytes: Uint8Array; mediaType: ImageMediaType }> = [];
-
-	for (const entry of files) {
-		if (!(entry instanceof File)) {
-			continue;
-		}
-
-		if (!isImageMediaType(entry.type)) {
-			throw new Error(
-				`Unsupported image media type: ${entry.type || "(empty)"}`,
-			);
-		}
-
-		images.push({
-			bytes: new Uint8Array(await entry.arrayBuffer()),
-			mediaType: entry.type,
-		});
-	}
-
-	if (images.length === 0) {
-		throw new Error("Missing uploaded images");
-	}
-
-	return images;
-}
-
-function isImageMediaType(type: string): type is ImageMediaType {
-	return (
-		type === "image/jpeg" ||
-		type === "image/png" ||
-		type === "image/gif" ||
-		type === "image/webp"
-	);
-}
-
-function isRuntimeSocketPath(pathname: string): boolean {
-	return pathname === "/" || pathname === "/ws";
-}
-
-function isWebSocketUpgradeRequest(req: Request): boolean {
-	return req.headers.get("upgrade")?.toLowerCase() === "websocket";
-}
-
-function resolveClientType(url: URL): RuntimeClientType {
-	const client = url.searchParams.get("client");
-	if (client === "telegram" || client === "browser" || client === "control") {
-		return client;
-	}
-	return "tui";
-}
-
-function resolveTelegramUserId(url: URL): number | undefined {
-	const value = url.searchParams.get("telegramUserId");
-	if (!value) {
-		return undefined;
-	}
-
-	const parsed = Number(value);
-	return Number.isInteger(parsed) ? parsed : undefined;
 }

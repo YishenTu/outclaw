@@ -15,6 +15,7 @@ let target: string;
 let source: string;
 
 const FILES = ["AGENTS.md", "SOUL.md", "USER.md", "MEMORY.md", "HEARTBEAT.md"];
+const REPO_TEMPLATES_DIR = join(import.meta.dir, "../../../src/templates");
 
 beforeEach(() => {
 	target = mkdtempSync(join(tmpdir(), "mis-target-"));
@@ -54,6 +55,22 @@ describe("seedTemplates", () => {
 
 		expect(readFileSync(join(target, "AGENTS.md"), "utf-8")).toBe(
 			"cwd: ~/.outclaw/agents/railly/\n",
+		);
+	});
+
+	test("does not render agent-name placeholders in unknown or binary file types", () => {
+		writeFileSync(join(source, "unknown.bin"), "raw:<agent-name>");
+		writeFileSync(join(source, "unknown.custom"), "raw:<agent-name>");
+
+		seedTemplates(target, source, {
+			agentName: "railly",
+		});
+
+		expect(readFileSync(join(target, "unknown.bin"), "utf-8")).toBe(
+			"raw:<agent-name>",
+		);
+		expect(readFileSync(join(target, "unknown.custom"), "utf-8")).toBe(
+			"raw:<agent-name>",
 		);
 	});
 
@@ -161,5 +178,60 @@ describe("seedTemplates", () => {
 		expect(readFileSync(join(target, "cron", "notes.txt"), "utf-8")).toBe(
 			"some notes",
 		);
+	});
+
+	test("seeds the default agent template package contract", () => {
+		const agentTarget = mkdtempSync(
+			join(tmpdir(), "outclaw-template-contract-"),
+		);
+		try {
+			const existingMemory = "custom memory\n";
+			writeFileSync(join(agentTarget, "MEMORY.md"), existingMemory);
+
+			const result = seedTemplates(agentTarget, REPO_TEMPLATES_DIR, {
+				agentName: "railly",
+			});
+
+			const expectedFiles = [
+				"AGENTS.md",
+				"HEARTBEAT.md",
+				"MEMORY.md",
+				"SOUL.md",
+				"USER.md",
+				"cron/_template.yaml",
+				"cron/memory-distill.yaml",
+				"cron/memory-route.yaml",
+				"cron/memory-synthesize.yaml",
+				"cron/soul-evolve.yaml",
+				"schemas/_template.md",
+				"schemas/index.md",
+				"skills/actionbook/SKILL.md",
+				"skills/oc/SKILL.md",
+				"skills/oc/references/daemon-operations.md",
+				"skills/oc/references/session-lookup.md",
+				"skills/skill-creator/SKILL.md",
+				"skills/voice-mode/SKILL.md",
+				"skills/voice-mode/scripts/errors.mjs",
+				"skills/voice-mode/scripts/gemini-client.mjs",
+				"skills/voice-mode/scripts/mime.mjs",
+				"skills/voice-mode/scripts/transcribe.mjs",
+			];
+
+			for (const file of expectedFiles) {
+				expect(existsSync(join(agentTarget, file))).toBe(true);
+			}
+			expect(readFileSync(join(agentTarget, "MEMORY.md"), "utf-8")).toBe(
+				existingMemory,
+			);
+			expect(readFileSync(join(agentTarget, "AGENTS.md"), "utf-8")).toContain(
+				"~/.outclaw/agents/railly/",
+			);
+			expect(result.seeded).not.toContain("MEMORY.md");
+			expect(result.seeded).toContain(
+				"skills/voice-mode/scripts/transcribe.mjs",
+			);
+		} finally {
+			rmSync(agentTarget, { force: true, recursive: true });
+		}
 	});
 });

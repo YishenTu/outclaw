@@ -4,6 +4,7 @@ import type {
 	RuntimeStatusEvent,
 	UsageInfo,
 } from "../../../common/protocol.ts";
+import { createRuntimeNoticeKey } from "../runtime-notice-projection.ts";
 
 export type BrowserConnectionStatus =
 	| "connecting"
@@ -36,24 +37,10 @@ export interface BrowserRuntimeState {
 	clearSession: () => void;
 }
 
-function createNoticeKey(
-	notice: FrontendNotice | null | undefined,
-): string | null {
-	if (!notice) {
-		return null;
-	}
-
-	if (notice.kind === "rollover") {
-		return `rollover:${notice.message}`;
-	}
-
-	return notice.kind;
-}
-
 export function selectVisibleRuntimeNotice(
 	state: Pick<BrowserRuntimeState, "dismissedNoticeKey" | "notice">,
 ): FrontendNotice | null {
-	const noticeKey = createNoticeKey(state.notice);
+	const noticeKey = createRuntimeNoticeKey(state.notice);
 	if (!noticeKey || noticeKey === state.dismissedNoticeKey) {
 		return null;
 	}
@@ -79,13 +66,13 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 	dismissNotice: () =>
 		set((state) => ({
 			dismissedNoticeKey:
-				createNoticeKey(state.notice) ?? state.dismissedNoticeKey,
+				createRuntimeNoticeKey(state.notice) ?? state.dismissedNoticeKey,
 		})),
 	setError: (error) => set({ error }),
 	updateFromStatus: (event) =>
 		set((state) => {
 			const notice = event.notice ?? null;
-			const noticeKey = createNoticeKey(notice);
+			const noticeKey = createRuntimeNoticeKey(notice);
 			return {
 				agentName: event.agentName ?? state.agentName,
 				providerId: event.providerId ?? state.providerId,

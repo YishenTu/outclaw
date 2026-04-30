@@ -13,7 +13,7 @@ import {
 
 const EDIT_THROTTLE_MS = 1_000;
 
-interface TelegramPromptContext {
+export interface TelegramPromptContext {
 	chatId: number;
 	replyWithChatAction(action: "typing"): Promise<unknown>;
 	replyWithPhoto(

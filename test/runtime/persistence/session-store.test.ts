@@ -852,6 +852,40 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("usage snapshots are independent of transcript replacement", () => {
+		const store = createTestStore();
+		const usage = {
+			inputTokens: 100,
+			outputTokens: 200,
+			cacheCreationTokens: 50,
+			cacheReadTokens: 25,
+			contextWindow: 200000,
+			maxOutputTokens: 32000,
+			contextTokens: 1234,
+			percentage: 1,
+		};
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-usage-transcript",
+			title: "Chat",
+			model: "opus",
+		});
+		store.setUsage(CLAUDE_PROVIDER, "sdk-usage-transcript", usage);
+
+		store.replaceTranscript(CLAUDE_PROVIDER, "sdk-usage-transcript", [
+			{
+				role: "assistant",
+				content: "searchable answer",
+				timestamp: 100,
+			},
+		]);
+
+		expect(store.getUsage(CLAUDE_PROVIDER, "sdk-usage-transcript")).toEqual(
+			usage,
+		);
+		store.close();
+	});
+
 	test("getUsage returns undefined for missing session", () => {
 		const store = createTestStore();
 		expect(store.getUsage(CLAUDE_PROVIDER, "nonexistent")).toBeUndefined();

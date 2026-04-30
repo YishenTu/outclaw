@@ -4,7 +4,6 @@ import type { EffortLevel } from "../../../../common/commands.ts";
 import type { ModelAlias } from "../../../../common/models.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import { useRuntimePopupStore } from "../../stores/runtime-popup.ts";
-import type { CommandEntry } from "../../stores/slash-commands.ts";
 import { useSlashCommandsStore } from "../../stores/slash-commands.ts";
 import {
 	type ComposerImageAttachment,
@@ -15,6 +14,11 @@ import { ContextGauge } from "./context-gauge.tsx";
 import { useGlobalStopShortcut } from "./global-stop-shortcut.ts";
 import { HeartbeatIndicator } from "./heartbeat-indicator.tsx";
 import { getImageThumbnailClassName } from "./image-thumbnail-styles.ts";
+import {
+	canSubmitMessageInput,
+	filterSlashCommands,
+	resolveRuntimePopupItemCount,
+} from "./message-input-behavior.ts";
 import {
 	type ComposerDraft,
 	clearSubmittedDraftIfUnchanged,
@@ -39,21 +43,6 @@ interface MessageInputProps {
 	onEffortChange: (effort: EffortLevel) => boolean;
 	headerSlot?: React.ReactNode;
 	compact?: boolean;
-}
-
-function isSlashAutocompleteInput(value: string): boolean {
-	return value.startsWith("/") && !value.includes(" ") && !value.includes("\n");
-}
-
-function filterSlashCommands(value: string, commands: CommandEntry[]) {
-	if (!isSlashAutocompleteInput(value)) {
-		return [];
-	}
-
-	const filter = value.slice(1).toLowerCase();
-	return commands.filter((command) =>
-		command.name.toLowerCase().startsWith(filter),
-	);
 }
 
 export function MessageInput({
@@ -84,15 +73,14 @@ export function MessageInput({
 	const closeRuntimePopup = useRuntimePopupStore((state) => state.closePopup);
 	const filteredCommands = filterSlashCommands(value, commands);
 	const showSlashMenu = filteredCommands.length > 0;
-	const canSend =
-		!disabled && !submitting && (value.trim() !== "" || images.length > 0);
+	const canSend = canSubmitMessageInput({
+		disabled,
+		imageCount: images.length,
+		submitting,
+		value,
+	});
 	const isInputDisabled = disabled || submitting;
-	const runtimePopupItemCount =
-		runtimePopup?.kind === "agent"
-			? runtimePopup.agents.length
-			: runtimePopup?.kind === "session"
-				? runtimePopup.sessions.length
-				: 0;
+	const runtimePopupItemCount = resolveRuntimePopupItemCount(runtimePopup);
 
 	function focusTextarea() {
 		window.requestAnimationFrame(() => {

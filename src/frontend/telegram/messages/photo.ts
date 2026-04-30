@@ -12,8 +12,12 @@ import {
 	resolveReplyAttachments,
 	type TelegramMessageFileOptions,
 } from "../files/message-file-ref.ts";
-import { saveTelegramFile } from "../files/storage.ts";
+import {
+	buildTelegramFileUrl,
+	saveTelegramApiFile,
+} from "../files/telegram-file-path.ts";
 import { runTelegramPrompt } from "./prompt.ts";
+import { createTelegramPromptContext } from "./prompt-context.ts";
 import { extractReplyContext } from "./reply-context.ts";
 
 interface TelegramPhotoContext {
@@ -74,23 +78,26 @@ export async function handleTelegramPhotoMessage(
 		if (!file.file_path) {
 			throw new Error("Telegram file path is missing");
 		}
+		const filePath = file.file_path;
 
-		const { ext, mediaType } = getImageInfo(file.file_path);
+		const { ext, mediaType } = getImageInfo(filePath);
 		const saveMedia =
 			options.saveMedia ??
 			(async (
-				url: string,
+				_url: string,
 				extension: string,
 				imageMediaType: ImageRef["mediaType"],
 			): Promise<ImageRef> => {
-				if (!options.filesRoot) {
-					throw new Error("Telegram files root is not configured");
-				}
-				const saved = await saveTelegramFile(options.filesRoot, url, extension);
+				const saved = await saveTelegramApiFile({
+					ext: extension,
+					filePath,
+					filesRoot: options.filesRoot,
+					token: options.token,
+				});
 				return { path: saved.path, mediaType: imageMediaType };
 			});
 		const image = await saveMedia(
-			buildTelegramFileUrl(options.token, file.file_path),
+			buildTelegramFileUrl(options.token, filePath),
 			ext,
 			mediaType,
 		);
@@ -109,40 +116,25 @@ export async function handleTelegramPhotoMessage(
 			options.resolveMessageFile,
 		);
 
-		await runTelegramPrompt(
-			{
-				chatId: ctx.chat.id,
-				replyWithChatAction: (action) => ctx.replyWithChatAction(action),
-				replyWithPhoto: (photo, promptOptions) =>
-					ctx.replyWithPhoto(photo, promptOptions),
-				sendMessage: (text, sendOptions) => ctx.sendMessage(text, sendOptions),
-				editMessageText: (messageId, text, editOptions) =>
-					ctx.editMessageText(messageId, text, editOptions),
+		await runTelegramPrompt(createTelegramPromptContext(ctx), {
+			prompt: appendPromptSegments(
+				ctx.message.caption ?? "",
+				replyAttachments.promptSegments,
+			),
+			images: [...replyAttachments.images, image],
+			replyContext: extractReplyContext(ctx.message.reply_to_message),
+			rememberSentImage: async (messageId, event) => {
+				await rememberOutboundImage(
+					ctx.chat.id,
+					messageId,
+					event,
+					options.rememberMessageFile,
+				);
 			},
-			{
-				prompt: appendPromptSegments(
-					ctx.message.caption ?? "",
-					replyAttachments.promptSegments,
-				),
-				images: [...replyAttachments.images, image],
-				replyContext: extractReplyContext(ctx.message.reply_to_message),
-				rememberSentImage: async (messageId, event) => {
-					await rememberOutboundImage(
-						ctx.chat.id,
-						messageId,
-						event,
-						options.rememberMessageFile,
-					);
-				},
-				streamPrompt: (prompt, images, onImage, replyContext) =>
-					options.streamPrompt(prompt, images, onImage, replyContext),
-			},
-		);
+			streamPrompt: (prompt, images, onImage, replyContext) =>
+				options.streamPrompt(prompt, images, onImage, replyContext),
+		});
 	} catch (err) {
 		await ctx.reply(`[error] ${extractError(err)}`);
 	}
-}
-
-function buildTelegramFileUrl(token: string, filePath: string): string {
-	return `https://api.telegram.org/file/bot${token}/${filePath}`;
 }

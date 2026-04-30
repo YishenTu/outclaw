@@ -5,10 +5,7 @@ import type {
 	ImageRef,
 	ReplyContext,
 } from "../../common/protocol.ts";
-import { extractError } from "../../common/protocol.ts";
-import { assembleSystemPrompt } from "../prompt/assemble-system-prompt.ts";
-import { buildSessionEnv } from "../prompt/session-env.ts";
-import { RuntimeImageEventExtractor } from "./image-event-extractor.ts";
+import { runFacadePrompt } from "./facade-runner.ts";
 
 export interface PromptRunnerTask {
 	images?: ImageRef[];
@@ -37,45 +34,20 @@ export class PromptRunner {
 	constructor(private readonly options: PromptRunnerOptions) {}
 
 	async run(options: PromptRunOptions): Promise<void> {
-		const imageEventExtractor = new RuntimeImageEventExtractor();
-
-		try {
-			const systemPrompt = this.options.promptHomeDir
-				? await assembleSystemPrompt(this.options.promptHomeDir)
-				: undefined;
-			const sessionEnv = buildSessionEnv(
-				this.options.promptHomeDir,
-				options.ocSessionId,
-			);
-
-			for await (const event of this.options.facade.run({
-				prompt: options.task.prompt,
-				images: options.task.images,
-				replyContext: options.task.replyContext,
-				systemPrompt,
-				abortController: options.abortController,
-				resume: options.resume,
-				sessionId: options.resume ? undefined : options.ocSessionId,
-				cwd: this.options.cwd,
-				model: options.model,
-				effort: options.effort,
-				stream: options.task.stream,
-				sessionEnv,
-			})) {
-				options.emit(event);
-				if (event.type !== "text") {
-					continue;
-				}
-
-				for (const imageEvent of imageEventExtractor.extract(event.text)) {
-					options.emit(imageEvent);
-				}
-			}
-		} catch (err) {
-			options.emit({
-				type: "error",
-				message: extractError(err),
-			});
-		}
+		await runFacadePrompt({
+			abortController: options.abortController,
+			cwd: this.options.cwd,
+			effort: options.effort,
+			emit: options.emit,
+			facade: this.options.facade,
+			images: options.task.images,
+			model: options.model,
+			ocSessionId: options.ocSessionId,
+			prompt: options.task.prompt,
+			promptHomeDir: this.options.promptHomeDir,
+			replyContext: options.task.replyContext,
+			resume: options.resume,
+			stream: options.task.stream,
+		});
 	}
 }

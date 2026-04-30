@@ -88,6 +88,65 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("sorts sidebar agents by name while preserving provider active sessions", () => {
+		const root = createTempDir("outclaw-browser-api-sort-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const alphaHomeDir = join(root, "agents", "alpha");
+		const betaHomeDir = join(root, "agents", "beta");
+		mkdirSync(alphaHomeDir, { recursive: true });
+		mkdirSync(betaHomeDir, { recursive: true });
+
+		const alphaStore = new SessionStore(dbPath, { agentId: "agent-alpha" });
+		const betaStore = new SessionStore(dbPath, { agentId: "agent-beta" });
+		betaStore.upsert({
+			providerId: "claude",
+			sdkSessionId: "sdk-beta",
+			title: "Beta active",
+			model: "opus",
+		});
+		betaStore.setActiveSessionId("claude", "sdk-beta");
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-beta",
+					name: "beta",
+					homeDir: betaHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+				{
+					agentId: "agent-alpha",
+					name: "alpha",
+					homeDir: alphaHomeDir,
+					providerId: "mock",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => "agent-beta",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([
+				["agent-alpha", alphaStore],
+				["agent-beta", betaStore],
+			]),
+		});
+
+		expect(api.listAgents().agents.map((agent) => agent.name)).toEqual([
+			"alpha",
+			"beta",
+		]);
+		expect(api.listAgents().agents[1]?.activeSession).toEqual({
+			providerId: "claude",
+			sdkSessionId: "sdk-beta",
+		});
+
+		alphaStore.close();
+		betaStore.close();
+	});
+
 	test("reads agent files and lists the agent tree", async () => {
 		const root = createTempDir("outclaw-browser-files-");
 		cleanupPaths.push(root);
@@ -176,6 +235,87 @@ describe("createBrowserApi", () => {
 		await expect(
 			api.readAgentFile("agent-railly", "../outside.txt"),
 		).rejects.toThrow("Path escapes agent home");
+		await expect(
+			api.setAgentCronEnabled("agent-railly", "AGENTS.md", false),
+		).rejects.toThrow("Path escapes cron directory");
+
+		store.close();
+	});
+
+	test("rejects agent file symlinks that resolve outside the agent home", async () => {
+		const root = createTempDir("outclaw-browser-file-symlink-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const outsideDir = join(root, "outside");
+		mkdirSync(agentHomeDir, { recursive: true });
+		mkdirSync(outsideDir, { recursive: true });
+		writeFileSync(join(outsideDir, "secret.txt"), "secret\n");
+		symlinkSync(join(outsideDir, "secret.txt"), join(agentHomeDir, "link.txt"));
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(api.readAgentFile("agent-railly", "link.txt")).rejects.toThrow(
+			"Path escapes agent home",
+		);
+
+		store.close();
+	});
+
+	test("rejects cron mutation symlinks that resolve outside the cron directory", async () => {
+		const root = createTempDir("outclaw-browser-cron-symlink-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const cronDir = join(agentHomeDir, "cron");
+		const outsideDir = join(root, "outside");
+		const outsideCronFile = join(outsideDir, "daily.yaml");
+		mkdirSync(cronDir, { recursive: true });
+		mkdirSync(outsideDir, { recursive: true });
+		writeFileSync(
+			outsideCronFile,
+			"name: Daily\nschedule: 15 6 * * *\nenabled: true\nprompt: Check inbox\n",
+		);
+		symlinkSync(outsideCronFile, join(cronDir, "daily.yaml"));
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.setAgentCronEnabled("agent-railly", "cron/daily.yaml", false),
+		).rejects.toThrow("Path escapes cron directory");
+		expect(readFileSync(outsideCronFile, "utf-8")).toContain("enabled: true");
 
 		store.close();
 	});
@@ -830,6 +970,9 @@ describe("createBrowserApi", () => {
 			],
 			diff: expect.stringContaining("diff --git a/README.md b/README.md"),
 		});
+		await expect(api.readGitDiff("../outside.md")).rejects.toThrow(
+			"Path escapes agent home",
+		);
 
 		store.close();
 	});
@@ -947,6 +1090,57 @@ describe("createBrowserApi", () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					path: "notes/",
+				}),
+			]),
+		);
+	});
+
+	test("does not follow untracked symlinks outside the git root for line counts", async () => {
+		const root = createTempDir("outclaw-browser-git-symlink-counts-");
+		cleanupPaths.push(root);
+		const outsideDir = join(root, "..", "outclaw-browser-git-symlink-outside");
+		mkdirSync(outsideDir, { recursive: true });
+		cleanupPaths.push(outsideDir);
+
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+		writeFileSync(join(outsideDir, "secret.txt"), "secret\ncontent\n");
+
+		runGit(root, ["init", "--initial-branch=main"]);
+		runGit(root, ["config", "user.email", "test@example.com"]);
+		runGit(root, ["config", "user.name", "Test User"]);
+		writeFileSync(join(root, "README.md"), "seed\n");
+		runGit(root, ["add", "README.md"]);
+		runGit(root, ["commit", "-m", "Initial commit"]);
+
+		symlinkSync(join(outsideDir, "secret.txt"), join(root, "link.txt"));
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const status = await api.readGitStatus();
+		if (!status.initialized) {
+			throw new Error("expected initialized git status");
+		}
+		expect(status.files).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					path: "link.txt",
+					additions: 0,
+					deletions: 0,
 				}),
 			]),
 		);
@@ -1151,6 +1345,47 @@ describe("createBrowserApi", () => {
 				scheduleKind: "recurring",
 				enabled: true,
 				status: "scheduled",
+			},
+		]);
+
+		store.close();
+	});
+
+	test("keeps invalid cron files visible with parse errors", async () => {
+		const root = createTempDir("outclaw-browser-cron-invalid-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const cronDir = join(agentHomeDir, "cron");
+		mkdirSync(cronDir, { recursive: true });
+		writeFileSync(join(cronDir, "broken.yaml"), "name: Broken\nprompt:\n");
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(api.listAgentCron("agent-railly")).resolves.toEqual([
+			{
+				name: "broken.yaml",
+				path: "cron/broken.yaml",
+				schedule: "Invalid config",
+				enabled: false,
+				status: "invalid",
+				error: expect.any(String),
 			},
 		]);
 

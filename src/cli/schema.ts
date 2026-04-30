@@ -1,5 +1,6 @@
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { createOutclawLayout } from "../common/layout.ts";
 import {
 	parseSchemaFrontmatter,
 	readSchemaDateField,
@@ -282,7 +283,7 @@ function resolveSchemaMemoryRoot(options: {
 }
 
 function resolveAgentBySelector(homeDir: string, selector: string): string {
-	const agentsDir = join(homeDir, "agents");
+	const agentsDir = createOutclawLayout({ homeDir }).agentsDir;
 	let entries: Dirent[];
 	try {
 		entries = readdirSync(agentsDir, { withFileTypes: true });

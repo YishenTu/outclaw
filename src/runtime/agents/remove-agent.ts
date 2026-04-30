@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { assertValidAgentName } from "../../common/agent-name.ts";
+import { createOutclawLayout } from "../../common/layout.ts";
 import { deleteStoredAgentConfig } from "../config.ts";
 import { SessionStore } from "../persistence/session-store.ts";
 import { TelegramRouteStore } from "../persistence/telegram-route-store.ts";
@@ -14,7 +14,9 @@ interface RemoveAgentOptions {
 export function removeAgent(options: RemoveAgentOptions) {
 	assertValidAgentName(options.name);
 
-	const agentHomeDir = join(options.homeDir, "agents", options.name);
+	const agentHomeDir = createOutclawLayout({
+		homeDir: options.homeDir,
+	}).agent(options.name).homeDir;
 	if (!existsSync(agentHomeDir)) {
 		throw new Error(`Agent does not exist: ${options.name}`);
 	}
@@ -26,7 +28,7 @@ export function removeAgent(options: RemoveAgentOptions) {
 }
 
 function deleteAgentPersistence(homeDir: string, agentId: string) {
-	const dbPath = join(homeDir, "db.sqlite");
+	const dbPath = createOutclawLayout({ homeDir }).dbPath;
 	if (!existsSync(dbPath)) {
 		return;
 	}

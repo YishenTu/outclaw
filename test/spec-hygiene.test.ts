@@ -42,6 +42,28 @@ describe("dev spec hygiene", () => {
 		expect(offenders).toEqual([]);
 	});
 
+	test("completed plans are archived pointers", async () => {
+		if (!existsSync(DEV_ROOT)) {
+			return;
+		}
+
+		const offenders: string[] = [];
+
+		for await (const relativePath of new Bun.Glob("plans/*.md").scan(
+			DEV_ROOT,
+		)) {
+			const source = await Bun.file(resolve(DEV_ROOT, relativePath)).text();
+			if (source.includes("\nArchived.")) {
+				continue;
+			}
+			if (/^Status:\s*completed\b/m.test(source)) {
+				offenders.push(relativePath);
+			}
+		}
+
+		expect(offenders).toEqual([]);
+	});
+
 	test("design specs only reference source files that exist", async () => {
 		if (!existsSync(DEV_ROOT)) {
 			return;

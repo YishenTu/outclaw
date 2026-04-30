@@ -189,4 +189,43 @@ describe("RuntimeClientGateway", () => {
 			],
 		});
 	});
+
+	test("handleOpen sends streaming sync after replay when the active session is still running", async () => {
+		const gateway = new RuntimeClientGateway({
+			facade: createFacade({
+				async readHistory() {
+					return [
+						{
+							kind: "chat" as const,
+							role: "assistant" as const,
+							content: "partial answer",
+						},
+					];
+				},
+			}),
+			getStreamingSyncEvent: (sessionId) => ({
+				type: "streaming_sync",
+				sdkSessionId: sessionId,
+				text: "streamed",
+				thinking: "thinking",
+				images: [],
+			}),
+			getStatusEvent: () => ({
+				...createStatusEvent(),
+				sessionId: "sdk-123",
+			}),
+		});
+		const ws = mockWs();
+
+		gateway.handleOpen(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(ws.events()).toContainEqual({
+			type: "streaming_sync",
+			sdkSessionId: "sdk-123",
+			text: "streamed",
+			thinking: "thinking",
+			images: [],
+		});
+	});
 });

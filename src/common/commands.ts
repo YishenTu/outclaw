@@ -1,4 +1,4 @@
-import { MODEL_ALIAS_LIST } from "./models.ts";
+import { MODEL_ALIAS_LIST, MODELS, resolveModelAlias } from "./models.ts";
 
 export const DEFAULT_MODEL = "opus";
 export const DEFAULT_EFFORT = "medium";
@@ -13,11 +13,50 @@ export function isOpusOnlyEffort(effort: EffortLevel): boolean {
 	return OPUS_ONLY_EFFORT_LEVELS.has(effort);
 }
 
+export function isOpusModel(model: string): boolean {
+	return resolveModelAlias(model) === MODELS.opus.id;
+}
+
+export function isEffortAllowedForModel(
+	effort: EffortLevel,
+	model: string,
+): boolean {
+	return !isOpusOnlyEffort(effort) || isOpusModel(model);
+}
+
+export function resolveCompatibleEffort(options: {
+	effort: EffortLevel;
+	fallbackEffort?: EffortLevel;
+	model: string;
+}): EffortLevel {
+	if (isEffortAllowedForModel(options.effort, options.model)) {
+		return options.effort;
+	}
+
+	const fallbackEffort = options.fallbackEffort ?? "high";
+	return isEffortAllowedForModel(fallbackEffort, options.model)
+		? fallbackEffort
+		: DEFAULT_EFFORT;
+}
+
+export function effortLevelsForModel(
+	model: string,
+	levels: readonly EffortLevel[] = EFFORT_LEVELS,
+): EffortLevel[] {
+	return levels.filter((effort) => isEffortAllowedForModel(effort, model));
+}
+
 export type SlashCommandTransport = "runtime" | "prompt";
 
 export interface SlashCommand {
 	command: string;
 	description: string;
+	transport: SlashCommandTransport;
+}
+
+export interface SlashCommandRoute {
+	command: string;
+	source: "catalog" | "model_alias";
 	transport: SlashCommandTransport;
 }
 
@@ -74,21 +113,17 @@ export const PROMPT_COMMANDS = SLASH_COMMANDS.filter(
 	(command) => command.transport === "prompt",
 );
 
-const MODEL_ALIAS_COMMAND_SET = new Set(
-	MODEL_ALIAS_LIST.map((alias) => `/${alias}`),
-);
-
-const RUNTIME_COMMAND_SET = new Set(
-	SLASH_COMMANDS.filter((c) => c.transport === "runtime").map((c) => c.command),
-);
-
-const PROMPT_COMMAND_SET = new Set(
-	SLASH_COMMANDS.filter((c) => c.transport === "prompt").map((c) => c.command),
-);
-
 export const RUNTIME_COMMANDS = SLASH_COMMANDS.filter(
 	(c) => c.transport === "runtime",
 );
+
+export function listSlashCommands(
+	transport?: SlashCommandTransport,
+): readonly SlashCommand[] {
+	return transport === undefined
+		? SLASH_COMMANDS
+		: SLASH_COMMANDS.filter((command) => command.transport === transport);
+}
 
 export function findSlashCommand(input: string): SlashCommand | undefined {
 	const trimmed = input.trim();
@@ -98,6 +133,35 @@ export function findSlashCommand(input: string): SlashCommand | undefined {
 
 	const bare = trimmed.split(" ")[0]?.slice(1) ?? "";
 	return SLASH_COMMANDS.find((command) => command.command === bare);
+}
+
+export function routeSlashCommand(
+	input: string,
+): SlashCommandRoute | undefined {
+	const trimmed = input.trim();
+	if (!trimmed.startsWith("/")) {
+		return undefined;
+	}
+
+	const command = findSlashCommand(trimmed);
+	if (command) {
+		return {
+			command: command.command,
+			source: "catalog",
+			transport: command.transport,
+		};
+	}
+
+	const modelAlias = MODEL_ALIAS_LIST.find((alias) => trimmed === `/${alias}`);
+	if (modelAlias) {
+		return {
+			command: modelAlias,
+			source: "model_alias",
+			transport: "runtime",
+		};
+	}
+
+	return undefined;
 }
 
 export function canonicalizePromptSlashCommand(
@@ -117,18 +181,9 @@ export function isEffortLevel(value: string): value is EffortLevel {
 }
 
 export function isRuntimeCommand(input: string): boolean {
-	const trimmed = input.trim();
-	if (!trimmed.startsWith("/")) {
-		return false;
-	}
-
-	const bare = trimmed.split(" ")[0]?.slice(1) ?? "";
-	if (RUNTIME_COMMAND_SET.has(bare)) return true;
-	if (MODEL_ALIAS_COMMAND_SET.has(trimmed)) return true;
-
-	return false;
+	return routeSlashCommand(input)?.transport === "runtime";
 }
 
 export function isPromptSlashCommand(input: string): boolean {
-	return PROMPT_COMMAND_SET.has(findSlashCommand(input)?.command ?? "");
+	return routeSlashCommand(input)?.transport === "prompt";
 }

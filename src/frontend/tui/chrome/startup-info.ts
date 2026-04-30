@@ -1,9 +1,9 @@
 import { existsSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { createOutclawLayout } from "../../../common/layout.ts";
 import { type GitInfo, getGitInfo } from "./git-info.ts";
 
-const HOME_DIR = join(homedir(), ".outclaw");
+const HOME_DIR = createOutclawLayout().homeDir;
 
 const EXPECTED_AGENT_FILES = [
 	".agent-id",
@@ -25,13 +25,14 @@ interface CollectStartupInfoOptions {
 }
 
 function checkWorkingFiles(homeDir: string): string[] {
+	const layout = createOutclawLayout({ homeDir });
 	const missingFiles: string[] = [];
 
-	if (!existsSync(join(homeDir, "config.json"))) {
+	if (!existsSync(layout.configPath)) {
 		missingFiles.push("config.json");
 	}
 
-	const agentsDir = join(homeDir, "agents");
+	const agentsDir = layout.agentsDir;
 	if (!existsSync(agentsDir)) {
 		missingFiles.push("agents/");
 		return missingFiles;

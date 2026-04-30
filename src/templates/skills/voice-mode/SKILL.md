@@ -35,6 +35,10 @@ Only run this if the `gemini` CLI is missing or its invocation fails. From your 
 node ./skills/voice-mode/scripts/transcribe.mjs <ABSOLUTE_AUDIO_PATH>
 ```
 
+The fallback helper recognizes `.oga`, `.ogg`, `.mp3`, `.m4a`, `.mp4`, `.aac`,
+`.wav`, `.flac`, `.aiff`, and `.aif`. Unsupported local audio paths fail with
+exit code `3`; do not rename arbitrary files to bypass this check.
+
 ## Rules
 
 1. Extract the absolute local file path from the prompt segment.

@@ -9,6 +9,7 @@ Use these commands when the user explicitly asks to control or inspect the outcl
 | `oc restart [--lan] [--host HOST]` | Restart the daemon, optionally updating the bind host first |
 | `oc status` | Check whether the daemon is running |
 | `oc build` | Rebuild the production browser bundle |
+| `oc browser` | Print the browser URL, or a not-running hint if the daemon is stopped |
 | `oc tui` | Connect the terminal UI to the running daemon |
 | `oc tui --agent <name>` | Connect the terminal UI and bind it to a specific agent |
 | `oc tui --watch` | Connect the TUI in watch mode (restarts on file changes) |
@@ -19,6 +20,7 @@ Guidance:
 - First run: `oc build && oc start`
 - Browser from another machine on a trusted LAN: `oc start --lan`
 - After browser source changes: `oc build && oc restart`
+- Explicit local bind example: `oc restart --host 127.0.0.1`
 - Only run these commands when the user explicitly asks for daemon control or status.
 - `oc start` auto-builds the browser bundle only when `src/frontend/browser/dist/` is missing.
 - If browser source changed and the production browser bundle needs to be refreshed, use `oc build` and then `oc restart`.

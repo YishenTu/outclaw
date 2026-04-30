@@ -1,4 +1,5 @@
 import { loadGlobalConfig } from "../runtime/config.ts";
+import { requestControlMessage } from "./control-client.ts";
 import {
 	formatCronRunUsage,
 	hasHelpFlag,
@@ -62,64 +63,17 @@ async function requestCronRun(params: {
 	jobName: string;
 	port: number;
 }): Promise<void> {
-	const ws = new WebSocket(`ws://localhost:${params.port}/?client=control`);
-
-	return new Promise<void>((resolve, reject) => {
-		let settled = false;
-		let opened = false;
-
-		const finish = (fn: () => void) => {
-			if (settled) {
-				return;
-			}
-			settled = true;
-			fn();
-		};
-
-		ws.addEventListener("open", () => {
-			opened = true;
-			ws.send(
-				JSON.stringify({
-					type: "cron_run",
-					cwd: params.cwd,
-					jobName: params.jobName,
-				}),
-			);
-		});
-
-		ws.addEventListener("message", (event) => {
-			const data = JSON.parse(String(event.data)) as {
-				type: string;
-				message?: string;
-			};
-			if (data.type === "cron_run_response") {
-				finish(resolve);
-				ws.close();
-				return;
-			}
-			if (data.type === "cron_run_error") {
-				finish(() => reject(new Error(data.message ?? "cron run failed")));
-				ws.close();
-			}
-		});
-
-		ws.addEventListener("error", () => {
-			finish(() => reject(new Error("daemon not running")));
-		});
-
-		ws.addEventListener("close", () => {
-			if (settled) {
-				return;
-			}
-			finish(() =>
-				reject(
-					new Error(
-						opened
-							? "cron run connection closed before response"
-							: "daemon not running",
-					),
-				),
-			);
-		});
+	await requestControlMessage({
+		closeBeforeResponseMessage: "cron run connection closed before response",
+		errorFallback: "cron run failed",
+		errorType: "cron_run_error",
+		port: params.port,
+		request: {
+			type: "cron_run",
+			cwd: params.cwd,
+			jobName: params.jobName,
+		},
+		responseType: "cron_run_response",
+		toResult: () => undefined,
 	});
 }

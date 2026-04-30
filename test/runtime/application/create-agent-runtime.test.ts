@@ -345,4 +345,39 @@ describe("createAgentRuntime", () => {
 		await runtime.stop();
 		store.close();
 	});
+
+	test("runtime restart does not duplicate rollover for an already handled idle epoch", async () => {
+		const promptHomeDir = "/tmp/outclaw-agent";
+		const seedStore = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+		seedStore.upsert({
+			providerId: "mock",
+			sdkSessionId: "sdk-old",
+			title: "Old chat",
+			model: "opus",
+			source: "tui",
+		});
+		seedStore.setActiveSessionId("mock", "sdk-old");
+		seedStore.setLastInteractiveAt(123);
+		seedStore.setLastHandledRolloverInteractiveAt(123);
+		seedStore.close();
+
+		const facade = new RecordingFacade();
+		const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade,
+			promptHomeDir,
+			rollover: { idleMinutes: 1 },
+			store,
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(facade.seenParams).toEqual([]);
+		expect(store.getActiveSessionId("mock")).toBe("sdk-old");
+
+		await runtime.stop();
+		store.close();
+	});
 });

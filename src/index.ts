@@ -1,8 +1,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { basename, join, relative, sep } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude.ts";
-import { prepareAgentWorkspace } from "./backend/agent-workspace.ts";
+import { createOutclawLayout } from "./common/layout.ts";
 import type { ImageMediaType } from "./common/protocol.ts";
 import { deriveTelegramBotId } from "./common/telegram.ts";
 import type { TelegramMessageFileRecord } from "./frontend/telegram/files/message-file-ref.ts";
@@ -21,19 +20,14 @@ import { PidManager } from "./runtime/process/pid-manager.ts";
 import { spawnDaemonRestart } from "./runtime/process/restart-daemon.ts";
 import { createSupervisor } from "./runtime/supervisor/create-supervisor.ts";
 
-const HOME_DIR = join(homedir(), ".outclaw");
-const CLI_ENTRY = join(import.meta.dir, "cli.ts");
-const BROWSER_DIST_DIR = join(import.meta.dir, "frontend", "browser", "dist");
-const dbPath = join(HOME_DIR, "db.sqlite");
-const filesRoot = join(HOME_DIR, "files");
-const readyPath = join(HOME_DIR, "daemon.ready");
+const layout = createOutclawLayout({ srcRoot: import.meta.dir });
 
-mkdirSync(HOME_DIR, { recursive: true });
+mkdirSync(layout.homeDir, { recursive: true });
 
-const config = loadGlobalConfig(HOME_DIR);
-const discoveredAgents = discoverAgents(HOME_DIR);
+const config = loadGlobalConfig(layout.homeDir);
+const discoveredAgents = discoverAgents(layout.homeDir);
 
-const pidManager = new PidManager(join(HOME_DIR, "daemon.pid"));
+const pidManager = new PidManager(layout.pidPath);
 pidManager.write(process.pid);
 
 if (discoveredAgents.length === 0) {
@@ -47,7 +41,7 @@ const daemon = startMultiAgentDaemon(config, discoveredAgents);
 console.log(`outclaw runtime listening on ws://localhost:${daemon.port}`);
 console.log(`runtime bound on http://${config.host}:${daemon.port}`);
 console.log(`daemon pid: ${process.pid}`);
-writeFileSync(readyPath, `${process.pid}\n`);
+writeFileSync(layout.readyPath, `${process.pid}\n`);
 
 let shuttingDown = false;
 
@@ -58,7 +52,7 @@ async function shutdown() {
 	shuttingDown = true;
 
 	await daemon.stop();
-	rmSync(readyPath, { force: true });
+	rmSync(layout.readyPath, { force: true });
 	pidManager.remove();
 	process.exit(0);
 }
@@ -74,30 +68,29 @@ function startMultiAgentDaemon(
 	config: ReturnType<typeof loadGlobalConfig>,
 	agents: ReturnType<typeof discoverAgents>,
 ) {
-	for (const agent of agents) {
-		prepareAgentWorkspace(agent.promptHomeDir);
-	}
-
-	const stateStore = new SessionStore(dbPath, {
+	const stateStore = new SessionStore(layout.dbPath, {
 		agentId: agents[0]?.agentId,
 	});
 	stateStore.setFrontendNotice(undefined);
-	const routeStore = new TelegramRouteStore(dbPath);
+	const routeStore = new TelegramRouteStore(layout.dbPath);
 	const agentStores = new Map(
 		agents.map((agent) => [
 			agent.agentId,
-			new SessionStore(dbPath, {
+			new SessionStore(layout.dbPath, {
 				agentId: agent.agentId,
 			}),
 		]),
 	);
-	const runtimes = agents.map((agent) =>
-		createAgentRuntime({
+	const runtimes = agents.map((agent) => {
+		const facade = new ClaudeAdapter({ autoCompact: config.autoCompact });
+		facade.prepareWorkspace(agent.promptHomeDir);
+
+		return createAgentRuntime({
 			agentId: agent.agentId,
 			cwd: agent.homeDir,
 			cronDir: join(agent.homeDir, "cron"),
 			defaultEffort: config.thinkingEffort,
-			facade: new ClaudeAdapter({ autoCompact: config.autoCompact }),
+			facade,
 			getFrontendNotice: () => {
 				const rolloverNotice = agentStores
 					.get(agent.agentId)
@@ -118,16 +111,16 @@ function startMultiAgentDaemon(
 				agent.config.telegram,
 			),
 			restart: () => {
-				spawnDaemonRestart(CLI_ENTRY);
+				spawnDaemonRestart(layout.cliEntry);
 			},
 			store: agentStores.get(agent.agentId),
-		}),
-	);
+		});
+	});
 	const availableAgentsByBotUser = buildTelegramAgentIndex(agents);
 	const supervisor = createSupervisor({
 		agents: runtimes,
 		browserApp: {
-			distDir: BROWSER_DIST_DIR,
+			distDir: layout.browserDistDir,
 		},
 		browserApi: createBrowserApi({
 			agents: agents.map((agent) => {
@@ -145,12 +138,12 @@ function startMultiAgentDaemon(
 					terminalRunCommand: agent.config.terminal.runCommand,
 				};
 			}),
-			filesRoot,
+			filesRoot: layout.filesRoot,
 			getRememberedAgentId: () => stateStore.getLastInteractiveAgentId(),
-			gitRoot: HOME_DIR,
-			homeDir: HOME_DIR,
+			gitRoot: layout.homeDir,
+			homeDir: layout.homeDir,
 			ignoredGitPaths: agents.map((agent) =>
-				relative(HOME_DIR, join(agent.promptHomeDir, ".claude", "skills"))
+				relative(layout.homeDir, join(agent.promptHomeDir, ".claude", "skills"))
 					.split(sep)
 					.join("/"),
 			),
@@ -161,7 +154,7 @@ function startMultiAgentDaemon(
 				agentId: agent.agentId,
 				rootDir: agent.homeDir,
 			})),
-			gitRoot: HOME_DIR,
+			gitRoot: layout.homeDir,
 		},
 		getDefaultAgentId: () => stateStore.getLastInteractiveAgentId(),
 		hostname: config.host,
@@ -188,8 +181,8 @@ function startMultiAgentDaemon(
 		})),
 		createBotId: deriveTelegramBotId,
 		createFileBindings: (botId) =>
-			createTelegramFileBindings(dbPath, botId, filesRoot),
-		filesRoot,
+			createTelegramFileBindings(layout.dbPath, botId, layout.filesRoot),
+		filesRoot: layout.filesRoot,
 		runtimeUrl: `ws://localhost:${supervisor.port}`,
 	});
 
@@ -206,7 +199,7 @@ function startMultiAgentDaemon(
 	}
 
 	const restartRequiredWatcher = createRestartRequiredWatcher({
-		homeDir: HOME_DIR,
+		homeDir: layout.homeDir,
 		onRestartRequired: () => {
 			if (stateStore.getFrontendNotice()?.kind === "restart_required") {
 				return;

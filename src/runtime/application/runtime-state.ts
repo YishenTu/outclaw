@@ -1,7 +1,6 @@
 import {
-	DEFAULT_EFFORT,
 	type EffortLevel,
-	isOpusOnlyEffort,
+	resolveCompatibleEffort,
 } from "../../common/commands.ts";
 import {
 	contextWindowForAlias,
@@ -225,18 +224,13 @@ export class RuntimeState {
 	}
 
 	private normalizeEffortForModel(model: ModelAlias) {
-		if (model === "opus" || !isOpusOnlyEffort(this.settings.effort)) {
-			return;
+		const compatibleEffort = resolveCompatibleEffort({
+			effort: this.settings.effort,
+			fallbackEffort: this.settings.defaultEffort,
+			model,
+		});
+		if (compatibleEffort !== this.settings.effort) {
+			this.settings.setEffort(compatibleEffort);
 		}
-
-		this.settings.setEffort(this.resolveCompatibleDefaultEffort(model));
-	}
-
-	private resolveCompatibleDefaultEffort(model: ModelAlias): EffortLevel {
-		if (model === "opus" || !isOpusOnlyEffort(this.settings.defaultEffort)) {
-			return this.settings.defaultEffort;
-		}
-
-		return DEFAULT_EFFORT;
 	}
 }

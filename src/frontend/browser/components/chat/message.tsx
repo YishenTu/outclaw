@@ -4,6 +4,12 @@ import type { DisplayMessage } from "../../../../common/protocol.ts";
 import { AssistantTurnUtilityBar } from "./assistant-turn-utility-bar.tsx";
 import { getImageThumbnailClassName } from "./image-thumbnail-styles.ts";
 import { MarkdownContent } from "./markdown-content.tsx";
+import {
+	type ChatImage,
+	chatImageKey,
+	chatImageLabel,
+	inlineChatImageSrc,
+} from "./message-render-projection.ts";
 import { ThinkingBlock } from "./thinking-block.tsx";
 
 interface MessageProps {
@@ -11,35 +17,17 @@ interface MessageProps {
 	showUtilityBar?: boolean;
 }
 
-type ChatImage = NonNullable<
-	Extract<DisplayMessage, { kind: "chat" }>["images"]
->[number];
-
-function imageKey(image: ChatImage, index: number) {
-	return `${image.kind}:${index}`;
-}
-
-function imageLabel(index: number): string {
-	return `Image ${index + 1}`;
-}
-
-function inlineImageSrc(image: ChatImage) {
-	return image.kind === "inline"
-		? `data:${image.mediaType};base64,${image.base64}`
-		: undefined;
-}
-
 function renderImageGallery(images: ChatImage[], role: "user" | "assistant") {
 	return (
 		<div className="mb-2 flex flex-wrap gap-2">
 			{images.map((image, index) => {
-				const label = imageLabel(index);
-				const src = inlineImageSrc(image);
+				const label = chatImageLabel(index);
+				const src = inlineChatImageSrc(image);
 
 				if (src) {
 					return (
 						<img
-							key={imageKey(image, index)}
+							key={chatImageKey(image, index)}
 							src={src}
 							alt={`${role === "user" ? "User" : "Assistant"} upload ${index + 1}`}
 							className={getImageThumbnailClassName("message")}
@@ -49,7 +37,7 @@ function renderImageGallery(images: ChatImage[], role: "user" | "assistant") {
 
 				return (
 					<div
-						key={imageKey(image, index)}
+						key={chatImageKey(image, index)}
 						className="font-mono-ui flex h-24 w-24 items-center justify-center rounded-md border border-dark-700 bg-dark-900/80 px-3 text-center text-[11px] uppercase tracking-[0.12em] text-dark-400"
 					>
 						{label}

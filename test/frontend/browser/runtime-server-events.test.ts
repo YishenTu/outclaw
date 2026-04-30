@@ -566,6 +566,104 @@ describe("browser runtime server events", () => {
 		]);
 	});
 
+	test("adopts pending live-run content into the final provider session with turn duration", () => {
+		const promptTime = new Date("2026-04-27T00:00:00.000Z");
+		const doneTime = new Date("2026-04-27T00:00:42.000Z");
+		setSystemTime(promptTime);
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+		});
+		const pendingSessionKey = "agent-railly:mock:__pending__";
+		const finalSessionKey = "agent-railly:mock:sdk-final";
+		const { options } = createHandlerOptions({
+			completeLiveRunSession: (
+				nextSessionKey: string,
+				currentSessionKey: string,
+			) => ({
+				adoptFromSessionKey: currentSessionKey,
+				sessionKey: nextSessionKey,
+			}),
+			getCurrentSessionKey: () => pendingSessionKey,
+			pinObservedSessionKey: () => pendingSessionKey,
+			routeObservedSessionKey: () => pendingSessionKey,
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "user_prompt",
+				source: "browser",
+				prompt: "new task",
+			},
+			options,
+		);
+		handleBrowserServerEvent(
+			{ type: "thinking", text: "plan", sessionId: "__pending__" },
+			options,
+		);
+		handleBrowserServerEvent(
+			{ type: "text", text: "done", sessionId: "__pending__" },
+			options,
+		);
+		handleBrowserServerEvent(
+			{
+				type: "image",
+				path: "/tmp/result.png",
+				mediaType: "image/png",
+				sessionId: "__pending__",
+			},
+			options,
+		);
+
+		setSystemTime(doneTime);
+		handleBrowserServerEvent(
+			{ type: "done", sessionId: "sdk-final", durationMs: 42_000 },
+			options,
+		);
+
+		expect(
+			useChatStore.getState().getSession(pendingSessionKey),
+		).toBeUndefined();
+		expect(useChatStore.getState().getMessages(finalSessionKey)).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "new task",
+				timestamp: promptTime.getTime(),
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "done",
+				thinking: "plan",
+				images: [
+					{
+						kind: "managed",
+						path: "/tmp/result.png",
+						mediaType: "image/png",
+					},
+				],
+				timestamp: doneTime.getTime(),
+				assistantTurn: {
+					source: "user",
+					startedAt: promptTime.getTime(),
+					durationMs: doneTime.getTime() - promptTime.getTime(),
+				},
+			},
+		]);
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
+		).toEqual(createBrowserSessionRef("agent-railly", "mock", "sdk-final"));
+	});
+
 	test("handles menus, session mutations, errors, skills, and sidebar invalidations", () => {
 		useAgentsStore
 			.getState()

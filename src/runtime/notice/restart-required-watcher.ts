@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { createOutclawLayout } from "../../common/layout.ts";
 import {
 	normalizeWatchFilename,
 	startDirectoryWatch,
@@ -30,9 +30,10 @@ export function createRestartRequiredWatcher(
 	options: CreateRestartRequiredWatcherOptions,
 ) {
 	const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
-	const configPath = join(options.homeDir, "config.json");
-	const envPath = join(options.homeDir, ".env");
-	const agentsDir = join(options.homeDir, "agents");
+	const layout = createOutclawLayout({ homeDir: options.homeDir });
+	const configPath = layout.configPath;
+	const envPath = layout.envPath;
+	const agentsDir = layout.agentsDir;
 	const handles: WatchHandle[] = [];
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let snapshot = readRestartRequiredSnapshot(options.homeDir);

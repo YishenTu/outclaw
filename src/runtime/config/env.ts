@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { createOutclawLayout } from "../../common/layout.ts";
 
 export function loadSharedEnv(homeDir: string): void {
-	const envPath = join(homeDir, ".env");
+	const envPath = createOutclawLayout({ homeDir }).envPath;
 	if (!existsSync(envPath)) return;
 
 	const content = readFileSync(envPath, "utf-8");
@@ -64,7 +64,7 @@ export function upsertSharedEnvEntries(
 	homeDir: string,
 	entries: Record<string, string>,
 ): void {
-	const envPath = join(homeDir, ".env");
+	const envPath = createOutclawLayout({ homeDir }).envPath;
 	const existing = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
 	const lines = existing === "" ? [] : existing.split(/\r?\n/);
 	const nextLines: string[] = [];

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { listSlashCommands } from "../../../src/common/commands.ts";
 import { buildSlashCommands } from "../../../src/frontend/browser/stores/slash-commands.ts";
 
 describe("buildSlashCommands", () => {
@@ -15,13 +16,27 @@ describe("buildSlashCommands", () => {
 				name: "draft",
 				description: "Draft a reply",
 				source: "skill",
+				transport: "prompt",
 			},
 			{
 				name: "summarize",
 				description: "Summarize selected content",
 				source: "skill",
+				transport: "prompt",
 			},
 		]);
+	});
+
+	test("mirrors the command catalog for builtin discoverability", () => {
+		const commands = buildSlashCommands([]);
+		expect(commands).toEqual(
+			listSlashCommands().map((command) => ({
+				name: command.command,
+				description: command.description,
+				source: "builtin",
+				transport: command.transport,
+			})),
+		);
 	});
 
 	test("keeps builtin commands authoritative when skill names collide", () => {
@@ -34,6 +49,7 @@ describe("buildSlashCommands", () => {
 				name: "agent",
 				description: "Show or switch agents",
 				source: "builtin",
+				transport: "runtime",
 			},
 		]);
 	});

@@ -1,11 +1,23 @@
-type TimerHandle = ReturnType<typeof setTimeout>;
+type TimerHandle = unknown;
 
-export class HeartbeatCoordinator {
+export type HeartbeatAttemptResult = "attempt" | "skip" | "defer";
+
+interface HeartbeatRuntimePolicyOptions {
+	clearTimeoutFn?: (timer: TimerHandle) => void;
+	now?: () => number;
+	setTimeoutFn?: (handler: () => void, timeout: number) => TimerHandle;
+}
+
+export class HeartbeatRuntimePolicy {
 	private activeDeferMinutes = 0;
 	private deferTimer: TimerHandle | undefined;
 	private fireDeferredHeartbeat: (() => Promise<void> | void) | undefined;
 	private heartbeatPending = false;
-	private lastUserActivityAt = Date.now();
+	private lastUserActivityAt: number;
+
+	constructor(private readonly options: HeartbeatRuntimePolicyOptions = {}) {
+		this.lastUserActivityAt = this.now();
+	}
 
 	beginShutdown() {
 		this.clearDeferTimer();
@@ -25,7 +37,7 @@ export class HeartbeatCoordinator {
 	}
 
 	noteUserActivity() {
-		this.lastUserActivityAt = Date.now();
+		this.lastUserActivityAt = this.now();
 		this.resetDeferTimer();
 	}
 
@@ -37,11 +49,11 @@ export class HeartbeatCoordinator {
 		this.fireDeferredHeartbeat = handler;
 	}
 
-	shouldAttemptHeartbeat(
+	shouldAttempt(
 		hasActiveSession: boolean,
 		scheduledAt: number,
 		deferMinutes: number,
-	): "attempt" | "skip" | "defer" {
+	): HeartbeatAttemptResult {
 		if (!hasActiveSession || this.heartbeatPending) {
 			return "skip";
 		}
@@ -60,19 +72,33 @@ export class HeartbeatCoordinator {
 	startDeferTimer(deferMinutes: number) {
 		this.clearDeferTimer();
 		this.activeDeferMinutes = deferMinutes;
-		const elapsed = Date.now() - this.lastUserActivityAt;
+		const elapsed = this.now() - this.lastUserActivityAt;
 		const delay = Math.max(deferMinutes * 60_000 - elapsed, 0);
-		this.deferTimer = setTimeout(() => {
+		this.deferTimer = this.setTimeout(() => {
 			this.deferTimer = undefined;
 			void this.fireDeferredHeartbeat?.();
 		}, delay);
 	}
 
 	private clearDeferTimer() {
-		if (this.deferTimer !== undefined) {
-			clearTimeout(this.deferTimer);
-			this.deferTimer = undefined;
+		if (this.deferTimer === undefined) {
+			return;
 		}
+
+		this.clearTimeout(this.deferTimer);
+		this.deferTimer = undefined;
+	}
+
+	private clearTimeout(timer: TimerHandle) {
+		const clearTimeoutFn =
+			this.options.clearTimeoutFn ??
+			((timerId: TimerHandle) =>
+				clearTimeout(timerId as ReturnType<typeof setTimeout>));
+		clearTimeoutFn(timer);
+	}
+
+	private now(): number {
+		return (this.options.now ?? Date.now)();
 	}
 
 	private resetDeferTimer() {
@@ -80,9 +106,16 @@ export class HeartbeatCoordinator {
 			return;
 		}
 		this.clearDeferTimer();
-		this.deferTimer = setTimeout(() => {
+		this.deferTimer = this.setTimeout(() => {
 			this.deferTimer = undefined;
 			void this.fireDeferredHeartbeat?.();
 		}, this.activeDeferMinutes * 60_000);
+	}
+
+	private setTimeout(handler: () => void, timeout: number): TimerHandle {
+		const setTimeoutFn =
+			this.options.setTimeoutFn ??
+			((callback: () => void, ms: number) => setTimeout(callback, ms));
+		return setTimeoutFn(handler, timeout);
 	}
 }

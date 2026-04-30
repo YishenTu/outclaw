@@ -4,38 +4,21 @@ import type {
 	TranscriptTurn,
 	UsageInfo,
 } from "../../common/protocol.ts";
-import { formatSearchTranscriptTurnBody } from "../../common/transcript-turn-body.ts";
-import {
-	parseFrontendNotice,
-	serializeFrontendNotice,
-} from "./frontend-notice.ts";
-import {
-	type LastUserTarget,
-	parseLastUserTarget,
-	serializeLastUserTarget,
-} from "./last-user-target.ts";
+import type { LastUserTarget } from "./last-user-target.ts";
+import { SessionStateStore } from "./session-state-store.ts";
 import {
 	mapSessionRow,
 	mapSessionRows,
-	mapUsageRow,
 	type SessionRow,
 	type SessionTag,
 } from "./session-store-records.ts";
 import { ensureSessionStoreSchema } from "./session-store-schema.ts";
+import { SessionTranscriptIndex } from "./session-transcript-index.ts";
+import { SessionUsageStore } from "./session-usage-store.ts";
 import {
 	closeSqliteDatabase,
 	openSqliteDatabase,
 } from "./sqlite-file-lifecycle.ts";
-import {
-	activeSessionKey,
-	FRONTEND_NOTICE_KEY,
-	LAST_INTERACTIVE_AGENT_KEY,
-	LEGACY_LAST_TUI_AGENT_KEY,
-	lastHandledRolloverInteractiveAtKey,
-	lastInteractiveAtKey,
-	lastUserTargetKey,
-	rolloverNoticeKey,
-} from "./state-keys.ts";
 
 interface SessionStoreOptions {
 	agentId?: string;
@@ -52,6 +35,9 @@ export class SessionStore {
 	private readonly agentId: string;
 	private readonly dbPath: string;
 	private readonly journalMode: "WAL" | "DELETE";
+	private readonly stateStore: SessionStateStore;
+	private readonly transcriptIndex: SessionTranscriptIndex;
+	private readonly usageStore: SessionUsageStore;
 
 	constructor(path: string, options: SessionStoreOptions = {}) {
 		this.dbPath = path;
@@ -60,9 +46,15 @@ export class SessionStore {
 		const sqlite = openSqliteDatabase(path, this.journalMode);
 		this.db = sqlite.db;
 		this.dbFileKey = sqlite.fileKey;
+		this.stateStore = new SessionStateStore(() => this.db, this.agentId);
+		this.transcriptIndex = new SessionTranscriptIndex(
+			() => this.db,
+			this.agentId,
+		);
+		this.usageStore = new SessionUsageStore(() => this.db, this.agentId);
 		try {
 			ensureSessionStoreSchema(this.db);
-			this.migrateLegacyStateKeys();
+			this.stateStore.migrateLegacyStateKeys();
 		} catch (error) {
 			closeSqliteDatabase(this.db, this.dbFileKey);
 			throw error;
@@ -292,24 +284,7 @@ export class SessionStore {
 			this.db
 				.query("DELETE FROM sessions WHERE agent_id = $agentId")
 				.run({ $agentId: agentId });
-			this.db
-				.query(
-					`DELETE FROM state
-					 WHERE key LIKE $activeSessionPrefix
-					    OR key = $lastUserTargetKey`,
-				)
-				.run({
-					$activeSessionPrefix: `${activeSessionKey(agentId, "")}%`,
-					$lastUserTargetKey: lastUserTargetKey(agentId),
-				});
-			this.deleteStateValue(lastInteractiveAtKey(agentId));
-			this.deleteStateValue(lastHandledRolloverInteractiveAtKey(agentId));
-			this.deleteStateValue(rolloverNoticeKey(agentId));
-
-			if (this.getLastInteractiveAgentId() === agentId) {
-				this.deleteStateValue(LAST_INTERACTIVE_AGENT_KEY);
-				this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
-			}
+			this.stateStore.deleteAgentState(agentId);
 		})();
 	}
 
@@ -331,140 +306,63 @@ export class SessionStore {
 	}
 
 	getActiveSessionId(providerId: string): string | undefined {
-		return this.getStateValue(activeSessionKey(this.agentId, providerId));
+		return this.stateStore.getActiveSessionId(providerId);
 	}
 
 	setActiveSessionId(providerId: string, id: string | undefined) {
-		const key = activeSessionKey(this.agentId, providerId);
-		if (id) {
-			this.setStateValue(key, id);
-			return;
-		}
-
-		this.deleteStateValue(key);
+		this.stateStore.setActiveSessionId(providerId, id);
 	}
 
 	getLastUserTarget(): LastUserTarget | undefined {
-		return parseLastUserTarget(
-			this.getStateValue(lastUserTargetKey(this.agentId)),
-		);
+		return this.stateStore.getLastUserTarget();
 	}
 
 	setLastUserTarget(target: LastUserTarget | undefined) {
-		if (!target) {
-			this.deleteStateValue(lastUserTargetKey(this.agentId));
-			return;
-		}
-
-		this.setStateValue(
-			lastUserTargetKey(this.agentId),
-			serializeLastUserTarget(target),
-		);
+		this.stateStore.setLastUserTarget(target);
 	}
 
 	getLastInteractiveAt(): number | undefined {
-		return parseStoredNumber(
-			this.getStateValue(lastInteractiveAtKey(this.agentId)),
-		);
+		return this.stateStore.getLastInteractiveAt();
 	}
 
 	setLastInteractiveAt(timestamp: number | undefined) {
-		if (timestamp === undefined) {
-			this.deleteStateValue(lastInteractiveAtKey(this.agentId));
-			return;
-		}
-
-		this.setStateValue(lastInteractiveAtKey(this.agentId), String(timestamp));
+		this.stateStore.setLastInteractiveAt(timestamp);
 	}
 
 	getLastHandledRolloverInteractiveAt(): number | undefined {
-		return parseStoredNumber(
-			this.getStateValue(lastHandledRolloverInteractiveAtKey(this.agentId)),
-		);
+		return this.stateStore.getLastHandledRolloverInteractiveAt();
 	}
 
 	setLastHandledRolloverInteractiveAt(timestamp: number | undefined) {
-		if (timestamp === undefined) {
-			this.deleteStateValue(lastHandledRolloverInteractiveAtKey(this.agentId));
-			return;
-		}
-
-		this.setStateValue(
-			lastHandledRolloverInteractiveAtKey(this.agentId),
-			String(timestamp),
-		);
+		this.stateStore.setLastHandledRolloverInteractiveAt(timestamp);
 	}
 
 	getRolloverNotice(): string | undefined {
-		return this.getStateValue(rolloverNoticeKey(this.agentId));
+		return this.stateStore.getRolloverNotice();
 	}
 
 	setRolloverNotice(message: string | undefined) {
-		if (!message) {
-			this.deleteStateValue(rolloverNoticeKey(this.agentId));
-			return;
-		}
-
-		this.setStateValue(rolloverNoticeKey(this.agentId), message);
+		this.stateStore.setRolloverNotice(message);
 	}
 
 	getLastInteractiveAgentId(): string | undefined {
-		return this.getStateValue(LAST_INTERACTIVE_AGENT_KEY);
+		return this.stateStore.getLastInteractiveAgentId();
 	}
 
 	setLastInteractiveAgentId(agentId: string | undefined) {
-		if (!agentId) {
-			this.deleteStateValue(LAST_INTERACTIVE_AGENT_KEY);
-			this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
-			return;
-		}
-
-		this.setStateValue(LAST_INTERACTIVE_AGENT_KEY, agentId);
-		this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
+		this.stateStore.setLastInteractiveAgentId(agentId);
 	}
 
 	getFrontendNotice(): FrontendNotice | undefined {
-		return parseFrontendNotice(this.getStateValue(FRONTEND_NOTICE_KEY));
+		return this.stateStore.getFrontendNotice();
 	}
 
 	setFrontendNotice(notice: FrontendNotice | undefined) {
-		if (!notice) {
-			this.deleteStateValue(FRONTEND_NOTICE_KEY);
-			return;
-		}
-
-		this.setStateValue(FRONTEND_NOTICE_KEY, serializeFrontendNotice(notice));
+		this.stateStore.setFrontendNotice(notice);
 	}
 
 	setUsage(providerId: string, sdkSessionId: string, usage: UsageInfo) {
-		this.db
-			.query(
-				`UPDATE sessions SET
-					input_tokens = $inputTokens,
-					output_tokens = $outputTokens,
-					cache_creation_tokens = $cacheCreationTokens,
-					cache_read_tokens = $cacheReadTokens,
-					context_window = $contextWindow,
-					max_output_tokens = $maxOutputTokens,
-					context_tokens = $contextTokens,
-					percentage = $percentage
-				WHERE agent_id = $agentId
-				  AND provider_id = $providerId
-				  AND sdk_session_id = $id`,
-			)
-			.run({
-				$agentId: this.agentId,
-				$providerId: providerId,
-				$id: sdkSessionId,
-				$inputTokens: usage.inputTokens,
-				$outputTokens: usage.outputTokens,
-				$cacheCreationTokens: usage.cacheCreationTokens,
-				$cacheReadTokens: usage.cacheReadTokens,
-				$contextWindow: usage.contextWindow,
-				$maxOutputTokens: usage.maxOutputTokens,
-				$contextTokens: usage.contextTokens,
-				$percentage: usage.percentage,
-			});
+		this.usageStore.set(providerId, sdkSessionId, usage);
 	}
 
 	replaceTranscript(
@@ -472,120 +370,15 @@ export class SessionStore {
 		sdkSessionId: string,
 		turns: TranscriptTurn[],
 	) {
-		const searchableTurns = turns
-			.map((turn) => ({
-				bodyText: formatSearchTranscriptTurnBody(turn),
-				role: turn.role,
-				timestamp: turn.timestamp,
-			}))
-			.filter((turn) => turn.bodyText !== "");
-
-		this.db.transaction(() => {
-			this.db
-				.query(
-					`DELETE FROM transcript_turns
-					 WHERE agent_id = $agentId
-					   AND provider_id = $providerId
-					   AND sdk_session_id = $id`,
-				)
-				.run({
-					$agentId: this.agentId,
-					$providerId: providerId,
-					$id: sdkSessionId,
-				});
-
-			const insert = this.db.query(
-				`INSERT INTO transcript_turns (
-						agent_id,
-						provider_id,
-						sdk_session_id,
-						turn_index,
-						role,
-						body_text,
-						timestamp
-					)
-					VALUES (
-						$agentId,
-						$providerId,
-						$id,
-						$turnIndex,
-						$role,
-						$bodyText,
-						$timestamp
-					)`,
-			);
-
-			for (const [index, turn] of searchableTurns.entries()) {
-				insert.run({
-					$agentId: this.agentId,
-					$providerId: providerId,
-					$id: sdkSessionId,
-					$turnIndex: index,
-					$role: turn.role,
-					$bodyText: turn.bodyText,
-					$timestamp: turn.timestamp,
-				});
-			}
-		})();
+		this.transcriptIndex.replace(providerId, sdkSessionId, turns);
 	}
 
 	getUsage(providerId: string, sdkSessionId: string): UsageInfo | undefined {
-		return mapUsageRow(
-			this.db
-				.query(
-					`SELECT
-						input_tokens,
-						output_tokens,
-						cache_creation_tokens,
-						cache_read_tokens,
-						context_window,
-						max_output_tokens,
-						context_tokens,
-						percentage
-					FROM sessions
-					WHERE agent_id = $agentId
-					  AND provider_id = $providerId
-					  AND sdk_session_id = $id`,
-				)
-				.get({
-					$agentId: this.agentId,
-					$providerId: providerId,
-					$id: sdkSessionId,
-				}) as Parameters<typeof mapUsageRow>[0],
-		);
+		return this.usageStore.get(providerId, sdkSessionId);
 	}
 
 	close() {
 		closeSqliteDatabase(this.db, this.dbFileKey);
-	}
-
-	private migrateLegacyStateKeys() {
-		const legacyAgentId = this.getStateValue(LEGACY_LAST_TUI_AGENT_KEY);
-		if (!legacyAgentId) {
-			return;
-		}
-
-		if (!this.getStateValue(LAST_INTERACTIVE_AGENT_KEY)) {
-			this.setStateValue(LAST_INTERACTIVE_AGENT_KEY, legacyAgentId);
-		}
-		this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
-	}
-
-	private deleteStateValue(key: string) {
-		this.db.query("DELETE FROM state WHERE key = $key").run({ $key: key });
-	}
-
-	private getStateValue(key: string): string | undefined {
-		const row = this.db
-			.query("SELECT value FROM state WHERE key = $key")
-			.get({ $key: key }) as { value: string | null } | null;
-		return row?.value ?? undefined;
-	}
-
-	private setStateValue(key: string, value: string) {
-		this.db
-			.query("INSERT OR REPLACE INTO state (key, value) VALUES ($key, $value)")
-			.run({ $key: key, $value: value });
 	}
 
 	private withRecoveredConnection<T>(operation: () => T): T {
@@ -613,15 +406,6 @@ export class SessionStore {
 		this.dbFileKey = sqlite.fileKey;
 		ensureSessionStoreSchema(this.db);
 	}
-}
-
-function parseStoredNumber(value: string | undefined): number | undefined {
-	if (value === undefined) {
-		return undefined;
-	}
-
-	const parsed = Number(value);
-	return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function isRetryableSqliteIoError(error: unknown): boolean {

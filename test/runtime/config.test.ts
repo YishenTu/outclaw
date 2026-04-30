@@ -267,6 +267,63 @@ describe("loadGlobalConfig", () => {
 		}
 	});
 
+	test("materializes partial config while preserving env refs and unknown fields", () => {
+		const dir = tmp();
+		try {
+			writeFileSync(
+				join(dir, "config.json"),
+				JSON.stringify({
+					experimental: {
+						keep: true,
+					},
+					agents: {
+						"agent-railly": {
+							customAgentField: "keep",
+							telegram: {
+								botToken: "$RAILLY_TELEGRAM_BOT_TOKEN",
+								allowedUsers: "$RAILLY_TELEGRAM_USERS",
+								defaultCronUserId: "$RAILLY_DEFAULT_CRON_USER",
+							},
+						},
+					},
+				}),
+			);
+
+			loadGlobalConfig(dir);
+
+			expect(
+				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
+			).toEqual({
+				autoCompact: true,
+				host: "127.0.0.1",
+				heartbeat: {
+					intervalMinutes: 30,
+					deferMinutes: 0,
+				},
+				port: 4000,
+				thinkingEffort: "medium",
+				experimental: {
+					keep: true,
+				},
+				agents: {
+					"agent-railly": {
+						customAgentField: "keep",
+						rollover: {
+							idleMinutes: 240,
+						},
+						telegram: {
+							botToken: "$RAILLY_TELEGRAM_BOT_TOKEN",
+							allowedUsers: "$RAILLY_TELEGRAM_USERS",
+							defaultCronUserId: "$RAILLY_DEFAULT_CRON_USER",
+						},
+					},
+				},
+			});
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
 	test("updateGlobalConfig patches runtime globals while preserving agents and unknown fields", () => {
 		const dir = tmp();
 		try {

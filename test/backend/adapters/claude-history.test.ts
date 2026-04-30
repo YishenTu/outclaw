@@ -658,6 +658,151 @@ describe("readClaudeHistory", () => {
 			},
 		]);
 	});
+
+	test("projects the same mixed raw records into display history and transcript turns", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "outclaw-claude-overlap-"));
+		const projectsDir = join(tmp, "projects");
+		const projectDir = join(projectsDir, "sample-project");
+		const sessionId = "sdk-overlap";
+
+		try {
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(
+				join(projectDir, `${sessionId}.jsonl`),
+				[
+					JSON.stringify({
+						type: "user",
+						timestamp: "2025-01-15T14:30:00.000Z",
+						message: {
+							content: [
+								{
+									type: "image",
+									source: {
+										type: "base64",
+										media_type: "image/png",
+										data: "abc123",
+									},
+								},
+								{
+									type: "text",
+									text: [
+										"describe this",
+										"",
+										"<reply-context>the &quot;cron&quot; output</reply-context>",
+									].join("\n"),
+								},
+							],
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						timestamp: "2025-01-15T14:31:00.000Z",
+						message: {
+							content: [
+								{
+									type: "text",
+									text: [
+										"<task-notification>",
+										"<task-id>task-1</task-id>",
+										"<status>completed</status>",
+										"</task-notification>",
+										"The image shows a cat.",
+									].join("\n"),
+								},
+							],
+						},
+					}),
+				].join("\n"),
+			);
+
+			const history = await readClaudeHistory({
+				sessionId,
+				loadHistory: mock(async () => []),
+				claudeProjectsDir: projectsDir,
+			});
+			const transcript = await readClaudeTranscript({
+				sessionId,
+				claudeProjectsDir: projectsDir,
+			});
+
+			expect(history).toEqual([
+				{
+					kind: "chat",
+					role: "user",
+					content: "describe this",
+					replyContext: { text: 'the "cron" output' },
+					images: [
+						{
+							kind: "inline",
+							mediaType: "image/png",
+							base64: "abc123",
+						},
+					],
+					timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "The image shows a cat.",
+					timestamp: Date.parse("2025-01-15T14:31:00.000Z"),
+				},
+			]);
+			expect(transcript).toEqual([
+				{
+					role: "user",
+					content: "describe this",
+					replyContext: { text: 'the "cron" output' },
+					images: [{ kind: "placeholder", mediaType: "image/png" }],
+					timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+				},
+				{
+					role: "assistant",
+					content: "The image shows a cat.",
+					timestamp: Date.parse("2025-01-15T14:31:00.000Z"),
+				},
+			]);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	test("normalizes compactMetadata and compact_metadata boundaries identically", async () => {
+		const { result } = readSdkHistory([
+			{
+				type: "system",
+				subtype: "compact_boundary",
+				compactMetadata: {
+					trigger: "manual",
+					preTokens: 123,
+				},
+			},
+			{
+				type: "system",
+				subtype: "compact_boundary",
+				compact_metadata: {
+					trigger: "manual",
+					pre_tokens: 123,
+				},
+			},
+		]);
+
+		expect(await result).toEqual([
+			{
+				kind: "system",
+				event: "compact_boundary",
+				text: "context compacted",
+				trigger: "manual",
+				preTokens: 123,
+			},
+			{
+				kind: "system",
+				event: "compact_boundary",
+				text: "context compacted",
+				trigger: "manual",
+				preTokens: 123,
+			},
+		]);
+	});
 });
 
 describe("readClaudeTranscript", () => {

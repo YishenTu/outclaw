@@ -1,5 +1,8 @@
 import { extractError } from "../../common/protocol.ts";
-import { HeartbeatCoordinator } from "./heartbeat-coordinator.ts";
+import {
+	type HeartbeatAttemptResult,
+	HeartbeatRuntimePolicy,
+} from "../heartbeat/runtime-policy.ts";
 import { MessageQueue } from "./message-queue.ts";
 import type { PromptDispatcher, PromptExecution } from "./prompt-dispatcher.ts";
 import type { RuntimePromptContext, RuntimeState } from "./runtime-state.ts";
@@ -36,7 +39,7 @@ interface ExecutionLane {
 }
 
 export class RuntimeExecutionCoordinator {
-	private heartbeatCoordinator = new HeartbeatCoordinator();
+	private heartbeatPolicy = new HeartbeatRuntimePolicy();
 	private deliverRolloverNotice:
 		| RuntimeExecutionCoordinatorOptions["deliverRolloverNotice"]
 		| undefined;
@@ -86,7 +89,7 @@ export class RuntimeExecutionCoordinator {
 			return;
 		}
 		this.shuttingDown = true;
-		this.heartbeatCoordinator.beginShutdown();
+		this.heartbeatPolicy.beginShutdown();
 		for (const lane of this.lanes.values()) {
 			lane.activeAbort?.abort();
 			lane.queue.close(true);
@@ -118,7 +121,7 @@ export class RuntimeExecutionCoordinator {
 		}
 		const lane = this.getOrCreateLane(context);
 
-		this.heartbeatCoordinator.markHeartbeatQueued();
+		this.heartbeatPolicy.markHeartbeatQueued();
 		const queued = lane.queue.enqueue(() =>
 			this.runHeartbeat(lane, context, {
 				prompt,
@@ -127,7 +130,7 @@ export class RuntimeExecutionCoordinator {
 			}),
 		);
 		if (!queued) {
-			this.heartbeatCoordinator.queueRejected();
+			this.heartbeatPolicy.queueRejected();
 		}
 		return queued;
 	}
@@ -139,7 +142,7 @@ export class RuntimeExecutionCoordinator {
 		this.options.state.preparePrompt(task.prompt, task.images);
 		const context = this.options.state.capturePromptContext();
 		const lane = this.getOrCreateLane(context);
-		this.heartbeatCoordinator.noteUserActivity();
+		this.heartbeatPolicy.noteUserActivity();
 		if (
 			task.source === "telegram" ||
 			task.source === "tui" ||
@@ -217,14 +220,14 @@ export class RuntimeExecutionCoordinator {
 	}
 
 	setFireDeferredHeartbeat(handler: () => Promise<void> | void) {
-		this.heartbeatCoordinator.setFireDeferredHeartbeat(handler);
+		this.heartbeatPolicy.setFireDeferredHeartbeat(handler);
 	}
 
 	shouldAttemptHeartbeat(
 		scheduledAt: number,
 		deferMinutes: number,
-	): "attempt" | "skip" | "defer" {
-		return this.heartbeatCoordinator.shouldAttemptHeartbeat(
+	): HeartbeatAttemptResult {
+		return this.heartbeatPolicy.shouldAttempt(
 			this.options.state.sessionId !== undefined,
 			scheduledAt,
 			deferMinutes,
@@ -232,7 +235,7 @@ export class RuntimeExecutionCoordinator {
 	}
 
 	startDeferTimer(deferMinutes: number) {
-		this.heartbeatCoordinator.startDeferTimer(deferMinutes);
+		this.heartbeatPolicy.startDeferTimer(deferMinutes);
 	}
 
 	private async runHeartbeat(
@@ -244,7 +247,7 @@ export class RuntimeExecutionCoordinator {
 			if (this.options.state.sessionId !== task.sessionId) {
 				return;
 			}
-			if (this.heartbeatCoordinator.userActivityAt > task.scheduledAt) {
+			if (this.heartbeatPolicy.userActivityAt > task.scheduledAt) {
 				return;
 			}
 
@@ -258,7 +261,7 @@ export class RuntimeExecutionCoordinator {
 				context,
 			);
 		} finally {
-			this.heartbeatCoordinator.completeHeartbeat();
+			this.heartbeatPolicy.completeHeartbeat();
 		}
 	}
 

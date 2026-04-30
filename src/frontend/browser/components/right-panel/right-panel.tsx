@@ -7,21 +7,13 @@ import {
 	PanelRightOpen,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-	BrowserGitGraphCommit,
-	BrowserGitStatusResponse,
-	BrowserTreeEntry,
-} from "../../../../common/protocol.ts";
+import type { BrowserGitGraphCommit } from "../../../../common/protocol.ts";
 import { requestConfigRestart } from "../../config-save-restart.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
-import { fetchAgentTree, fetchGitStatus, initGitRepo } from "../../lib/api.ts";
+import { initGitRepo } from "../../lib/api.ts";
 import { sendGitCommitPrompt } from "../../send-git-commit-prompt.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
-import {
-	MAX_RIGHT_PANEL_SPLIT_RATIO,
-	MIN_RIGHT_PANEL_SPLIT_RATIO,
-	useLayoutStore,
-} from "../../stores/layout.ts";
+import { useLayoutStore } from "../../stores/layout.ts";
 import {
 	selectAgentTreeRevision,
 	selectGitRevision,
@@ -39,18 +31,28 @@ import { ActiveTabUnderline } from "../active-tab-underline.tsx";
 import { CronPanel } from "./cron-panel.tsx";
 import { FileTree, FileTreeHeader } from "./file-tree.tsx";
 import { GitPanel } from "./git-panel.tsx";
+import { shouldClearSelectedGitCommit } from "./git-selection-state.ts";
 import {
-	shouldFetchAgentTree,
-	shouldFetchGitStatus,
-} from "./right-panel-fetch-policy.ts";
+	useAgentTreeLoader,
+	useGitStatusLoader,
+} from "./right-panel-data-loaders.ts";
 import {
 	UPPER_RIGHT_PANEL_TABS,
 	type UpperRightPanelTab,
 } from "./right-panel-layout.ts";
+import {
+	applyRightPanelResizeBodyStyles,
+	calculateRightPanelSplitRatio,
+} from "./right-panel-resize-behavior.ts";
 import { TerminalPanel } from "./terminal-panel.tsx";
+import {
+	clearDispatchedTerminalRunRequest,
+	createTerminalRunRequest,
+	storeTerminalRunRequest,
+	type TerminalRunRequestsByAgent,
+} from "./terminal-run-coordinator.ts";
 import { TerminalRunPanel } from "./terminal-run-panel.tsx";
 import { TerminalTabs } from "./terminal-tabs.tsx";
-import type { TerminalRunRequest } from "./terminal-view.tsx";
 import {
 	resolveHeaderTerminalRunAction,
 	resolveSavedTerminalRunCommand,
@@ -187,33 +189,12 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		activeAgent?.terminalRunCommand ?? "",
 		requestRestartAfterConfigSave,
 	);
-	const [tree, setTree] = useState<BrowserTreeEntry[]>([]);
-	const [treeLoading, setTreeLoading] = useState(false);
-	const [treeError, setTreeError] = useState<string | null>(null);
-	const [gitStatus, setGitStatus] = useState<BrowserGitStatusResponse | null>(
-		null,
-	);
-	const [gitLoading, setGitLoading] = useState(false);
-	const [gitError, setGitError] = useState<string | null>(null);
 	const [isResizing, setIsResizing] = useState(false);
 	const [selectedGitCommitSha, setSelectedGitCommitSha] = useState<
 		string | null
 	>(null);
-	const [loadedTreeAgentId, setLoadedTreeAgentId] = useState<string | null>(
-		null,
-	);
-	const [loadedTreeRevision, setLoadedTreeRevision] = useState<number | null>(
-		null,
-	);
-	const [loadedTreeGitRevision, setLoadedTreeGitRevision] = useState<
-		number | null
-	>(null);
-	const [loadedGitRevision, setLoadedGitRevision] = useState<number | null>(
-		null,
-	);
-	const [runRequestsByAgent, setRunRequestsByAgent] = useState<
-		Record<string, TerminalRunRequest>
-	>({});
+	const [runRequestsByAgent, setRunRequestsByAgent] =
+		useState<TerminalRunRequestsByAgent>({});
 	const contentRef = useRef<HTMLDivElement | null>(null);
 	const nextRunRequestIdRef = useRef(0);
 	const treeRevision = useRightPanelRefreshStore((state) =>
@@ -226,146 +207,23 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const bumpTreeRevision = useRightPanelRefreshStore(
 		(state) => state.bumpTreeRevision,
 	);
-
-	useEffect(() => {
-		void treeRevision;
-		void gitRevision;
-
-		if (activeUpperTab !== "files") {
-			setTreeLoading(false);
-			return;
-		}
-
-		if (!activeAgentId) {
-			setTree([]);
-			setTreeError(null);
-			setTreeLoading(false);
-			setLoadedTreeAgentId(null);
-			setLoadedTreeRevision(null);
-			setLoadedTreeGitRevision(null);
-			return;
-		}
-
-		if (
-			!shouldFetchAgentTree({
-				activeAgentId,
-				activeUpperTab,
-				gitRevision,
-				loadedAgentId: loadedTreeAgentId,
-				loadedGitRevision: loadedTreeGitRevision,
-				loadedRevision: loadedTreeRevision,
-				treeRevision,
-			})
-		) {
-			return;
-		}
-
-		let cancelled = false;
-		setTreeLoading(true);
-		setTreeError(null);
-		void fetchAgentTree(activeAgentId)
-			.then((nextTree) => {
-				if (!cancelled) {
-					setTree(nextTree);
-					setTreeError(null);
-					setLoadedTreeAgentId(activeAgentId);
-					setLoadedTreeRevision(treeRevision);
-					setLoadedTreeGitRevision(gitRevision);
-				}
-			})
-			.catch((error) => {
-				if (!cancelled) {
-					setTree([]);
-					setTreeError(
-						error instanceof Error ? error.message : "Failed to load file tree",
-					);
-					setLoadedTreeAgentId(activeAgentId);
-					setLoadedTreeRevision(treeRevision);
-					setLoadedTreeGitRevision(gitRevision);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setTreeLoading(false);
-				}
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [
+	const { tree, treeError, treeLoading } = useAgentTreeLoader({
 		activeAgentId,
 		activeUpperTab,
 		gitRevision,
-		loadedTreeAgentId,
-		loadedTreeGitRevision,
-		loadedTreeRevision,
 		treeRevision,
-	]);
+	});
+	const { gitError, gitLoading, gitStatus } = useGitStatusLoader({
+		activeUpperTab,
+		gitRevision,
+	});
 
 	useEffect(() => {
-		void gitRevision;
-
-		if (activeUpperTab !== "git") {
-			setGitLoading(false);
-			return;
-		}
-
 		if (
-			!shouldFetchGitStatus({
-				activeUpperTab,
-				gitRevision,
-				loadedRevision: loadedGitRevision,
+			shouldClearSelectedGitCommit({
+				selectedCommitSha: selectedGitCommitSha,
+				status: gitStatus,
 			})
-		) {
-			return;
-		}
-
-		let cancelled = false;
-		setGitLoading(true);
-		setGitError(null);
-		void fetchGitStatus()
-			.then((nextStatus) => {
-				if (!cancelled) {
-					setGitStatus(nextStatus);
-					setGitError(null);
-					setLoadedGitRevision(gitRevision);
-				}
-			})
-			.catch((error) => {
-				if (!cancelled) {
-					setGitStatus(null);
-					setGitError(
-						error instanceof Error
-							? error.message
-							: "Failed to load git status",
-					);
-					setLoadedGitRevision(gitRevision);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setGitLoading(false);
-				}
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [activeUpperTab, gitRevision, loadedGitRevision]);
-
-	useEffect(() => {
-		if (selectedGitCommitSha === null) {
-			return;
-		}
-		if (!gitStatus?.initialized) {
-			setSelectedGitCommitSha(null);
-			return;
-		}
-		if (
-			!gitStatus.graph.commits.some(
-				(commit) => commit.sha === selectedGitCommitSha,
-			)
 		) {
 			setSelectedGitCommitSha(null);
 		}
@@ -426,14 +284,14 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const dispatchRunCommand = useCallback(
 		(agentId: string, command: string) => {
 			executeRunTerminal(agentId, command);
-			nextRunRequestIdRef.current += 1;
-			setRunRequestsByAgent((current) => ({
-				...current,
-				[agentId]: {
-					command,
-					id: nextRunRequestIdRef.current,
-				},
-			}));
+			const { nextRequestId, request } = createTerminalRunRequest({
+				command,
+				nextRequestId: nextRunRequestIdRef.current,
+			});
+			nextRunRequestIdRef.current = nextRequestId;
+			setRunRequestsByAgent((current) =>
+				storeTerminalRunRequest(current, agentId, request),
+			);
 		},
 		[executeRunTerminal],
 	);
@@ -493,14 +351,9 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 				return;
 			}
 
-			setRunRequestsByAgent((current) => {
-				if (current[activeAgentId]?.id !== requestId) {
-					return current;
-				}
-
-				const { [activeAgentId]: _dispatched, ...nextRequests } = current;
-				return nextRequests;
-			});
+			setRunRequestsByAgent((current) =>
+				clearDispatchedTerminalRunRequest(current, activeAgentId, requestId),
+			);
 		},
 		[activeAgentId],
 	);
@@ -521,12 +374,12 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			}
 
 			const rect = content.getBoundingClientRect();
-			const nextRatio = (event.clientY - rect.top) / rect.height;
 			setRightPanelSplitRatio(
-				Math.max(
-					MIN_RIGHT_PANEL_SPLIT_RATIO,
-					Math.min(MAX_RIGHT_PANEL_SPLIT_RATIO, nextRatio),
-				),
+				calculateRightPanelSplitRatio({
+					clientY: event.clientY,
+					containerHeight: rect.height,
+					containerTop: rect.top,
+				}),
 			);
 		},
 		[setRightPanelSplitRatio],
@@ -543,14 +396,14 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 
 		document.addEventListener("mousemove", handleResizeMove);
 		document.addEventListener("mouseup", handleResizeUp);
-		document.body.style.userSelect = "none";
-		document.body.style.cursor = "row-resize";
+		const cleanupBodyStyles = applyRightPanelResizeBodyStyles(
+			document.body.style,
+		);
 
 		return () => {
 			document.removeEventListener("mousemove", handleResizeMove);
 			document.removeEventListener("mouseup", handleResizeUp);
-			document.body.style.userSelect = "";
-			document.body.style.cursor = "";
+			cleanupBodyStyles();
 		};
 	}, [handleResizeMove, handleResizeUp, isResizing]);
 

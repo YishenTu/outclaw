@@ -1,5 +1,6 @@
-import { basename, join } from "node:path";
-import { prepareAgentWorkspace } from "../backend/agent-workspace.ts";
+import { basename } from "node:path";
+import { ClaudeAdapter } from "../backend/adapters/claude.ts";
+import { createOutclawLayout } from "../common/layout.ts";
 import {
 	type AgentOnboardingSubmission,
 	runAgentOnboardingTui,
@@ -35,6 +36,8 @@ type RestartSpawn = (
 	},
 ) => RestartSpawnResult;
 
+const claudeWorkspaceAdapter = new ClaudeAdapter();
+
 export function applyOnboardingSubmission(
 	options: ApplyOnboardingSubmissionOptions,
 ) {
@@ -44,7 +47,8 @@ export function applyOnboardingSubmission(
 		createAgentId: options.createAgentId,
 		homeDir: options.homeDir,
 		name: options.submission.name,
-		prepareWorkspace: prepareAgentWorkspace,
+		prepareWorkspace: (agentHomeDir) =>
+			claudeWorkspaceAdapter.prepareWorkspace(agentHomeDir),
 		templatesDir: options.templatesDir,
 	});
 
@@ -111,7 +115,9 @@ export async function onboardCommand(options: OnboardCommandOptions) {
 		console.log("Enabled LAN mode");
 	}
 
-	const pid = new PidManager(join(options.homeDir, "daemon.pid"));
+	const pid = new PidManager(
+		createOutclawLayout({ homeDir: options.homeDir }).pidPath,
+	);
 	if (!pid.isRunning()) {
 		return;
 	}

@@ -1,6 +1,4 @@
 #!/usr/bin/env bun
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { agentCommand } from "./cli/agent.ts";
 import { configCommand } from "./cli/config.ts";
 import { cronCommand } from "./cli/cron.ts";
@@ -15,27 +13,20 @@ import {
 	printStartUsage,
 	printUsage,
 } from "./cli/usage.ts";
+import { createOutclawLayout } from "./common/layout.ts";
 
-const HOME_DIR = join(homedir(), ".outclaw");
-const PID_PATH = join(HOME_DIR, "daemon.pid");
-const LOG_PATH = join(HOME_DIR, "daemon.log");
-const READY_PATH = join(HOME_DIR, "daemon.ready");
-const CLI_ENTRY = join(import.meta.dir, "cli.ts");
-const DAEMON_ENTRY = join(import.meta.dir, "index.ts");
-const TEMPLATES_DIR = join(import.meta.dir, "templates");
-const TUI_ENTRY = join(import.meta.dir, "tui.ts");
-const BROWSER_DIR = join(import.meta.dir, "frontend", "browser");
+const layout = createOutclawLayout({ srcRoot: import.meta.dir });
 const argv = process.argv;
 const daemon = createDaemonCommands({
 	argv,
-	browserDir: BROWSER_DIR,
-	daemonEntry: DAEMON_ENTRY,
-	homeDir: HOME_DIR,
-	logPath: LOG_PATH,
-	pidPath: PID_PATH,
-	readyPath: READY_PATH,
-	templatesDir: TEMPLATES_DIR,
-	tuiEntry: TUI_ENTRY,
+	browserDir: layout.browserDir,
+	daemonEntry: layout.daemonEntry,
+	homeDir: layout.homeDir,
+	logPath: layout.logPath,
+	pidPath: layout.pidPath,
+	readyPath: layout.readyPath,
+	templatesDir: layout.templatesDir,
+	tuiEntry: layout.tuiEntry,
 });
 const command = argv[2];
 
@@ -80,23 +71,23 @@ switch (command) {
 			process.exit(0);
 		}
 		await onboardCommand({
-			cliEntry: CLI_ENTRY,
-			homeDir: HOME_DIR,
-			templatesDir: TEMPLATES_DIR,
+			cliEntry: layout.cliEntry,
+			homeDir: layout.homeDir,
+			templatesDir: layout.templatesDir,
 		});
 		break;
 	case "agent":
 		await agentCommand({
 			argv,
-			homeDir: HOME_DIR,
-			templatesDir: TEMPLATES_DIR,
+			homeDir: layout.homeDir,
+			templatesDir: layout.templatesDir,
 			tui: daemon.tui,
 		});
 		break;
 	case "config":
 		configCommand({
 			argv,
-			homeDir: HOME_DIR,
+			homeDir: layout.homeDir,
 		});
 		break;
 	case "session":
@@ -105,7 +96,7 @@ switch (command) {
 	case "cron":
 		await cronCommand({
 			argv,
-			homeDir: HOME_DIR,
+			homeDir: layout.homeDir,
 		});
 		break;
 	case "note":
@@ -114,7 +105,7 @@ switch (command) {
 	case "schema":
 		await schemaCommand({
 			argv,
-			homeDir: HOME_DIR,
+			homeDir: layout.homeDir,
 		});
 		break;
 	case "dev":

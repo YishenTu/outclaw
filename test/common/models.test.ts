@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
 	contextWindowForAlias,
 	contextWindowForResolvedModel,
+	contextWindowSwitchLimitForAlias,
+	getModelAliasMetadata,
 	isModelAlias,
 	MODEL_ALIAS_LIST,
 	MODELS,
+	modelAliasForModel,
 	resolveModelAlias,
 } from "../../src/common/models.ts";
 
@@ -67,5 +70,35 @@ describe("contextWindowForResolvedModel", () => {
 
 	test("returns undefined for unknown model id", () => {
 		expect(contextWindowForResolvedModel("unknown-model")).toBeUndefined();
+	});
+});
+
+describe("model alias metadata", () => {
+	test("keeps resolved ids and context windows in one metadata shape", () => {
+		for (const alias of MODEL_ALIAS_LIST) {
+			const metadata = getModelAliasMetadata(alias);
+			expect(metadata).toEqual({
+				alias,
+				contextWindow: MODELS[alias].contextWindow,
+				id: resolveModelAlias(alias),
+			});
+			expect(metadata?.contextWindow).toBe(contextWindowForAlias(alias));
+		}
+	});
+
+	test("returns undefined metadata for unknown aliases", () => {
+		expect(getModelAliasMetadata("gpt-4")).toBeUndefined();
+	});
+
+	test("resolves aliases from either alias or resolved model id", () => {
+		expect(modelAliasForModel("opus")).toBe("opus");
+		expect(modelAliasForModel(MODELS.opus.id)).toBe("opus");
+		expect(modelAliasForModel("unknown-model")).toBeUndefined();
+	});
+
+	test("computes the context switch limit from alias metadata", () => {
+		expect(contextWindowSwitchLimitForAlias("sonnet")).toBe(160_000);
+		expect(contextWindowSwitchLimitForAlias("opus", 0.5)).toBe(500_000);
+		expect(contextWindowSwitchLimitForAlias("unknown-model")).toBeUndefined();
 	});
 });

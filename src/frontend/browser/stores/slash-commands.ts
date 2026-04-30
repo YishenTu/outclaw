@@ -1,11 +1,15 @@
 import { create } from "zustand";
-import { SLASH_COMMANDS } from "../../../common/commands.ts";
+import {
+	listSlashCommands,
+	type SlashCommandTransport,
+} from "../../../common/commands.ts";
 import type { SkillInfo } from "../../../common/protocol.ts";
 
 export interface CommandEntry {
 	name: string;
 	description: string;
 	source: "builtin" | "skill";
+	transport: SlashCommandTransport;
 }
 
 export interface SlashCommandsState {
@@ -17,10 +21,11 @@ export interface SlashCommandsState {
 }
 
 function createBuiltinCommandEntries(): CommandEntry[] {
-	return SLASH_COMMANDS.map((command) => ({
+	return listSlashCommands().map((command) => ({
 		name: command.command,
 		description: command.description,
 		source: "builtin" as const,
+		transport: command.transport,
 	}));
 }
 
@@ -35,6 +40,7 @@ export function buildSlashCommands(skills: SkillInfo[]): CommandEntry[] {
 			name: skill.name,
 			description: skill.description,
 			source: "skill" as const,
+			transport: "prompt" as const,
 		}));
 
 	return [...builtinEntries, ...skillEntries];

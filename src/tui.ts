@@ -1,9 +1,9 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { createOutclawLayout } from "./common/layout.ts";
 import { startTui } from "./frontend/tui/index.tsx";
 import { loadGlobalConfig } from "./runtime/config.ts";
 
-const config = loadGlobalConfig(join(homedir(), ".outclaw"));
+const layout = createOutclawLayout({ srcRoot: import.meta.dir });
+const config = loadGlobalConfig(layout.homeDir);
 const url = `ws://localhost:${config.port}`;
 const agentFlagIndex = process.argv.indexOf("--agent");
 const agentName =

@@ -1,12 +1,15 @@
 import type {
 	BrowserAgentsResponse,
-	ImageRef,
 	ServerEvent,
 } from "../../common/protocol.ts";
 import { formatStatusCompact } from "../../common/status.ts";
+import {
+	applyBrowserChatEvent,
+	type BrowserChatEventHandlerOptions,
+	inferImageMediaTypeFromPath,
+} from "./browser-chat-events.ts";
 import { applyBrowserStatusEvent } from "./browser-status-event.ts";
 import { ensureRunningChatSession } from "./ensure-running-chat-session.ts";
-import { toObservedDisplayMessage } from "./observed-prompt.ts";
 import { createBrowserSessionRef, createSessionKey } from "./session.ts";
 import { useAgentsStore } from "./stores/agents.ts";
 import { useChatStore } from "./stores/chat.ts";
@@ -17,7 +20,7 @@ import { useRuntimePopupStore } from "./stores/runtime-popup.ts";
 import { type SessionEntry, useSessionsStore } from "./stores/sessions.ts";
 import { useSlashCommandsStore } from "./stores/slash-commands.ts";
 
-type SessionKey = string;
+export { inferImageMediaTypeFromPath };
 
 export function applySidebarSummary(summary: BrowserAgentsResponse) {
 	useAgentsStore.getState().setAgents(
@@ -80,54 +83,19 @@ export function formatSessionInfoSummary(
 	return `Session\n${event.title}\nmodel: ${event.model}\nid: ${event.sdkSessionId}`;
 }
 
-export function inferImageMediaTypeFromPath(
-	path: string,
-): ImageRef["mediaType"] | undefined {
-	const lowerPath = path.toLowerCase();
-	if (lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg")) {
-		return "image/jpeg";
-	}
-	if (lowerPath.endsWith(".png")) {
-		return "image/png";
-	}
-	if (lowerPath.endsWith(".gif")) {
-		return "image/gif";
-	}
-	if (lowerPath.endsWith(".webp")) {
-		return "image/webp";
-	}
-	return undefined;
-}
-
-interface LiveRunCompletion {
-	adoptFromSessionKey?: SessionKey;
-	sessionKey: SessionKey;
-}
-
-interface BrowserServerEventHandlerOptions {
-	clearLiveRunSessions: () => void;
-	completeLiveRunSession: (
-		nextSessionKey: SessionKey,
-		currentSessionKey: SessionKey,
-	) => LiveRunCompletion;
-	getActiveAgentId: () => string | null;
-	getCurrentSessionKey: (agentId: string) => SessionKey;
+interface BrowserServerEventHandlerOptions
+	extends BrowserChatEventHandlerOptions {
 	invalidateSidebarRefresh: () => void;
-	pinObservedSessionKey: (
-		agentId: string,
-		observedSessionId?: string,
-	) => SessionKey;
-	refreshSidebar: () => void;
-	routeObservedSessionKey: (
-		agentId: string,
-		observedSessionId?: string,
-	) => SessionKey;
 }
 
 export function handleBrowserServerEvent(
 	event: ServerEvent,
 	options: BrowserServerEventHandlerOptions,
 ) {
+	if (applyBrowserChatEvent(event, options)) {
+		return;
+	}
+
 	switch (event.type) {
 		case "agent_menu":
 			useRuntimePopupStore.getState().openAgentMenu(event);
@@ -237,209 +205,12 @@ export function handleBrowserServerEvent(
 			useRuntimeStore.getState().clearSession();
 			return;
 		}
-		case "history_replay": {
-			const agentId = options.getActiveAgentId();
-			const runtime = useRuntimeStore.getState();
-			const providerId = runtime.providerId;
-			if (!agentId) {
-				return;
-			}
-			if (!providerId) {
-				return;
-			}
-
-			useChatStore
-				.getState()
-				.replaceHistory(
-					createSessionKey(
-						createBrowserSessionRef(agentId, providerId, event.sdkSessionId),
-					),
-					event.messages,
-					{
-						preservePendingTurn:
-							runtime.running &&
-							runtime.sessionId === event.sdkSessionId &&
-							runtime.providerId === providerId,
-					},
-				);
-			if (runtime.running) {
-				ensureRunningChatSession(agentId, runtime.providerId);
-			}
-			return;
-		}
-		case "streaming_sync": {
-			const agentId = options.getActiveAgentId();
-			const providerId = useRuntimeStore.getState().providerId;
-			if (!agentId || !providerId) {
-				return;
-			}
-
-			const sessionKey = createSessionKey(
-				createBrowserSessionRef(agentId, providerId, event.sdkSessionId),
-			);
-			useChatStore.getState().restoreStreamingState(sessionKey, {
-				images: event.images,
-				text: event.text,
-				thinking: event.thinking,
-			});
-			return;
-		}
-		case "user_prompt": {
-			const agentId = options.getActiveAgentId();
-			if (!agentId) {
-				return;
-			}
-			const sessionKey = options.pinObservedSessionKey(
-				agentId,
-				event.sessionId,
-			);
-			const message = toObservedDisplayMessage(event);
-			if (!message) {
-				return;
-			}
-
-			useChatStore.getState().pushMessage(
-				sessionKey,
-				message.kind === "chat"
-					? {
-							...message,
-							timestamp: Date.now(),
-						}
-					: message,
-			);
-			return;
-		}
-		case "thinking": {
-			const agentId = options.getActiveAgentId();
-			if (!agentId) {
-				return;
-			}
-			useChatStore
-				.getState()
-				.appendThinking(
-					options.routeObservedSessionKey(agentId, event.sessionId),
-					event.text,
-				);
-			return;
-		}
-		case "text": {
-			const agentId = options.getActiveAgentId();
-			if (!agentId) {
-				return;
-			}
-			useChatStore
-				.getState()
-				.appendText(
-					options.routeObservedSessionKey(agentId, event.sessionId),
-					event.text,
-				);
-			return;
-		}
-		case "image": {
-			const agentId = options.getActiveAgentId();
-			if (!agentId) {
-				return;
-			}
-			useChatStore
-				.getState()
-				.appendImage(
-					options.routeObservedSessionKey(agentId, event.sessionId),
-					{
-						kind: "managed",
-						path: event.path,
-						mediaType:
-							event.mediaType ??
-							inferImageMediaTypeFromPath(event.path) ??
-							"image/png",
-					},
-				);
-			return;
-		}
-		case "compacting_started": {
-			const agentId = options.getActiveAgentId();
-			if (!agentId) {
-				return;
-			}
-			useChatStore
-				.getState()
-				.setCompacting(
-					options.routeObservedSessionKey(agentId, event.sessionId),
-					true,
-				);
-			return;
-		}
-		case "compacting_finished": {
-			const agentId = options.getActiveAgentId();
-			if (!agentId) {
-				return;
-			}
-			useChatStore
-				.getState()
-				.setCompacting(
-					options.routeObservedSessionKey(agentId, event.sessionId),
-					false,
-				);
-			return;
-		}
-		case "done": {
-			const agentId = options.getActiveAgentId();
-			if (!agentId) {
-				return;
-			}
-
-			const currentSessionKey = options.getCurrentSessionKey(agentId);
-			const providerId = useRuntimeStore.getState().providerId;
-			if (!providerId) {
-				return;
-			}
-			const nextSessionRef = createBrowserSessionRef(
-				agentId,
-				providerId,
-				event.sessionId,
-			);
-			const nextSessionKey = createSessionKey(nextSessionRef);
-			const completion = options.completeLiveRunSession(
-				nextSessionKey,
-				currentSessionKey,
-			);
-
-			if (
-				completion.adoptFromSessionKey &&
-				completion.adoptFromSessionKey !== completion.sessionKey
-			) {
-				useChatStore
-					.getState()
-					.adoptSession(completion.adoptFromSessionKey, completion.sessionKey);
-			}
-			useChatStore.getState().finalizeMessage(completion.sessionKey, {
-				timestamp: Date.now(),
-			});
-			useSessionsStore.getState().setActiveSession(agentId, nextSessionRef);
-			if (event.usage) {
-				useContextUsageStore.getState().setUsage(nextSessionKey, event.usage);
-			}
-			options.refreshSidebar();
-			return;
-		}
 		case "model_changed":
 			useRuntimeStore.getState().setModel(event.model);
 			return;
 		case "effort_changed":
 			useRuntimeStore.getState().setEffort(event.effort);
 			return;
-		case "error": {
-			const agentId = options.getActiveAgentId();
-			if (agentId) {
-				const sessionKey = options.routeObservedSessionKey(
-					agentId,
-					event.sessionId,
-				);
-				useChatStore.getState().setError(sessionKey, event.message);
-			}
-			options.clearLiveRunSessions();
-			useRuntimeStore.getState().setError(event.message);
-			return;
-		}
 		case "skills_update":
 			useSlashCommandsStore.getState().setSkills(event.skills);
 			return;

@@ -7,6 +7,7 @@ import {
 	displayMessageRenderKey,
 	isNearTranscriptBottom,
 } from "./message-list-scroll.ts";
+import { shouldShowAssistantUtilityBar } from "./message-render-projection.ts";
 import { ThinkingBlock } from "./thinking-block.tsx";
 import { ThinkingIndicator } from "./thinking-indicator.tsx";
 
@@ -84,7 +85,7 @@ export const MessageList = memo(function MessageList({
 							sessionKey,
 						})}
 						message={message}
-						showUtilityBar={hasUserAssistantTurn(message)}
+						showUtilityBar={shouldShowAssistantUtilityBar(message)}
 					/>
 				))}
 
@@ -113,11 +114,3 @@ export const MessageList = memo(function MessageList({
 		</div>
 	);
 });
-
-function hasUserAssistantTurn(message: DisplayMessage): boolean {
-	return (
-		message.kind === "chat" &&
-		message.role === "assistant" &&
-		message.assistantTurn?.source === "user"
-	);
-}

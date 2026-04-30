@@ -1,0 +1,239 @@
+import type {
+	BrowserAgentsResponse,
+	BrowserConfigResponse,
+	BrowserCronEntry,
+	BrowserFileResponse,
+	BrowserGitCommitResponse,
+	BrowserGitDiffResponse,
+	BrowserGitStatusResponse,
+	BrowserTerminalRunCommandResponse,
+	BrowserTreeEntry,
+	ImageMediaType,
+} from "../../common/protocol.ts";
+
+export interface BrowserApi {
+	getAgentTerminalCwd(agentId: string): string | undefined;
+	initGitRepo(): Promise<BrowserGitStatusResponse>;
+	listAgentCron(agentId: string): Promise<BrowserCronEntry[]>;
+	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
+	listAgents(): BrowserAgentsResponse;
+	readAgentFile(
+		agentId: string,
+		relativePath: string,
+	): Promise<BrowserFileResponse>;
+	readConfigFile(): Promise<BrowserConfigResponse>;
+	readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
+	readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
+	readGitStatus(): Promise<BrowserGitStatusResponse>;
+	setAgentCronEnabled(
+		agentId: string,
+		relativePath: string,
+		enabled: boolean,
+	): Promise<BrowserCronEntry>;
+	uploadImages?(
+		images: Array<{ bytes: Uint8Array; mediaType: ImageMediaType }>,
+	): Promise<Array<{ path: string; mediaType: ImageMediaType }>>;
+	writeAgentTerminalRunCommand?(
+		agentId: string,
+		command: string,
+	): Promise<BrowserTerminalRunCommandResponse>;
+	writeConfigFile(
+		document: Record<string, unknown>,
+	): Promise<BrowserConfigResponse>;
+}
+
+export async function handleBrowserApiRequest(
+	req: Request,
+	url: URL,
+	browserApi: BrowserApi | undefined,
+): Promise<Response> {
+	if (!browserApi) {
+		return jsonError("Browser API is not configured", 404);
+	}
+
+	try {
+		if (url.pathname === "/api/agents") {
+			return Response.json(browserApi.listAgents());
+		}
+
+		if (url.pathname === "/api/config") {
+			if (req.method === "PATCH") {
+				const body = (await req.json().catch(() => undefined)) as
+					| { document?: Record<string, unknown> }
+					| undefined;
+				if (!body?.document) {
+					return jsonError("Missing config document", 400);
+				}
+				return Response.json(await browserApi.writeConfigFile(body.document));
+			}
+			return Response.json(await browserApi.readConfigFile());
+		}
+
+		if (url.pathname === "/api/git/status") {
+			return Response.json(await browserApi.readGitStatus());
+		}
+
+		if (url.pathname === "/api/git/init") {
+			if (req.method !== "POST") {
+				return jsonError("Method not allowed", 405);
+			}
+			return Response.json(await browserApi.initGitRepo());
+		}
+
+		if (url.pathname === "/api/git/diff") {
+			const path = url.searchParams.get("path");
+			if (!path) {
+				return jsonError("Missing path query parameter", 400);
+			}
+			return Response.json(await browserApi.readGitDiff(path));
+		}
+
+		if (url.pathname === "/api/git/commit") {
+			const sha = url.searchParams.get("sha");
+			if (!sha) {
+				return jsonError("Missing sha query parameter", 400);
+			}
+			return Response.json(await browserApi.readGitCommit(sha));
+		}
+
+		if (url.pathname === "/api/images") {
+			if (req.method !== "POST") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.uploadImages) {
+				return jsonError("Image upload is not configured", 404);
+			}
+
+			const images = await readUploadedImages(req);
+			return Response.json({
+				images: await browserApi.uploadImages(images),
+			});
+		}
+
+		const agentMatch = url.pathname.match(
+			/^\/api\/agents\/([^/]+)\/(tree|files|cron|terminal-run-command)$/,
+		);
+		if (!agentMatch) {
+			return jsonError("Not found", 404);
+		}
+
+		const [, encodedAgentId, resource] = agentMatch;
+		const agentId = decodeURIComponent(encodedAgentId ?? "");
+		if (resource === "terminal-run-command") {
+			if (req.method === "PATCH") {
+				if (!browserApi.writeAgentTerminalRunCommand) {
+					return jsonError("Terminal run command API is not configured", 404);
+				}
+				const body = (await req.json().catch(() => undefined)) as
+					| { command?: unknown }
+					| undefined;
+				if (typeof body?.command !== "string") {
+					return jsonError("Missing terminal run command", 400);
+				}
+				return Response.json(
+					await browserApi.writeAgentTerminalRunCommand(agentId, body.command),
+				);
+			}
+
+			return jsonError("Method not allowed", 405);
+		}
+
+		if (resource === "cron" && req.method === "PATCH") {
+			const body = (await req.json().catch(() => undefined)) as
+				| { enabled?: boolean; path?: string }
+				| undefined;
+			if (!body?.path || typeof body.enabled !== "boolean") {
+				return jsonError("Missing cron path or enabled state", 400);
+			}
+			return Response.json(
+				await browserApi.setAgentCronEnabled(agentId, body.path, body.enabled),
+			);
+		}
+
+		if (req.method !== "GET") {
+			return jsonError("Method not allowed", 405);
+		}
+
+		if (resource === "tree") {
+			return Response.json(await browserApi.listAgentTree(agentId));
+		}
+		if (resource === "cron") {
+			return Response.json(await browserApi.listAgentCron(agentId));
+		}
+
+		const path = url.searchParams.get("path");
+		if (!path) {
+			return jsonError("Missing path query parameter", 400);
+		}
+		return Response.json(await browserApi.readAgentFile(agentId, path));
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "Unexpected error";
+		return jsonError(message, statusForBrowserApiError(message));
+	}
+}
+
+function jsonError(message: string, status: number) {
+	return Response.json(
+		{
+			error: message,
+		},
+		{ status },
+	);
+}
+
+async function readUploadedImages(req: Request) {
+	const formData = await req.formData();
+	const files = formData.getAll("images");
+	const images: Array<{ bytes: Uint8Array; mediaType: ImageMediaType }> = [];
+
+	for (const entry of files) {
+		if (!(entry instanceof File)) {
+			continue;
+		}
+
+		if (!isImageMediaType(entry.type)) {
+			throw new Error(
+				`Unsupported image media type: ${entry.type || "(empty)"}`,
+			);
+		}
+
+		images.push({
+			bytes: new Uint8Array(await entry.arrayBuffer()),
+			mediaType: entry.type,
+		});
+	}
+
+	if (images.length === 0) {
+		throw new Error("Missing uploaded images");
+	}
+
+	return images;
+}
+
+function isImageMediaType(type: string): type is ImageMediaType {
+	return (
+		type === "image/jpeg" ||
+		type === "image/png" ||
+		type === "image/gif" ||
+		type === "image/webp"
+	);
+}
+
+function statusForBrowserApiError(message: string): number {
+	if (
+		message.startsWith("Unknown agent:") ||
+		message.startsWith("Unknown commit:")
+	) {
+		return 404;
+	}
+	if (
+		message === "Path is required" ||
+		message === "Terminal run command must be a single line" ||
+		message.startsWith("Path escapes") ||
+		message === "Path escapes cron directory" ||
+		message === "Path does not reference a file"
+	) {
+		return 400;
+	}
+	return 500;
+}

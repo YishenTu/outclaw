@@ -8,7 +8,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { parseAskArgs } from "../src/cli/agent.ts";
+import { parseAskArgs } from "../src/cli/agent-ask.ts";
 import type { FrontendNotice } from "../src/common/protocol.ts";
 import { SessionStore } from "../src/runtime/persistence/session-store.ts";
 import { createTestServer } from "./helpers/test-server.ts";

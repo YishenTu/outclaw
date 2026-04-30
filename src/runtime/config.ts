@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import {
 	DEFAULT_EFFORT,
 	type EffortLevel,
 	isEffortLevel,
 } from "../common/commands.ts";
+import { createOutclawLayout } from "../common/layout.ts";
 import {
 	DEFAULT_STORED_AGENT_CONFIG,
 	normalizeStoredAgentConfig,
@@ -49,6 +49,10 @@ const DEFAULTS: GlobalConfig = {
 
 function ensureConfigHomeDir(homeDir: string) {
 	mkdirSync(homeDir, { recursive: true });
+}
+
+function configPathFor(homeDir: string): string {
+	return createOutclawLayout({ homeDir }).configPath;
 }
 
 interface ConfigDocument extends Record<string, unknown> {
@@ -113,7 +117,7 @@ function normalizeConfigDocument(raw: unknown): ConfigDocument {
 
 export function loadGlobalConfig(homeDir: string): GlobalConfig {
 	loadSharedEnv(homeDir);
-	const configPath = join(homeDir, "config.json");
+	const configPath = configPathFor(homeDir);
 
 	if (!existsSync(configPath)) {
 		ensureConfigHomeDir(homeDir);
@@ -154,7 +158,7 @@ export function updateGlobalConfig(
 	homeDir: string,
 	patch: GlobalConfigPatch,
 ): GlobalConfig {
-	const configPath = join(homeDir, "config.json");
+	const configPath = configPathFor(homeDir);
 	const raw = existsSync(configPath)
 		? (JSON.parse(readFileSync(configPath, "utf-8")) as unknown)
 		: {};
@@ -201,7 +205,7 @@ export function readStoredAgentConfig(
 	homeDir: string,
 	agentId: string,
 ): StoredAgentConfig {
-	const configPath = join(homeDir, "config.json");
+	const configPath = configPathFor(homeDir);
 	const raw = existsSync(configPath)
 		? (JSON.parse(readFileSync(configPath, "utf-8")) as unknown)
 		: {};
@@ -223,7 +227,7 @@ export function writeStoredAgentConfig(
 	agentId: string,
 	config: StoredAgentConfig,
 ): string {
-	const configPath = join(homeDir, "config.json");
+	const configPath = configPathFor(homeDir);
 	const raw = existsSync(configPath)
 		? (JSON.parse(readFileSync(configPath, "utf-8")) as unknown)
 		: {};
@@ -245,7 +249,7 @@ export function deleteStoredAgentConfig(
 	homeDir: string,
 	agentId: string,
 ): void {
-	const configPath = join(homeDir, "config.json");
+	const configPath = configPathFor(homeDir);
 	if (!existsSync(configPath)) {
 		return;
 	}

@@ -1,5 +1,6 @@
 import { AlertCircle, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { projectRuntimeNotice } from "../../runtime-notice-projection.ts";
 import {
 	selectVisibleRuntimeNotice,
 	useRuntimeStore,
@@ -91,22 +92,15 @@ export function createSidebarNotificationItems({
 		});
 	}
 
-	if (notice?.kind === "restart_required") {
+	const noticeProjection = projectRuntimeNotice(notice);
+	if (noticeProjection) {
 		items.push({
-			key: "notice-restart",
+			key: noticeProjection.key,
 			tone: "warning",
 			icon: "alert",
-			title: "Restart required",
-			detail: "Changes won't update until the runtime restarts.",
-		});
-	} else if (notice?.kind === "rollover") {
-		items.push({
-			key: "notice-rollover",
-			tone: "warning",
-			icon: "alert",
-			title: "Session rollover",
-			detail: notice.message,
-			onDismiss: onDismissNotice,
+			title: noticeProjection.title,
+			detail: noticeProjection.detail,
+			onDismiss: noticeProjection.dismissible ? onDismissNotice : undefined,
 		});
 	}
 

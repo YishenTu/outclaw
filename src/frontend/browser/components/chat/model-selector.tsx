@@ -3,13 +3,13 @@ import {
 	DEFAULT_EFFORT,
 	DEFAULT_MODEL,
 	type EffortLevel,
+	effortLevelsForModel,
 	isEffortLevel,
-	isOpusOnlyEffort,
 } from "../../../../common/commands.ts";
 import {
 	MODEL_ALIAS_LIST,
 	type ModelAlias,
-	resolveModelAlias,
+	modelAliasForModel,
 } from "../../../../common/models.ts";
 
 const EFFORT_MENU_LEVELS: readonly EffortLevel[] = [
@@ -39,13 +39,7 @@ export function resolveCurrentModelAlias(model: string | null): ModelAlias {
 		return DEFAULT_MODEL as ModelAlias;
 	}
 
-	for (const alias of MODEL_ALIAS_LIST) {
-		if (model === alias || resolveModelAlias(alias) === model) {
-			return alias;
-		}
-	}
-
-	return DEFAULT_MODEL as ModelAlias;
+	return modelAliasForModel(model) ?? (DEFAULT_MODEL as ModelAlias);
 }
 
 export function resolveCurrentEffort(effort: string | null): EffortLevel {
@@ -59,9 +53,7 @@ export function formatEffortLabel(effort: EffortLevel): string {
 export function visibleEffortLevelsForModel(
 	model: ModelAlias,
 ): readonly EffortLevel[] {
-	return EFFORT_MENU_LEVELS.filter(
-		(level) => model === "opus" || !isOpusOnlyEffort(level),
-	);
+	return effortLevelsForModel(model, EFFORT_MENU_LEVELS);
 }
 
 interface ModelSelectorProps {

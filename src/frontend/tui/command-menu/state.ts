@@ -1,21 +1,23 @@
-import { SLASH_COMMANDS } from "../../../common/commands.ts";
-import { MODEL_ALIAS_LIST } from "../../../common/models.ts";
+import {
+	listSlashCommands,
+	type SlashCommandTransport,
+} from "../../../common/commands.ts";
 import type { SkillInfo } from "../../../common/protocol.ts";
 
 export interface CommandMenuItem {
 	command: string;
 	description: string;
+	transport?: SlashCommandTransport;
 }
 
-const MODEL_ALIAS_COMMANDS = new Set(MODEL_ALIAS_LIST.map((a) => `/${a}`));
-
 export const BUILTIN_COMMANDS: CommandMenuItem[] = [
-	...SLASH_COMMANDS.map((rc) => ({
+	...listSlashCommands().map((rc) => ({
 		command: `/${rc.command}`,
 		description: rc.description,
+		transport: rc.transport,
 	})),
 	{ command: "/exit", description: "Exit the TUI" },
-].filter((item) => !MODEL_ALIAS_COMMANDS.has(item.command));
+];
 
 function buildMenuCommands(skills: SkillInfo[]): CommandMenuItem[] {
 	const skillItems: CommandMenuItem[] = skills.map((s) => ({

@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-	MAX_INSPECTOR_WIDTH,
-	MAX_SIDEBAR_WIDTH,
-	MIN_INSPECTOR_WIDTH,
-	MIN_SIDEBAR_WIDTH,
-	useLayoutStore,
-} from "../stores/layout.ts";
+import { useLayoutStore } from "../stores/layout.ts";
 import { useWorkspaceViewStore } from "../stores/workspace-view.ts";
 import { useRolloverNoticeAutoDismiss } from "../use-rollover-notice-auto-dismiss.ts";
+import {
+	applyAppLayoutResizeBodyStyles,
+	calculateLayoutResizeWidth,
+	calculateMaxInspectorWidth,
+	resolveInspectorFit,
+} from "./app-layout-policy.ts";
 import { AppLayoutView, type ResizeSide } from "./app-layout-view.tsx";
-
-const MIN_CENTER_WIDTH = 560;
-const MIN_VISIBLE_INSPECTOR_WIDTH = 400;
 
 export function AppLayout() {
 	useRolloverNoticeAutoDismiss();
@@ -41,12 +38,12 @@ export function AppLayout() {
 
 	const getMaxInspectorWidth = useCallback(
 		(containerWidth = getContainerWidth()) =>
-			Math.max(
-				MIN_INSPECTOR_WIDTH,
-				containerWidth -
-					(showWelcomePage || !leftCollapsed ? sidebarWidth : 0) -
-					MIN_CENTER_WIDTH,
-			),
+			calculateMaxInspectorWidth({
+				containerWidth,
+				leftCollapsed,
+				showWelcomePage,
+				sidebarWidth,
+			}),
 		[getContainerWidth, leftCollapsed, showWelcomePage, sidebarWidth],
 	);
 
@@ -57,24 +54,30 @@ export function AppLayout() {
 			}
 
 			const rect = containerRef.current.getBoundingClientRect();
+			const width = calculateLayoutResizeWidth({
+				clientX: event.clientX,
+				containerLeft: rect.left,
+				containerRight: rect.right,
+				containerWidth: rect.width,
+				leftCollapsed,
+				showWelcomePage,
+				side: resizingSide,
+				sidebarWidth,
+			});
 			if (resizingSide === "left") {
-				const nextWidth = event.clientX - rect.left;
-				setSidebarWidth(
-					Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, nextWidth)),
-				);
+				setSidebarWidth(width);
 				return;
 			}
-
-			const nextWidth = rect.right - event.clientX;
-			const boundedWidth = Math.min(
-				MAX_INSPECTOR_WIDTH,
-				Math.max(MIN_INSPECTOR_WIDTH, nextWidth),
-			);
-			setInspectorWidth(
-				Math.min(getMaxInspectorWidth(rect.width), boundedWidth),
-			);
+			setInspectorWidth(width);
 		},
-		[getMaxInspectorWidth, resizingSide, setInspectorWidth, setSidebarWidth],
+		[
+			leftCollapsed,
+			resizingSide,
+			setInspectorWidth,
+			setSidebarWidth,
+			showWelcomePage,
+			sidebarWidth,
+		],
 	);
 
 	const stopResize = useCallback(() => {
@@ -118,14 +121,14 @@ export function AppLayout() {
 
 		document.addEventListener("mousemove", handleMouseMove);
 		document.addEventListener("mouseup", stopResize);
-		document.body.style.cursor = "col-resize";
-		document.body.style.userSelect = "none";
+		const cleanupBodyStyles = applyAppLayoutResizeBodyStyles(
+			document.body.style,
+		);
 
 		return () => {
 			document.removeEventListener("mousemove", handleMouseMove);
 			document.removeEventListener("mouseup", stopResize);
-			document.body.style.cursor = "";
-			document.body.style.userSelect = "";
+			cleanupBodyStyles();
 		};
 	}, [handleMouseMove, resizingSide, stopResize]);
 
@@ -135,21 +138,18 @@ export function AppLayout() {
 		}
 
 		const fitOrCollapseRightPanel = () => {
-			if (rightCollapsed) {
+			const fit = resolveInspectorFit({
+				inspectorWidth,
+				maxInspectorWidth: getMaxInspectorWidth(getContainerWidth()),
+				rightCollapsed,
+			});
+			if (fit.type === "resize") {
+				setInspectorWidth(fit.inspectorWidth);
 				return;
 			}
-
-			const maxInspectorWidth = getMaxInspectorWidth(getContainerWidth());
-			if (inspectorWidth <= maxInspectorWidth) {
-				return;
+			if (fit.type === "collapse") {
+				setRightCollapsed(true);
 			}
-
-			if (maxInspectorWidth >= MIN_VISIBLE_INSPECTOR_WIDTH) {
-				setInspectorWidth(maxInspectorWidth);
-				return;
-			}
-
-			setRightCollapsed(true);
 		};
 
 		fitOrCollapseRightPanel();

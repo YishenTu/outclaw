@@ -1,5 +1,5 @@
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { createOutclawLayout } from "../../common/layout.ts";
 
 export interface RestartRequiredSnapshot {
 	agents: string[] | null;
@@ -10,10 +10,11 @@ export interface RestartRequiredSnapshot {
 export function readRestartRequiredSnapshot(
 	homeDir: string,
 ): RestartRequiredSnapshot {
+	const layout = createOutclawLayout({ homeDir });
 	return {
-		agents: readAgentsTopology(join(homeDir, "agents")),
-		config: readOptionalText(join(homeDir, "config.json")),
-		env: readOptionalText(join(homeDir, ".env")),
+		agents: readAgentsTopology(layout.agentsDir),
+		config: readOptionalText(layout.configPath),
+		env: readOptionalText(layout.envPath),
 	};
 }
 
