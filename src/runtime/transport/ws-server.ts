@@ -1,7 +1,7 @@
 import type { Facade, HeartbeatResult } from "../../common/protocol.ts";
 import { createAgentRuntime } from "../application/create-agent-runtime.ts";
 import type { Config } from "../config.ts";
-import type { SessionStore } from "../persistence/session-store.ts";
+import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import { createSupervisor } from "../supervisor/create-supervisor.ts";
 
 interface RuntimeOptions {

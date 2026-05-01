@@ -8,7 +8,7 @@ import type {
 	ServerEvent,
 } from "../../../src/common/protocol.ts";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
-import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
 

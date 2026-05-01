@@ -6,7 +6,7 @@ import type { PromptDispatcher } from "../../../src/runtime/application/prompt-e
 import { RuntimeExecutionCoordinator } from "../../../src/runtime/application/runtime-execution-coordinator.ts";
 import { SessionService } from "../../../src/runtime/application/session-service.ts";
 import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
-import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 
 const TEST_DB = join(
 	import.meta.dir,

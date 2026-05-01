@@ -17,7 +17,7 @@ import { createRuntimeController } from "../../../src/runtime/application/create
 import type { RuntimeController } from "../../../src/runtime/application/runtime-controller.ts";
 import { SessionService } from "../../../src/runtime/application/session-service.ts";
 import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
-import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
 

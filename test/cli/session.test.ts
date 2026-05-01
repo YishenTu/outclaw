@@ -9,7 +9,7 @@ import {
 } from "../../src/cli/session-read-model.ts";
 import type { AgentRecord } from "../../src/runtime/agents/agent-record.ts";
 import type { SessionSearchMatch } from "../../src/runtime/persistence/session-query.ts";
-import type { SessionRow } from "../../src/runtime/persistence/session-store.ts";
+import type { SessionRow } from "../../src/runtime/persistence/session-store/session-store.ts";
 
 function createAgent(agentId: string, name: string): AgentRecord {
 	return {

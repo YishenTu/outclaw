@@ -1,14 +1,14 @@
 import type { Database } from "bun:sqlite";
-import type { FrontendNotice } from "../../common/protocol.ts";
+import type { FrontendNotice } from "../../../common/protocol.ts";
 import {
 	parseFrontendNotice,
 	serializeFrontendNotice,
-} from "./frontend-notice.ts";
+} from "../frontend-notice.ts";
 import {
 	type LastUserTarget,
 	parseLastUserTarget,
 	serializeLastUserTarget,
-} from "./last-user-target.ts";
+} from "../last-user-target.ts";
 import {
 	activeSessionKey,
 	FRONTEND_NOTICE_KEY,
@@ -18,7 +18,7 @@ import {
 	lastInteractiveAtKey,
 	lastUserTargetKey,
 	rolloverNoticeKey,
-} from "./state-keys.ts";
+} from "../state-keys.ts";
 
 export class SessionStateStore {
 	constructor(

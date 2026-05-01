@@ -4,7 +4,7 @@ import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { TranscriptTurn } from "../../../src/common/protocol.ts";
 import { SessionQuery } from "../../../src/runtime/persistence/session-query.ts";
-import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-session-query.sqlite");
 

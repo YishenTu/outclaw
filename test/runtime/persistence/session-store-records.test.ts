@@ -3,7 +3,7 @@ import {
 	mapSessionRow,
 	mapSessionRows,
 	mapUsageRow,
-} from "../../../src/runtime/persistence/session-store-records.ts";
+} from "../../../src/runtime/persistence/session-store/session-store-records.ts";
 
 describe("session-store-records", () => {
 	test("mapSessionRow converts a database row to the runtime shape", () => {

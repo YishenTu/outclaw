@@ -19,7 +19,7 @@ import type {
 } from "../../common/protocol.ts";
 import { readStoredAgentConfig, writeStoredAgentConfig } from "../config.ts";
 import { saveManagedImage } from "../files/managed-image-store.ts";
-import type { SessionStore } from "../persistence/session-store.ts";
+import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import {
 	type BrowserApiAgent,
 	listBrowserAgents,

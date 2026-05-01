@@ -15,7 +15,7 @@ import type {
 } from "../../../common/protocol.ts";
 import { recalculateUsageForContextWindow } from "../../../common/usage.ts";
 import type { LastUserTarget } from "../../persistence/last-user-target.ts";
-import type { SessionRow } from "../../persistence/session-store.ts";
+import type { SessionRow } from "../../persistence/session-store/session-store.ts";
 import { RuntimeSessionState } from "./runtime-session-state.ts";
 import { RuntimeSettingsState } from "./runtime-settings-state.ts";
 

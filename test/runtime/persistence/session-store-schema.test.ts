@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { ensureSessionStoreSchema } from "../../../src/runtime/persistence/session-store-schema.ts";
+import { ensureSessionStoreSchema } from "../../../src/runtime/persistence/session-store/session-store-schema.ts";
 
 function getColumnNames(db: Database, tableName: string): string[] {
 	return (

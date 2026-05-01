@@ -3,7 +3,7 @@ import type { ImageMediaType } from "../../common/protocol.ts";
 import {
 	closeSqliteDatabase,
 	openSqliteDatabase,
-} from "./sqlite-file-lifecycle.ts";
+} from "./session-store/sqlite-file-lifecycle.ts";
 
 export type TelegramFileDirection = "inbound" | "outbound";
 

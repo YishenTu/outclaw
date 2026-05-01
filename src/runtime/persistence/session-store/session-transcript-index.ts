@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { TranscriptTurn } from "../../common/protocol.ts";
-import { formatSearchTranscriptTurnBody } from "../../common/transcript-turn-body.ts";
+import type { TranscriptTurn } from "../../../common/protocol.ts";
+import { formatSearchTranscriptTurnBody } from "../../../common/transcript-turn-body.ts";
 
 export class SessionTranscriptIndex {
 	constructor(

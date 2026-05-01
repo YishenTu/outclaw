@@ -6,7 +6,7 @@ import {
 	SessionQuery,
 	type SessionResolveResult,
 } from "../runtime/persistence/session-query.ts";
-import type { SessionTag } from "../runtime/persistence/session-store-records.ts";
+import type { SessionTag } from "../runtime/persistence/session-store/session-store-records.ts";
 import {
 	formatAmbiguousSessionMatches,
 	formatSessionList,

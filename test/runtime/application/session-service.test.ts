@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { DoneEvent } from "../../../src/common/protocol.ts";
 import { SessionService } from "../../../src/runtime/application/session-service.ts";
 import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
-import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-session-service-test.sqlite");
 const PROVIDER_ID = "mock";

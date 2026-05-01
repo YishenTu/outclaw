@@ -10,7 +10,7 @@ import {
 import { join } from "node:path";
 import { parseAskArgs } from "../src/cli/agent-ask.ts";
 import type { FrontendNotice } from "../src/common/protocol.ts";
-import { SessionStore } from "../src/runtime/persistence/session-store.ts";
+import { SessionStore } from "../src/runtime/persistence/session-store/session-store.ts";
 import { createTestServer } from "./helpers/test-server.ts";
 
 const TEST_HOME = join(import.meta.dir, ".tmp-cli-test");

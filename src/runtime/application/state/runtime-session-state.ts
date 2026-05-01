@@ -6,7 +6,7 @@ import type {
 	UsageInfo,
 } from "../../../common/protocol.ts";
 import type { LastUserTarget } from "../../persistence/last-user-target.ts";
-import type { SessionRow } from "../../persistence/session-store.ts";
+import type { SessionRow } from "../../persistence/session-store/session-store.ts";
 
 export class RuntimeSessionState {
 	private activeSessionId: string | undefined;

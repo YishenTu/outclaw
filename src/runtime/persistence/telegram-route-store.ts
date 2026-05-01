@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import {
 	closeSqliteDatabase,
 	openSqliteDatabase,
-} from "./sqlite-file-lifecycle.ts";
+} from "./session-store/sqlite-file-lifecycle.ts";
 
 interface TelegramRouteStoreOptions {
 	journalMode?: "WAL" | "DELETE";

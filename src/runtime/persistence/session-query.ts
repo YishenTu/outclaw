@@ -3,8 +3,8 @@ import {
 	mapSessionRows,
 	type SessionRow,
 	type SessionTag,
-} from "./session-store-records.ts";
-import { ensureSessionStoreSchema } from "./session-store-schema.ts";
+} from "./session-store/session-store-records.ts";
+import { ensureSessionStoreSchema } from "./session-store/session-store-schema.ts";
 
 interface SessionQueryListOptions {
 	agentId?: string;

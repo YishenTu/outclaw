@@ -3,8 +3,8 @@ import type {
 	FrontendNotice,
 	TranscriptTurn,
 	UsageInfo,
-} from "../../common/protocol.ts";
-import type { LastUserTarget } from "./last-user-target.ts";
+} from "../../../common/protocol.ts";
+import type { LastUserTarget } from "../last-user-target.ts";
 import { SessionStateStore } from "./session-state-store.ts";
 import {
 	mapSessionRow,

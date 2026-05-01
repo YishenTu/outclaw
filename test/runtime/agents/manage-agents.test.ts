@@ -17,7 +17,7 @@ import { readAgentId } from "../../../src/runtime/agents/read-agent-id.ts";
 import { removeAgent } from "../../../src/runtime/agents/remove-agent.ts";
 import { renameAgent } from "../../../src/runtime/agents/rename-agent.ts";
 import { updateAgent } from "../../../src/runtime/agents/update-agent.ts";
-import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 import { TelegramRouteStore } from "../../../src/runtime/persistence/telegram-route-store.ts";
 
 function createHomeDir() {

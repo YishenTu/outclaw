@@ -1,4 +1,4 @@
-import type { UsageInfo } from "../../common/protocol.ts";
+import type { UsageInfo } from "../../../common/protocol.ts";
 
 export type SessionTag = "chat" | "cron";
 

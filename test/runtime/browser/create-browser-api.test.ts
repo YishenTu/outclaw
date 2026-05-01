@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBrowserApi } from "../../../src/runtime/browser/create-browser-api.ts";
-import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 
 function createTempDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));

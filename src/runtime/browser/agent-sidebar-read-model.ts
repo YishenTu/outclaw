@@ -1,5 +1,5 @@
 import type { BrowserAgentsResponse } from "../../common/protocol.ts";
-import type { SessionStore } from "../persistence/session-store.ts";
+import type { SessionStore } from "../persistence/session-store/session-store.ts";
 
 export interface BrowserApiAgent {
 	agentId: string;

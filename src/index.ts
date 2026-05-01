@@ -13,7 +13,7 @@ import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
 import { loadGlobalConfig } from "./runtime/config.ts";
 import { createCronTelegramChatIdResolver } from "./runtime/cron/resolve-telegram-chat-id.ts";
 import { createRestartRequiredWatcher } from "./runtime/notice/restart-required-watcher.ts";
-import { SessionStore } from "./runtime/persistence/session-store.ts";
+import { SessionStore } from "./runtime/persistence/session-store/session-store.ts";
 import { TelegramFileRefStore } from "./runtime/persistence/telegram-file-ref-store.ts";
 import { TelegramRouteStore } from "./runtime/persistence/telegram-route-store.ts";
 import { PidManager } from "./runtime/process/pid-manager.ts";

@@ -13,7 +13,7 @@ import {
 	HeartbeatScheduler,
 	hasHeartbeatContent,
 } from "../heartbeat/scheduler.ts";
-import type { SessionStore } from "../persistence/session-store.ts";
+import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import { RolloverScheduler } from "../rollover/scheduler.ts";
 import type { WsClient } from "../transport/client-hub.ts";
 import { createRuntimeController } from "./create-runtime-controller.ts";

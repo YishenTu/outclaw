@@ -4,7 +4,7 @@ import type {
 	SessionRow,
 	SessionStore,
 	SessionTag,
-} from "../persistence/session-store.ts";
+} from "../persistence/session-store/session-store.ts";
 import type { RuntimeState } from "./state/runtime-state.ts";
 
 export interface SessionListEntry {

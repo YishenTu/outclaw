@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { UsageInfo } from "../../common/protocol.ts";
+import type { UsageInfo } from "../../../common/protocol.ts";
 import { mapUsageRow } from "./session-store-records.ts";
 
 export class SessionUsageStore {

@@ -2,7 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { assertValidAgentName } from "../../common/agent-name.ts";
 import { createOutclawLayout } from "../../common/layout.ts";
 import { deleteStoredAgentConfig } from "../config.ts";
-import { SessionStore } from "../persistence/session-store.ts";
+import { SessionStore } from "../persistence/session-store/session-store.ts";
 import { TelegramRouteStore } from "../persistence/telegram-route-store.ts";
 import { readAgentId } from "./read-agent-id.ts";
 
