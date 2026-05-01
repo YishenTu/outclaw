@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { StreamingStateStore } from "../../../src/runtime/application/streaming-state-store.ts";
+import { StreamingStateStore } from "../../../src/runtime/application/prompt-execution/streaming-state-store.ts";
 
 describe("StreamingStateStore", () => {
 	test("records text, thinking, and images for an active session snapshot", () => {

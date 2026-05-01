@@ -1,10 +1,10 @@
-import type { ImageRef, ReplyContext } from "../../common/protocol.ts";
-import { extractError, parseMessage } from "../../common/protocol.ts";
-import type { WsClient } from "../transport/client-hub.ts";
-import type { PromptExecution } from "./prompt-dispatcher.ts";
+import type { ImageRef, ReplyContext } from "../../../common/protocol.ts";
+import { extractError, parseMessage } from "../../../common/protocol.ts";
+import type { WsClient } from "../../transport/client-hub.ts";
+import type { PromptExecution } from "../prompt-execution/prompt-dispatcher.ts";
+import type { RuntimeControlPlane } from "../runtime-control-plane.ts";
+import type { RuntimeExecutionCoordinator } from "../runtime-execution-coordinator.ts";
 import type { RuntimeClientGateway } from "./runtime-client-gateway.ts";
-import type { RuntimeControlPlane } from "./runtime-control-plane.ts";
-import type { RuntimeExecutionCoordinator } from "./runtime-execution-coordinator.ts";
 
 interface IncomingMessage {
 	command?: string;

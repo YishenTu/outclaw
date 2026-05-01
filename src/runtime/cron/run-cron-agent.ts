@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { EffortLevel } from "../../common/commands.ts";
 import { resolveModelAlias } from "../../common/models.ts";
 import type { Facade } from "../../common/protocol.ts";
-import { runFacadePrompt } from "../application/facade-runner.ts";
+import { runFacadePrompt } from "../application/prompt-execution/facade-runner.ts";
 
 export interface CronAgentRunResult {
 	sessionId?: string;

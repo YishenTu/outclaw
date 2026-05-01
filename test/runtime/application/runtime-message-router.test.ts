@@ -4,8 +4,8 @@ import type {
 	ReplyContext,
 	ServerEvent,
 } from "../../../src/common/protocol.ts";
-import type { PromptExecution } from "../../../src/runtime/application/prompt-dispatcher.ts";
-import { RuntimeMessageRouter } from "../../../src/runtime/application/runtime-message-router.ts";
+import { RuntimeMessageRouter } from "../../../src/runtime/application/gateway/runtime-message-router.ts";
+import type { PromptExecution } from "../../../src/runtime/application/prompt-execution/prompt-dispatcher.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 
 function createWs(

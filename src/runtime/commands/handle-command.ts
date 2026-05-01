@@ -1,7 +1,7 @@
 import type { RuntimeStatusEvent } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
-import type { RuntimeState } from "../application/runtime-state.ts";
 import type { SessionService } from "../application/session-service.ts";
+import type { RuntimeState } from "../application/state/runtime-state.ts";
 import type { ClientHub, WsClient } from "../transport/client-hub.ts";
 import { handleRuntimeSettingsCommand } from "./handle-runtime-settings-command.ts";
 import { handleSessionCommand } from "./handle-session-command.ts";

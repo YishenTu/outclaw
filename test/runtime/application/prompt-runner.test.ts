@@ -4,7 +4,7 @@ import type {
 	FacadeEvent,
 	RunParams,
 } from "../../../src/common/protocol.ts";
-import { PromptRunner } from "../../../src/runtime/application/prompt-runner.ts";
+import { PromptRunner } from "../../../src/runtime/application/prompt-execution/prompt-runner.ts";
 
 function createFacade(
 	scripts: FacadeEvent[][],

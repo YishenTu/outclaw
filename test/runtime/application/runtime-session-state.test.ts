@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DoneEvent } from "../../../src/common/protocol.ts";
-import { RuntimeSessionState } from "../../../src/runtime/application/runtime-session-state.ts";
+import { RuntimeSessionState } from "../../../src/runtime/application/state/runtime-session-state.ts";
 
 const AGENT_ID = "agent-legacy";
 

@@ -7,7 +7,7 @@ import type {
 	FacadeEvent,
 	RunParams,
 } from "../../../src/common/protocol.ts";
-import { runFacadePrompt } from "../../../src/runtime/application/facade-runner.ts";
+import { runFacadePrompt } from "../../../src/runtime/application/prompt-execution/facade-runner.ts";
 
 function createPromptHome(files: Record<string, string>) {
 	const dir = mkdtempSync(join(tmpdir(), "outclaw-facade-runner-"));

@@ -2,9 +2,9 @@ import {
 	DEFAULT_EFFORT,
 	DEFAULT_MODEL,
 	type EffortLevel,
-} from "../../common/commands.ts";
-import type { ModelAlias } from "../../common/models.ts";
-import { resolveModelAlias } from "../../common/models.ts";
+} from "../../../common/commands.ts";
+import type { ModelAlias } from "../../../common/models.ts";
+import { resolveModelAlias } from "../../../common/models.ts";
 
 interface RuntimeSettingsStateOptions {
 	defaultEffort?: EffortLevel;

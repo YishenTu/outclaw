@@ -1,13 +1,13 @@
-import type { EffortLevel } from "../../common/commands.ts";
+import type { EffortLevel } from "../../../common/commands.ts";
 import type {
 	Facade,
 	FacadeEvent,
 	ImageRef,
 	ReplyContext,
-} from "../../common/protocol.ts";
-import { extractError } from "../../common/protocol.ts";
-import { assembleSystemPrompt } from "../prompt/assemble-system-prompt.ts";
-import { buildSessionEnv } from "../prompt/session-env.ts";
+} from "../../../common/protocol.ts";
+import { extractError } from "../../../common/protocol.ts";
+import { assembleSystemPrompt } from "../../prompt/assemble-system-prompt.ts";
+import { buildSessionEnv } from "../../prompt/session-env.ts";
 import { RuntimeImageEventExtractor } from "./image-event-extractor.ts";
 
 export interface FacadePromptRun {

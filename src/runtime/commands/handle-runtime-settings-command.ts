@@ -13,7 +13,7 @@ import type {
 	EffortChangedEvent,
 	ModelChangedEvent,
 } from "../../common/protocol.ts";
-import type { RuntimeState } from "../application/runtime-state.ts";
+import type { RuntimeState } from "../application/state/runtime-state.ts";
 import type { ClientHub, WsClient } from "../transport/client-hub.ts";
 
 interface HandleRuntimeSettingsCommandOptions {

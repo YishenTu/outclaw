@@ -17,8 +17,8 @@ import type { SessionStore } from "../persistence/session-store.ts";
 import { RolloverScheduler } from "../rollover/scheduler.ts";
 import type { WsClient } from "../transport/client-hub.ts";
 import { createRuntimeController } from "./create-runtime-controller.ts";
-import { RuntimeState } from "./runtime-state.ts";
 import { SessionService } from "./session-service.ts";
+import { RuntimeState } from "./state/runtime-state.ts";
 
 interface CreateAgentRuntimeOptions {
 	agentId: string;

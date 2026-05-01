@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "../../../src/common/commands.ts";
 import { MODELS } from "../../../src/common/models.ts";
 import type { DoneEvent } from "../../../src/common/protocol.ts";
-import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
+import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
 
 const AGENT_ID = "agent-legacy";
 const PROVIDER_ID = "mock";

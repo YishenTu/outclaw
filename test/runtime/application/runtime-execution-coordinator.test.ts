@@ -2,10 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { DoneEvent, FacadeEvent } from "../../../src/common/protocol.ts";
-import type { PromptDispatcher } from "../../../src/runtime/application/prompt-dispatcher.ts";
+import type { PromptDispatcher } from "../../../src/runtime/application/prompt-execution/prompt-dispatcher.ts";
 import { RuntimeExecutionCoordinator } from "../../../src/runtime/application/runtime-execution-coordinator.ts";
-import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
 import { SessionService } from "../../../src/runtime/application/session-service.ts";
+import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 
 const TEST_DB = join(

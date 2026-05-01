@@ -3,10 +3,10 @@ import type {
 	RuntimeStatusEvent,
 	StreamingSyncEvent,
 	TranscriptTurn,
-} from "../../common/protocol.ts";
-import { extractError } from "../../common/protocol.ts";
-import { ClientHub, type WsClient } from "../transport/client-hub.ts";
-import { annotateHistoryWithTranscript } from "./annotate-history-with-transcript.ts";
+} from "../../../common/protocol.ts";
+import { extractError } from "../../../common/protocol.ts";
+import { ClientHub, type WsClient } from "../../transport/client-hub.ts";
+import { annotateHistoryWithTranscript } from "../annotate-history-with-transcript.ts";
 
 interface RuntimeClientGatewayOptions {
 	canSendToClient?: (ws: WsClient) => boolean;

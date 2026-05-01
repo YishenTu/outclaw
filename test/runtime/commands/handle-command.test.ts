@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ServerEvent } from "../../../src/common/protocol.ts";
-import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
 import { SessionService } from "../../../src/runtime/application/session-service.ts";
+import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
 import { handleRuntimeCommand } from "../../../src/runtime/commands/handle-command.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store.ts";
 import {

@@ -5,7 +5,7 @@ import type {
 	ServerEvent,
 	TranscriptTurn,
 } from "../../../src/common/protocol.ts";
-import { RuntimeClientGateway } from "../../../src/runtime/application/runtime-client-gateway.ts";
+import { RuntimeClientGateway } from "../../../src/runtime/application/gateway/runtime-client-gateway.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 
 function createStatusEvent(): RuntimeStatusEvent {

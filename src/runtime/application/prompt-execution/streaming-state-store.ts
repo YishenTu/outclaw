@@ -1,4 +1,4 @@
-import type { DisplayImage, FacadeEvent } from "../../common/protocol.ts";
+import type { DisplayImage, FacadeEvent } from "../../../common/protocol.ts";
 
 export interface StreamingStateSnapshot {
 	images: DisplayImage[];

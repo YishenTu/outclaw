@@ -5,7 +5,7 @@ import type {
 	SessionStore,
 	SessionTag,
 } from "../persistence/session-store.ts";
-import type { RuntimeState } from "./runtime-state.ts";
+import type { RuntimeState } from "./state/runtime-state.ts";
 
 export interface SessionListEntry {
 	sdkSessionId: string;

@@ -4,11 +4,11 @@ import type {
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
 import type { WsClient } from "../transport/client-hub.ts";
-import type { RuntimeClientGateway } from "./runtime-client-gateway.ts";
+import type { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
+import type { RuntimeMessageRouter } from "./gateway/runtime-message-router.ts";
 import type { RuntimeCronBroadcaster } from "./runtime-cron-broadcaster.ts";
 import type { RuntimeExecutionCoordinator } from "./runtime-execution-coordinator.ts";
-import type { RuntimeMessageRouter } from "./runtime-message-router.ts";
-import type { RuntimeState } from "./runtime-state.ts";
+import type { RuntimeState } from "./state/runtime-state.ts";
 
 interface RuntimeControllerOptions {
 	clients: RuntimeClientGateway;

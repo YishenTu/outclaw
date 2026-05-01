@@ -4,9 +4,9 @@ import type {
 	HeartbeatDeliveryTarget,
 	ImageRef,
 	UsageInfo,
-} from "../../common/protocol.ts";
-import type { LastUserTarget } from "../persistence/last-user-target.ts";
-import type { SessionRow } from "../persistence/session-store.ts";
+} from "../../../common/protocol.ts";
+import type { LastUserTarget } from "../../persistence/last-user-target.ts";
+import type { SessionRow } from "../../persistence/session-store.ts";
 
 export class RuntimeSessionState {
 	private activeSessionId: string | undefined;

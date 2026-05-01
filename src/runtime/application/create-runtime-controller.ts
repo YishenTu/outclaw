@@ -4,17 +4,17 @@ import type {
 	HeartbeatResult,
 } from "../../common/protocol.ts";
 import type { WsClient } from "../transport/client-hub.ts";
-import { PromptDispatcher } from "./prompt-dispatcher.ts";
-import { PromptRunner } from "./prompt-runner.ts";
-import { RuntimeClientGateway } from "./runtime-client-gateway.ts";
+import { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
+import { RuntimeMessageRouter } from "./gateway/runtime-message-router.ts";
+import { PromptDispatcher } from "./prompt-execution/prompt-dispatcher.ts";
+import { PromptRunner } from "./prompt-execution/prompt-runner.ts";
+import { StreamingStateStore } from "./prompt-execution/streaming-state-store.ts";
 import { RuntimeControlPlane } from "./runtime-control-plane.ts";
 import { RuntimeController } from "./runtime-controller.ts";
 import { RuntimeCronBroadcaster } from "./runtime-cron-broadcaster.ts";
 import { RuntimeExecutionCoordinator } from "./runtime-execution-coordinator.ts";
-import { RuntimeMessageRouter } from "./runtime-message-router.ts";
-import type { RuntimeState } from "./runtime-state.ts";
 import type { SessionService } from "./session-service.ts";
-import { StreamingStateStore } from "./streaming-state-store.ts";
+import type { RuntimeState } from "./state/runtime-state.ts";
 
 interface CreateRuntimeControllerOptions {
 	canSendToClient?: (ws: WsClient) => boolean;

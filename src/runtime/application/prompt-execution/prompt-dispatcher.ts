@@ -6,12 +6,15 @@ import type {
 	ImageRef,
 	ReplyContext,
 	TranscriptTurn,
-} from "../../common/protocol.ts";
-import { extractError } from "../../common/protocol.ts";
+} from "../../../common/protocol.ts";
+import { extractError } from "../../../common/protocol.ts";
+import type { RuntimeClientGateway } from "../gateway/runtime-client-gateway.ts";
+import type { SessionService } from "../session-service.ts";
+import type {
+	RuntimePromptContext,
+	RuntimeState,
+} from "../state/runtime-state.ts";
 import type { PromptRunner } from "./prompt-runner.ts";
-import type { RuntimeClientGateway } from "./runtime-client-gateway.ts";
-import type { RuntimePromptContext, RuntimeState } from "./runtime-state.ts";
-import type { SessionService } from "./session-service.ts";
 import type { StreamingStateStore } from "./streaming-state-store.ts";
 
 export type PromptSource =
@@ -32,7 +35,7 @@ export interface PromptExecution {
 	onEvent?: (event: FacadeEvent) => void;
 	prompt: string;
 	replyContext?: ReplyContext;
-	sender?: import("../transport/client-hub.ts").WsClient;
+	sender?: import("../../transport/client-hub.ts").WsClient;
 	source: PromptSource;
 	stream?: boolean;
 	telegramBotId?: string;

@@ -3,10 +3,16 @@ import {
 	type HeartbeatAttemptResult,
 	HeartbeatRuntimePolicy,
 } from "../heartbeat/runtime-policy.ts";
-import { MessageQueue } from "./message-queue.ts";
-import type { PromptDispatcher, PromptExecution } from "./prompt-dispatcher.ts";
-import type { RuntimePromptContext, RuntimeState } from "./runtime-state.ts";
+import { MessageQueue } from "./gateway/message-queue.ts";
+import type {
+	PromptDispatcher,
+	PromptExecution,
+} from "./prompt-execution/prompt-dispatcher.ts";
 import type { SessionService } from "./session-service.ts";
+import type {
+	RuntimePromptContext,
+	RuntimeState,
+} from "./state/runtime-state.ts";
 
 interface HeartbeatTask {
 	prompt: string;

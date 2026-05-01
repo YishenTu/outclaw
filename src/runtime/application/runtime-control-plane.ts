@@ -1,10 +1,10 @@
 import { extractError } from "../../common/protocol.ts";
 import { handleRuntimeCommand } from "../commands/handle-command.ts";
 import type { WsClient } from "../transport/client-hub.ts";
-import type { RuntimeClientGateway } from "./runtime-client-gateway.ts";
+import type { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
 import type { RuntimeExecutionCoordinator } from "./runtime-execution-coordinator.ts";
-import type { RuntimeState } from "./runtime-state.ts";
 import type { SessionService } from "./session-service.ts";
+import type { RuntimeState } from "./state/runtime-state.ts";
 
 interface RuntimeControlPlaneOptions {
 	clients: RuntimeClientGateway;

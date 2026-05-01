@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Facade, ServerEvent } from "../../../src/common/protocol.ts";
-import { RuntimeClientGateway } from "../../../src/runtime/application/runtime-client-gateway.ts";
+import { RuntimeClientGateway } from "../../../src/runtime/application/gateway/runtime-client-gateway.ts";
 import { RuntimeCronBroadcaster } from "../../../src/runtime/application/runtime-cron-broadcaster.ts";
 import type { SessionService } from "../../../src/runtime/application/session-service.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";

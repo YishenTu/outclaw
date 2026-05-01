@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { Facade, ServerEvent } from "../../../src/common/protocol.ts";
-import { RuntimeClientGateway } from "../../../src/runtime/application/runtime-client-gateway.ts";
+import { RuntimeClientGateway } from "../../../src/runtime/application/gateway/runtime-client-gateway.ts";
 import { RuntimeControlPlane } from "../../../src/runtime/application/runtime-control-plane.ts";
 import type { RuntimeExecutionCoordinator } from "../../../src/runtime/application/runtime-execution-coordinator.ts";
-import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
 import { SessionService } from "../../../src/runtime/application/session-service.ts";
+import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 
 function mockWs(): WsClient & { events: () => ServerEvent[] } {

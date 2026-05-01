@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_EFFORT, DEFAULT_MODEL } from "../../../src/common/commands.ts";
 import { MODELS } from "../../../src/common/models.ts";
-import { RuntimeSettingsState } from "../../../src/runtime/application/runtime-settings-state.ts";
+import { RuntimeSettingsState } from "../../../src/runtime/application/state/runtime-settings-state.ts";
 
 describe("RuntimeSettingsState", () => {
 	test("starts with default model and effort", () => {

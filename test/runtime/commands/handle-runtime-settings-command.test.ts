@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { EffortLevel } from "../../../src/common/commands.ts";
 import { MODEL_ALIAS_LIST } from "../../../src/common/models.ts";
 import type { ServerEvent } from "../../../src/common/protocol.ts";
-import { RuntimeState } from "../../../src/runtime/application/runtime-state.ts";
+import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
 import { handleRuntimeSettingsCommand } from "../../../src/runtime/commands/handle-runtime-settings-command.ts";
 import {
 	ClientHub,

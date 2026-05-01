@@ -1,10 +1,10 @@
-import type { EffortLevel } from "../../common/commands.ts";
+import type { EffortLevel } from "../../../common/commands.ts";
 import type {
 	Facade,
 	FacadeEvent,
 	ImageRef,
 	ReplyContext,
-} from "../../common/protocol.ts";
+} from "../../../common/protocol.ts";
 import { runFacadePrompt } from "./facade-runner.ts";
 
 export interface PromptRunnerTask {

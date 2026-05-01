@@ -1,6 +1,6 @@
 import type { CronResultEvent } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
-import type { RuntimeClientGateway } from "./runtime-client-gateway.ts";
+import type { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
 import type { SessionService } from "./session-service.ts";
 
 interface CronExecutionResult {

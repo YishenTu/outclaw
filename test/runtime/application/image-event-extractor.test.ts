@@ -5,7 +5,7 @@ import { join } from "node:path";
 import {
 	extractImageEventsFromText,
 	RuntimeImageEventExtractor,
-} from "../../../src/runtime/application/image-event-extractor.ts";
+} from "../../../src/runtime/application/prompt-execution/image-event-extractor.ts";
 
 describe("extractImageEventsFromText", () => {
 	const tmp = mkdtempSync(join(tmpdir(), "mis-imgev-"));

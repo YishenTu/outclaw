@@ -1,21 +1,21 @@
 import {
 	type EffortLevel,
 	resolveCompatibleEffort,
-} from "../../common/commands.ts";
+} from "../../../common/commands.ts";
 import {
 	contextWindowForAlias,
 	isModelAlias,
 	type ModelAlias,
-} from "../../common/models.ts";
+} from "../../../common/models.ts";
 import type {
 	DoneEvent,
 	ImageRef,
 	RuntimeStatusEvent,
 	UsageInfo,
-} from "../../common/protocol.ts";
-import { recalculateUsageForContextWindow } from "../../common/usage.ts";
-import type { LastUserTarget } from "../persistence/last-user-target.ts";
-import type { SessionRow } from "../persistence/session-store.ts";
+} from "../../../common/protocol.ts";
+import { recalculateUsageForContextWindow } from "../../../common/usage.ts";
+import type { LastUserTarget } from "../../persistence/last-user-target.ts";
+import type { SessionRow } from "../../persistence/session-store.ts";
 import { RuntimeSessionState } from "./runtime-session-state.ts";
 import { RuntimeSettingsState } from "./runtime-settings-state.ts";
 
@@ -124,13 +124,13 @@ export class RuntimeState {
 	}
 
 	createHeartbeatDeliveryTarget():
-		| import("../../common/protocol.ts").HeartbeatDeliveryTarget
+		| import("../../../common/protocol.ts").HeartbeatDeliveryTarget
 		| undefined {
 		return this.createLastUserDeliveryTarget();
 	}
 
 	createLastUserDeliveryTarget():
-		| import("../../common/protocol.ts").HeartbeatDeliveryTarget
+		| import("../../../common/protocol.ts").HeartbeatDeliveryTarget
 		| undefined {
 		return this.sessions.createLastUserDeliveryTarget();
 	}
