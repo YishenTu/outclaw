@@ -365,7 +365,7 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 				</div>
 			</div>
 
-			<div className="flex-1 overflow-y-auto px-3 py-3">
+			<div className="scrollbar-none flex-1 overflow-y-auto px-3 py-3">
 				{agents.length === 0 ? (
 					<div className="border border-dashed border-dark-800 px-4 py-5 text-sm text-dark-500">
 						Waiting for agent list from the runtime.
