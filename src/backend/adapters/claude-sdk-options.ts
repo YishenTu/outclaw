@@ -1,5 +1,7 @@
+import type { HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
 import { contextWindowForResolvedModel } from "../../common/models.ts";
 import type { RunParams } from "../../common/protocol.ts";
+import { blockDotClaudeHookMatcher } from "./claude-block-dotclaude-hook.ts";
 
 const CLAUDE_TOOLS = [
 	"Bash",
@@ -29,6 +31,7 @@ export interface ClaudeSdkRunOptions {
 	includePartialMessages: boolean;
 	settings?: { autoCompactWindow: number };
 	tools: string[];
+	hooks: { PreToolUse: HookCallbackMatcher[] };
 }
 
 export function buildClaudeSdkOptions(
@@ -57,6 +60,7 @@ export function buildClaudeSdkOptions(
 		includePartialMessages: params.stream ?? true,
 		settings: buildClaudeAutoCompactSettings(params.model, autoCompact),
 		tools: CLAUDE_TOOLS,
+		hooks: { PreToolUse: [blockDotClaudeHookMatcher] },
 	};
 }
 
