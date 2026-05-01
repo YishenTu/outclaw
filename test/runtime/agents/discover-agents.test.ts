@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
 	mkdirSync,
 	mkdtempSync,
@@ -15,6 +15,36 @@ import { discoverAgents } from "../../../src/runtime/agents/discover-agents.ts";
 function tmp() {
 	return mkdtempSync(join(tmpdir(), "outclaw-agents-"));
 }
+
+/**
+ * `loadSharedEnv` intentionally lets pre-existing `process.env` entries shadow
+ * the shared `.env` file. That's correct in production but breaks tests that
+ * stub env vars whose real names happen to be exported in the developer's
+ * shell (e.g. `RAILLY_TELEGRAM_BOT_TOKEN`). Snapshot+restore process.env around
+ * each test, and clear the keys this suite uses so the temp `.env` always wins.
+ */
+const TEST_ENV_KEYS = [
+	"RAILLY_BOT_TOKEN",
+	"RAILLY_ALLOWED_USERS",
+	"RAILLY_TELEGRAM_BOT_TOKEN",
+	"RAILLY_TELEGRAM_USERS",
+	"MIMI_ALLOWED_USERS",
+	"BOT_TOKEN",
+	"ALLOWED_USERS",
+];
+
+let envSnapshot: NodeJS.ProcessEnv;
+
+beforeEach(() => {
+	envSnapshot = { ...process.env };
+	for (const key of TEST_ENV_KEYS) {
+		delete process.env[key];
+	}
+});
+
+afterEach(() => {
+	process.env = envSnapshot;
+});
 
 function createAgent(homeDir: string, name: string, agentId: string) {
 	const agentHomeDir = join(homeDir, "agents", name);
