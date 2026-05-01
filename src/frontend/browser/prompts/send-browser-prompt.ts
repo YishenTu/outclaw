@@ -1,13 +1,10 @@
 import {
-	canonicalizePromptSlashCommand,
-	isRuntimeCommand,
-} from "../../common/commands.ts";
-import {
 	type DisplayImage,
 	extractError,
 	type ImageRef,
-} from "../../common/protocol.ts";
-import type { ComposerImageAttachment } from "./components/chat/composer-images.ts";
+} from "../../../common/protocol.ts";
+import type { ComposerImageAttachment } from "../components/chat/composer/composer-images.ts";
+import { preparePromptDispatch } from "./prepare-prompt-dispatch.ts";
 
 interface DispatchBrowserPromptParams<SocketLike> {
 	input: string;
@@ -42,29 +39,25 @@ export async function dispatchBrowserPrompt<SocketLike>(
 	params: DispatchBrowserPromptParams<SocketLike>,
 ): Promise<boolean> {
 	const images = params.images ?? [];
-	const trimmed = params.input.trim();
-	if (trimmed === "" && images.length === 0) {
+	const prepared = preparePromptDispatch({
+		input: params.input,
+		hasImages: images.length > 0,
+		rejectRuntimeCommandWithImages: true,
+		getActiveAgentId: params.getActiveAgentId,
+		getCurrentSessionKey: params.getCurrentSessionKey,
+		getSocket: params.getSocket,
+		isSocketOpen: params.isSocketOpen,
+		sendCommand: params.sendCommand,
+		setRuntimeError: params.setRuntimeError,
+	});
+	if (prepared.kind === "empty") {
 		return false;
 	}
-
-	if (trimmed !== "" && isRuntimeCommand(trimmed)) {
-		if (images.length > 0) {
-			params.setRuntimeError("Runtime commands cannot include images");
-			return false;
-		}
-		return params.sendCommand(trimmed);
+	if (prepared.kind === "runtime") {
+		return prepared.result;
 	}
 
-	const agentId = params.getActiveAgentId();
-	const socket = params.getSocket();
-	if (!agentId || !params.isSocketOpen(socket)) {
-		params.setRuntimeError("Runtime disconnected");
-		return false;
-	}
-
-	const sessionKey = params.getCurrentSessionKey(agentId);
-	const prompt =
-		trimmed === "" ? "" : (canonicalizePromptSlashCommand(trimmed) ?? trimmed);
+	const { agentId, socket, sessionKey, prompt } = prepared;
 
 	let uploadedImages: ImageRef[] | undefined;
 	try {

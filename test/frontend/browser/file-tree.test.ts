@@ -5,9 +5,9 @@ import {
 	fileKindForPath,
 	fileNodePaddingLeft,
 	isTreeNodeExpanded,
-	treeEntryToneClass,
 	treeNodePaddingLeft,
 } from "../../../src/frontend/browser/components/right-panel/file-tree.tsx";
+import { treeEntryToneClass } from "../../../src/frontend/browser/components/right-panel/git/git-status-tone.ts";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 

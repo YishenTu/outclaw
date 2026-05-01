@@ -3,7 +3,7 @@ import {
 	clearDispatchedTerminalRunRequest,
 	createTerminalRunRequest,
 	storeTerminalRunRequest,
-} from "../../../src/frontend/browser/components/right-panel/terminal-run-coordinator.ts";
+} from "../../../src/frontend/browser/components/right-panel/terminal/terminal-run-coordinator.ts";
 
 describe("terminal run coordinator", () => {
 	test("creates monotonic run requests", () => {

@@ -1,7 +1,7 @@
 import type {
 	DisplayStatusMessage,
 	StatusEvent,
-} from "../../common/protocol.ts";
+} from "../../../common/protocol.ts";
 
 interface ApplyBrowserStatusEventParams {
 	activeAgentId: string | null;

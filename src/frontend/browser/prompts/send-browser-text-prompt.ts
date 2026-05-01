@@ -1,8 +1,5 @@
-import {
-	canonicalizePromptSlashCommand,
-	isRuntimeCommand,
-} from "../../common/commands.ts";
-import { extractError } from "../../common/protocol.ts";
+import { extractError } from "../../../common/protocol.ts";
+import { preparePromptDispatch } from "./prepare-prompt-dispatch.ts";
 
 interface DispatchBrowserTextPromptParams<SocketLike> {
 	getActiveAgentId: () => string | null;
@@ -30,23 +27,26 @@ interface DispatchBrowserTextPromptParams<SocketLike> {
 export function dispatchBrowserTextPrompt<SocketLike>(
 	params: DispatchBrowserTextPromptParams<SocketLike>,
 ): boolean {
-	const trimmed = params.input.trim();
-	if (trimmed === "") {
+	const prepared = preparePromptDispatch({
+		input: params.input,
+		hasImages: false,
+		rejectRuntimeCommandWithImages: false,
+		getActiveAgentId: params.getActiveAgentId,
+		getCurrentSessionKey: params.getCurrentSessionKey,
+		getSocket: params.getSocket,
+		isSocketOpen: params.isSocketOpen,
+		sendCommand: params.sendCommand,
+		setRuntimeError: params.setRuntimeError,
+	});
+	if (prepared.kind === "empty") {
 		return false;
 	}
-
-	if (isRuntimeCommand(trimmed)) {
-		return params.sendCommand(trimmed);
+	if (prepared.kind === "runtime") {
+		return prepared.result;
 	}
 
-	const agentId = params.getActiveAgentId();
-	const socket = params.getSocket();
-	if (!agentId || !params.isSocketOpen(socket)) {
-		params.setRuntimeError("Runtime disconnected");
-		return false;
-	}
+	const { socket, sessionKey, prompt } = prepared;
 
-	const prompt = canonicalizePromptSlashCommand(trimmed) ?? trimmed;
 	try {
 		params.sendPrompt(socket, prompt);
 	} catch (error) {
@@ -54,7 +54,6 @@ export function dispatchBrowserTextPrompt<SocketLike>(
 		return false;
 	}
 
-	const sessionKey = params.getCurrentSessionKey(agentId);
 	params.pinSession(sessionKey);
 	params.pushUserMessage(sessionKey, {
 		kind: "chat",

@@ -10,7 +10,7 @@ const browserCss = readFileSync(
 const terminalViewSource = readFileSync(
 	join(
 		import.meta.dir,
-		"../../../src/frontend/browser/components/right-panel/terminal-view.tsx",
+		"../../../src/frontend/browser/components/right-panel/terminal/terminal-view.tsx",
 	),
 	"utf8",
 );

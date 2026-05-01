@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	sendBrowserPromptToAgent,
 	sendPromptToAgent,
-} from "../../../src/frontend/browser/send-prompt-to-agent.ts";
+} from "../../../src/frontend/browser/prompts/send-prompt-to-agent.ts";
 
 describe("sendPromptToAgent", () => {
 	test("sends a trimmed prompt without switching when the target agent is already active", () => {

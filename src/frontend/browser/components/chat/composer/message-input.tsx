@@ -1,19 +1,23 @@
 import { Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { EffortLevel } from "../../../../common/commands.ts";
-import type { ModelAlias } from "../../../../common/models.ts";
-import { useWs } from "../../contexts/websocket-context.tsx";
-import { useRuntimePopupStore } from "../../stores/runtime-popup.ts";
-import { useSlashCommandsStore } from "../../stores/slash-commands.ts";
+import type { EffortLevel } from "../../../../../common/commands.ts";
+import type { ModelAlias } from "../../../../../common/models.ts";
+import { useWs } from "../../../contexts/websocket-context.tsx";
+import { useRuntimePopupStore } from "../../../stores/runtime-popup.ts";
+import { useSlashCommandsStore } from "../../../stores/slash-commands.ts";
+import { ContextGauge } from "../context-gauge.tsx";
+import { useGlobalStopShortcut } from "../global-stop-shortcut.ts";
+import { HeartbeatIndicator } from "../heartbeat-indicator.tsx";
+import { getImageThumbnailClassName } from "../image-thumbnail-styles.ts";
+import { ModelSelector } from "../model-selector.tsx";
+import { RuntimeCommandPopup } from "../runtime-command-popup.tsx";
+import { useRuntimePopupShortcuts } from "../runtime-popup-shortcuts.ts";
+import { SlashCommandMenu } from "../slash-command-menu.tsx";
 import {
 	type ComposerImageAttachment,
 	createComposerImageAttachment,
 	filterSupportedImageFiles,
 } from "./composer-images.ts";
-import { ContextGauge } from "./context-gauge.tsx";
-import { useGlobalStopShortcut } from "./global-stop-shortcut.ts";
-import { HeartbeatIndicator } from "./heartbeat-indicator.tsx";
-import { getImageThumbnailClassName } from "./image-thumbnail-styles.ts";
 import {
 	canSubmitMessageInput,
 	filterSlashCommands,
@@ -24,10 +28,6 @@ import {
 	clearSubmittedDraftIfUnchanged,
 } from "./message-input-draft.ts";
 import { handleMessageInputKeydown } from "./message-input-keydown.ts";
-import { ModelSelector } from "./model-selector.tsx";
-import { RuntimeCommandPopup } from "./runtime-command-popup.tsx";
-import { useRuntimePopupShortcuts } from "./runtime-popup-shortcuts.ts";
-import { SlashCommandMenu } from "./slash-command-menu.tsx";
 
 interface MessageInputProps {
 	onSend: (submission: {

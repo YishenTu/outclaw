@@ -3,7 +3,7 @@ import { createElement } from "react";
 import {
 	GitPanel,
 	GitPanelHeader,
-} from "../../../src/frontend/browser/components/right-panel/git-panel.tsx";
+} from "../../../src/frontend/browser/components/right-panel/git/git-panel.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 

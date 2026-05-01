@@ -4,7 +4,7 @@ import {
 	selectActiveTerminalId,
 	selectAgentTerminals,
 	useTerminalStore,
-} from "../../stores/terminal.ts";
+} from "../../../stores/terminal.ts";
 import { TerminalView } from "./terminal-view.tsx";
 
 interface TerminalPanelProps {

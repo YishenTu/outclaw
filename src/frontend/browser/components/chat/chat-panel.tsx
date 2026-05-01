@@ -6,7 +6,7 @@ import { useAgentsStore } from "../../stores/agents.ts";
 import { useChatStore } from "../../stores/chat.ts";
 import { useRuntimeStore } from "../../stores/runtime.ts";
 import { useSessionsStore } from "../../stores/sessions.ts";
-import { MessageInput } from "./message-input.tsx";
+import { MessageInput } from "./composer/message-input.tsx";
 import { MessageList } from "./message-list.tsx";
 
 export function ChatPanel() {

@@ -13,7 +13,7 @@ import {
 	visibleEffortLevelsForModel,
 } from "../../../src/frontend/browser/components/chat/model-selector.tsx";
 import { FileTree } from "../../../src/frontend/browser/components/right-panel/file-tree.tsx";
-import { GitGraph } from "../../../src/frontend/browser/components/right-panel/git-graph.tsx";
+import { GitGraph } from "../../../src/frontend/browser/components/right-panel/git/git-graph.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 

@@ -1,4 +1,4 @@
-import type { ServerEvent } from "../../common/protocol.ts";
+import type { ServerEvent } from "../../../common/protocol.ts";
 
 export type BrowserConnectionStatus =
 	| "connecting"

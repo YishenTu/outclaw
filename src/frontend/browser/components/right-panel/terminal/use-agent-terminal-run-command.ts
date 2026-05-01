@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { extractError } from "../../../../common/protocol.ts";
-import { updateAgentTerminalRunCommand } from "../../lib/api.ts";
+import { extractError } from "../../../../../common/protocol.ts";
+import { updateAgentTerminalRunCommand } from "../../../lib/api.ts";
 
 interface AgentTerminalRunCommandState {
 	error: string | null;

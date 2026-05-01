@@ -4,7 +4,7 @@ import {
 	measureGitGraphExpandedHeight,
 	measureGitGraphExpansionTop,
 	measureGitGraphInfoOffset,
-} from "../../../src/frontend/browser/components/right-panel/git-graph-layout.ts";
+} from "../../../src/frontend/browser/components/right-panel/git/git-graph-layout.ts";
 
 describe("measureGitGraphCompactHeight", () => {
 	test("uses rendered geometry so translated detail rows stay visible", () => {

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import type { BrowserTreeEntry } from "../../../../common/protocol.ts";
-import { treeEntryToneClass } from "./git-status-tone.ts";
+import { treeEntryToneClass } from "./git/git-status-tone.ts";
 
 interface FileTreeProps {
 	agentId: string;
@@ -66,8 +66,6 @@ export function fileKindForPath(path: string) {
 	}
 	return "default";
 }
-
-export { treeEntryToneClass } from "./git-status-tone.ts";
 
 function FileIcon({ path }: { path: string }) {
 	switch (fileKindForPath(path)) {

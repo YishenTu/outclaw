@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createBrowserLiveRunBridge } from "../../../src/frontend/browser/browser-live-run-bridge.ts";
+import { createBrowserLiveRunBridge } from "../../../src/frontend/browser/events/browser-live-run-bridge.ts";
 
 describe("browser live run bridge", () => {
 	test("pins observed events by provider session and completes through the same router", () => {

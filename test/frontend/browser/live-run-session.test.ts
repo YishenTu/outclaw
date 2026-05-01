@@ -3,7 +3,7 @@ import {
 	createLiveRunSessionRouter,
 	pinLiveRunSessionKey,
 	routeLiveRunSessionKey,
-} from "../../../src/frontend/browser/live-run-session.ts";
+} from "../../../src/frontend/browser/events/live-run-session.ts";
 
 describe("browser live run session router", () => {
 	test("keeps a run pinned to the session where it started", () => {

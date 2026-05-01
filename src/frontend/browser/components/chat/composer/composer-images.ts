@@ -1,7 +1,7 @@
 import type {
 	DisplayImage,
 	ImageMediaType,
-} from "../../../../common/protocol.ts";
+} from "../../../../../common/protocol.ts";
 
 export interface ComposerImageAttachment {
 	file: File;

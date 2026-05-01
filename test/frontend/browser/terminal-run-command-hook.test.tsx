@@ -6,7 +6,7 @@ import {
 	resolveHeaderTerminalRunAction,
 	resolveSavedTerminalRunCommand,
 	useAgentTerminalRunCommand,
-} from "../../../src/frontend/browser/components/right-panel/use-agent-terminal-run-command.ts";
+} from "../../../src/frontend/browser/components/right-panel/terminal/use-agent-terminal-run-command.ts";
 import {
 	CONFIG_SAVE_RESTART_COMMAND,
 	CONFIG_SAVE_RESTART_ERROR,

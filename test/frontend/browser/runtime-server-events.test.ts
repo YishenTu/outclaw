@@ -6,7 +6,7 @@ import {
 	formatSessionListSummary,
 	handleBrowserServerEvent,
 	inferImageMediaTypeFromPath,
-} from "../../../src/frontend/browser/runtime-server-events.ts";
+} from "../../../src/frontend/browser/events/runtime-server-events.ts";
 import { createBrowserSessionRef } from "../../../src/frontend/browser/session.ts";
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
 import { useChatStore } from "../../../src/frontend/browser/stores/chat.ts";

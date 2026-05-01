@@ -11,11 +11,11 @@ import type {
 	DisplayMessage,
 	UsageInfo,
 } from "../../../src/common/protocol.ts";
-import { ensureRunningChatSession } from "../../../src/frontend/browser/ensure-running-chat-session.ts";
+import { ensureRunningChatSession } from "../../../src/frontend/browser/events/ensure-running-chat-session.ts";
 import {
 	createLiveRunSessionRouter,
 	routeLiveRunSessionKey,
-} from "../../../src/frontend/browser/live-run-session.ts";
+} from "../../../src/frontend/browser/events/live-run-session.ts";
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
 import { useChatStore } from "../../../src/frontend/browser/stores/chat.ts";
 import { useContextUsageStore } from "../../../src/frontend/browser/stores/context-usage.ts";

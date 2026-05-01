@@ -1,4 +1,4 @@
-import type { BrowserGitStatusResponse } from "../../../../common/protocol.ts";
+import type { BrowserGitStatusResponse } from "../../../../../common/protocol.ts";
 
 export function shouldClearSelectedGitCommit(params: {
 	selectedCommitSha: string | null;

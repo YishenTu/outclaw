@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
 	BrowserTerminalEntry,
 	BrowserTerminalTab,
-} from "../../stores/terminal.ts";
+} from "../../../stores/terminal.ts";
 
 interface TerminalTabsProps {
 	activeTerminalId: string | null;

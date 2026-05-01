@@ -2,7 +2,7 @@ import {
 	createBrowserSessionRef,
 	createSessionKey,
 	PENDING_SESSION_ID,
-} from "./session.ts";
+} from "../session.ts";
 
 export interface LiveRunCompletion {
 	sessionKey: string;

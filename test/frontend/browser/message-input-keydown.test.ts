@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { handleMessageInputKeydown } from "../../../src/frontend/browser/components/chat/message-input-keydown.ts";
+import { handleMessageInputKeydown } from "../../../src/frontend/browser/components/chat/composer/message-input-keydown.ts";
 
 describe("browser message input keydown", () => {
 	test("submits on Enter when composition is inactive", () => {

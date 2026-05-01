@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	createComposerImageAttachment,
 	filterSupportedImageFiles,
-} from "../../../src/frontend/browser/components/chat/composer-images.ts";
+} from "../../../src/frontend/browser/components/chat/composer/composer-images.ts";
 
 describe("browser composer images", () => {
 	test("filters to supported image files only", () => {

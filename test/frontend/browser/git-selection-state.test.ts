@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BrowserGitStatusResponse } from "../../../src/common/protocol.ts";
-import { shouldClearSelectedGitCommit } from "../../../src/frontend/browser/components/right-panel/git-selection-state.ts";
+import { shouldClearSelectedGitCommit } from "../../../src/frontend/browser/components/right-panel/git/git-selection-state.ts";
 
 const STATUS: BrowserGitStatusResponse = {
 	initialized: true,

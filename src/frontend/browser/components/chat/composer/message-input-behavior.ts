@@ -1,4 +1,4 @@
-import type { CommandEntry } from "../../stores/slash-commands.ts";
+import type { CommandEntry } from "../../../stores/slash-commands.ts";
 
 export function isSlashAutocompleteInput(value: string): boolean {
 	return value.startsWith("/") && !value.includes(" ") && !value.includes("\n");

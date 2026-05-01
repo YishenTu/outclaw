@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyBrowserStatusEvent } from "../../../src/frontend/browser/browser-status-event.ts";
+import { applyBrowserStatusEvent } from "../../../src/frontend/browser/events/browser-status-event.ts";
 
 describe("browser status events", () => {
 	test("renders inline status events into the current chat session", () => {

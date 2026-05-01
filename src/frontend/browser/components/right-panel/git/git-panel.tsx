@@ -4,7 +4,7 @@ import type {
 	BrowserGitGraphCommit,
 	BrowserGitInitializedResponse,
 	BrowserGitStatusResponse,
-} from "../../../../common/protocol.ts";
+} from "../../../../../common/protocol.ts";
 import { GitGraph } from "./git-graph.tsx";
 import { gitPanelFileToneClass } from "./git-status-tone.ts";
 import { GitUninitializedCard } from "./git-uninitialized-card.tsx";

@@ -1,11 +1,11 @@
-import type { ImageRef, ServerEvent } from "../../common/protocol.ts";
+import type { ImageRef, ServerEvent } from "../../../common/protocol.ts";
+import { toObservedDisplayMessage } from "../observed-prompt.ts";
+import { createBrowserSessionRef, createSessionKey } from "../session.ts";
+import { useChatStore } from "../stores/chat.ts";
+import { useContextUsageStore } from "../stores/context-usage.ts";
+import { useRuntimeStore } from "../stores/runtime.ts";
+import { useSessionsStore } from "../stores/sessions.ts";
 import { ensureRunningChatSession } from "./ensure-running-chat-session.ts";
-import { toObservedDisplayMessage } from "./observed-prompt.ts";
-import { createBrowserSessionRef, createSessionKey } from "./session.ts";
-import { useChatStore } from "./stores/chat.ts";
-import { useContextUsageStore } from "./stores/context-usage.ts";
-import { useRuntimeStore } from "./stores/runtime.ts";
-import { useSessionsStore } from "./stores/sessions.ts";
 
 type SessionKey = string;
 

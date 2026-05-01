@@ -37,8 +37,8 @@ import {
 import { ActiveTabUnderline } from "../active-tab-underline.tsx";
 import { CronPanel } from "./cron-panel.tsx";
 import { FileTree, FileTreeHeader } from "./file-tree.tsx";
-import { GitPanel } from "./git-panel.tsx";
-import { shouldClearSelectedGitCommit } from "./git-selection-state.ts";
+import { GitPanel } from "./git/git-panel.tsx";
+import { shouldClearSelectedGitCommit } from "./git/git-selection-state.ts";
 import { InboxPanel, type InboxUndoArchive } from "./inbox-panel.tsx";
 import {
 	useAgentTreeLoader,
@@ -53,20 +53,20 @@ import {
 	applyRightPanelResizeBodyStyles,
 	calculateRightPanelSplitRatio,
 } from "./right-panel-resize-behavior.ts";
-import { TerminalPanel } from "./terminal-panel.tsx";
+import { TerminalPanel } from "./terminal/terminal-panel.tsx";
 import {
 	clearDispatchedTerminalRunRequest,
 	createTerminalRunRequest,
 	storeTerminalRunRequest,
 	type TerminalRunRequestsByAgent,
-} from "./terminal-run-coordinator.ts";
-import { TerminalRunPanel } from "./terminal-run-panel.tsx";
-import { TerminalTabs } from "./terminal-tabs.tsx";
+} from "./terminal/terminal-run-coordinator.ts";
+import { TerminalRunPanel } from "./terminal/terminal-run-panel.tsx";
+import { TerminalTabs } from "./terminal/terminal-tabs.tsx";
 import {
 	resolveHeaderTerminalRunAction,
 	resolveSavedTerminalRunCommand,
 	useAgentTerminalRunCommand,
-} from "./use-agent-terminal-run-command.ts";
+} from "./terminal/use-agent-terminal-run-command.ts";
 
 const TAB_LABELS: Record<UpperRightPanelTab, string> = {
 	inbox: "Inbox",

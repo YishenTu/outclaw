@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { TerminalRunPanel } from "../../../src/frontend/browser/components/right-panel/terminal-run-panel.tsx";
+import { TerminalRunPanel } from "../../../src/frontend/browser/components/right-panel/terminal/terminal-run-panel.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { truncateGitGraphMessage } from "../../../src/frontend/browser/components/right-panel/git-graph-truncate.ts";
+import { truncateGitGraphMessage } from "../../../src/frontend/browser/components/right-panel/git/git-graph-truncate.ts";
 
 describe("truncateGitGraphMessage", () => {
 	test("returns the original message when it fits", () => {

@@ -2,7 +2,7 @@ import type {
 	BrowserGitFileStatus,
 	BrowserTreeEntry,
 	BrowserTreeEntryGitStatus,
-} from "../../../../common/protocol.ts";
+} from "../../../../../common/protocol.ts";
 
 type GitToneStatus = BrowserTreeEntryGitStatus | "deleted";
 

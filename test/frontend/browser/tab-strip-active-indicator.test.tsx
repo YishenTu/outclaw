@@ -5,7 +5,7 @@ import {
 	TabBarView,
 } from "../../../src/frontend/browser/components/center/tab-bar.tsx";
 import { RightPanelUpperTabs } from "../../../src/frontend/browser/components/right-panel/right-panel.tsx";
-import { TerminalTabs } from "../../../src/frontend/browser/components/right-panel/terminal-tabs.tsx";
+import { TerminalTabs } from "../../../src/frontend/browser/components/right-panel/terminal/terminal-tabs.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 import { useTabsStore } from "../../../src/frontend/browser/stores/tabs.ts";

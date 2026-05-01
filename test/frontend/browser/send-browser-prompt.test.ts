@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ImageRef } from "../../../src/common/protocol.ts";
-import { dispatchBrowserPrompt } from "../../../src/frontend/browser/send-browser-prompt.ts";
-import { dispatchBrowserTextPrompt } from "../../../src/frontend/browser/send-browser-text-prompt.ts";
+import { dispatchBrowserPrompt } from "../../../src/frontend/browser/prompts/send-browser-prompt.ts";
+import { dispatchBrowserTextPrompt } from "../../../src/frontend/browser/prompts/send-browser-text-prompt.ts";
 
 function createAttachment(id: string) {
 	return {

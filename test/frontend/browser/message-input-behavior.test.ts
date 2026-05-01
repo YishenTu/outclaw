@@ -4,7 +4,7 @@ import {
 	filterSlashCommands,
 	isSlashAutocompleteInput,
 	resolveRuntimePopupItemCount,
-} from "../../../src/frontend/browser/components/chat/message-input-behavior.ts";
+} from "../../../src/frontend/browser/components/chat/composer/message-input-behavior.ts";
 
 const COMMANDS = [
 	{

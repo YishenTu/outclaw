@@ -9,8 +9,8 @@ import { useRuntimeStore } from "../stores/runtime.ts";
 import { useSessionsStore } from "../stores/sessions.ts";
 import { useWorkspaceViewStore } from "../stores/workspace-view.ts";
 import { resolveWelcomeAgentId } from "../welcome-agent-selection.ts";
-import type { ComposerImageAttachment } from "./chat/composer-images.ts";
-import { MessageInput } from "./chat/message-input.tsx";
+import type { ComposerImageAttachment } from "./chat/composer/composer-images.ts";
+import { MessageInput } from "./chat/composer/message-input.tsx";
 import { WelcomeAgentPicker } from "./welcome-agent-picker.tsx";
 
 const BANNER = ` ██████╗ ██╗   ██╗████████╗ ██████╗██╗      █████╗ ██╗    ██╗

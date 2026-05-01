@@ -1,8 +1,17 @@
 import type {
 	BrowserAgentsResponse,
 	ServerEvent,
-} from "../../common/protocol.ts";
-import { formatStatusCompact } from "../../common/status.ts";
+} from "../../../common/protocol.ts";
+import { formatStatusCompact } from "../../../common/status.ts";
+import { createBrowserSessionRef, createSessionKey } from "../session.ts";
+import { useAgentsStore } from "../stores/agents.ts";
+import { useChatStore } from "../stores/chat.ts";
+import { useContextUsageStore } from "../stores/context-usage.ts";
+import { useRightPanelRefreshStore } from "../stores/right-panel-refresh.ts";
+import { useRuntimeStore } from "../stores/runtime.ts";
+import { useRuntimePopupStore } from "../stores/runtime-popup.ts";
+import { type SessionEntry, useSessionsStore } from "../stores/sessions.ts";
+import { useSlashCommandsStore } from "../stores/slash-commands.ts";
 import {
 	applyBrowserChatEvent,
 	type BrowserChatEventHandlerOptions,
@@ -10,15 +19,6 @@ import {
 } from "./browser-chat-events.ts";
 import { applyBrowserStatusEvent } from "./browser-status-event.ts";
 import { ensureRunningChatSession } from "./ensure-running-chat-session.ts";
-import { createBrowserSessionRef, createSessionKey } from "./session.ts";
-import { useAgentsStore } from "./stores/agents.ts";
-import { useChatStore } from "./stores/chat.ts";
-import { useContextUsageStore } from "./stores/context-usage.ts";
-import { useRightPanelRefreshStore } from "./stores/right-panel-refresh.ts";
-import { useRuntimeStore } from "./stores/runtime.ts";
-import { useRuntimePopupStore } from "./stores/runtime-popup.ts";
-import { type SessionEntry, useSessionsStore } from "./stores/sessions.ts";
-import { useSlashCommandsStore } from "./stores/slash-commands.ts";
 
 export { inferImageMediaTypeFromPath };
 

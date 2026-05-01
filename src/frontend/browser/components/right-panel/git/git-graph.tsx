@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
 	BrowserGitGraph,
 	BrowserGitGraphCommit,
-} from "../../../../common/protocol.ts";
+} from "../../../../../common/protocol.ts";
 import {
 	estimateGitGraphExpansionTop,
 	getDefaultGitGraphInfoOffset,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ServerEvent } from "../../../src/common/protocol.ts";
-import { createBrowserSocketLifecycle } from "../../../src/frontend/browser/browser-socket-lifecycle.ts";
+import { createBrowserSocketLifecycle } from "../../../src/frontend/browser/events/browser-socket-lifecycle.ts";
 
 class FakeBrowserSocket {
 	closed = false;

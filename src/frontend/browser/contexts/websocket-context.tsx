@@ -19,21 +19,21 @@ import {
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
-import { createBrowserLiveRunBridge } from "../browser-live-run-bridge.ts";
-import { createBrowserSocketLifecycle } from "../browser-socket-lifecycle.ts";
 import { createBrowserSwitchDispatcher } from "../browser-switch-dispatcher.ts";
-import type { ComposerImageAttachment } from "../components/chat/composer-images.ts";
-import { fetchSidebarSummary, uploadPromptImages } from "../lib/api.ts";
+import type { ComposerImageAttachment } from "../components/chat/composer/composer-images.ts";
+import { createBrowserLiveRunBridge } from "../events/browser-live-run-bridge.ts";
+import { createBrowserSocketLifecycle } from "../events/browser-socket-lifecycle.ts";
 import {
 	applySidebarSummary,
 	handleBrowserServerEvent,
-} from "../runtime-server-events.ts";
-import { dispatchBrowserPrompt as dispatchBrowserPromptMessage } from "../send-browser-prompt.ts";
-import { dispatchBrowserTextPrompt } from "../send-browser-text-prompt.ts";
+} from "../events/runtime-server-events.ts";
+import { fetchSidebarSummary, uploadPromptImages } from "../lib/api.ts";
+import { dispatchBrowserPrompt as dispatchBrowserPromptMessage } from "../prompts/send-browser-prompt.ts";
+import { dispatchBrowserTextPrompt } from "../prompts/send-browser-text-prompt.ts";
 import {
 	sendBrowserPromptToAgent as dispatchBrowserPromptToAgent,
 	sendPromptToAgent as dispatchPromptToAgent,
-} from "../send-prompt-to-agent.ts";
+} from "../prompts/send-prompt-to-agent.ts";
 import { resolveCurrentBrowserSessionKey } from "../session.ts";
 import { createSidebarRefreshCoordinator } from "../sidebar-refresh.ts";
 import { createSidebarRefreshGate } from "../sidebar-refresh-gate.ts";
