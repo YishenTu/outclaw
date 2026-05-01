@@ -1,5 +1,5 @@
-import type { ServerEvent } from "../../common/protocol.ts";
-import type { RuntimeInfo } from "./chrome/status-bar.tsx";
+import type { ServerEvent } from "../../../common/protocol.ts";
+import type { RuntimeInfo } from "../chrome/status-bar.tsx";
 
 type RuntimeStatusEvent = Extract<ServerEvent, { type: "runtime_status" }>;
 type RuntimeInfoEvent = Extract<

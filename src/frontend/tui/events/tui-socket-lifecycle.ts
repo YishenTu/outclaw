@@ -1,5 +1,5 @@
-import { parseMessage, type ServerEvent } from "../../common/protocol.ts";
-import { openRuntimeSocket } from "../runtime-client/index.ts";
+import { parseMessage, type ServerEvent } from "../../../common/protocol.ts";
+import { openRuntimeSocket } from "../../runtime-client/index.ts";
 
 export function openTuiRuntimeSocket(params: {
 	agentName?: string;

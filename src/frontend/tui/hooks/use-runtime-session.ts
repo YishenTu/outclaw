@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ServerEvent, SkillInfo } from "../../common/protocol.ts";
-import type { AgentMenuData } from "./agents/types.ts";
-import type { ConnectionStatus, RuntimeInfo } from "./chrome/status-bar.tsx";
+import type { ServerEvent, SkillInfo } from "../../../common/protocol.ts";
+import type { AgentMenuData } from "../agents/types.ts";
+import type { ConnectionStatus, RuntimeInfo } from "../chrome/status-bar.tsx";
 import {
 	applyOptimisticPromptState,
 	requestTuiSkillsOnce,
 	sendTuiRuntimeCommand,
 	sendTuiRuntimePrompt,
-} from "./runtime-session-senders.ts";
+} from "../events/runtime-session-senders.ts";
 import {
 	projectRuntimeInfoEvent,
 	projectRuntimeStatus,
-} from "./runtime-status-projection.ts";
-import { applySessionEventToMenuData } from "./sessions/state.ts";
-import type { SessionMenuData } from "./sessions/types.ts";
-import { applyAction } from "./transcript/reducer.ts";
-import { mapEventToActions } from "./transcript/runtime-events.ts";
-import { initialTuiState } from "./transcript/state.ts";
-import { openTuiRuntimeSocket } from "./tui-socket-lifecycle.ts";
+} from "../events/runtime-status-projection.ts";
+import { openTuiRuntimeSocket } from "../events/tui-socket-lifecycle.ts";
+import { applySessionEventToMenuData } from "../sessions/state.ts";
+import type { SessionMenuData } from "../sessions/types.ts";
+import { applyAction } from "../transcript/reducer.ts";
+import { mapEventToActions } from "../transcript/runtime-events.ts";
+import { initialTuiState } from "../transcript/state.ts";
 
 export function useRuntimeSession(url: string, agentName?: string) {
 	const [agentMenuData, setAgentMenuData] = useState<AgentMenuData | null>(

@@ -1,6 +1,6 @@
 import { ControlledMultilineInput } from "ink-multiline-input";
 import { useEffect, useState } from "react";
-import { useLatestRef } from "../use-latest-ref.ts";
+import { useLatestRef } from "../hooks/use-latest-ref.ts";
 import { useTextAreaInput } from "./input.ts";
 import { applyTextAreaKeypress } from "./keypress.ts";
 

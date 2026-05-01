@@ -3,7 +3,7 @@ import { PassThrough } from "node:stream";
 import { render, Text } from "ink";
 import { useLayoutEffect } from "react";
 import type { SkillInfo } from "../../../src/common/protocol.ts";
-import { useRuntimeSession } from "../../../src/frontend/tui/use-runtime-session.ts";
+import { useRuntimeSession } from "../../../src/frontend/tui/hooks/use-runtime-session.ts";
 
 class FakeWebSocket {
 	static readonly CONNECTING = 0;

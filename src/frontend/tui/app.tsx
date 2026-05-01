@@ -17,14 +17,14 @@ import {
 	reduceComposerBatch,
 } from "./composer/state.ts";
 import { TextArea } from "./composer/text-area.tsx";
+import { useLatestRef } from "./hooks/use-latest-ref.ts";
+import { useRuntimeSession } from "./hooks/use-runtime-session.ts";
+import { useTerminalSize } from "./hooks/use-terminal-size.ts";
 import { sessionMenuChoices } from "./sessions/format.ts";
 import { SessionMenu } from "./sessions/menu.tsx";
 import { shouldEnableGlobalStopShortcut } from "./sessions/state.ts";
 import type { SessionMenuChoice } from "./sessions/types.ts";
 import { MessageList } from "./transcript/message-list.tsx";
-import { useLatestRef } from "./use-latest-ref.ts";
-import { useRuntimeSession } from "./use-runtime-session.ts";
-import { useTerminalSize } from "./use-terminal-size.ts";
 
 interface TuiAppProps {
 	agentName?: string;

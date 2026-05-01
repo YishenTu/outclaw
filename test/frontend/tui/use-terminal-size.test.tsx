@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { PassThrough } from "node:stream";
 import { render, Text } from "ink";
-import { useTerminalSize } from "../../../src/frontend/tui/use-terminal-size.ts";
+import { useTerminalSize } from "../../../src/frontend/tui/hooks/use-terminal-size.ts";
 
 function createOutputStream(columns: number, rows: number) {
 	const stream = new PassThrough() as PassThrough &

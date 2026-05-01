@@ -3,7 +3,7 @@ import {
 	applyOptimisticPromptState,
 	requestTuiSkillsOnce,
 	sendWithOpenTuiSocket,
-} from "../../../src/frontend/tui/runtime-session-senders.ts";
+} from "../../../src/frontend/tui/events/runtime-session-senders.ts";
 import { initialTuiState } from "../../../src/frontend/tui/transcript/state.ts";
 
 function createOpenSocket() {

@@ -1,13 +1,13 @@
-import { canonicalizePromptSlashCommand } from "../../common/commands.ts";
-import { extractError } from "../../common/protocol.ts";
+import { canonicalizePromptSlashCommand } from "../../../common/commands.ts";
+import { extractError } from "../../../common/protocol.ts";
 import {
 	isRuntimeSocketOpen,
 	sendRequestSkills,
 	sendRuntimeCommand,
 	sendRuntimePrompt,
-} from "../runtime-client/index.ts";
-import { applyAction } from "./transcript/reducer.ts";
-import type { TuiState } from "./transcript/state.ts";
+} from "../../runtime-client/index.ts";
+import { applyAction } from "../transcript/reducer.ts";
+import type { TuiState } from "../transcript/state.ts";
 
 export function sendWithOpenTuiSocket(params: {
 	pushLocalMessage(role: "error" | "info", text: string): void;

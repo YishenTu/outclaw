@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	projectRuntimeInfoEvent,
 	projectRuntimeStatus,
-} from "../../../src/frontend/tui/runtime-status-projection.ts";
+} from "../../../src/frontend/tui/events/runtime-status-projection.ts";
 
 describe("TUI runtime status projection", () => {
 	test("projects runtime status into status-bar info", () => {

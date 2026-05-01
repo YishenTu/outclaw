@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { theme } from "../chrome/theme.ts";
 import { useTerminalInput } from "../composer/input.ts";
 import { TextArea } from "../composer/text-area.tsx";
-import { useLatestRef } from "../use-latest-ref.ts";
+import { useLatestRef } from "../hooks/use-latest-ref.ts";
 import { formatSessionMenuItem } from "./format.ts";
 import {
 	createSessionMenuState,
