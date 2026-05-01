@@ -1,8 +1,8 @@
 import { existsSync, readdirSync } from "node:fs";
 import { assertValidAgentName } from "../../common/agent-name.ts";
 import { createOutclawLayout } from "../../common/layout.ts";
-import type { AgentRecord } from "./agent-record.ts";
-import { readAgentConfig } from "./read-agent-config.ts";
+import type { AgentRecord } from "./config/agent-record.ts";
+import { readAgentConfig } from "./config/read-agent-config.ts";
 import { readAgentId } from "./read-agent-id.ts";
 
 export function discoverAgents(homeDir: string): AgentRecord[] {

@@ -1,7 +1,7 @@
 import {
 	agentTelegramBotTokenEnvKey,
 	agentTelegramUsersEnvKey,
-} from "../agents/agent-config-env.ts";
+} from "../agents/config/agent-config-env.ts";
 import { discoverAgents } from "../agents/discover-agents.ts";
 import { readStoredAgentConfig, writeStoredAgentConfig } from "../config.ts";
 import { upsertSharedEnvEntries } from "./env.ts";

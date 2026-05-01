@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { assertValidAgentName } from "../../common/agent-name.ts";
 import { createOutclawLayout } from "../../common/layout.ts";
 import { seedTemplates } from "../prompt/seed-templates.ts";
-import { assertDefaultCronUserAllowed } from "./agent-config.ts";
-import { writeAgentConfig } from "./write-agent-config.ts";
+import { assertDefaultCronUserAllowed } from "./config/agent-config.ts";
+import { writeAgentConfig } from "./config/write-agent-config.ts";
 
 interface CreateAgentOptions {
 	allowedUsers?: number[];

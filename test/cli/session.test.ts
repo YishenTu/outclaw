@@ -7,7 +7,7 @@ import {
 	formatSessionSearchMatches,
 	resolveScopedAgent,
 } from "../../src/cli/session-read-model.ts";
-import type { AgentRecord } from "../../src/runtime/agents/agent-record.ts";
+import type { AgentRecord } from "../../src/runtime/agents/config/agent-record.ts";
 import type { SessionSearchMatch } from "../../src/runtime/persistence/session-query.ts";
 import type { SessionRow } from "../../src/runtime/persistence/session-store/session-store.ts";
 

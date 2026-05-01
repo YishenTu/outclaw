@@ -8,9 +8,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readAgentConfig } from "../../../src/runtime/agents/config/read-agent-config.ts";
+import { writeAgentConfig } from "../../../src/runtime/agents/config/write-agent-config.ts";
 import { discoverAgents } from "../../../src/runtime/agents/discover-agents.ts";
-import { readAgentConfig } from "../../../src/runtime/agents/read-agent-config.ts";
-import { writeAgentConfig } from "../../../src/runtime/agents/write-agent-config.ts";
 
 function tmp() {
 	return mkdtempSync(join(tmpdir(), "outclaw-agents-"));

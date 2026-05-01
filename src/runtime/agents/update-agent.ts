@@ -11,7 +11,7 @@ import { readStoredAgentConfig, writeStoredAgentConfig } from "../config.ts";
 import {
 	assertDefaultCronUserAllowed,
 	type StoredAgentConfig,
-} from "./agent-config.ts";
+} from "./config/agent-config.ts";
 import { readAgentId } from "./read-agent-id.ts";
 
 interface UpdateAgentOptions {

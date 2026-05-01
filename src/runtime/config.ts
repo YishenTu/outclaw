@@ -9,7 +9,7 @@ import {
 	DEFAULT_STORED_AGENT_CONFIG,
 	normalizeStoredAgentConfig,
 	type StoredAgentConfig,
-} from "./agents/agent-config.ts";
+} from "./agents/config/agent-config.ts";
 import { loadSharedEnv } from "./config/env.ts";
 
 export interface GlobalConfig {

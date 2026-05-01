@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TranscriptTurn } from "../common/protocol.ts";
 import { formatTranscriptTurnBody } from "../common/transcript-turn-body.ts";
-import type { AgentRecord } from "../runtime/agents/agent-record.ts";
+import type { AgentRecord } from "../runtime/agents/config/agent-record.ts";
 import type { SessionSearchMatch } from "../runtime/persistence/session-query.ts";
 import type { SessionRow } from "../runtime/persistence/session-store/session-store.ts";
 

@@ -3,8 +3,8 @@ import {
 	resolveAllowedUsers,
 	resolveEnvString,
 	resolveOptionalUserId,
-} from "../config/env.ts";
-import { readStoredAgentConfig } from "../config.ts";
+} from "../../config/env.ts";
+import { readStoredAgentConfig } from "../../config.ts";
 import {
 	type AgentConfig,
 	DEFAULT_ROLLOVER_IDLE_MINUTES,
