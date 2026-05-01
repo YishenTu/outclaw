@@ -8,20 +8,19 @@ import {
 	coerceUpperRightPanelTab,
 	type UpperRightPanelTab,
 } from "../components/right-panel/right-panel-layout.ts";
+import {
+	DEFAULT_INSPECTOR_WIDTH,
+	DEFAULT_RIGHT_PANEL_SPLIT_RATIO,
+	DEFAULT_SIDEBAR_WIDTH,
+	MAX_INSPECTOR_WIDTH,
+	MAX_RIGHT_PANEL_SPLIT_RATIO,
+	MAX_SIDEBAR_WIDTH,
+	MIN_INSPECTOR_WIDTH,
+	MIN_RIGHT_PANEL_SPLIT_RATIO,
+	MIN_SIDEBAR_WIDTH,
+} from "../layout-dimensions.ts";
 
 export const BROWSER_LAYOUT_STORAGE_KEY = "outclaw.browser.layout";
-
-export const MIN_SIDEBAR_WIDTH = 220;
-export const MAX_SIDEBAR_WIDTH = 360;
-export const DEFAULT_SIDEBAR_WIDTH = 260;
-
-export const MIN_INSPECTOR_WIDTH = 300;
-export const MAX_INSPECTOR_WIDTH = 460;
-export const DEFAULT_INSPECTOR_WIDTH = 360;
-
-export const MIN_RIGHT_PANEL_SPLIT_RATIO = 0.2;
-export const MAX_RIGHT_PANEL_SPLIT_RATIO = 0.8;
-export const DEFAULT_RIGHT_PANEL_SPLIT_RATIO = 0.56;
 
 export interface LayoutState {
 	inspectorWidth: number;

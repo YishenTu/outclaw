@@ -16,6 +16,13 @@ interface GitFetchParams {
 	loadedRevision: number | null;
 }
 
+interface InboxFetchParams {
+	activeAgentId: string | null;
+	inboxRevision: number;
+	loadedAgentId: string | null;
+	loadedRevision: number | null;
+}
+
 export function shouldFetchAgentTree(params: TreeFetchParams): boolean {
 	if (params.activeUpperTab !== "files") {
 		return false;
@@ -37,4 +44,14 @@ export function shouldFetchGitStatus(params: GitFetchParams): boolean {
 		return false;
 	}
 	return params.loadedRevision !== params.gitRevision;
+}
+
+export function shouldFetchInbox(params: InboxFetchParams): boolean {
+	if (!params.activeAgentId) {
+		return false;
+	}
+	if (params.loadedAgentId !== params.activeAgentId) {
+		return true;
+	}
+	return params.loadedRevision !== params.inboxRevision;
 }

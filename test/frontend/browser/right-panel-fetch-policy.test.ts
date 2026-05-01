@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	shouldFetchAgentTree,
 	shouldFetchGitStatus,
+	shouldFetchInbox,
 } from "../../../src/frontend/browser/components/right-panel/right-panel-fetch-policy.ts";
 
 describe("right panel fetch policy", () => {
@@ -127,5 +128,32 @@ describe("right panel fetch policy", () => {
 				loadedRevision: null,
 			}),
 		).toBe(false);
+	});
+
+	test("fetches inbox data for badges from watcher-driven revision state", () => {
+		expect(
+			shouldFetchInbox({
+				activeAgentId: "agent-alpha",
+				inboxRevision: 0,
+				loadedAgentId: null,
+				loadedRevision: null,
+			}),
+		).toBe(true);
+		expect(
+			shouldFetchInbox({
+				activeAgentId: "agent-alpha",
+				inboxRevision: 2,
+				loadedAgentId: "agent-alpha",
+				loadedRevision: 2,
+			}),
+		).toBe(false);
+		expect(
+			shouldFetchInbox({
+				activeAgentId: "agent-alpha",
+				inboxRevision: 3,
+				loadedAgentId: "agent-alpha",
+				loadedRevision: 2,
+			}),
+		).toBe(true);
 	});
 });

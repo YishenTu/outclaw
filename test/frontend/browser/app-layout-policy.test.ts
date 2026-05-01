@@ -1,16 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import {
+	DEFAULT_DESKTOP_LAYOUT_WIDTH,
+	DEFAULT_SIDEBAR_WIDTH,
+	MAX_INSPECTOR_WIDTH,
+	MAX_SIDEBAR_WIDTH,
+	MIN_INSPECTOR_WIDTH,
+	MIN_SIDEBAR_WIDTH,
+} from "../../../src/frontend/browser/layout-dimensions.ts";
+import {
 	applyAppLayoutResizeBodyStyles,
 	calculateLayoutResizeWidth,
 	calculateMaxInspectorWidth,
 	resolveInspectorFit,
 } from "../../../src/frontend/browser/layouts/app-layout-policy.ts";
-import {
-	MAX_INSPECTOR_WIDTH,
-	MAX_SIDEBAR_WIDTH,
-	MIN_INSPECTOR_WIDTH,
-	MIN_SIDEBAR_WIDTH,
-} from "../../../src/frontend/browser/stores/layout.ts";
 
 describe("browser app layout policy", () => {
 	test("clamps left and right resize widths", () => {
@@ -50,9 +52,29 @@ describe("browser app layout policy", () => {
 				sidebarWidth: 260,
 			}),
 		).toBe(MAX_INSPECTOR_WIDTH);
+		expect(
+			calculateLayoutResizeWidth({
+				clientX: 0,
+				containerLeft: 0,
+				containerRight: 1280,
+				containerWidth: 1280,
+				leftCollapsed: false,
+				showWelcomePage: false,
+				side: "right",
+				sidebarWidth: 260,
+			}),
+		).toBe(MAX_INSPECTOR_WIDTH);
 	});
 
 	test("calculates max inspector width from visible left-side policy", () => {
+		expect(
+			calculateMaxInspectorWidth({
+				containerWidth: DEFAULT_DESKTOP_LAYOUT_WIDTH,
+				leftCollapsed: false,
+				showWelcomePage: false,
+				sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+			}),
+		).toBe(MAX_INSPECTOR_WIDTH);
 		expect(
 			calculateMaxInspectorWidth({
 				containerWidth: 1200,
@@ -60,7 +82,7 @@ describe("browser app layout policy", () => {
 				showWelcomePage: false,
 				sidebarWidth: 300,
 			}),
-		).toBe(340);
+		).toBe(386);
 		expect(
 			calculateMaxInspectorWidth({
 				containerWidth: 1200,
@@ -68,7 +90,7 @@ describe("browser app layout policy", () => {
 				showWelcomePage: false,
 				sidebarWidth: 300,
 			}),
-		).toBe(640);
+		).toBe(686);
 		expect(
 			calculateMaxInspectorWidth({
 				containerWidth: 700,

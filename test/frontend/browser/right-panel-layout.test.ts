@@ -6,10 +6,11 @@ import {
 
 describe("right panel layout helpers", () => {
 	test("exposes the fixed upper-pane tab order", () => {
-		expect(UPPER_RIGHT_PANEL_TABS).toEqual(["files", "git", "cron"]);
+		expect(UPPER_RIGHT_PANEL_TABS).toEqual(["inbox", "files", "git", "cron"]);
 	});
 
 	test("coerces invalid persisted upper tabs back to files", () => {
+		expect(coerceUpperRightPanelTab("inbox")).toBe("inbox");
 		expect(coerceUpperRightPanelTab("files")).toBe("files");
 		expect(coerceUpperRightPanelTab("cron")).toBe("cron");
 		expect(coerceUpperRightPanelTab("git")).toBe("git");

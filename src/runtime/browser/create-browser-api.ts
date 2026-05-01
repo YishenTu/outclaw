@@ -7,6 +7,11 @@ import type {
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
+	BrowserInboxArchiveResponse,
+	BrowserInboxCreateNoteInput,
+	BrowserInboxCreateNoteResponse,
+	BrowserInboxResponse,
+	BrowserInboxRestoreResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 	ImageMediaType,
@@ -31,6 +36,12 @@ import {
 	readGitStatus as readGitStatusWorkbench,
 } from "./git-workbench.ts";
 import {
+	archiveInboxItem,
+	createInboxNote,
+	listInboxEntries,
+	restoreInboxItem,
+} from "./inbox-workbench.ts";
+import {
 	resolveExistingPathWithinRoot,
 	resolveWritablePathWithinRoot,
 } from "./path-safety.ts";
@@ -49,7 +60,16 @@ interface CreateBrowserApiOptions {
 export interface BrowserApi {
 	getAgentTerminalCwd(agentId: string): string | undefined;
 	listAgents(): BrowserAgentsResponse;
+	archiveAgentInboxItem(
+		agentId: string,
+		relativePath: string,
+	): Promise<BrowserInboxArchiveResponse>;
+	createAgentInboxNote(
+		agentId: string,
+		input: BrowserInboxCreateNoteInput,
+	): Promise<BrowserInboxCreateNoteResponse>;
 	listAgentCron(agentId: string): Promise<BrowserCronEntry[]>;
+	listAgentInbox(agentId: string): Promise<BrowserInboxResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
 	readConfigFile(): Promise<BrowserConfigResponse>;
 	writeConfigFile(
@@ -67,6 +87,11 @@ export interface BrowserApi {
 	readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
 	readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
 	readGitStatus(): Promise<BrowserGitStatusResponse>;
+	restoreAgentInboxItem(
+		agentId: string,
+		archivedPath: string,
+		originalPath: string,
+	): Promise<BrowserInboxRestoreResponse>;
 	uploadImages(
 		images: Array<{ bytes: Uint8Array; mediaType: ImageMediaType }>,
 	): Promise<ImageRef[]>;
@@ -97,6 +122,22 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		async listAgentCron(agentId) {
 			const agent = requireAgent(agentsById, agentId);
 			return await listCronEntries(agent.homeDir);
+		},
+		async listAgentInbox(agentId) {
+			const agent = requireAgent(agentsById, agentId);
+			return await listInboxEntries(agent.homeDir);
+		},
+		async archiveAgentInboxItem(agentId, relativePath) {
+			const agent = requireAgent(agentsById, agentId);
+			return await archiveInboxItem(agent.homeDir, relativePath);
+		},
+		async createAgentInboxNote(agentId, input) {
+			const agent = requireAgent(agentsById, agentId);
+			return await createInboxNote(agent.homeDir, input);
+		},
+		async restoreAgentInboxItem(agentId, archivedPath, originalPath) {
+			const agent = requireAgent(agentsById, agentId);
+			return await restoreInboxItem(agent.homeDir, archivedPath, originalPath);
 		},
 		async setAgentCronEnabled(agentId, relativePath, enabled) {
 			const agent = requireAgent(agentsById, agentId);

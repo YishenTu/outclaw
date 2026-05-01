@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
-	BROWSER_LAYOUT_STORAGE_KEY,
-	createLayoutStore,
 	DEFAULT_INSPECTOR_WIDTH,
 	DEFAULT_RIGHT_PANEL_SPLIT_RATIO,
 	DEFAULT_SIDEBAR_WIDTH,
 	MAX_INSPECTOR_WIDTH,
 	MAX_RIGHT_PANEL_SPLIT_RATIO,
 	MIN_SIDEBAR_WIDTH,
+} from "../../../src/frontend/browser/layout-dimensions.ts";
+import {
+	BROWSER_LAYOUT_STORAGE_KEY,
+	createLayoutStore,
 } from "../../../src/frontend/browser/stores/layout.ts";
 
 function createMemoryStorage(initial: Record<string, string> = {}) {

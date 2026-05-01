@@ -379,7 +379,7 @@ export interface CronResultEvent {
 export interface BrowserSidebarInvalidatedEvent {
 	type: "browser_sidebar_invalidated";
 	agentId?: string;
-	sections: Array<"tree" | "cron" | "git">;
+	sections: Array<"tree" | "cron" | "git" | "inbox">;
 }
 
 export interface SkillInfo {
@@ -437,6 +437,44 @@ export interface BrowserCronEntry {
 	enabled: boolean;
 	status: "scheduled" | "expired" | "disabled" | "invalid";
 	error?: string;
+}
+
+export type BrowserInboxItemLocation = "inbox" | "archive";
+
+export interface BrowserInboxItem {
+	location: BrowserInboxItemLocation;
+	modifiedAt: string;
+	name: string;
+	path: string;
+	size: number;
+}
+
+export interface BrowserInboxResponse {
+	archivedItems: BrowserInboxItem[];
+	items: BrowserInboxItem[];
+	pendingCount: number;
+}
+
+export interface BrowserInboxArchiveResponse {
+	archivedPath: string;
+	item: BrowserInboxItem;
+	originalPath: string;
+}
+
+export interface BrowserInboxCreateNoteInput {
+	body: string;
+	title?: string;
+}
+
+export interface BrowserInboxCreateNoteResponse {
+	item: BrowserInboxItem;
+	path: string;
+}
+
+export interface BrowserInboxRestoreResponse {
+	archivedPath: string;
+	item: BrowserInboxItem;
+	restoredPath: string;
 }
 
 export interface BrowserFileResponse {

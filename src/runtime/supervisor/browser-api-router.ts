@@ -6,6 +6,11 @@ import type {
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
+	BrowserInboxArchiveResponse,
+	BrowserInboxCreateNoteInput,
+	BrowserInboxCreateNoteResponse,
+	BrowserInboxResponse,
+	BrowserInboxRestoreResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 	ImageMediaType,
@@ -13,8 +18,17 @@ import type {
 
 export interface BrowserApi {
 	getAgentTerminalCwd(agentId: string): string | undefined;
+	archiveAgentInboxItem?(
+		agentId: string,
+		relativePath: string,
+	): Promise<BrowserInboxArchiveResponse>;
+	createAgentInboxNote?(
+		agentId: string,
+		input: BrowserInboxCreateNoteInput,
+	): Promise<BrowserInboxCreateNoteResponse>;
 	initGitRepo(): Promise<BrowserGitStatusResponse>;
 	listAgentCron(agentId: string): Promise<BrowserCronEntry[]>;
+	listAgentInbox?(agentId: string): Promise<BrowserInboxResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
 	listAgents(): BrowserAgentsResponse;
 	readAgentFile(
@@ -25,6 +39,11 @@ export interface BrowserApi {
 	readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
 	readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
 	readGitStatus(): Promise<BrowserGitStatusResponse>;
+	restoreAgentInboxItem?(
+		agentId: string,
+		archivedPath: string,
+		originalPath: string,
+	): Promise<BrowserInboxRestoreResponse>;
 	setAgentCronEnabled(
 		agentId: string,
 		relativePath: string,
@@ -108,6 +127,86 @@ export async function handleBrowserApiRequest(
 			return Response.json({
 				images: await browserApi.uploadImages(images),
 			});
+		}
+
+		const inboxMatch = url.pathname.match(
+			/^\/api\/agents\/([^/]+)\/inbox(?:\/(archive|note|restore))?$/,
+		);
+		if (inboxMatch) {
+			const [, encodedAgentId, action] = inboxMatch;
+			const agentId = decodeURIComponent(encodedAgentId ?? "");
+
+			if (!action) {
+				if (req.method !== "GET") {
+					return jsonError("Method not allowed", 405);
+				}
+				if (!browserApi.listAgentInbox) {
+					return jsonError("Inbox API is not configured", 404);
+				}
+				return Response.json(await browserApi.listAgentInbox(agentId));
+			}
+
+			if (req.method !== "POST") {
+				return jsonError("Method not allowed", 405);
+			}
+
+			if (action === "archive") {
+				if (!browserApi.archiveAgentInboxItem) {
+					return jsonError("Inbox API is not configured", 404);
+				}
+				const body = (await req.json().catch(() => undefined)) as
+					| { path?: unknown }
+					| undefined;
+				if (typeof body?.path !== "string") {
+					return jsonError("Missing inbox path", 400);
+				}
+				return Response.json(
+					await browserApi.archiveAgentInboxItem(agentId, body.path),
+				);
+			}
+
+			if (action === "note") {
+				if (!browserApi.createAgentInboxNote) {
+					return jsonError("Inbox API is not configured", 404);
+				}
+				const body = (await req.json().catch(() => undefined)) as
+					| { body?: unknown; title?: unknown }
+					| undefined;
+				const noteBody = body?.body;
+				const title = body?.title;
+				if (
+					typeof noteBody !== "string" ||
+					(title !== undefined && typeof title !== "string")
+				) {
+					return jsonError("Missing inbox note content", 400);
+				}
+				return Response.json(
+					await browserApi.createAgentInboxNote(agentId, {
+						body: noteBody,
+						title,
+					}),
+				);
+			}
+
+			if (!browserApi.restoreAgentInboxItem) {
+				return jsonError("Inbox API is not configured", 404);
+			}
+			const body = (await req.json().catch(() => undefined)) as
+				| { archivedPath?: unknown; originalPath?: unknown }
+				| undefined;
+			if (
+				typeof body?.archivedPath !== "string" ||
+				typeof body.originalPath !== "string"
+			) {
+				return jsonError("Missing inbox restore path", 400);
+			}
+			return Response.json(
+				await browserApi.restoreAgentInboxItem(
+					agentId,
+					body.archivedPath,
+					body.originalPath,
+				),
+			);
 		}
 
 		const agentMatch = url.pathname.match(
@@ -231,6 +330,7 @@ function statusForBrowserApiError(message: string): number {
 		message === "Terminal run command must be a single line" ||
 		message.startsWith("Path escapes") ||
 		message === "Path escapes cron directory" ||
+		message === "Path must reference a file directly in inbox" ||
 		message === "Path does not reference a file"
 	) {
 		return 400;

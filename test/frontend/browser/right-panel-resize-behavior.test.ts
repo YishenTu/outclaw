@@ -7,7 +7,7 @@ import {
 import {
 	MAX_RIGHT_PANEL_SPLIT_RATIO,
 	MIN_RIGHT_PANEL_SPLIT_RATIO,
-} from "../../../src/frontend/browser/stores/layout.ts";
+} from "../../../src/frontend/browser/layout-dimensions.ts";
 
 describe("right panel resize behavior", () => {
 	test("clamps split ratios to the supported range", () => {

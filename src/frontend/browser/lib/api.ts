@@ -7,6 +7,10 @@ import type {
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
 	BrowserImageUploadResponse,
+	BrowserInboxArchiveResponse,
+	BrowserInboxCreateNoteResponse,
+	BrowserInboxResponse,
+	BrowserInboxRestoreResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 } from "../../../common/protocol.ts";
@@ -59,6 +63,65 @@ export async function fetchAgentCron(
 ): Promise<BrowserCronEntry[]> {
 	return parseJsonResponse(
 		await fetch(`/api/agents/${encodeURIComponent(agentId)}/cron`),
+	);
+}
+
+export async function fetchAgentInbox(
+	agentId: string,
+): Promise<BrowserInboxResponse> {
+	return parseJsonResponse(
+		await fetch(`/api/agents/${encodeURIComponent(agentId)}/inbox`),
+	);
+}
+
+export async function archiveAgentInboxItem(
+	agentId: string,
+	path: string,
+): Promise<BrowserInboxArchiveResponse> {
+	return parseJsonResponse(
+		await fetch(`/api/agents/${encodeURIComponent(agentId)}/inbox/archive`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+			},
+			body: JSON.stringify({
+				path,
+			}),
+		}),
+	);
+}
+
+export async function createAgentInboxNote(
+	agentId: string,
+	input: { body: string; title: string },
+): Promise<BrowserInboxCreateNoteResponse> {
+	return parseJsonResponse(
+		await fetch(`/api/agents/${encodeURIComponent(agentId)}/inbox/note`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+			},
+			body: JSON.stringify(input),
+		}),
+	);
+}
+
+export async function restoreAgentInboxItem(
+	agentId: string,
+	archivedPath: string,
+	originalPath: string,
+): Promise<BrowserInboxRestoreResponse> {
+	return parseJsonResponse(
+		await fetch(`/api/agents/${encodeURIComponent(agentId)}/inbox/restore`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+			},
+			body: JSON.stringify({
+				archivedPath,
+				originalPath,
+			}),
+		}),
 	);
 }
 

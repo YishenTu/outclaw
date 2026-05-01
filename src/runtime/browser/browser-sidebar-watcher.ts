@@ -21,7 +21,7 @@ interface CreateBrowserSidebarWatcherOptions {
 }
 
 const DEFAULT_DEBOUNCE_MS = 75;
-const SECTION_ORDER = ["git", "tree", "cron"] as const;
+const SECTION_ORDER = ["git", "tree", "cron", "inbox"] as const;
 type BrowserSidebarInvalidationSection =
 	BrowserSidebarInvalidatedEvent["sections"][number];
 
@@ -50,6 +50,10 @@ function toAbsolutePath(
 
 function isCronPath(agentRoot: string, absolutePath: string): boolean {
 	return isPathWithin(resolve(agentRoot, "cron"), absolutePath);
+}
+
+function isInboxPath(agentRoot: string, absolutePath: string): boolean {
+	return isPathWithin(resolve(agentRoot, "inbox"), absolutePath);
 }
 
 function isIgnorableGitMetadataPath(
@@ -138,7 +142,7 @@ export function createBrowserSidebarWatcher(
 				if (!isPathWithin(normalizedGitRoot, agent.rootDir)) {
 					continue;
 				}
-				queueSection(pendingByAgent, agent.agentId, ["tree", "cron"]);
+				queueSection(pendingByAgent, agent.agentId, ["tree", "cron", "inbox"]);
 			}
 			scheduleFlush();
 			return;
@@ -161,6 +165,9 @@ export function createBrowserSidebarWatcher(
 			if (isCronPath(agent.rootDir, absolutePath)) {
 				sections.push("cron");
 			}
+			if (isInboxPath(agent.rootDir, absolutePath)) {
+				sections.push("inbox");
+			}
 			queueSection(pendingByAgent, agent.agentId, sections);
 		}
 
@@ -179,6 +186,15 @@ export function createBrowserSidebarWatcher(
 				isCronPath(agent.rootDir, toAbsolutePath(agent.rootDir, filename) ?? "")
 			) {
 				sections.push("cron");
+			}
+			if (
+				filename === null ||
+				isInboxPath(
+					agent.rootDir,
+					toAbsolutePath(agent.rootDir, filename) ?? "",
+				)
+			) {
+				sections.push("inbox");
 			}
 			queueSection(pendingByAgent, agent.agentId, sections);
 			scheduleFlush();

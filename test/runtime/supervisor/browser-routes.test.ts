@@ -206,6 +206,200 @@ describe("createSupervisor browser routes", () => {
 		});
 	});
 
+	test("serves browser inbox list, note, archive, and restore actions over HTTP", async () => {
+		const calls: string[] = [];
+		const supervisor = createSupervisor({
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+				}),
+			],
+			browserApi: {
+				getAgentTerminalCwd: () => undefined,
+				listAgentCron: async () => [],
+				listAgentInbox: async (agentId) => {
+					calls.push(`list:${agentId}`);
+					return {
+						archivedItems: [],
+						items: [
+							{
+								location: "inbox",
+								modifiedAt: "2026-04-02T00:00:00.000Z",
+								name: "todo.md",
+								path: "inbox/todo.md",
+								size: 4,
+							},
+						],
+						pendingCount: 1,
+					};
+				},
+				archiveAgentInboxItem: async (agentId, path) => {
+					calls.push(`archive:${agentId}:${path}`);
+					return {
+						archivedPath: "inbox/archive/todo.md",
+						item: {
+							location: "archive",
+							modifiedAt: "2026-04-02T00:00:00.000Z",
+							name: "todo.md",
+							path: "inbox/archive/todo.md",
+							size: 4,
+						},
+						originalPath: path,
+					};
+				},
+				createAgentInboxNote: async (agentId, input) => {
+					calls.push(`note:${agentId}:${input.title}:${input.body}`);
+					return {
+						item: {
+							location: "inbox",
+							modifiedAt: "2026-04-02T00:00:00.000Z",
+							name: "follow-up.md",
+							path: "inbox/follow-up.md",
+							size: 32,
+						},
+						path: "inbox/follow-up.md",
+					};
+				},
+				restoreAgentInboxItem: async (agentId, archivedPath, originalPath) => {
+					calls.push(`restore:${agentId}:${archivedPath}:${originalPath}`);
+					return {
+						archivedPath,
+						item: {
+							location: "inbox",
+							modifiedAt: "2026-04-02T00:00:00.000Z",
+							name: "todo.md",
+							path: "inbox/todo.md",
+							size: 4,
+						},
+						restoredPath: originalPath,
+					};
+				},
+				listAgentTree: async () => [],
+				listAgents: () => ({
+					activeAgentId: "agent-railly",
+					agents: [],
+				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				writeConfigFile: async () => {
+					throw new Error("Not implemented");
+				},
+				readAgentFile: async (_agentId, path) => ({
+					path,
+					kind: "text",
+					content: "# Agent\n",
+					truncated: false,
+				}),
+				readGitDiff: async () => ({
+					path: "config.json",
+					diff: "",
+				}),
+				readGitCommit: async () => ({
+					sha: "abc1234",
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
+				readGitStatus: async () => ({
+					initialized: true,
+					root: "/tmp/.outclaw",
+					branch: "main",
+					ahead: 0,
+					behind: 0,
+					clean: true,
+					graph: { commits: [], branchHeads: [] },
+					files: [],
+				}),
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
+				}),
+				setAgentCronEnabled: async () => {
+					throw new Error("Not implemented");
+				},
+			},
+			port: 0,
+		});
+		cleanup = () => supervisor.stop();
+
+		const listResponse = await fetch(
+			`http://localhost:${supervisor.port}/api/agents/agent-railly/inbox`,
+		);
+		expect(listResponse.status).toBe(200);
+		await expect(listResponse.json()).resolves.toMatchObject({
+			pendingCount: 1,
+			items: [{ path: "inbox/todo.md" }],
+		});
+
+		const archiveResponse = await fetch(
+			`http://localhost:${supervisor.port}/api/agents/agent-railly/inbox/archive`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+				},
+				body: JSON.stringify({
+					path: "inbox/todo.md",
+				}),
+			},
+		);
+		expect(archiveResponse.status).toBe(200);
+		await expect(archiveResponse.json()).resolves.toMatchObject({
+			archivedPath: "inbox/archive/todo.md",
+			originalPath: "inbox/todo.md",
+		});
+
+		const noteResponse = await fetch(
+			`http://localhost:${supervisor.port}/api/agents/agent-railly/inbox/note`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+				},
+				body: JSON.stringify({
+					body: "Check report.",
+					title: "Follow Up",
+				}),
+			},
+		);
+		expect(noteResponse.status).toBe(200);
+		await expect(noteResponse.json()).resolves.toMatchObject({
+			path: "inbox/follow-up.md",
+		});
+
+		const restoreResponse = await fetch(
+			`http://localhost:${supervisor.port}/api/agents/agent-railly/inbox/restore`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+				},
+				body: JSON.stringify({
+					archivedPath: "inbox/archive/todo.md",
+					originalPath: "inbox/todo.md",
+				}),
+			},
+		);
+		expect(restoreResponse.status).toBe(200);
+		await expect(restoreResponse.json()).resolves.toMatchObject({
+			archivedPath: "inbox/archive/todo.md",
+			restoredPath: "inbox/todo.md",
+		});
+		expect(calls).toEqual([
+			"list:agent-railly",
+			"archive:agent-railly:inbox/todo.md",
+			"note:agent-railly:Follow Up:Check report.",
+			"restore:agent-railly:inbox/archive/todo.md:inbox/todo.md",
+		]);
+	});
+
 	test("serves the runtime config file over HTTP", async () => {
 		const supervisor = createSupervisor({
 			agents: [

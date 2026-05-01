@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import type {
 	BrowserGitStatusResponse,
+	BrowserInboxResponse,
 	BrowserTreeEntry,
 } from "../../../../common/protocol.ts";
-import { fetchAgentTree, fetchGitStatus } from "../../lib/api.ts";
+import {
+	fetchAgentInbox,
+	fetchAgentTree,
+	fetchGitStatus,
+} from "../../lib/api.ts";
 import {
 	shouldFetchAgentTree,
 	shouldFetchGitStatus,
+	shouldFetchInbox,
 } from "./right-panel-fetch-policy.ts";
 import type { UpperRightPanelTab } from "./right-panel-layout.ts";
 
@@ -180,5 +186,87 @@ export function useGitStatusLoader(params: {
 		gitError,
 		gitLoading,
 		gitStatus,
+	};
+}
+
+export function useInboxLoader(params: {
+	activeAgentId: string | null;
+	inboxRevision: number;
+}) {
+	const [inbox, setInbox] = useState<BrowserInboxResponse | null>(null);
+	const [inboxLoading, setInboxLoading] = useState(false);
+	const [inboxError, setInboxError] = useState<string | null>(null);
+	const [loadedInboxAgentId, setLoadedInboxAgentId] = useState<string | null>(
+		null,
+	);
+	const [loadedInboxRevision, setLoadedInboxRevision] = useState<number | null>(
+		null,
+	);
+
+	useEffect(() => {
+		void params.inboxRevision;
+
+		if (!params.activeAgentId) {
+			setInbox(null);
+			setInboxError(null);
+			setInboxLoading(false);
+			setLoadedInboxAgentId(null);
+			setLoadedInboxRevision(null);
+			return;
+		}
+
+		if (
+			!shouldFetchInbox({
+				activeAgentId: params.activeAgentId,
+				inboxRevision: params.inboxRevision,
+				loadedAgentId: loadedInboxAgentId,
+				loadedRevision: loadedInboxRevision,
+			})
+		) {
+			return;
+		}
+
+		let cancelled = false;
+		setInboxLoading(true);
+		setInboxError(null);
+		void fetchAgentInbox(params.activeAgentId)
+			.then((nextInbox) => {
+				if (!cancelled) {
+					setInbox(nextInbox);
+					setInboxError(null);
+					setLoadedInboxAgentId(params.activeAgentId);
+					setLoadedInboxRevision(params.inboxRevision);
+				}
+			})
+			.catch((error) => {
+				if (!cancelled) {
+					setInbox(null);
+					setInboxError(
+						error instanceof Error ? error.message : "Failed to load inbox",
+					);
+					setLoadedInboxAgentId(params.activeAgentId);
+					setLoadedInboxRevision(params.inboxRevision);
+				}
+			})
+			.finally(() => {
+				if (!cancelled) {
+					setInboxLoading(false);
+				}
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [
+		params.activeAgentId,
+		params.inboxRevision,
+		loadedInboxAgentId,
+		loadedInboxRevision,
+	]);
+
+	return {
+		inbox,
+		inboxError,
+		inboxLoading,
 	};
 }

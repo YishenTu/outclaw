@@ -4,17 +4,24 @@ import {
 	Clock3,
 	FolderTree,
 	GitBranch,
+	Inbox,
 	PanelRightOpen,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BrowserGitGraphCommit } from "../../../../common/protocol.ts";
 import { requestConfigRestart } from "../../config-save-restart.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
-import { initGitRepo } from "../../lib/api.ts";
+import {
+	archiveAgentInboxItem,
+	createAgentInboxNote,
+	initGitRepo,
+	restoreAgentInboxItem,
+} from "../../lib/api.ts";
 import { sendGitCommitPrompt } from "../../send-git-commit-prompt.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import { useLayoutStore } from "../../stores/layout.ts";
 import {
+	selectAgentInboxRevision,
 	selectAgentTreeRevision,
 	selectGitRevision,
 	useRightPanelRefreshStore,
@@ -32,9 +39,11 @@ import { CronPanel } from "./cron-panel.tsx";
 import { FileTree, FileTreeHeader } from "./file-tree.tsx";
 import { GitPanel } from "./git-panel.tsx";
 import { shouldClearSelectedGitCommit } from "./git-selection-state.ts";
+import { InboxPanel, type InboxUndoArchive } from "./inbox-panel.tsx";
 import {
 	useAgentTreeLoader,
 	useGitStatusLoader,
+	useInboxLoader,
 } from "./right-panel-data-loaders.ts";
 import {
 	UPPER_RIGHT_PANEL_TABS,
@@ -60,16 +69,22 @@ import {
 } from "./use-agent-terminal-run-command.ts";
 
 const TAB_LABELS: Record<UpperRightPanelTab, string> = {
+	inbox: "Inbox",
 	files: "Files",
 	cron: "Cron",
 	git: "Git",
 };
+
+const INBOX_UNDO_DURATION_MS = 10_000;
 
 interface RightPanelProps {
 	onCollapse?: () => void;
 }
 
 function getTabIcon(tab: UpperRightPanelTab, size: number) {
+	if (tab === "inbox") {
+		return <Inbox size={size} />;
+	}
 	if (tab === "files") {
 		return <FolderTree size={size} />;
 	}
@@ -81,10 +96,12 @@ function getTabIcon(tab: UpperRightPanelTab, size: number) {
 
 export function RightPanelUpperTabs({
 	activeTab,
+	inboxCount = 0,
 	onCollapse,
 	onSelectTab,
 }: {
 	activeTab: UpperRightPanelTab;
+	inboxCount?: number;
 	onCollapse?: () => void;
 	onSelectTab: (tab: UpperRightPanelTab) => void;
 }) {
@@ -117,7 +134,12 @@ export function RightPanelUpperTabs({
 							className="flex h-full items-center gap-1.5 pl-2 pr-3"
 						>
 							{getTabIcon(tab, 14)}
-							{TAB_LABELS[tab]}
+							<span>{TAB_LABELS[tab]}</span>
+							{tab === "inbox" && inboxCount > 0 ? (
+								<span className="rounded bg-dark-800 px-1.5 py-0.5 text-[10px] leading-none text-dark-100">
+									{inboxCount}
+								</span>
+							) : null}
 						</button>
 					</div>
 				))}
@@ -193,10 +215,19 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const [selectedGitCommitSha, setSelectedGitCommitSha] = useState<
 		string | null
 	>(null);
+	const [inboxActionError, setInboxActionError] = useState<string | null>(null);
+	const [undoArchive, setUndoArchive] = useState<InboxUndoArchive | null>(null);
 	const [runRequestsByAgent, setRunRequestsByAgent] =
 		useState<TerminalRunRequestsByAgent>({});
 	const contentRef = useRef<HTMLDivElement | null>(null);
 	const nextRunRequestIdRef = useRef(0);
+	const previousInboxAgentIdRef = useRef<string | null>(activeAgentId);
+	const undoArchiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
+	const inboxRevision = useRightPanelRefreshStore((state) =>
+		selectAgentInboxRevision(state, activeAgentId),
+	);
 	const treeRevision = useRightPanelRefreshStore((state) =>
 		selectAgentTreeRevision(state, activeAgentId),
 	);
@@ -217,6 +248,35 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		activeUpperTab,
 		gitRevision,
 	});
+	const { inbox, inboxError, inboxLoading } = useInboxLoader({
+		activeAgentId,
+		inboxRevision,
+	});
+
+	const clearUndoArchiveTimer = useCallback(() => {
+		if (!undoArchiveTimerRef.current) {
+			return;
+		}
+		clearTimeout(undoArchiveTimerRef.current);
+		undoArchiveTimerRef.current = null;
+	}, []);
+
+	useEffect(
+		() => () => {
+			clearUndoArchiveTimer();
+		},
+		[clearUndoArchiveTimer],
+	);
+
+	useEffect(() => {
+		if (previousInboxAgentIdRef.current === activeAgentId) {
+			return;
+		}
+		previousInboxAgentIdRef.current = activeAgentId;
+		clearUndoArchiveTimer();
+		setUndoArchive(null);
+		setInboxActionError(null);
+	}, [activeAgentId, clearUndoArchiveTimer]);
 
 	useEffect(() => {
 		if (
@@ -271,6 +331,79 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 				sendPromptToAgent,
 			}),
 		[activeAgent, sendPromptToAgent],
+	);
+
+	const scheduleUndoArchiveExpiry = useCallback(() => {
+		clearUndoArchiveTimer();
+		undoArchiveTimerRef.current = setTimeout(() => {
+			setUndoArchive(null);
+			undoArchiveTimerRef.current = null;
+		}, INBOX_UNDO_DURATION_MS);
+	}, [clearUndoArchiveTimer]);
+
+	const handleArchiveInboxItem = useCallback(
+		async (path: string) => {
+			if (!activeAgentId) {
+				return;
+			}
+
+			try {
+				const result = await archiveAgentInboxItem(activeAgentId, path);
+				setInboxActionError(null);
+				setUndoArchive({
+					archivedPath: result.archivedPath,
+					expiresAtMs: Date.now() + INBOX_UNDO_DURATION_MS,
+					name: result.item.name,
+					originalPath: result.originalPath,
+				});
+				scheduleUndoArchiveExpiry();
+			} catch (error) {
+				setInboxActionError(
+					error instanceof Error ? error.message : "Failed to archive item",
+				);
+			}
+		},
+		[activeAgentId, scheduleUndoArchiveExpiry],
+	);
+
+	const handleUndoArchiveInboxItem = useCallback(async () => {
+		if (!activeAgentId || !undoArchive) {
+			return;
+		}
+
+		try {
+			await restoreAgentInboxItem(
+				activeAgentId,
+				undoArchive.archivedPath,
+				undoArchive.originalPath,
+			);
+			setInboxActionError(null);
+			setUndoArchive(null);
+			clearUndoArchiveTimer();
+		} catch (error) {
+			setInboxActionError(
+				error instanceof Error ? error.message : "Failed to restore item",
+			);
+		}
+	}, [activeAgentId, clearUndoArchiveTimer, undoArchive]);
+
+	const handleCreateInboxNote = useCallback(
+		async (input: { body: string; title: string }) => {
+			if (!activeAgentId) {
+				return;
+			}
+
+			try {
+				await createAgentInboxNote(activeAgentId, input);
+				setInboxActionError(null);
+			} catch (error) {
+				setInboxActionError(
+					error instanceof Error ? error.message : "Failed to create note",
+				);
+				throw error;
+			}
+		},
+		[activeAgentId],
 	);
 
 	const handleInitialize = useCallback(async () => {
@@ -408,6 +541,35 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	}, [handleResizeMove, handleResizeUp, isResizing]);
 
 	function renderUpperContent(tab: UpperRightPanelTab) {
+		if (tab === "inbox") {
+			return (
+				<div className="h-full min-h-0 overflow-hidden">
+					{activeAgentId ? (
+						<InboxPanel
+							agentId={activeAgentId}
+							agentName={activeAgentName}
+							error={inboxActionError ?? inboxError}
+							inbox={inbox}
+							loading={inboxLoading}
+							onArchive={(path) => {
+								void handleArchiveInboxItem(path);
+							}}
+							onCreateNote={handleCreateInboxNote}
+							onOpenFile={handleOpenFile}
+							onUndoArchive={() => {
+								void handleUndoArchiveInboxItem();
+							}}
+							undoArchive={undoArchive}
+						/>
+					) : (
+						<div className="px-4 py-4 text-sm text-dark-500">
+							No active agent.
+						</div>
+					)}
+				</div>
+			);
+		}
+
 		if (tab === "files") {
 			return (
 				<div className="flex h-full min-h-0 flex-col">
@@ -481,6 +643,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		<div className="flex h-full flex-col bg-dark-950">
 			<RightPanelUpperTabs
 				activeTab={activeUpperTab}
+				inboxCount={inbox?.pendingCount ?? 0}
 				onCollapse={onCollapse}
 				onSelectTab={setRightPanelUpperTab}
 			/>

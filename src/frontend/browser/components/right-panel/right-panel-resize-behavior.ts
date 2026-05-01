@@ -1,7 +1,7 @@
 import {
 	MAX_RIGHT_PANEL_SPLIT_RATIO,
 	MIN_RIGHT_PANEL_SPLIT_RATIO,
-} from "../../stores/layout.ts";
+} from "../../layout-dimensions.ts";
 
 export function clampRightPanelSplitRatio(ratio: number): number {
 	return Math.max(

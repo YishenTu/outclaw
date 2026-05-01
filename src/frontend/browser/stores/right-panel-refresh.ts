@@ -4,6 +4,7 @@ import type { BrowserSidebarInvalidatedEvent } from "../../../common/protocol.ts
 interface RightPanelRefreshState {
 	cronRevisionByAgent: Record<string, number>;
 	gitRevision: number;
+	inboxRevisionByAgent: Record<string, number>;
 	treeRevisionByAgent: Record<string, number>;
 
 	bumpGitRevision: () => void;
@@ -21,6 +22,13 @@ function incrementRevision(
 	};
 }
 
+export function selectAgentInboxRevision(
+	state: RightPanelRefreshState,
+	agentId: string | null,
+): number {
+	return agentId ? (state.inboxRevisionByAgent[agentId] ?? 0) : 0;
+}
+
 export function selectAgentTreeRevision(
 	state: RightPanelRefreshState,
 	agentId: string | null,
@@ -36,6 +44,7 @@ export function createRightPanelRefreshStore() {
 	return create<RightPanelRefreshState>((set) => ({
 		cronRevisionByAgent: {},
 		gitRevision: 0,
+		inboxRevisionByAgent: {},
 		treeRevisionByAgent: {},
 		bumpGitRevision: () =>
 			set((state) => ({ gitRevision: state.gitRevision + 1 })),
@@ -50,6 +59,7 @@ export function createRightPanelRefreshStore() {
 			set((state) => {
 				let nextCronRevisionByAgent = state.cronRevisionByAgent;
 				let nextGitRevision = state.gitRevision;
+				let nextInboxRevisionByAgent = state.inboxRevisionByAgent;
 				let nextTreeRevisionByAgent = state.treeRevisionByAgent;
 
 				for (const section of event.sections) {
@@ -70,6 +80,14 @@ export function createRightPanelRefreshStore() {
 						continue;
 					}
 
+					if (section === "inbox") {
+						nextInboxRevisionByAgent = incrementRevision(
+							nextInboxRevisionByAgent,
+							event.agentId,
+						);
+						continue;
+					}
+
 					nextCronRevisionByAgent = incrementRevision(
 						nextCronRevisionByAgent,
 						event.agentId,
@@ -79,6 +97,7 @@ export function createRightPanelRefreshStore() {
 				return {
 					cronRevisionByAgent: nextCronRevisionByAgent,
 					gitRevision: nextGitRevision,
+					inboxRevisionByAgent: nextInboxRevisionByAgent,
 					treeRevisionByAgent: nextTreeRevisionByAgent,
 				};
 			}),

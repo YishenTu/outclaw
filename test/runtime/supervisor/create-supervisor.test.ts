@@ -386,7 +386,7 @@ describe("createSupervisor", () => {
 			| ((event: {
 					type: "browser_sidebar_invalidated";
 					agentId?: string;
-					sections: Array<"tree" | "cron" | "git">;
+					sections: Array<"tree" | "cron" | "git" | "inbox">;
 			  }) => void)
 			| undefined;
 		const supervisor = createSupervisor({

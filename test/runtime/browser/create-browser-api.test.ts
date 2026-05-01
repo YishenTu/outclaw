@@ -6,6 +6,7 @@ import {
 	readFileSync,
 	rmSync,
 	symlinkSync,
+	utimesSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -238,6 +239,224 @@ describe("createBrowserApi", () => {
 		await expect(
 			api.setAgentCronEnabled("agent-railly", "AGENTS.md", false),
 		).rejects.toThrow("Path escapes cron directory");
+
+		store.close();
+	});
+
+	test("lists pending inbox files and archived inbox files", async () => {
+		const root = createTempDir("outclaw-browser-inbox-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const inboxDir = join(agentHomeDir, "inbox");
+		const archiveDir = join(inboxDir, "archive");
+		mkdirSync(archiveDir, { recursive: true });
+
+		const olderPath = join(inboxDir, "older.md");
+		const newerPath = join(inboxDir, "newer.md");
+		const archivedPath = join(archiveDir, "done.md");
+		writeFileSync(olderPath, "older");
+		writeFileSync(newerPath, "newer");
+		writeFileSync(archivedPath, "done");
+		writeFileSync(join(inboxDir, ".DS_Store"), "");
+		writeFileSync(join(inboxDir, ".gitkeep"), "");
+		writeFileSync(join(archiveDir, ".DS_Store"), "");
+		writeFileSync(join(archiveDir, ".gitkeep"), "");
+		utimesSync(
+			olderPath,
+			new Date("2026-04-01T00:00:00.000Z"),
+			new Date("2026-04-01T00:00:00.000Z"),
+		);
+		utimesSync(
+			newerPath,
+			new Date("2026-04-02T00:00:00.000Z"),
+			new Date("2026-04-02T00:00:00.000Z"),
+		);
+		utimesSync(
+			archivedPath,
+			new Date("2026-04-03T00:00:00.000Z"),
+			new Date("2026-04-03T00:00:00.000Z"),
+		);
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(api.listAgentInbox("agent-railly")).resolves.toEqual({
+			archivedItems: [
+				{
+					location: "archive",
+					modifiedAt: "2026-04-03T00:00:00.000Z",
+					name: "done.md",
+					path: "inbox/archive/done.md",
+					size: 4,
+				},
+			],
+			items: [
+				{
+					location: "inbox",
+					modifiedAt: "2026-04-02T00:00:00.000Z",
+					name: "newer.md",
+					path: "inbox/newer.md",
+					size: 5,
+				},
+				{
+					location: "inbox",
+					modifiedAt: "2026-04-01T00:00:00.000Z",
+					name: "older.md",
+					path: "inbox/older.md",
+					size: 5,
+				},
+			],
+			pendingCount: 2,
+		});
+
+		store.close();
+	});
+
+	test("archives inbox files without overwriting and restores them for undo", async () => {
+		const root = createTempDir("outclaw-browser-inbox-archive-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const inboxDir = join(agentHomeDir, "inbox");
+		const archiveDir = join(inboxDir, "archive");
+		mkdirSync(archiveDir, { recursive: true });
+		writeFileSync(join(inboxDir, "todo.md"), "todo");
+		writeFileSync(join(archiveDir, "todo.md"), "existing archive");
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.archiveAgentInboxItem("agent-railly", "inbox/todo.md"),
+		).resolves.toMatchObject({
+			archivedPath: "inbox/archive/todo-1.md",
+			item: {
+				location: "archive",
+				name: "todo-1.md",
+				path: "inbox/archive/todo-1.md",
+				size: 4,
+			},
+			originalPath: "inbox/todo.md",
+		});
+		expect(existsSync(join(inboxDir, "todo.md"))).toBe(false);
+		expect(readFileSync(join(archiveDir, "todo.md"), "utf8")).toBe(
+			"existing archive",
+		);
+		expect(readFileSync(join(archiveDir, "todo-1.md"), "utf8")).toBe("todo");
+
+		await expect(
+			api.restoreAgentInboxItem(
+				"agent-railly",
+				"inbox/archive/todo-1.md",
+				"inbox/todo.md",
+			),
+		).resolves.toMatchObject({
+			archivedPath: "inbox/archive/todo-1.md",
+			item: {
+				location: "inbox",
+				name: "todo.md",
+				path: "inbox/todo.md",
+				size: 4,
+			},
+			restoredPath: "inbox/todo.md",
+		});
+		expect(readFileSync(join(inboxDir, "todo.md"), "utf8")).toBe("todo");
+		expect(existsSync(join(archiveDir, "todo-1.md"))).toBe(false);
+
+		store.close();
+	});
+
+	test("creates inbox notes from quick text without timestamped filenames", async () => {
+		const root = createTempDir("outclaw-browser-inbox-note-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const inboxDir = join(agentHomeDir, "inbox");
+		mkdirSync(inboxDir, { recursive: true });
+		writeFileSync(join(inboxDir, "follow-up.md"), "existing");
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.createAgentInboxNote("agent-railly", {
+				body: "Check the customer report.",
+				title: "Follow Up",
+			}),
+		).resolves.toMatchObject({
+			item: {
+				location: "inbox",
+				name: "follow-up-1.md",
+				path: "inbox/follow-up-1.md",
+			},
+			path: "inbox/follow-up-1.md",
+		});
+		expect(readFileSync(join(inboxDir, "follow-up-1.md"), "utf8")).toBe(
+			"# Follow Up\n\nCheck the customer report.\n",
+		);
+
+		await expect(
+			api.createAgentInboxNote("agent-railly", {
+				body: "Untitled body",
+				title: "",
+			}),
+		).resolves.toMatchObject({
+			item: {
+				location: "inbox",
+				name: "inbox-note.md",
+				path: "inbox/inbox-note.md",
+			},
+			path: "inbox/inbox-note.md",
+		});
+		expect(readFileSync(join(inboxDir, "inbox-note.md"), "utf8")).toBe(
+			"# Inbox note\n\nUntitled body\n",
+		);
 
 		store.close();
 	});

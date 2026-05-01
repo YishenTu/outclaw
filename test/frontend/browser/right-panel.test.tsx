@@ -37,4 +37,18 @@ describe("RightPanel", () => {
 		expect(gitHtml).toContain(">Git<");
 		expect(gitHtml).toContain("lucide-git-branch");
 	});
+
+	test("renders the inbox tab with the pending item count", () => {
+		const html = renderToStaticMarkup(
+			<RightPanelUpperTabs
+				activeTab="inbox"
+				inboxCount={3}
+				onSelectTab={() => {}}
+			/>,
+		);
+
+		expect(html).toContain(">Inbox<");
+		expect(html).toContain("lucide-inbox");
+		expect(html).toContain(">3<");
+	});
 });
