@@ -100,8 +100,10 @@ See [references/best-practice.md](references/best-practice.md) for detailed exam
 
 ### 5. Create supporting files if needed
 
+**Skill location.** In an outclaw agent workspace, all skills live at `<agent-workspace>/skills/<skill-name>/` — typically `~/.outclaw/agents/<agent-name>/skills/<skill-name>/`. Always resolve to an absolute path before writing; do not rely on the current working directory matching the workspace root. Do **not** use `.claude/skills/`, `.agents/skills/`, or any other CLI-default location — outclaw does not read from those.
+
 ```
-./skills/<skill-name>/
+<agent-workspace>/skills/<skill-name>/
 ├── SKILL.md           # Required: instructions + metadata
 ├── scripts/           # Optional: executable code
 ├── references/        # Optional: documentation
@@ -120,7 +122,7 @@ Most skills are just a `SKILL.md`. Only create supporting files when genuinely n
 
 ### 6. Write the skill
 
-Create the directory and files under `./skills/<skill-name>/`.
+Create the directory and files under `<agent-workspace>/skills/<skill-name>/` (absolute path). If the user did not specify which agent workspace, default to the current agent's workspace; ask only if ambiguous.
 
 ### 7. Verify
 
