@@ -1,4 +1,4 @@
-import { resolveCurrentBrowserSessionKey } from "../session.ts";
+import { resolveCurrentBrowserSessionKey } from "../sessions/session.ts";
 import { useChatStore } from "../stores/chat.ts";
 import { useRuntimeStore } from "../stores/runtime.ts";
 import { useSessionsStore } from "../stores/sessions.ts";

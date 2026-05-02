@@ -3,15 +3,15 @@ import { PassThrough } from "node:stream";
 import { render, Text } from "ink";
 import { useLayoutEffect } from "react";
 import {
+	CONFIG_SAVE_RESTART_COMMAND,
+	CONFIG_SAVE_RESTART_ERROR,
+	requestConfigRestart,
+} from "../../../src/frontend/browser/commands/config-save-restart.ts";
+import {
 	resolveHeaderTerminalRunAction,
 	resolveSavedTerminalRunCommand,
 	useAgentTerminalRunCommand,
 } from "../../../src/frontend/browser/components/right-panel/terminal/use-agent-terminal-run-command.ts";
-import {
-	CONFIG_SAVE_RESTART_COMMAND,
-	CONFIG_SAVE_RESTART_ERROR,
-	requestConfigRestart,
-} from "../../../src/frontend/browser/config-save-restart.ts";
 
 type Snapshot = ReturnType<typeof useAgentTerminalRunCommand>;
 

@@ -1,5 +1,5 @@
-import { HEARTBEAT_DISPLAY_LABEL } from "../../common/heartbeat-prompt.ts";
-import type { DisplayMessage, ServerEvent } from "../../common/protocol.ts";
+import { HEARTBEAT_DISPLAY_LABEL } from "../../../common/heartbeat-prompt.ts";
+import type { DisplayMessage, ServerEvent } from "../../../common/protocol.ts";
 
 export function toObservedDisplayMessage(
 	event: Extract<ServerEvent, { type: "user_prompt" }>,

@@ -1,7 +1,7 @@
 import {
 	type BrowserAgentsResponse,
 	extractError,
-} from "../../common/protocol.ts";
+} from "../../../common/protocol.ts";
 import type { SidebarRefreshGate } from "./sidebar-refresh-gate.ts";
 
 interface SidebarRefreshCoordinatorParams<SocketLike> {

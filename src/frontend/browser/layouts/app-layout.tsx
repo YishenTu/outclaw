@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRolloverNoticeAutoDismiss } from "../notices/use-rollover-notice-auto-dismiss.ts";
 import { useLayoutStore } from "../stores/layout.ts";
 import { useWorkspaceViewStore } from "../stores/workspace-view.ts";
-import { useRolloverNoticeAutoDismiss } from "../use-rollover-notice-auto-dismiss.ts";
 import {
 	applyAppLayoutResizeBodyStyles,
 	calculateLayoutResizeWidth,

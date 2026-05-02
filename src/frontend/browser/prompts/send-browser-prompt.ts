@@ -3,7 +3,7 @@ import {
 	extractError,
 	type ImageRef,
 } from "../../../common/protocol.ts";
-import type { ComposerImageAttachment } from "../components/chat/composer/composer-images.ts";
+import type { ComposerImageAttachment } from "../attachments/composer-images.ts";
 import { preparePromptDispatch } from "./prepare-prompt-dispatch.ts";
 
 interface DispatchBrowserPromptParams<SocketLike> {

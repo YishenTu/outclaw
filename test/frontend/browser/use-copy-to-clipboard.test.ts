@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { copyTextToClipboard } from "../../../src/frontend/browser/copy-text-to-clipboard.ts";
+import { copyTextToClipboard } from "../../../src/frontend/browser/clipboard/copy-text-to-clipboard.ts";
 
 describe("copyTextToClipboard", () => {
 	test("uses the Clipboard API in secure contexts", async () => {

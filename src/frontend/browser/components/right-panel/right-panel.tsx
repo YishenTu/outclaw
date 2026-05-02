@@ -9,15 +9,19 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BrowserGitGraphCommit } from "../../../../common/protocol.ts";
-import { requestConfigRestart } from "../../config-save-restart.ts";
+import { requestConfigRestart } from "../../commands/config-save-restart.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
+import {
+	UPPER_RIGHT_PANEL_TABS,
+	type UpperRightPanelTab,
+} from "../../layouts/right-panel-layout.ts";
 import {
 	archiveAgentInboxItem,
 	createAgentInboxNote,
 	initGitRepo,
 	restoreAgentInboxItem,
 } from "../../lib/api.ts";
-import { sendGitCommitPrompt } from "../../send-git-commit-prompt.ts";
+import { sendGitCommitPrompt } from "../../prompts/send-git-commit-prompt.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import { useLayoutStore } from "../../stores/layout.ts";
 import {
@@ -45,10 +49,6 @@ import {
 	useGitStatusLoader,
 	useInboxLoader,
 } from "./right-panel-data-loaders.ts";
-import {
-	UPPER_RIGHT_PANEL_TABS,
-	type UpperRightPanelTab,
-} from "./right-panel-layout.ts";
 import {
 	applyRightPanelResizeBodyStyles,
 	calculateRightPanelSplitRatio,

@@ -1,4 +1,4 @@
-import type { FrontendNotice } from "../../common/protocol.ts";
+import type { FrontendNotice } from "../../../common/protocol.ts";
 
 export interface RuntimeNoticeProjection {
 	detail: string;

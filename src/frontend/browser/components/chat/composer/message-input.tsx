@@ -2,6 +2,11 @@ import { Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { EffortLevel } from "../../../../../common/commands.ts";
 import type { ModelAlias } from "../../../../../common/models.ts";
+import {
+	type ComposerImageAttachment,
+	createComposerImageAttachment,
+	filterSupportedImageFiles,
+} from "../../../attachments/composer-images.ts";
 import { useWs } from "../../../contexts/websocket-context.tsx";
 import { useRuntimePopupStore } from "../../../stores/runtime-popup.ts";
 import { useSlashCommandsStore } from "../../../stores/slash-commands.ts";
@@ -13,11 +18,6 @@ import { ModelSelector } from "../model-selector.tsx";
 import { RuntimeCommandPopup } from "../runtime-command-popup.tsx";
 import { useRuntimePopupShortcuts } from "../runtime-popup-shortcuts.ts";
 import { SlashCommandMenu } from "../slash-command-menu.tsx";
-import {
-	type ComposerImageAttachment,
-	createComposerImageAttachment,
-	filterSupportedImageFiles,
-} from "./composer-images.ts";
 import {
 	canSubmitMessageInput,
 	filterSlashCommands,

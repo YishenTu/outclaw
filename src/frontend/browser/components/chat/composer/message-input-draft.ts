@@ -1,4 +1,4 @@
-import type { ComposerImageAttachment } from "./composer-images.ts";
+import type { ComposerImageAttachment } from "../../../attachments/composer-images.ts";
 
 export interface ComposerDraft {
 	text: string;

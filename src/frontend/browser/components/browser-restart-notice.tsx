@@ -1,6 +1,6 @@
 import { AlertCircle, X } from "lucide-react";
 import type { FrontendNotice } from "../../../common/protocol.ts";
-import { projectRuntimeNotice } from "../runtime-notice-projection.ts";
+import { projectRuntimeNotice } from "../notices/runtime-notice-projection.ts";
 import {
 	selectVisibleRuntimeNotice,
 	useRuntimeStore,

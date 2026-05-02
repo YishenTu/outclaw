@@ -5,10 +5,6 @@ import {
 	type StateStorage,
 } from "zustand/middleware";
 import {
-	coerceUpperRightPanelTab,
-	type UpperRightPanelTab,
-} from "../components/right-panel/right-panel-layout.ts";
-import {
 	DEFAULT_INSPECTOR_WIDTH,
 	DEFAULT_RIGHT_PANEL_SPLIT_RATIO,
 	DEFAULT_SIDEBAR_WIDTH,
@@ -18,7 +14,11 @@ import {
 	MIN_INSPECTOR_WIDTH,
 	MIN_RIGHT_PANEL_SPLIT_RATIO,
 	MIN_SIDEBAR_WIDTH,
-} from "../layout-dimensions.ts";
+} from "../layouts/layout-dimensions.ts";
+import {
+	coerceUpperRightPanelTab,
+	type UpperRightPanelTab,
+} from "../layouts/right-panel-layout.ts";
 
 export const BROWSER_LAYOUT_STORAGE_KEY = "outclaw.browser.layout";
 

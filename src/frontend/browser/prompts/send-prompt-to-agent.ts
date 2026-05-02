@@ -1,4 +1,4 @@
-import type { ComposerImageAttachment } from "../components/chat/composer/composer-images.ts";
+import type { ComposerImageAttachment } from "../attachments/composer-images.ts";
 import type { AgentEntry } from "../stores/agents.ts";
 import type { SessionRef } from "../stores/sessions.ts";
 

@@ -1,6 +1,9 @@
 import type { ImageRef, ServerEvent } from "../../../common/protocol.ts";
-import { toObservedDisplayMessage } from "../observed-prompt.ts";
-import { createBrowserSessionRef, createSessionKey } from "../session.ts";
+import { toObservedDisplayMessage } from "../chat/observed-prompt.ts";
+import {
+	createBrowserSessionRef,
+	createSessionKey,
+} from "../sessions/session.ts";
 import { useChatStore } from "../stores/chat.ts";
 import { useContextUsageStore } from "../stores/context-usage.ts";
 import { useRuntimeStore } from "../stores/runtime.ts";

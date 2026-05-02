@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BrowserAgentsResponse } from "../../../src/common/protocol.ts";
-import { createSidebarRefreshCoordinator } from "../../../src/frontend/browser/sidebar-refresh.ts";
-import { createSidebarRefreshGate } from "../../../src/frontend/browser/sidebar-refresh-gate.ts";
+import { createSidebarRefreshCoordinator } from "../../../src/frontend/browser/sidebar/sidebar-refresh.ts";
+import { createSidebarRefreshGate } from "../../../src/frontend/browser/sidebar/sidebar-refresh-gate.ts";
 
 describe("sidebar refresh gate", () => {
 	test("accepts only the latest started request", () => {

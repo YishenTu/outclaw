@@ -1,18 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import {
+	applyAppLayoutResizeBodyStyles,
+	calculateLayoutResizeWidth,
+	calculateMaxInspectorWidth,
+	resolveInspectorFit,
+} from "../../../src/frontend/browser/layouts/app-layout-policy.ts";
+import {
 	DEFAULT_DESKTOP_LAYOUT_WIDTH,
 	DEFAULT_SIDEBAR_WIDTH,
 	MAX_INSPECTOR_WIDTH,
 	MAX_SIDEBAR_WIDTH,
 	MIN_INSPECTOR_WIDTH,
 	MIN_SIDEBAR_WIDTH,
-} from "../../../src/frontend/browser/layout-dimensions.ts";
-import {
-	applyAppLayoutResizeBodyStyles,
-	calculateLayoutResizeWidth,
-	calculateMaxInspectorWidth,
-	resolveInspectorFit,
-} from "../../../src/frontend/browser/layouts/app-layout-policy.ts";
+} from "../../../src/frontend/browser/layouts/layout-dimensions.ts";
 
 describe("browser app layout policy", () => {
 	test("clamps left and right resize widths", () => {

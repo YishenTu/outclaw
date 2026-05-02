@@ -1,4 +1,4 @@
-import type { SessionEntry } from "./stores/sessions.ts";
+import type { SessionEntry } from "../stores/sessions.ts";
 
 interface BrowserSwitchDispatcherParams {
 	getRuntimeAgentName: () => string | null;

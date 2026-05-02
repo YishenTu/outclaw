@@ -5,7 +5,7 @@ import type {
 	DisplayImage,
 	DisplayMessage,
 } from "../../../common/protocol.ts";
-import { normalizeReplayHistory } from "../replay-history.ts";
+import { normalizeReplayHistory } from "../chat/replay-history.ts";
 
 export interface ChatSession {
 	messages: DisplayMessage[];

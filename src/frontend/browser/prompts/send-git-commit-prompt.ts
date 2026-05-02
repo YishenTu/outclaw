@@ -1,4 +1,4 @@
-import type { AgentEntry } from "./stores/agents.ts";
+import type { AgentEntry } from "../stores/agents.ts";
 
 export const GIT_COMMIT_PROMPT = "Commit and push changes in ~/.outclaw.";
 

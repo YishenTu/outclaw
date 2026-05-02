@@ -1,5 +1,5 @@
 import { Check, Copy, CopyX } from "lucide-react";
-import { useCopyToClipboard } from "../../use-copy-to-clipboard.ts";
+import { useCopyToClipboard } from "../../clipboard/use-copy-to-clipboard.ts";
 
 const turnTimestampFormatter = new Intl.DateTimeFormat("en-US", {
 	hour: "2-digit",

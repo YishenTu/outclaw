@@ -4,6 +4,7 @@ import type {
 	BrowserInboxResponse,
 	BrowserTreeEntry,
 } from "../../../../common/protocol.ts";
+import type { UpperRightPanelTab } from "../../layouts/right-panel-layout.ts";
 import {
 	fetchAgentInbox,
 	fetchAgentTree,
@@ -14,7 +15,6 @@ import {
 	shouldFetchGitStatus,
 	shouldFetchInbox,
 } from "./right-panel-fetch-policy.ts";
-import type { UpperRightPanelTab } from "./right-panel-layout.ts";
 
 export function useAgentTreeLoader(params: {
 	activeAgentId: string | null;

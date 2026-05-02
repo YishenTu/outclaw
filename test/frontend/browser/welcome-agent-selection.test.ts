@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveWelcomeAgentId } from "../../../src/frontend/browser/welcome-agent-selection.ts";
+import { resolveWelcomeAgentId } from "../../../src/frontend/browser/components/welcome/welcome-agent-selection.ts";
 
 describe("resolveWelcomeAgentId", () => {
 	test("keeps the current active agent when it still exists", () => {

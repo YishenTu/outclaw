@@ -6,7 +6,7 @@ import {
 	MAX_INSPECTOR_WIDTH,
 	MAX_RIGHT_PANEL_SPLIT_RATIO,
 	MIN_SIDEBAR_WIDTH,
-} from "../../../src/frontend/browser/layout-dimensions.ts";
+} from "../../../src/frontend/browser/layouts/layout-dimensions.ts";
 import {
 	BROWSER_LAYOUT_STORAGE_KEY,
 	createLayoutStore,

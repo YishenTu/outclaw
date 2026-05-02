@@ -1,6 +1,6 @@
 import { PanelLeftOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { requestConfigRestart } from "../../config-save-restart.ts";
+import { requestConfigRestart } from "../../commands/config-save-restart.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import { fetchConfigFile, updateConfigFile } from "../../lib/api.ts";
 import type { AgentReorderPosition } from "../../stores/agents.ts";

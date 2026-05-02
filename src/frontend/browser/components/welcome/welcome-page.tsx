@@ -1,17 +1,17 @@
 import { type ReactNode, useEffect, useMemo } from "react";
-import type { EffortLevel } from "../../../common/commands.ts";
-import type { ModelAlias } from "../../../common/models.ts";
-import { randomTagline } from "../../../common/taglines.ts";
-import { useWs } from "../contexts/websocket-context.tsx";
-import { resolveComposerSessionKey } from "../session.ts";
-import { useAgentsStore } from "../stores/agents.ts";
-import { useRuntimeStore } from "../stores/runtime.ts";
-import { useSessionsStore } from "../stores/sessions.ts";
-import { useWorkspaceViewStore } from "../stores/workspace-view.ts";
-import { resolveWelcomeAgentId } from "../welcome-agent-selection.ts";
-import type { ComposerImageAttachment } from "./chat/composer/composer-images.ts";
-import { MessageInput } from "./chat/composer/message-input.tsx";
+import type { EffortLevel } from "../../../../common/commands.ts";
+import type { ModelAlias } from "../../../../common/models.ts";
+import { randomTagline } from "../../../../common/taglines.ts";
+import type { ComposerImageAttachment } from "../../attachments/composer-images.ts";
+import { useWs } from "../../contexts/websocket-context.tsx";
+import { resolveComposerSessionKey } from "../../sessions/session.ts";
+import { useAgentsStore } from "../../stores/agents.ts";
+import { useRuntimeStore } from "../../stores/runtime.ts";
+import { useSessionsStore } from "../../stores/sessions.ts";
+import { useWorkspaceViewStore } from "../../stores/workspace-view.ts";
+import { MessageInput } from "../chat/composer/message-input.tsx";
 import { WelcomeAgentPicker } from "./welcome-agent-picker.tsx";
+import { resolveWelcomeAgentId } from "./welcome-agent-selection.ts";
 
 const BANNER = ` ██████╗ ██╗   ██╗████████╗ ██████╗██╗      █████╗ ██╗    ██╗
 ██╔═══██╗██║   ██║╚══██╔══╝██╔════╝██║     ██╔══██╗██║    ██║

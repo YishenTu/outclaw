@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { toObservedDisplayMessage } from "../../../src/frontend/browser/observed-prompt.ts";
+import { toObservedDisplayMessage } from "../../../src/frontend/browser/chat/observed-prompt.ts";
 
 describe("toObservedDisplayMessage", () => {
 	test("keeps tui prompts untagged in the browser", () => {

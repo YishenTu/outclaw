@@ -2,7 +2,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { AgentSidebar } from "../components/agent-sidebar/agent-sidebar";
 import { CenterPanel } from "../components/center/center-panel";
 import { RightPanel } from "../components/right-panel/right-panel";
-import { WelcomePage } from "../components/welcome-page";
+import { WelcomePage } from "../components/welcome/welcome-page";
 
 export type ResizeSide = "left" | "right" | null;
 

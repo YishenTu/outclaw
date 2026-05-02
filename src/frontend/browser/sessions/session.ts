@@ -1,4 +1,4 @@
-import type { SessionRef } from "./stores/sessions.ts";
+import type { SessionRef } from "../stores/sessions.ts";
 
 export const PENDING_SESSION_ID = "__pending__";
 export const PENDING_PROVIDER_ID = "runtime";

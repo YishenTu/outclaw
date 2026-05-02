@@ -4,7 +4,7 @@ import {
 	MIN_CENTER_WIDTH,
 	MIN_INSPECTOR_WIDTH,
 	MIN_SIDEBAR_WIDTH,
-} from "../layout-dimensions.ts";
+} from "./layout-dimensions.ts";
 export const MIN_VISIBLE_INSPECTOR_WIDTH = 400;
 
 export function calculateMaxInspectorWidth(params: {

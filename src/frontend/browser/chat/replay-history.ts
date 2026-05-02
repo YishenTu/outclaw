@@ -2,17 +2,17 @@ import {
 	HEARTBEAT_DISPLAY_LABEL,
 	isHeartbeatNoopResult,
 	isOperationalHeartbeatPrompt,
-} from "../../common/heartbeat-prompt.ts";
+} from "../../../common/heartbeat-prompt.ts";
 import type {
 	AssistantTurnMetadata,
 	DisplayChatMessage,
 	DisplayMessage,
-} from "../../common/protocol.ts";
+} from "../../../common/protocol.ts";
 import {
 	isOperationalRolloverPrompt,
 	isRolloverNoopResult,
 	ROLLOVER_DISPLAY_LABEL,
-} from "../../common/rollover-prompt.ts";
+} from "../../../common/rollover-prompt.ts";
 
 type AssistantMessage = DisplayChatMessage & { role: "assistant" };
 type UserMessage = DisplayChatMessage & { role: "user" };

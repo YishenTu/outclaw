@@ -3,7 +3,10 @@ import type {
 	ServerEvent,
 } from "../../../common/protocol.ts";
 import { formatStatusCompact } from "../../../common/status.ts";
-import { createBrowserSessionRef, createSessionKey } from "../session.ts";
+import {
+	createBrowserSessionRef,
+	createSessionKey,
+} from "../sessions/session.ts";
 import { useAgentsStore } from "../stores/agents.ts";
 import { useChatStore } from "../stores/chat.ts";
 import { useContextUsageStore } from "../stores/context-usage.ts";

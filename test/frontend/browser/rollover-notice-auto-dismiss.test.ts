@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
-import { scheduleRolloverNoticeAutoDismiss } from "../../../src/frontend/browser/use-rollover-notice-auto-dismiss.ts";
+import { scheduleRolloverNoticeAutoDismiss } from "../../../src/frontend/browser/notices/use-rollover-notice-auto-dismiss.ts";
 
 describe("rollover notice auto dismiss", () => {
 	afterEach(() => {

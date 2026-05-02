@@ -3,7 +3,7 @@ import {
 	CONFIG_SAVE_RESTART_COMMAND,
 	CONFIG_SAVE_RESTART_ERROR,
 	requestConfigRestart,
-} from "../../../src/frontend/browser/config-save-restart.ts";
+} from "../../../src/frontend/browser/commands/config-save-restart.ts";
 
 describe("config save restart", () => {
 	test("requests a runtime restart after config save", () => {

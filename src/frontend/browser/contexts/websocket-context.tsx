@@ -19,8 +19,8 @@ import {
 	sendRuntimeCommand,
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
-import { createBrowserSwitchDispatcher } from "../browser-switch-dispatcher.ts";
-import type { ComposerImageAttachment } from "../components/chat/composer/composer-images.ts";
+import type { ComposerImageAttachment } from "../attachments/composer-images.ts";
+import { createBrowserSwitchDispatcher } from "../commands/browser-switch-dispatcher.ts";
 import { createBrowserLiveRunBridge } from "../events/browser-live-run-bridge.ts";
 import { createBrowserSocketLifecycle } from "../events/browser-socket-lifecycle.ts";
 import {
@@ -34,9 +34,9 @@ import {
 	sendBrowserPromptToAgent as dispatchBrowserPromptToAgent,
 	sendPromptToAgent as dispatchPromptToAgent,
 } from "../prompts/send-prompt-to-agent.ts";
-import { resolveCurrentBrowserSessionKey } from "../session.ts";
-import { createSidebarRefreshCoordinator } from "../sidebar-refresh.ts";
-import { createSidebarRefreshGate } from "../sidebar-refresh-gate.ts";
+import { resolveCurrentBrowserSessionKey } from "../sessions/session.ts";
+import { createSidebarRefreshCoordinator } from "../sidebar/sidebar-refresh.ts";
+import { createSidebarRefreshGate } from "../sidebar/sidebar-refresh-gate.ts";
 import type { AgentEntry } from "../stores/agents.ts";
 import { useAgentsStore } from "../stores/agents.ts";
 import { useChatStore } from "../stores/chat.ts";

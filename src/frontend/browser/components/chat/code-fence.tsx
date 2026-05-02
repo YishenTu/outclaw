@@ -1,6 +1,6 @@
 import { Check, Copy, CopyX } from "lucide-react";
 import { Children, isValidElement, type ReactNode } from "react";
-import { useCopyToClipboard } from "../../use-copy-to-clipboard.ts";
+import { useCopyToClipboard } from "../../clipboard/use-copy-to-clipboard.ts";
 
 interface CodeFenceProps {
 	children?: ReactNode;

@@ -8,7 +8,7 @@ import {
 	User,
 } from "lucide-react";
 import type { BrowserGitGraphCommit } from "../../../../../common/protocol.ts";
-import { useCopyToClipboard } from "../../../use-copy-to-clipboard.ts";
+import { useCopyToClipboard } from "../../../clipboard/use-copy-to-clipboard.ts";
 
 const selectedCommitDateFormatter = new Intl.DateTimeFormat("en-US", {
 	day: "numeric",

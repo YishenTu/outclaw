@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { sendGitCommitPrompt } from "../../../src/frontend/browser/send-git-commit-prompt.ts";
+import { sendGitCommitPrompt } from "../../../src/frontend/browser/prompts/send-git-commit-prompt.ts";
 
 describe("sendGitCommitPrompt", () => {
 	test("sends the commit prompt to the selected active agent", () => {

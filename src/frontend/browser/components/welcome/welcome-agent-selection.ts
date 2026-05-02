@@ -1,4 +1,4 @@
-import type { AgentEntry } from "./stores/agents.ts";
+import type { AgentEntry } from "../../stores/agents.ts";
 
 export function resolveWelcomeAgentId(
 	agents: AgentEntry[],

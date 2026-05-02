@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createBrowserSwitchDispatcher } from "../../../src/frontend/browser/browser-switch-dispatcher.ts";
+import { createBrowserSwitchDispatcher } from "../../../src/frontend/browser/commands/browser-switch-dispatcher.ts";
 import type { SessionEntry } from "../../../src/frontend/browser/stores/sessions.ts";
 
 const SESSION: SessionEntry = {

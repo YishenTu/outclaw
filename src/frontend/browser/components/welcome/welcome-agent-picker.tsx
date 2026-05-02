@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentEntry } from "../stores/agents.ts";
+import type { AgentEntry } from "../../stores/agents.ts";
 
 interface WelcomeAgentPickerViewProps {
 	agents: AgentEntry[];

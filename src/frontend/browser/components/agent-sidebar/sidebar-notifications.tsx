@@ -1,6 +1,6 @@
 import { AlertCircle, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { projectRuntimeNotice } from "../../runtime-notice-projection.ts";
+import { projectRuntimeNotice } from "../../notices/runtime-notice-projection.ts";
 import {
 	selectVisibleRuntimeNotice,
 	useRuntimeStore,

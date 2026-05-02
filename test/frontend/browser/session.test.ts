@@ -4,7 +4,7 @@ import {
 	resolveBrowserSessionKey,
 	resolveComposerSessionKey,
 	resolveCurrentBrowserSessionKey,
-} from "../../../src/frontend/browser/session.ts";
+} from "../../../src/frontend/browser/sessions/session.ts";
 
 describe("resolveBrowserSessionKey", () => {
 	test("uses the active session key when a session is selected", () => {

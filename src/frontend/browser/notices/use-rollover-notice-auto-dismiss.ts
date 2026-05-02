@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import type { FrontendNotice } from "../../common/protocol.ts";
+import type { FrontendNotice } from "../../../common/protocol.ts";
 import {
 	selectVisibleRuntimeNotice,
 	useRuntimeStore,
-} from "./stores/runtime.ts";
+} from "../stores/runtime.ts";
 
 export const ROLLOVER_NOTICE_AUTO_DISMISS_MS = 5_000;
 

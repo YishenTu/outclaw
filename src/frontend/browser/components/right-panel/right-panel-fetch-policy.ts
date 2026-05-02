@@ -1,4 +1,4 @@
-import type { UpperRightPanelTab } from "./right-panel-layout.ts";
+import type { UpperRightPanelTab } from "../../layouts/right-panel-layout.ts";
 
 interface TreeFetchParams {
 	activeAgentId: string | null;

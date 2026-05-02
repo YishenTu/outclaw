@@ -4,7 +4,7 @@ import type {
 	RuntimeStatusEvent,
 	UsageInfo,
 } from "../../../common/protocol.ts";
-import { createRuntimeNoticeKey } from "../runtime-notice-projection.ts";
+import { createRuntimeNoticeKey } from "../notices/runtime-notice-projection.ts";
 
 export type BrowserConnectionStatus =
 	| "connecting"

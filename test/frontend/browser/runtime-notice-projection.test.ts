@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	createRuntimeNoticeKey,
 	projectRuntimeNotice,
-} from "../../../src/frontend/browser/runtime-notice-projection.ts";
+} from "../../../src/frontend/browser/notices/runtime-notice-projection.ts";
 
 describe("runtime notice projection", () => {
 	test("projects restart-required notices as persistent browser notices", () => {

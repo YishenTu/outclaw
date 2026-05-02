@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	coerceUpperRightPanelTab,
 	UPPER_RIGHT_PANEL_TABS,
-} from "../../../src/frontend/browser/components/right-panel/right-panel-layout.ts";
+} from "../../../src/frontend/browser/layouts/right-panel-layout.ts";
 
 describe("right panel layout helpers", () => {
 	test("exposes the fixed upper-pane tab order", () => {
