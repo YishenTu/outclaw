@@ -4,7 +4,7 @@ import {
 	resolveEnvString,
 	resolveOptionalUserId,
 } from "../../config/env.ts";
-import { readStoredAgentConfig } from "../../config.ts";
+import { readStoredAgentConfig } from "../../config/index.ts";
 import {
 	type AgentConfig,
 	DEFAULT_ROLLOVER_IDLE_MINUTES,

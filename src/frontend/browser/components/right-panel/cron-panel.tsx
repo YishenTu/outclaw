@@ -111,6 +111,19 @@ export function humanizeCronSchedule(
 	if (
 		dayOfMonth === "*" &&
 		month === "*" &&
+		isCronDayOfWeekList(dayOfWeek) &&
+		/^\d+$/.test(minute) &&
+		/^\d+$/.test(hour)
+	) {
+		return appendCronTimezone(
+			`${formatCompactCronTime(hour, minute)} ${formatCronDayOfWeekList(dayOfWeek)}`,
+			timezone,
+		);
+	}
+
+	if (
+		dayOfMonth === "*" &&
+		month === "*" &&
 		isCronDayOfWeek(dayOfWeek) &&
 		/^\d+$/.test(minute) &&
 		/^\d+$/.test(hour)
@@ -184,8 +197,29 @@ function formatCronTime(hour: string, minute: string): string {
 	return `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
 }
 
+function formatCompactCronTime(hour: string, minute: string): string {
+	return `${Number.parseInt(hour, 10)}:${minute.padStart(2, "0")}`;
+}
+
 function isCronDayOfWeek(value: string): boolean {
 	return /^(0|1|2|3|4|5|6|7)$/.test(value);
+}
+
+function isCronDayOfWeekList(value: string): boolean {
+	const days = value.split(",");
+	return days.length > 1 && days.every(isCronDayOfWeek);
+}
+
+function formatCronDayOfWeekList(value: string): string {
+	return value.split(",").map(formatCronDayOfWeekListItem).join("/");
+}
+
+function formatCronDayOfWeekListItem(value: string): string {
+	if (value === "4") {
+		return "Thur";
+	}
+
+	return formatCronDayOfWeek(value);
 }
 
 function formatCronDayOfWeek(value: string): string {

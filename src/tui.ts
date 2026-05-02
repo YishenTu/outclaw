@@ -1,6 +1,6 @@
 import { createOutclawLayout } from "./common/layout.ts";
 import { startTui } from "./frontend/tui/index.tsx";
-import { loadGlobalConfig } from "./runtime/config.ts";
+import { loadGlobalConfig } from "./runtime/config/index.ts";
 
 const layout = createOutclawLayout({ srcRoot: import.meta.dir });
 const config = loadGlobalConfig(layout.homeDir);

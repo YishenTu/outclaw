@@ -6,7 +6,7 @@ import {
 	type ClaudeHistoryMessage,
 	readClaudeHistory,
 	readClaudeTranscript,
-} from "../../../src/backend/adapters/claude-history.ts";
+} from "../../../src/backend/adapters/claude-history/index.ts";
 import { CURRENT_HEARTBEAT_PROMPT } from "../../../src/common/heartbeat-prompt.ts";
 
 const MISSING_PROJECTS_DIR = join(tmpdir(), "outclaw-no-history-here");

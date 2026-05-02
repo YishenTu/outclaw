@@ -5,14 +5,14 @@ import type {
 	HeartbeatResult,
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
-import type { Config } from "../config.ts";
+import type { Config } from "../config/index.ts";
 import type { CronJobConfig, CronRunStartResult } from "../cron/index.ts";
 import { CronScheduler, createCronAgentRunner } from "../cron/index.ts";
-import { startMemoryIndexWatcher } from "../cron/memory-index-watcher.ts";
 import {
 	HeartbeatScheduler,
 	hasHeartbeatContent,
 } from "../heartbeat/scheduler.ts";
+import { startMemoryIndexWatcher } from "../memory/memory-index-watcher.ts";
 import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import { RolloverScheduler } from "../rollover/scheduler.ts";
 import type { WsClient } from "../transport/client-hub.ts";

@@ -17,16 +17,20 @@ import type {
 	ImageMediaType,
 	ImageRef,
 } from "../../common/protocol.ts";
-import { readStoredAgentConfig, writeStoredAgentConfig } from "../config.ts";
+import {
+	readStoredAgentConfig,
+	writeStoredAgentConfig,
+} from "../config/index.ts";
 import { saveManagedImage } from "../files/managed-image-store.ts";
 import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import {
 	type BrowserApiAgent,
 	listBrowserAgents,
-} from "./agent-sidebar-read-model.ts";
-import { BROWSER_CONFIG_SCHEMA } from "./config-schema.ts";
-import { listCronEntries, setCronEnabled } from "./cron-workbench.ts";
-import { listTreeEntries } from "./file-tree-workbench.ts";
+} from "./agent-sidebar/read-model.ts";
+import { BROWSER_CONFIG_SCHEMA } from "./config/schema.ts";
+import { listCronEntries, setCronEnabled } from "./cron/workbench.ts";
+import { readBrowserFile } from "./files/read-browser-file.ts";
+import { listTreeEntries } from "./files/tree-workbench.ts";
 import {
 	initGitRepo as initGitRepoWorkbench,
 	normalizeGitPaths,
@@ -34,18 +38,17 @@ import {
 	readGitCommit as readGitCommitWorkbench,
 	readGitDiff as readGitDiffWorkbench,
 	readGitStatus as readGitStatusWorkbench,
-} from "./git-workbench.ts";
+} from "./git/workbench.ts";
 import {
 	archiveInboxItem,
 	createInboxNote,
 	listInboxEntries,
 	restoreInboxItem,
-} from "./inbox-workbench.ts";
+} from "./inbox/workbench.ts";
 import {
 	resolveExistingPathWithinRoot,
 	resolveWritablePathWithinRoot,
-} from "./path-safety.ts";
-import { readBrowserFile } from "./read-browser-file.ts";
+} from "./paths/path-safety.ts";
 
 interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];

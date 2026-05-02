@@ -1,7 +1,7 @@
 import type { RuntimeClientType } from "../../common/protocol.ts";
 import type { AgentRuntime } from "../application/create-agent-runtime.ts";
-import { createBrowserSidebarWatcher } from "../browser/browser-sidebar-watcher.ts";
-import { TerminalRelay } from "../browser/terminal-relay.ts";
+import { createBrowserSidebarWatcher } from "../browser/sidebar/watcher.ts";
+import { TerminalRelay } from "../browser/terminal/relay.ts";
 import { AgentRuntimeRegistry } from "./agent-runtime-registry.ts";
 import {
 	type BrowserApi,

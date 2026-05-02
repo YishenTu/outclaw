@@ -7,7 +7,10 @@ import {
 	resolveOptionalUserId,
 	upsertSharedEnvEntries,
 } from "../config/env.ts";
-import { readStoredAgentConfig, writeStoredAgentConfig } from "../config.ts";
+import {
+	readStoredAgentConfig,
+	writeStoredAgentConfig,
+} from "../config/index.ts";
 import {
 	assertDefaultCronUserAllowed,
 	type StoredAgentConfig,

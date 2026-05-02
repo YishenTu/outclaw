@@ -10,7 +10,7 @@ import { createTelegramBotManager } from "./frontend/telegram/index.ts";
 import { discoverAgents } from "./runtime/agents/discover-agents.ts";
 import { createAgentRuntime } from "./runtime/application/create-agent-runtime.ts";
 import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
-import { loadGlobalConfig } from "./runtime/config.ts";
+import { loadGlobalConfig } from "./runtime/config/index.ts";
 import { createCronTelegramChatIdResolver } from "./runtime/cron/resolve-telegram-chat-id.ts";
 import { createRestartRequiredWatcher } from "./runtime/notice/restart-required-watcher.ts";
 import { SessionStore } from "./runtime/persistence/session-store/session-store.ts";

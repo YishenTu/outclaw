@@ -1,30 +1,62 @@
 import { describe, expect, test } from "bun:test";
+import type {
+	PreToolUseHookInput,
+	PreToolUseHookSpecificOutput,
+	SyncHookJSONOutput,
+} from "@anthropic-ai/claude-agent-sdk";
 import { blockDotClaudeHook } from "../../../src/backend/adapters/claude-block-dotclaude-hook.ts";
+
+type PreToolUseHookOutput = Omit<SyncHookJSONOutput, "hookSpecificOutput"> & {
+	hookSpecificOutput?: PreToolUseHookSpecificOutput;
+};
 
 const baseInput = {
 	session_id: "s",
 	transcript_path: "/tmp/transcript",
 	cwd: "/work/repo",
 	tool_use_id: "t1",
-	hook_event_name: "PreToolUse" as const,
-};
+	hook_event_name: "PreToolUse",
+} satisfies Omit<PreToolUseHookInput, "tool_input" | "tool_name">;
 
-async function run(toolName: string, filePath: unknown) {
-	// biome-ignore lint/suspicious/noExplicitAny: hook input shape from SDK
-	return blockDotClaudeHook(
-		{ ...baseInput, tool_name: toolName, tool_input: { file_path: filePath } },
-		"t1",
-		{ signal: new AbortController().signal },
-	) as Promise<any>;
+async function run(
+	toolName: string,
+	filePath: unknown,
+): Promise<PreToolUseHookOutput> {
+	return expectSyncHookOutput(
+		await blockDotClaudeHook(
+			{
+				...baseInput,
+				tool_name: toolName,
+				tool_input: { file_path: filePath },
+			},
+			"t1",
+			{ signal: new AbortController().signal },
+		),
+	);
 }
 
-async function runBash(command: unknown) {
-	return blockDotClaudeHook(
-		{ ...baseInput, tool_name: "Bash", tool_input: { command } },
-		"t1",
-		// biome-ignore lint/suspicious/noExplicitAny: hook input shape from SDK
-		{ signal: new AbortController().signal },
-	) as Promise<any>;
+async function runBash(command: unknown): Promise<PreToolUseHookOutput> {
+	return expectSyncHookOutput(
+		await blockDotClaudeHook(
+			{ ...baseInput, tool_name: "Bash", tool_input: { command } },
+			"t1",
+			{ signal: new AbortController().signal },
+		),
+	);
+}
+
+function expectSyncHookOutput(
+	output: Awaited<ReturnType<typeof blockDotClaudeHook>>,
+): PreToolUseHookOutput {
+	if ("async" in output) {
+		throw new Error("Expected synchronous hook output");
+	}
+	const hookSpecificOutput = output.hookSpecificOutput;
+	if (hookSpecificOutput && hookSpecificOutput.hookEventName !== "PreToolUse") {
+		throw new Error("Expected PreToolUse hook output");
+	}
+
+	return { ...output, hookSpecificOutput };
 }
 
 describe("blockDotClaudeHook", () => {

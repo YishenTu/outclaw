@@ -1,0 +1,362 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { appendNote, noteCommand } from "../../../src/cli/commands/note.ts";
+import { captureExitOutput } from "../../helpers/capture-exit.ts";
+
+function createMemoryRoot(): string {
+	return mkdtempSync(join(tmpdir(), "outclaw-note-"));
+}
+
+function dailyPath(memoryRoot: string, date: Date): string {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return join(memoryRoot, "daily-memories", `${year}-${month}-${day}.md`);
+}
+
+describe("appendNote", () => {
+	let tempRoot: string | undefined;
+	let originalSessionId: string | undefined;
+	let originalMemoryRoot: string | undefined;
+	let envCaptured = false;
+
+	afterEach(() => {
+		if (tempRoot && existsSync(tempRoot)) {
+			rmSync(tempRoot, { force: true, recursive: true });
+		}
+		tempRoot = undefined;
+		if (envCaptured) {
+			if (originalSessionId === undefined) {
+				delete process.env.OC_SESSION_ID;
+			} else {
+				process.env.OC_SESSION_ID = originalSessionId;
+			}
+			if (originalMemoryRoot === undefined) {
+				delete process.env.OC_MEMORY_ROOT;
+			} else {
+				process.env.OC_MEMORY_ROOT = originalMemoryRoot;
+			}
+		}
+		originalSessionId = undefined;
+		originalMemoryRoot = undefined;
+		envCaptured = false;
+	});
+
+	function captureEnv() {
+		originalSessionId = process.env.OC_SESSION_ID;
+		originalMemoryRoot = process.env.OC_MEMORY_ROOT;
+		envCaptured = true;
+	}
+
+	test("creates daily file with title, session stanza, and observation line", () => {
+		tempRoot = createMemoryRoot();
+		const now = new Date(2026, 3, 20, 14, 32);
+
+		appendNote({
+			content: "moved to runtime-owned write primitive",
+			salience: "decision",
+			hint: "outclaw",
+			sessionId: "abc123",
+			memoryRoot: tempRoot,
+			now,
+		});
+
+		const content = readFileSync(dailyPath(tempRoot, now), "utf-8");
+		expect(content).toContain("# 2026-04-20");
+		expect(content).toContain("## Session abc123 | 14:32");
+		expect(content).toContain(
+			"- 14:32 [decision] moved to runtime-owned write primitive [[outclaw]]",
+		);
+	});
+
+	test("reuses existing session stanza when session id matches last header", () => {
+		tempRoot = createMemoryRoot();
+		const first = new Date(2026, 3, 20, 14, 32);
+		const second = new Date(2026, 3, 20, 14, 45);
+
+		appendNote({
+			content: "first",
+			sessionId: "abc123",
+			memoryRoot: tempRoot,
+			now: first,
+		});
+		appendNote({
+			content: "second",
+			sessionId: "abc123",
+			memoryRoot: tempRoot,
+			now: second,
+		});
+
+		const content = readFileSync(dailyPath(tempRoot, first), "utf-8");
+		const stanzaCount = content.match(/^## Session /gm)?.length ?? 0;
+		expect(stanzaCount).toBe(1);
+		expect(content).toContain("- 14:32 [routine] first");
+		expect(content).toContain("- 14:45 [routine] second");
+	});
+
+	test("adds a fresh stanza when session id differs from last header", () => {
+		tempRoot = createMemoryRoot();
+		const first = new Date(2026, 3, 20, 14, 32);
+		const second = new Date(2026, 3, 20, 18, 50);
+
+		appendNote({
+			content: "entry from A",
+			sessionId: "abc123",
+			memoryRoot: tempRoot,
+			now: first,
+		});
+		appendNote({
+			content: "entry from B",
+			sessionId: "def456",
+			memoryRoot: tempRoot,
+			now: second,
+		});
+
+		const content = readFileSync(dailyPath(tempRoot, first), "utf-8");
+		expect(content).toContain("## Session abc123 | 14:32");
+		expect(content).toContain("## Session def456 | 18:50");
+		const stanzaCount = content.match(/^## Session /gm)?.length ?? 0;
+		expect(stanzaCount).toBe(2);
+	});
+
+	test("adds a fresh stanza when session returns after another session wrote", () => {
+		tempRoot = createMemoryRoot();
+		const a1 = new Date(2026, 3, 20, 14, 32);
+		const b = new Date(2026, 3, 20, 18, 50);
+		const a2 = new Date(2026, 3, 20, 19, 5);
+
+		appendNote({
+			content: "a1",
+			sessionId: "abc",
+			memoryRoot: tempRoot,
+			now: a1,
+		});
+		appendNote({
+			content: "b",
+			sessionId: "def",
+			memoryRoot: tempRoot,
+			now: b,
+		});
+		appendNote({
+			content: "a2",
+			sessionId: "abc",
+			memoryRoot: tempRoot,
+			now: a2,
+		});
+
+		const content = readFileSync(dailyPath(tempRoot, a1), "utf-8");
+		const stanzaHeaders =
+			content.match(/^## Session [a-z]+ \| \d\d:\d\d/gm) ?? [];
+		expect(stanzaHeaders).toEqual([
+			"## Session abc | 14:32",
+			"## Session def | 18:50",
+			"## Session abc | 19:05",
+		]);
+	});
+
+	test("omits hint segment when hint is not provided", () => {
+		tempRoot = createMemoryRoot();
+		const now = new Date(2026, 3, 20, 14, 32);
+
+		appendNote({
+			content: "untagged",
+			sessionId: "abc",
+			memoryRoot: tempRoot,
+			now,
+		});
+
+		const content = readFileSync(dailyPath(tempRoot, now), "utf-8");
+		expect(content).toContain("- 14:32 [routine] untagged\n");
+		expect(content).not.toContain("[[");
+	});
+
+	test("defaults salience to routine", () => {
+		tempRoot = createMemoryRoot();
+		const now = new Date(2026, 3, 20, 14, 32);
+
+		appendNote({
+			content: "default salience",
+			sessionId: "abc",
+			memoryRoot: tempRoot,
+			now,
+		});
+
+		const content = readFileSync(dailyPath(tempRoot, now), "utf-8");
+		expect(content).toContain("[routine]");
+	});
+
+	test("rejects salience outside the closed vocabulary", () => {
+		const root = createMemoryRoot();
+		tempRoot = root;
+		const now = new Date(2026, 3, 20, 14, 32);
+
+		expect(() =>
+			appendNote({
+				content: "bad",
+				salience: "question",
+				sessionId: "abc",
+				memoryRoot: root,
+				now,
+			}),
+		).toThrow(/salience/i);
+	});
+
+	test("preserves existing unrelated content when appending", () => {
+		tempRoot = createMemoryRoot();
+		const now = new Date(2026, 3, 20, 14, 32);
+
+		appendNote({
+			content: "first",
+			sessionId: "abc",
+			memoryRoot: tempRoot,
+			now,
+		});
+		appendNote({
+			content: "second",
+			sessionId: "abc",
+			memoryRoot: tempRoot,
+			now: new Date(2026, 3, 20, 14, 45),
+		});
+
+		const content = readFileSync(dailyPath(tempRoot, now), "utf-8");
+		expect(content.indexOf("first")).toBeLessThan(content.indexOf("second"));
+	});
+
+	test("trims trailing whitespace on content but preserves internal", () => {
+		tempRoot = createMemoryRoot();
+		const now = new Date(2026, 3, 20, 14, 32);
+
+		appendNote({
+			content: "  hello  world  \n",
+			sessionId: "abc",
+			memoryRoot: tempRoot,
+			now,
+		});
+
+		const content = readFileSync(dailyPath(tempRoot, now), "utf-8");
+		expect(content).toContain("- 14:32 [routine] hello  world\n");
+	});
+
+	test("renders multi-line content as bullet + indented continuation", () => {
+		tempRoot = createMemoryRoot();
+		const now = new Date(2026, 3, 20, 14, 32);
+
+		appendNote({
+			content: "first line\nsecond line\nthird line",
+			sessionId: "abc",
+			memoryRoot: tempRoot,
+			now,
+		});
+
+		const content = readFileSync(dailyPath(tempRoot, now), "utf-8");
+		expect(content).toContain(
+			"- 14:32 [routine] first line\n  second line\n  third line\n",
+		);
+		// Only one bullet header for the entry.
+		const bulletCount = content.match(/^- \d\d:\d\d /gm)?.length ?? 0;
+		expect(bulletCount).toBe(1);
+	});
+
+	test("keeps hint attached to the bullet line, not continuation", () => {
+		tempRoot = createMemoryRoot();
+		const now = new Date(2026, 3, 20, 14, 32);
+
+		appendNote({
+			content: "first line\nsecond line",
+			hint: "outclaw",
+			sessionId: "abc",
+			memoryRoot: tempRoot,
+			now,
+		});
+
+		const content = readFileSync(dailyPath(tempRoot, now), "utf-8");
+		expect(content).toContain("- 14:32 [routine] first line [[outclaw]]\n");
+		expect(content).toContain("  second line\n");
+	});
+
+	test("note command prints help and validates parser errors in-process", async () => {
+		const help = await captureExitOutput(() =>
+			noteCommand({ argv: ["bun", "oc", "note", "--help"] }),
+		);
+		expect(help.code).toBe(0);
+		expect(help.logs.join("\n")).toContain('Usage: oc note "<content>"');
+
+		for (const [argv, error] of [
+			[
+				["bun", "oc", "note", "first", "second"],
+				"oc note: only one positional content argument is allowed",
+			],
+			[
+				["bun", "oc", "note", "--salience"],
+				"oc note: --salience requires a value",
+			],
+			[["bun", "oc", "note", "--hint"], "oc note: --hint requires a value"],
+			[
+				["bun", "oc", "note", "--unknown", "value"],
+				'oc note: unknown flag "--unknown"',
+			],
+		] as const) {
+			const output = await captureExitOutput(() =>
+				noteCommand({ argv: [...argv] }),
+			);
+			expect(output.code).toBe(1);
+			expect(output.errors.join("\n")).toContain(error);
+			expect(output.errors.join("\n")).toContain('Usage: oc note "<content>"');
+		}
+	});
+
+	test("note command requires session environment and surfaces append failures", async () => {
+		captureEnv();
+		delete process.env.OC_SESSION_ID;
+		delete process.env.OC_MEMORY_ROOT;
+
+		const missingEnv = await captureExitOutput(() =>
+			noteCommand({ argv: ["bun", "oc", "note", "remember this"] }),
+		);
+		expect(missingEnv.code).toBe(1);
+		expect(missingEnv.errors.join("\n")).toContain(
+			"OC_SESSION_ID and OC_MEMORY_ROOT must be set",
+		);
+
+		tempRoot = createMemoryRoot();
+		process.env.OC_SESSION_ID = "session-a";
+		process.env.OC_MEMORY_ROOT = tempRoot;
+		const badSalience = await captureExitOutput(() =>
+			noteCommand({
+				argv: ["bun", "oc", "note", "remember this", "--salience", "question"],
+			}),
+		);
+		expect(badSalience.code).toBe(1);
+		expect(badSalience.errors.join("\n")).toContain("unknown salience");
+	});
+
+	test("note command appends positional content without reading stdin", async () => {
+		captureEnv();
+		tempRoot = createMemoryRoot();
+		process.env.OC_SESSION_ID = "session-a";
+		process.env.OC_MEMORY_ROOT = tempRoot;
+
+		const output = await captureExitOutput(() =>
+			noteCommand({
+				argv: [
+					"bun",
+					"oc",
+					"note",
+					"command path",
+					"--salience",
+					"decision",
+					"--hint",
+					"outclaw",
+				],
+			}),
+		);
+
+		expect(output.code).toBeUndefined();
+		expect(output.errors).toEqual([]);
+		const content = readFileSync(dailyPath(tempRoot, new Date()), "utf-8");
+		expect(content).toContain("[decision] command path [[outclaw]]");
+		expect(content).toContain("## Session session-a |");
+	});
+});

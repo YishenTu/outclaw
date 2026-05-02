@@ -3,7 +3,10 @@ import {
 	agentTelegramUsersEnvKey,
 } from "../agents/config/agent-config-env.ts";
 import { discoverAgents } from "../agents/discover-agents.ts";
-import { readStoredAgentConfig, writeStoredAgentConfig } from "../config.ts";
+import {
+	readStoredAgentConfig,
+	writeStoredAgentConfig,
+} from "./agent-config-store.ts";
 import { upsertSharedEnvEntries } from "./env.ts";
 
 interface ConfigSecureChange {

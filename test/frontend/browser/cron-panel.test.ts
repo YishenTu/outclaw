@@ -54,8 +54,12 @@ describe("cron panel helpers", () => {
 		expect(humanizeCronSchedule("0 9 1 * *")).toBe("Monthly day 1 09:00");
 	});
 
+	test("humanizes weekly schedules with multiple days", () => {
+		expect(humanizeCronSchedule("17 6 * * 2,4,6")).toBe("6:17 Tue/Thur/Sat");
+	});
+
 	test("keeps unknown schedules as-is", () => {
-		expect(humanizeCronSchedule("0 9 * * 1,3")).toBe("0 9 * * 1,3");
+		expect(humanizeCronSchedule("0 9 1 1 1,3")).toBe("0 9 1 1 1,3");
 	});
 
 	test("humanizes one-time schedules", () => {

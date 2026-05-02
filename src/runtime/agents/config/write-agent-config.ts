@@ -1,4 +1,4 @@
-import { writeStoredAgentConfig } from "../../config.ts";
+import { writeStoredAgentConfig } from "../../config/index.ts";
 import type { StoredAgentConfig } from "./agent-config.ts";
 
 interface WriteAgentConfigOptions {

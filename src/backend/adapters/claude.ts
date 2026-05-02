@@ -10,7 +10,7 @@ import {
 	type LoadClaudeHistory,
 	readClaudeHistory,
 	readClaudeTranscript,
-} from "./claude-history.ts";
+} from "./claude-history/index.ts";
 import {
 	type ClaudeSdkUserMessage,
 	createClaudePromptInput,

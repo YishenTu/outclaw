@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Config } from "../config.ts";
+import type { Config } from "../config/index.ts";
 import { createHeartbeatPrompt } from "./create-heartbeat-prompt.ts";
 
 type TimerHandle = unknown;

@@ -83,7 +83,7 @@ export function TerminalTabs({
 
 	if (terminals.length === 0) {
 		return (
-			<div className="flex h-8 shrink-0 items-center justify-between gap-3 border-b border-dark-800 px-2">
+			<div className="flex h-8 shrink-0 items-center justify-between gap-3 border-b border-dark-800 pl-4 pr-2">
 				<div className="flex min-w-0 items-center gap-3">
 					{leadingContent}
 					<RunTab active={activeTab === "run"} onSelectRun={onSelectRun} />
@@ -110,7 +110,7 @@ export function TerminalTabs({
 	}
 
 	return (
-		<div className="flex h-8 shrink-0 items-stretch gap-3 border-b border-dark-800 px-2">
+		<div className="flex h-8 shrink-0 items-stretch gap-3 border-b border-dark-800 pl-4 pr-2">
 			{leadingContent ? (
 				<div className="flex shrink-0 items-center">{leadingContent}</div>
 			) : null}

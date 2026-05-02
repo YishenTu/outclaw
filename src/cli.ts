@@ -1,18 +1,18 @@
 #!/usr/bin/env bun
-import { agentCommand } from "./cli/agent.ts";
-import { configCommand } from "./cli/config.ts";
-import { cronCommand } from "./cli/cron.ts";
-import { createDaemonCommands } from "./cli/daemon.ts";
-import { noteCommand } from "./cli/note.ts";
-import { onboardCommand } from "./cli/onboard.ts";
-import { schemaCommand } from "./cli/schema.ts";
-import { sessionCommand } from "./cli/session.ts";
+import { agentCommand } from "./cli/commands/agent.ts";
+import { configCommand } from "./cli/commands/config.ts";
+import { cronCommand } from "./cli/commands/cron.ts";
+import { createDaemonCommands } from "./cli/commands/daemon.ts";
+import { noteCommand } from "./cli/commands/note.ts";
+import { onboardCommand } from "./cli/commands/onboard.ts";
+import { schemaCommand } from "./cli/commands/schema.ts";
+import { sessionCommand } from "./cli/commands/session.ts";
 import {
 	isHelpFlag,
 	printOnboardUsage,
 	printStartUsage,
 	printUsage,
-} from "./cli/usage.ts";
+} from "./cli/support/usage.ts";
 import { createOutclawLayout } from "./common/layout.ts";
 
 const layout = createOutclawLayout({ srcRoot: import.meta.dir });

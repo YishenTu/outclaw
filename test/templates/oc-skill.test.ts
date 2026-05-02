@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { formatNoteUsage } from "../../src/cli/note.ts";
+import { formatNoteUsage } from "../../src/cli/commands/note.ts";
 import {
 	formatAgentAskUsage,
 	formatAgentConfigUsage,
@@ -17,7 +17,7 @@ import {
 	formatSessionSearchUsage,
 	formatSessionTranscriptUsage,
 	formatStartUsage,
-} from "../../src/cli/usage.ts";
+} from "../../src/cli/support/usage.ts";
 
 const OC_SKILL_DIR = join(import.meta.dir, "../../src/templates/skills/oc");
 
