@@ -81,9 +81,18 @@ function startMultiAgentDaemon(
 			}),
 		]),
 	);
+	const transcriptReadersByAgent = new Map<
+		string,
+		| ((sessionId: string) => ReturnType<ClaudeAdapter["readTranscript"]>)
+		| undefined
+	>();
 	const runtimes = agents.map((agent) => {
 		const facade = new ClaudeAdapter({ autoCompact: config.autoCompact });
 		facade.prepareWorkspace(agent.promptHomeDir);
+		transcriptReadersByAgent.set(
+			agent.agentId,
+			facade.readTranscript?.bind(facade),
+		);
 
 		return createAgentRuntime({
 			agentId: agent.agentId,
@@ -147,6 +156,7 @@ function startMultiAgentDaemon(
 					.split(sep)
 					.join("/"),
 			),
+			readTranscriptsByAgent: transcriptReadersByAgent,
 			storesByAgent: agentStores,
 		}),
 		browserWatch: {

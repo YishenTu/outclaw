@@ -1,4 +1,7 @@
-import type { CronResultEvent } from "../../common/protocol.ts";
+import type {
+	BrowserSidebarInvalidatedEvent,
+	CronResultEvent,
+} from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import type { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
 import type { SessionService } from "./session-service.ts";
@@ -6,6 +9,7 @@ import type { SessionService } from "./session-service.ts";
 interface CronExecutionResult {
 	jobName: string;
 	model: string;
+	persistResultText?: boolean;
 	sessionId?: string;
 	suppressDelivery?: boolean;
 	telegramChatId?: number;
@@ -13,6 +17,7 @@ interface CronExecutionResult {
 }
 
 interface RuntimeCronBroadcasterOptions {
+	agentId?: string;
 	clients: RuntimeClientGateway;
 	deliverCronResult?: (params: {
 		jobName: string;
@@ -32,12 +37,16 @@ export class RuntimeCronBroadcaster {
 	}
 
 	async broadcastResult(result: CronExecutionResult) {
+		const ranAt = Date.now();
 		if (result.sessionId) {
 			this.options.sessions.recordCronRun({
 				sessionId: result.sessionId,
 				jobName: result.jobName,
 				model: result.model,
+				ranAt,
+				resultText: result.persistResultText ? result.text : undefined,
 			});
+			this.notifyBrowserCronChanged();
 		}
 
 		if (result.suppressDelivery) {
@@ -47,7 +56,10 @@ export class RuntimeCronBroadcaster {
 		const event: CronResultEvent = {
 			type: "cron_result",
 			jobName: result.jobName,
+			providerId: this.options.sessions.providerId,
 			text: result.text,
+			sessionId: result.sessionId,
+			ranAt,
 		};
 		this.options.clients.broadcast(event);
 
@@ -71,5 +83,21 @@ export class RuntimeCronBroadcaster {
 
 	setHandler(handler: RuntimeCronBroadcasterOptions["deliverCronResult"]) {
 		this.deliverCronResult = handler;
+	}
+
+	private notifyBrowserCronChanged() {
+		if (!this.options.agentId) {
+			return;
+		}
+
+		const event: BrowserSidebarInvalidatedEvent = {
+			type: "browser_sidebar_invalidated",
+			agentId: this.options.agentId,
+			sections: ["cron"],
+		};
+		this.options.clients.sendMany(
+			this.options.clients.listBrowserTargets(),
+			event,
+		);
 	}
 }

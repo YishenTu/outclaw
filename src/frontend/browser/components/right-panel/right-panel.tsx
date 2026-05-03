@@ -602,9 +602,9 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 				<div className="h-full min-h-0 overflow-hidden">
 					{activeAgentId ? (
 						<CronPanel
+							key={activeAgentId}
 							agentId={activeAgentId}
 							treeEntries={tree}
-							onOpenFile={handleOpenFile}
 						/>
 					) : (
 						<div className="px-4 py-4 text-sm text-dark-500">

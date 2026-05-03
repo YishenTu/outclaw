@@ -2,6 +2,8 @@ import type {
 	BrowserAgentsResponse,
 	BrowserConfigResponse,
 	BrowserCronEntry,
+	BrowserCronHistoryCursor,
+	BrowserCronHistoryResponse,
 	BrowserFileResponse,
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
@@ -28,6 +30,14 @@ export interface BrowserApi {
 	): Promise<BrowserInboxCreateNoteResponse>;
 	initGitRepo(): Promise<BrowserGitStatusResponse>;
 	listAgentCron(agentId: string): Promise<BrowserCronEntry[]>;
+	listAgentCronHistory?(
+		agentId: string,
+		params: {
+			jobName: string;
+			limit: number;
+			before?: BrowserCronHistoryCursor;
+		},
+	): Promise<BrowserCronHistoryResponse>;
 	listAgentInbox?(agentId: string): Promise<BrowserInboxResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
 	listAgents(): BrowserAgentsResponse;
@@ -206,6 +216,62 @@ export async function handleBrowserApiRequest(
 					body.archivedPath,
 					body.originalPath,
 				),
+			);
+		}
+
+		const cronHistoryMatch = url.pathname.match(
+			/^\/api\/agents\/([^/]+)\/cron\/history$/,
+		);
+		if (cronHistoryMatch) {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.listAgentCronHistory) {
+				return jsonError("Cron history API is not configured", 404);
+			}
+			const agentId = decodeURIComponent(cronHistoryMatch[1] ?? "");
+			const jobName = url.searchParams.get("name");
+			if (!jobName) {
+				return jsonError("Missing cron job name", 400);
+			}
+			const limitParam = url.searchParams.get("limit");
+			const beforeRanAtParam = url.searchParams.get("beforeRanAt");
+			const beforeProviderId = url.searchParams.get("beforeProviderId");
+			const beforeSessionId = url.searchParams.get("beforeSessionId");
+			const limit = limitParam ? Number.parseInt(limitParam, 10) : 1;
+			if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
+				return jsonError("Invalid limit", 400);
+			}
+			let before: BrowserCronHistoryCursor | undefined;
+			if (
+				beforeRanAtParam !== null ||
+				beforeProviderId !== null ||
+				beforeSessionId !== null
+			) {
+				const ranAt =
+					beforeRanAtParam === null
+						? Number.NaN
+						: Number.parseInt(beforeRanAtParam, 10);
+				if (
+					!Number.isInteger(ranAt) ||
+					ranAt < 0 ||
+					!beforeProviderId ||
+					!beforeSessionId
+				) {
+					return jsonError("Invalid before cursor", 400);
+				}
+				before = {
+					ranAt,
+					providerId: beforeProviderId,
+					sessionId: beforeSessionId,
+				};
+			}
+			return Response.json(
+				await browserApi.listAgentCronHistory(agentId, {
+					jobName,
+					limit,
+					before,
+				}),
 			);
 		}
 

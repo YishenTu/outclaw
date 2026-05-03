@@ -120,6 +120,7 @@ export function createAgentRuntime(
 		onSessionStateChange: () => noteRolloverStateChange(),
 	});
 	const controller = createRuntimeController({
+		agentId: options.agentId,
 		canSendToClient: options.canSendToClient,
 		cwd: options.cwd,
 		facade,

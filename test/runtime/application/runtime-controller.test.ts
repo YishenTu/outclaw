@@ -1551,11 +1551,14 @@ describe("RuntimeController", () => {
 			expect(
 				tui.events().filter((event) => event.type === "cron_result"),
 			).toEqual([
-				{
+				expect.objectContaining({
 					type: "cron_result",
 					jobName: "daily-summary",
+					providerId: PROVIDER_ID,
 					text: "All clear",
-				},
+					sessionId: "cron-session-1",
+					ranAt: expect.any(Number),
+				}),
 			]);
 			expect(delivered).toEqual([
 				{
@@ -1590,11 +1593,14 @@ describe("RuntimeController", () => {
 			expect(
 				tui.events().filter((event) => event.type === "cron_result"),
 			).toEqual([
-				{
+				expect.objectContaining({
 					type: "cron_result",
 					jobName: "daily-summary",
+					providerId: PROVIDER_ID,
 					text: "All clear",
-				},
+					sessionId: "cron-session-1",
+					ranAt: expect.any(Number),
+				}),
 			]);
 			expect(delivered).toEqual([]);
 		});
@@ -1625,6 +1631,13 @@ describe("RuntimeController", () => {
 				tag: "cron",
 			});
 			expect(store.getActiveSessionId(PROVIDER_ID)).toBe("mock-session-123");
+			expect(store.listCronRunsByTitle("daily-summary", { limit: 1 })).toEqual([
+				expect.objectContaining({
+					providerId: PROVIDER_ID,
+					sessionId: "cron-session-1",
+					resultText: "",
+				}),
+			]);
 
 			store.close();
 			cleanupStore(TEST_DB);

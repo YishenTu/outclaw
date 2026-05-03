@@ -17,6 +17,7 @@ import type { SessionService } from "./session-service.ts";
 import type { RuntimeState } from "./state/runtime-state.ts";
 
 interface CreateRuntimeControllerOptions {
+	agentId?: string;
 	canSendToClient?: (ws: WsClient) => boolean;
 	cwd?: string;
 	deliverCronResult?: (params: {
@@ -109,6 +110,7 @@ export function createRuntimeController(
 		state: options.state,
 	});
 	const cronBroadcaster = new RuntimeCronBroadcaster({
+		agentId: options.agentId,
 		clients,
 		deliverCronResult: options.deliverCronResult,
 		sessions: options.sessions,

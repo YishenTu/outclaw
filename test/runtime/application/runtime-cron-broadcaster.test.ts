@@ -5,10 +5,12 @@ import { RuntimeCronBroadcaster } from "../../../src/runtime/application/runtime
 import type { SessionService } from "../../../src/runtime/application/session-service.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 
-function mockWs(): WsClient & { events: () => ServerEvent[] } {
+function mockWs(
+	clientType: "telegram" | "tui" | "browser" = "tui",
+): WsClient & { events: () => ServerEvent[] } {
 	const sent: string[] = [];
 	return {
-		data: { clientType: "tui" },
+		data: { clientType },
 		send(payload: string) {
 			sent.push(payload);
 		},
@@ -34,15 +36,23 @@ function createGateway() {
 }
 
 function createSessionsRecorder() {
-	const recorded: Array<{ jobName: string; model: string; sessionId: string }> =
-		[];
+	const recorded: Array<{
+		jobName: string;
+		model: string;
+		resultText?: string;
+		sessionId: string;
+		ranAt: number;
+	}> = [];
 	return {
 		recorded,
 		sessions: {
+			providerId: "mock",
 			recordCronRun(params: {
 				jobName: string;
 				model: string;
+				resultText?: string;
 				sessionId: string;
+				ranAt: number;
 			}) {
 				recorded.push(params);
 			},
@@ -53,8 +63,10 @@ function createSessionsRecorder() {
 describe("RuntimeCronBroadcaster", () => {
 	test("records cron sessions, broadcasts visible results, and delivers to Telegram when configured", async () => {
 		const clients = createGateway();
-		const ws = mockWs();
-		clients.handleOpen(ws);
+		const tui = mockWs("tui");
+		const browser = mockWs("browser");
+		clients.handleOpen(tui);
+		clients.handleOpen(browser);
 		const delivered: Array<{
 			jobName: string;
 			telegramChatId: number;
@@ -62,6 +74,7 @@ describe("RuntimeCronBroadcaster", () => {
 		}> = [];
 		const { recorded, sessions } = createSessionsRecorder();
 		const broadcaster = new RuntimeCronBroadcaster({
+			agentId: "agent-railly",
 			clients,
 			deliverCronResult: (params) => {
 				delivered.push(params);
@@ -82,13 +95,34 @@ describe("RuntimeCronBroadcaster", () => {
 				jobName: "daily",
 				model: "haiku",
 				sessionId: "cron-session-123",
+				ranAt: expect.any(Number),
 			},
 		]);
-		expect(ws.events()).toContainEqual({
-			type: "cron_result",
-			jobName: "daily",
-			text: "summary",
+		expect(browser.events()).toContainEqual(
+			expect.objectContaining({
+				type: "cron_result",
+				jobName: "daily",
+				providerId: "mock",
+				text: "summary",
+				sessionId: "cron-session-123",
+				ranAt: expect.any(Number),
+			}),
+		);
+		expect(browser.events()).toContainEqual({
+			type: "browser_sidebar_invalidated",
+			agentId: "agent-railly",
+			sections: ["cron"],
 		});
+		expect(tui.events()).toContainEqual(
+			expect.objectContaining({
+				type: "cron_result",
+				jobName: "daily",
+				providerId: "mock",
+				text: "summary",
+				sessionId: "cron-session-123",
+				ranAt: expect.any(Number),
+			}),
+		);
 		expect(delivered).toEqual([
 			{
 				jobName: "daily",
@@ -98,13 +132,16 @@ describe("RuntimeCronBroadcaster", () => {
 		]);
 	});
 
-	test("suppressed completions persist sessions without broadcasting or delivering", async () => {
+	test("suppressed completions persist sessions and update browser history without delivering to chat surfaces", async () => {
 		const clients = createGateway();
-		const ws = mockWs();
-		clients.handleOpen(ws);
+		const tui = mockWs("tui");
+		const browser = mockWs("browser");
+		clients.handleOpen(tui);
+		clients.handleOpen(browser);
 		const delivered: unknown[] = [];
 		const { recorded, sessions } = createSessionsRecorder();
 		const broadcaster = new RuntimeCronBroadcaster({
+			agentId: "agent-railly",
 			clients,
 			deliverCronResult: (params) => {
 				delivered.push(params);
@@ -118,7 +155,7 @@ describe("RuntimeCronBroadcaster", () => {
 			sessionId: "cron-session-123",
 			suppressDelivery: true,
 			telegramChatId: 456,
-			text: "",
+			text: "NO_REPLY",
 		});
 
 		expect(recorded).toEqual([
@@ -126,12 +163,64 @@ describe("RuntimeCronBroadcaster", () => {
 				jobName: "daily",
 				model: "haiku",
 				sessionId: "cron-session-123",
+				ranAt: expect.any(Number),
 			},
 		]);
-		expect(ws.events().filter((event) => event.type === "cron_result")).toEqual(
-			[],
-		);
+		expect(browser.events()).toContainEqual({
+			type: "browser_sidebar_invalidated",
+			agentId: "agent-railly",
+			sections: ["cron"],
+		});
+		expect(
+			browser.events().filter((event) => event.type === "cron_result"),
+		).toEqual([]);
+		expect(
+			tui.events().filter((event) => event.type === "cron_result"),
+		).toEqual([]);
 		expect(delivered).toEqual([]);
+	});
+
+	test("failed completions persist fallback text for cron history", async () => {
+		const clients = createGateway();
+		const browser = mockWs("browser");
+		clients.handleOpen(browser);
+		const { recorded, sessions } = createSessionsRecorder();
+		const broadcaster = new RuntimeCronBroadcaster({
+			agentId: "agent-railly",
+			clients,
+			sessions,
+		});
+
+		await broadcaster.broadcastResult({
+			jobName: "daily",
+			model: "haiku",
+			persistResultText: true,
+			sessionId: "cron-session-error",
+			text: "[error] agent exploded",
+		});
+
+		expect(recorded).toEqual([
+			{
+				jobName: "daily",
+				model: "haiku",
+				sessionId: "cron-session-error",
+				ranAt: expect.any(Number),
+				resultText: "[error] agent exploded",
+			},
+		]);
+		expect(browser.events()).toContainEqual(
+			expect.objectContaining({
+				type: "cron_result",
+				jobName: "daily",
+				sessionId: "cron-session-error",
+				text: "[error] agent exploded",
+			}),
+		);
+		expect(browser.events()).toContainEqual({
+			type: "browser_sidebar_invalidated",
+			agentId: "agent-railly",
+			sections: ["cron"],
+		});
 	});
 
 	test("Telegram delivery failures are logged without failing the broadcast", async () => {

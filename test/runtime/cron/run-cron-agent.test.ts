@@ -130,18 +130,33 @@ describe("createCronAgentRunner", () => {
 		});
 	});
 
-	test("throws when the facade emits an error event", async () => {
+	test("throws the cron session id when the facade emits an error event", async () => {
 		const promptHomeDir = createPromptHome({});
 		promptHomes.push(promptHomeDir);
 
+		let receivedParams: RunParams | undefined;
 		const runCronAgent = createCronAgentRunner({
-			facade: createFacade([{ type: "error", message: "agent exploded" }]),
+			facade: createFacade(
+				[{ type: "error", message: "agent exploded" }],
+				(params) => {
+					receivedParams = params;
+				},
+			),
 			promptHomeDir,
 			cwd: "/workspace/project",
 		});
 
-		await expect(runCronAgent("Fail loudly", "haiku")).rejects.toThrow(
-			"agent exploded",
+		let thrown: unknown;
+		try {
+			await runCronAgent("Fail loudly", "haiku");
+		} catch (error) {
+			thrown = error;
+		}
+
+		expect(thrown).toBeInstanceOf(Error);
+		expect((thrown as Error).message).toBe("agent exploded");
+		expect((thrown as { sessionId?: string }).sessionId).toBe(
+			receivedParams?.sessionId,
 		);
 	});
 });

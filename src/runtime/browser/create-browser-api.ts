@@ -3,6 +3,8 @@ import type {
 	BrowserAgentsResponse,
 	BrowserConfigResponse,
 	BrowserCronEntry,
+	BrowserCronHistoryCursor,
+	BrowserCronHistoryResponse,
 	BrowserFileResponse,
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
@@ -16,6 +18,7 @@ import type {
 	BrowserTreeEntry,
 	ImageMediaType,
 	ImageRef,
+	TranscriptTurn,
 } from "../../common/protocol.ts";
 import {
 	readStoredAgentConfig,
@@ -28,6 +31,7 @@ import {
 	listBrowserAgents,
 } from "./agent-sidebar/read-model.ts";
 import { BROWSER_CONFIG_SCHEMA } from "./config/schema.ts";
+import { listCronRunsForJob } from "./cron/history.ts";
 import { listCronEntries, setCronEnabled } from "./cron/workbench.ts";
 import { readBrowserFile } from "./files/read-browser-file.ts";
 import { listTreeEntries } from "./files/tree-workbench.ts";
@@ -57,6 +61,10 @@ interface CreateBrowserApiOptions {
 	gitRoot: string;
 	homeDir: string;
 	ignoredGitPaths?: readonly string[];
+	readTranscriptsByAgent?: Map<
+		string,
+		((sessionId: string) => Promise<TranscriptTurn[]>) | undefined
+	>;
 	storesByAgent: Map<string, SessionStore | undefined>;
 }
 
@@ -72,6 +80,14 @@ export interface BrowserApi {
 		input: BrowserInboxCreateNoteInput,
 	): Promise<BrowserInboxCreateNoteResponse>;
 	listAgentCron(agentId: string): Promise<BrowserCronEntry[]>;
+	listAgentCronHistory(
+		agentId: string,
+		params: {
+			jobName: string;
+			limit: number;
+			before?: BrowserCronHistoryCursor;
+		},
+	): Promise<BrowserCronHistoryResponse>;
 	listAgentInbox(agentId: string): Promise<BrowserInboxResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
 	readConfigFile(): Promise<BrowserConfigResponse>;
@@ -125,6 +141,24 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		async listAgentCron(agentId) {
 			const agent = requireAgent(agentsById, agentId);
 			return await listCronEntries(agent.homeDir);
+		},
+		async listAgentCronHistory(agentId, params) {
+			const agent = requireAgent(agentsById, agentId);
+			const store = options.storesByAgent.get(agentId);
+			if (!store) {
+				return { entries: [], hasMore: false };
+			}
+			const readTranscript = options.readTranscriptsByAgent?.get(agentId);
+			return listCronRunsForJob(store, params.jobName, {
+				limit: params.limit,
+				before: params.before,
+				readTranscript: readTranscript
+					? (providerId, sessionId) =>
+							providerId === agent.providerId
+								? readTranscript(sessionId)
+								: Promise.resolve(undefined)
+					: undefined,
+			});
 		},
 		async listAgentInbox(agentId) {
 			const agent = requireAgent(agentsById, agentId);

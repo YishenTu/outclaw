@@ -1173,11 +1173,15 @@ describe("Runtime server", () => {
 				),
 			]);
 
-			expect(cronResult).toEqual({
-				type: "cron_result",
-				jobName: "runtime-cron",
-				text: "echo: say hello",
-			});
+			expect(cronResult).toEqual(
+				expect.objectContaining({
+					type: "cron_result",
+					jobName: "runtime-cron",
+					providerId: "mock",
+					text: "echo: say hello",
+					ranAt: expect.any(Number),
+				}),
+			);
 			expect(cronFacade.lastParams?.prompt).toBe("say hello");
 			expect(cronFacade.lastParams?.model).toBe("claude-opus-4-7[1m]");
 			expect(cronFacade.lastParams?.effort).toBe("low");

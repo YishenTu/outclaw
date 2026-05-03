@@ -92,6 +92,7 @@ export class RuntimeController {
 	async broadcastCronResult(result: {
 		jobName: string;
 		model: string;
+		persistResultText?: boolean;
 		sessionId?: string;
 		suppressDelivery?: boolean;
 		telegramChatId?: number;

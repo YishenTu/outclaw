@@ -373,7 +373,10 @@ export interface StreamingSyncEvent {
 export interface CronResultEvent {
 	type: "cron_result";
 	jobName: string;
+	providerId: string;
 	text: string;
+	sessionId?: string;
+	ranAt: number;
 }
 
 export interface BrowserSidebarInvalidatedEvent {
@@ -423,6 +426,24 @@ export interface BrowserTreeEntry {
 	path: string;
 	gitStatus?: BrowserTreeEntryGitStatus;
 	children?: BrowserTreeEntry[];
+}
+
+export interface BrowserCronHistoryCursor {
+	ranAt: number;
+	providerId: string;
+	sessionId: string;
+}
+
+export interface BrowserCronRunEntry {
+	providerId: string;
+	sessionId: string;
+	ranAt: number;
+	resultText: string;
+}
+
+export interface BrowserCronHistoryResponse {
+	entries: BrowserCronRunEntry[];
+	hasMore: boolean;
 }
 
 export interface BrowserCronEntry {

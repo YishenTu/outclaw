@@ -9,6 +9,7 @@ import { CronScheduler } from "../../../src/runtime/cron/scheduler.ts";
 interface ScheduledCronResult {
 	jobName: string;
 	model: string;
+	persistResultText?: boolean;
 	sessionId?: string;
 	suppressDelivery?: boolean;
 	telegramChatId?: number;
@@ -625,7 +626,7 @@ prompt: do something
 				sessionId: "cron-session-123",
 				suppressDelivery: true,
 				telegramChatId: undefined,
-				text: "",
+				text: "NO_REPLY",
 			},
 		]);
 	});
@@ -649,7 +650,7 @@ prompt: do something
 				model: "haiku",
 				suppressDelivery: true,
 				telegramChatId: undefined,
-				text: "",
+				text: " no_reply ",
 			},
 		]);
 	});
@@ -673,7 +674,7 @@ prompt: do something
 				model: "haiku",
 				suppressDelivery: true,
 				telegramChatId: undefined,
-				text: "",
+				text: "`NO_REPLY`",
 			},
 		]);
 	});
@@ -695,6 +696,10 @@ prompt: do something
 
 		expect(results).toHaveLength(1);
 		expect(results[0]?.jobName).toBe("test-job");
+		expect(results[0]?.sessionId).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+		);
+		expect(results[0]).toMatchObject({ persistResultText: true });
 		expect(results[0]?.text).toContain("agent exploded");
 	});
 

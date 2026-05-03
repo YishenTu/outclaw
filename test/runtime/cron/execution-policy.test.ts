@@ -129,9 +129,58 @@ describe("CronExecutionPolicy", () => {
 				sessionId: "cron-session-123",
 				suppressDelivery: true,
 				telegramChatId: 456,
-				text: "",
+				text: "`NO_REPLY`",
 			},
 		]);
+	});
+
+	test("records failed runs with their cron session id and fallback result text", async () => {
+		const results: unknown[] = [];
+		const policy = new CronExecutionPolicy({
+			getDefaultEffort: () => "medium",
+			getDefaultModel: () => "opus",
+			onResult: (result) => {
+				results.push(result);
+			},
+			runAgent: async () => {
+				throw Object.assign(new Error("agent exploded"), {
+					sessionId: "cron-session-error",
+				});
+			},
+		});
+
+		await policy.runScheduledJob(makeJob());
+
+		expect(results).toEqual([
+			{
+				jobName: "test-job",
+				model: "opus",
+				persistResultText: true,
+				sessionId: "cron-session-error",
+				telegramChatId: undefined,
+				text: "[error] agent exploded",
+			},
+		]);
+	});
+
+	test("synthesizes a cron session id when a failed run has none", async () => {
+		const results: Array<{ sessionId?: string }> = [];
+		const policy = new CronExecutionPolicy({
+			getDefaultEffort: () => "medium",
+			getDefaultModel: () => "opus",
+			onResult: (result) => {
+				results.push(result);
+			},
+			runAgent: async () => {
+				throw new Error("agent exploded");
+			},
+		});
+
+		await policy.runScheduledJob(makeJob());
+
+		expect(results[0]?.sessionId).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+		);
 	});
 
 	test("normalizes opus-only effort values through shared model compatibility", async () => {

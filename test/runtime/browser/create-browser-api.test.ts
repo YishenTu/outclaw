@@ -243,6 +243,187 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("lists cron history for a job, newest first, with hasMore paging", async () => {
+		const root = createTempDir("outclaw-browser-cron-history-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		for (let index = 1; index <= 3; index++) {
+			const sdkSessionId = `cron-${index}`;
+			store.upsert({
+				providerId: "claude",
+				sdkSessionId,
+				title: "daily-report",
+				model: "opus",
+				tag: "cron",
+			});
+		}
+		const { Database } = await import("bun:sqlite");
+		const db = new Database(dbPath);
+		for (let index = 1; index <= 3; index++) {
+			db.query(
+				`UPDATE sessions SET last_active = $ts
+				 WHERE agent_id = 'agent-railly' AND sdk_session_id = $id`,
+			).run({ $ts: index * 1000, $id: `cron-${index}` });
+		}
+		db.close();
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			readTranscriptsByAgent: new Map([
+				[
+					"agent-railly",
+					async (sessionId) => [
+						{
+							role: "assistant",
+							content: `result ${sessionId.slice("cron-".length)}`,
+							timestamp: 100,
+						},
+					],
+				],
+			]),
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		const firstPage = await api.listAgentCronHistory("agent-railly", {
+			jobName: "daily-report",
+			limit: 1,
+		});
+		expect(firstPage).toEqual({
+			entries: [
+				{
+					providerId: "claude",
+					sessionId: "cron-3",
+					ranAt: 3000,
+					resultText: "result 3",
+				},
+			],
+			hasMore: true,
+		});
+
+		const secondPage = await api.listAgentCronHistory("agent-railly", {
+			jobName: "daily-report",
+			limit: 3,
+			before: firstPage.entries.at(-1),
+		});
+		expect(secondPage).toEqual({
+			entries: [
+				{
+					providerId: "claude",
+					sessionId: "cron-2",
+					ranAt: 2000,
+					resultText: "result 2",
+				},
+				{
+					providerId: "claude",
+					sessionId: "cron-1",
+					ranAt: 1000,
+					resultText: "result 1",
+				},
+			],
+			hasMore: false,
+		});
+
+		store.close();
+	});
+
+	test("hydrates cron history output from the agent transcript reader without mutating the index", async () => {
+		const root = createTempDir("outclaw-browser-cron-history-hydrate-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		store.upsert({
+			providerId: "claude",
+			sdkSessionId: "cron-empty-index",
+			title: "daily-report",
+			model: "opus",
+			tag: "cron",
+			timestamp: 1000,
+		});
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			readTranscriptsByAgent: new Map([
+				[
+					"agent-railly",
+					async (sessionId) => {
+						expect(sessionId).toBe("cron-empty-index");
+						return [
+							{
+								role: "user",
+								content: "scheduled prompt",
+								timestamp: 1000,
+							},
+							{
+								role: "assistant",
+								content: "Recovered cron output",
+								timestamp: 1001,
+							},
+						];
+					},
+				],
+			]),
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.listAgentCronHistory("agent-railly", {
+				jobName: "daily-report",
+				limit: 1,
+			}),
+		).resolves.toEqual({
+			entries: [
+				{
+					providerId: "claude",
+					sessionId: "cron-empty-index",
+					ranAt: 1000,
+					resultText: "Recovered cron output",
+				},
+			],
+			hasMore: false,
+		});
+		expect(store.listCronRunsByTitle("daily-report", { limit: 1 })).toEqual([
+			{
+				providerId: "claude",
+				sessionId: "cron-empty-index",
+				ranAt: 1000,
+				resultText: "",
+			},
+		]);
+
+		store.close();
+	});
+
 	test("lists pending inbox files and archived inbox files", async () => {
 		const root = createTempDir("outclaw-browser-inbox-");
 		cleanupPaths.push(root);

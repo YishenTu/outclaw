@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
 	fetchAgentCron,
+	fetchAgentCronHistory,
 	fetchAgentFile,
 	fetchAgentTree,
 	fetchConfigFile,
@@ -115,6 +116,22 @@ describe("browser API client integration", () => {
 						status: "scheduled",
 					},
 				];
+			},
+			listAgentCronHistory: async (agentId, params) => {
+				calls.push(
+					`cron:history:${agentId}:${params.jobName}:${params.limit}:${params.before?.ranAt ?? "none"}:${params.before?.providerId ?? "none"}:${params.before?.sessionId ?? "none"}`,
+				);
+				return {
+					entries: [
+						{
+							providerId: "mock",
+							sessionId: "cron-session-1",
+							ranAt: 100,
+							resultText: "ok",
+						},
+					],
+					hasMore: false,
+				};
 			},
 			listAgentTree: async (agentId) => {
 				calls.push(`tree:${agentId}`);
@@ -262,6 +279,27 @@ describe("browser API client integration", () => {
 			{ enabled: true, name: "daily", path: "cron/daily.yaml" },
 		]);
 		await expect(
+			fetchAgentCronHistory("agent-railly", {
+				jobName: "daily",
+				limit: 3,
+				before: {
+					ranAt: 200,
+					providerId: "mock",
+					sessionId: "cron-session-2",
+				},
+			}),
+		).resolves.toEqual({
+			entries: [
+				{
+					providerId: "mock",
+					sessionId: "cron-session-1",
+					ranAt: 100,
+					resultText: "ok",
+				},
+			],
+			hasMore: false,
+		});
+		await expect(
 			updateAgentCronEnabled("agent-railly", "cron/daily.yaml", false),
 		).resolves.toMatchObject({
 			enabled: false,
@@ -298,6 +336,7 @@ describe("browser API client integration", () => {
 		expect(calls).toEqual([
 			"tree:agent-railly",
 			"cron:list:agent-railly",
+			"cron:history:agent-railly:daily:3:200:mock:cron-session-2",
 			"cron:set:agent-railly:cron/daily.yaml:false",
 			"file:agent-railly:notes/today.md",
 			"diff:src/index.ts",

@@ -9,6 +9,16 @@ export interface CronAgentRunResult {
 	text: string;
 }
 
+export class CronAgentRunError extends Error {
+	constructor(
+		message: string,
+		readonly sessionId: string,
+	) {
+		super(message);
+		this.name = "CronAgentRunError";
+	}
+}
+
 interface RunCronAgentOptions {
 	facade: Facade;
 	promptHomeDir: string;
@@ -51,7 +61,10 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 		});
 
 		if (runError) {
-			throw runError;
+			throw new CronAgentRunError(
+				runError.message,
+				completedSessionId ?? sessionId,
+			);
 		}
 
 		return {

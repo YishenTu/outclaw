@@ -1,22 +1,43 @@
-import { Clock3 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isCronJobFile } from "../../../../common/cron-job-file.ts";
 import type {
 	BrowserCronEntry,
+	BrowserCronHistoryCursor,
+	BrowserCronRunEntry,
 	BrowserTreeEntry,
 } from "../../../../common/protocol.ts";
-import { fetchAgentCron, updateAgentCronEnabled } from "../../lib/api.ts";
+import {
+	fetchAgentCron,
+	fetchAgentCronHistory,
+	updateAgentCronEnabled,
+} from "../../lib/api.ts";
 import { useRightPanelRefreshStore } from "../../stores/right-panel-refresh.ts";
+import { MarkdownContent } from "../chat/markdown-content.tsx";
 
 const CRON_TABLE_COLUMNS =
 	"grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_auto]" as const;
 const CRON_ROW_COLUMNS = "grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)]" as const;
+const CRON_HISTORY_LOAD_MORE_LIMIT = 3;
 
 interface CronPanelProps {
 	agentId: string;
 	treeEntries?: BrowserTreeEntry[];
-	onOpenFile: (params: { agentId: string; path: string }) => void;
 }
+
+interface CronHistoryState {
+	entries: BrowserCronRunEntry[];
+	hasMore: boolean;
+	loading: boolean;
+	error: string | null;
+}
+
+const EMPTY_HISTORY: CronHistoryState = {
+	entries: [],
+	hasMore: false,
+	loading: false,
+	error: null,
+};
 
 export function CronPanelHeader() {
 	return (
@@ -268,11 +289,7 @@ export function buildFallbackCronEntries(
 	);
 }
 
-export function CronPanel({
-	agentId,
-	treeEntries,
-	onOpenFile,
-}: CronPanelProps) {
+export function CronPanel({ agentId, treeEntries }: CronPanelProps) {
 	const cronRevision = useRightPanelRefreshStore(
 		(state) => state.cronRevisionByAgent[agentId] ?? 0,
 	);
@@ -281,10 +298,100 @@ export function CronPanel({
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [mutationError, setMutationError] = useState<string | null>(null);
+	const [expandedPath, setExpandedPath] = useState<string | null>(null);
+	const [historyByName, setHistoryByName] = useState<
+		Record<string, CronHistoryState>
+	>({});
+	const historyAgentRef = useRef(agentId);
+	historyAgentRef.current = agentId;
+	const lastHistoryRefreshRevisionRef = useRef(cronRevision);
 	const fallbackEntries = useMemo(
 		() => buildFallbackCronEntries(treeEntries),
 		[treeEntries],
 	);
+	const visibleEntries = useMemo(
+		() =>
+			(entries.length > 0 ? entries : error ? fallbackEntries : entries).filter(
+				(entry) => isCronJobFile(entry.path),
+			),
+		[entries, error, fallbackEntries],
+	);
+
+	const loadHistoryPage = useCallback(
+		(jobName: string, before?: BrowserCronHistoryCursor) => {
+			const requestAgentId = agentId;
+			const limit = before === undefined ? 1 : CRON_HISTORY_LOAD_MORE_LIMIT;
+			setHistoryByName((current) => ({
+				...current,
+				[jobName]: {
+					...(current[jobName] ?? EMPTY_HISTORY),
+					loading: true,
+					error: null,
+				},
+			}));
+			void fetchAgentCronHistory(agentId, { jobName, limit, before })
+				.then((response) => {
+					if (historyAgentRef.current !== requestAgentId) {
+						return;
+					}
+					setHistoryByName((current) => {
+						const previous = current[jobName] ?? EMPTY_HISTORY;
+						const merged = mergeCronHistoryEntries(
+							previous.entries,
+							response.entries,
+						);
+						return {
+							...current,
+							[jobName]: {
+								entries: merged,
+								hasMore: response.hasMore,
+								loading: false,
+								error: null,
+							},
+						};
+					});
+				})
+				.catch((nextError) => {
+					if (historyAgentRef.current !== requestAgentId) {
+						return;
+					}
+					setHistoryByName((current) => ({
+						...current,
+						[jobName]: {
+							...(current[jobName] ?? EMPTY_HISTORY),
+							loading: false,
+							error:
+								nextError instanceof Error
+									? nextError.message
+									: "Failed to load cron history",
+						},
+					}));
+				});
+		},
+		[agentId],
+	);
+
+	const handleToggleExpand = useCallback(
+		(entry: BrowserCronEntry) => {
+			setExpandedPath((current) => {
+				if (current === entry.path) {
+					return null;
+				}
+				if (!historyByName[entry.name]) {
+					loadHistoryPage(entry.name);
+				}
+				return entry.path;
+			});
+		},
+		[historyByName, loadHistoryPage],
+	);
+
+	useEffect(() => {
+		historyAgentRef.current = agentId;
+		setExpandedPath(null);
+		setHistoryByName({});
+		setPendingPaths({});
+	}, [agentId]);
 
 	useEffect(() => {
 		void cronRevision;
@@ -321,6 +428,23 @@ export function CronPanel({
 		};
 	}, [agentId, cronRevision, fallbackEntries]);
 
+	useEffect(() => {
+		if (lastHistoryRefreshRevisionRef.current === cronRevision) {
+			return;
+		}
+		lastHistoryRefreshRevisionRef.current = cronRevision;
+		if (!expandedPath) {
+			return;
+		}
+		const expandedEntry = visibleEntries.find(
+			(entry) => entry.path === expandedPath,
+		);
+		if (!expandedEntry) {
+			return;
+		}
+		loadHistoryPage(expandedEntry.name);
+	}, [cronRevision, expandedPath, loadHistoryPage, visibleEntries]);
+
 	if (loading) {
 		return (
 			<div className="px-4 py-4 text-sm text-dark-500">Loading cron jobs…</div>
@@ -330,10 +454,6 @@ export function CronPanel({
 	if (error && fallbackEntries.length === 0) {
 		return <div className="px-4 py-4 text-sm text-danger">{error}</div>;
 	}
-
-	const visibleEntries = (
-		entries.length > 0 ? entries : error ? fallbackEntries : entries
-	).filter((entry) => isCronJobFile(entry.path));
 
 	if (visibleEntries.length === 0) {
 		return (
@@ -359,15 +479,23 @@ export function CronPanel({
 						className="border-t border-dark-900 first:border-t-0"
 					>
 						<div
-							className={`grid ${CRON_TABLE_COLUMNS} items-center gap-3 rounded px-2 py-2.5 text-sm text-dark-400 transition-colors hover:bg-dark-900 hover:text-dark-200`}
+							className={`grid ${CRON_TABLE_COLUMNS} items-center gap-3 rounded px-2 py-2.5 text-sm text-dark-400 transition-colors hover:text-dark-200`}
 						>
 							<button
 								type="button"
-								onClick={() => onOpenFile({ agentId, path: entry.path })}
+								onClick={() => handleToggleExpand(entry)}
 								className={`col-span-2 grid min-w-0 ${CRON_ROW_COLUMNS} items-center gap-3 text-left`}
+								aria-expanded={expandedPath === entry.path}
 							>
 								<div className="flex min-w-0 items-center gap-2 text-dark-200">
-									<Clock3 size={14} className="shrink-0 text-dark-500" />
+									{expandedPath === entry.path ? (
+										<ChevronDown size={14} className="shrink-0 text-dark-500" />
+									) : (
+										<ChevronRight
+											size={14}
+											className="shrink-0 text-dark-500"
+										/>
+									)}
 									<span className="truncate">{entry.name}</span>
 								</div>
 								<div className="truncate text-xs text-dark-500">
@@ -437,9 +565,219 @@ export function CronPanel({
 						{entry.error ? (
 							<div className="px-2 pb-2 text-xs text-danger">{entry.error}</div>
 						) : null}
+						{expandedPath === entry.path ? (
+							<CronHistoryList
+								history={historyByName[entry.name] ?? EMPTY_HISTORY}
+								onLoadMore={() => {
+									const oldest = historyByName[entry.name]?.entries.at(-1);
+									loadHistoryPage(entry.name, oldest);
+								}}
+							/>
+						) : null}
 					</div>
 				))}
 			</div>
 		</div>
 	);
+}
+
+export function CronHistoryList({
+	history,
+	onLoadMore,
+}: {
+	history: CronHistoryState;
+	onLoadMore: () => void;
+}) {
+	const initialFirstRun = history.entries.at(0);
+	const initialFirstRunKey = initialFirstRun
+		? getCronRunKey(initialFirstRun)
+		: null;
+	const autoExpandedFirstRunKeyRef = useRef<string | null>(initialFirstRunKey);
+	const [expandedRunKeys, setExpandedRunKeys] = useState<Set<string>>(
+		() => new Set(initialFirstRunKey ? [initialFirstRunKey] : []),
+	);
+
+	useEffect(() => {
+		setExpandedRunKeys((current) => {
+			const next = reconcileCronHistoryExpansion(
+				{
+					autoExpandedFirstKey: autoExpandedFirstRunKeyRef.current,
+					expandedKeys: [...current],
+				},
+				history.entries,
+			);
+			autoExpandedFirstRunKeyRef.current = next.autoExpandedFirstKey;
+			if (sameStringSet(current, next.expandedKeys)) {
+				return current;
+			}
+			return new Set(next.expandedKeys);
+		});
+	}, [history.entries]);
+
+	const handleToggleRun = useCallback((entry: BrowserCronRunEntry) => {
+		const key = getCronRunKey(entry);
+		setExpandedRunKeys((current) => {
+			const next = new Set(current);
+			if (next.has(key)) {
+				next.delete(key);
+			} else {
+				next.add(key);
+			}
+			return next;
+		});
+	}, []);
+
+	if (history.loading && history.entries.length === 0) {
+		return (
+			<div className="px-2 pb-3 text-xs text-dark-500">Loading history…</div>
+		);
+	}
+
+	if (history.error && history.entries.length === 0) {
+		return <div className="px-2 pb-3 text-xs text-danger">{history.error}</div>;
+	}
+
+	if (history.entries.length === 0) {
+		return <div className="px-2 pb-3 text-xs text-dark-500">No runs yet.</div>;
+	}
+
+	return (
+		<div className="space-y-2 px-2 pb-3">
+			{history.entries.map((entry) => {
+				const key = getCronRunKey(entry);
+				const isExpanded = expandedRunKeys.has(key);
+				const timestamp = formatHistoryTimestamp(entry.ranAt);
+				return (
+					<div
+						key={key}
+						className="rounded border border-dark-800 bg-dark-950 px-3 py-2"
+					>
+						<button
+							type="button"
+							onClick={() => handleToggleRun(entry)}
+							aria-expanded={isExpanded}
+							aria-label={`${isExpanded ? "Collapse" : "Expand"} cron run ${timestamp}`}
+							className="flex w-full items-center gap-2 text-left"
+						>
+							{isExpanded ? (
+								<ChevronDown size={12} className="shrink-0 text-dark-500" />
+							) : (
+								<ChevronRight size={12} className="shrink-0 text-dark-500" />
+							)}
+							<span className="font-mono-ui text-[11px] uppercase tracking-[0.14em] text-dark-500">
+								{timestamp}
+							</span>
+						</button>
+						{isExpanded ? (
+							<div className="mt-2 pl-5">
+								{entry.resultText.trim() === "" ? (
+									<div className="whitespace-pre-wrap break-words font-mono-ui text-xs text-dark-400">
+										(no output)
+									</div>
+								) : (
+									<MarkdownContent content={entry.resultText} />
+								)}
+							</div>
+						) : null}
+					</div>
+				);
+			})}
+			{history.error ? (
+				<div className="text-xs text-danger">{history.error}</div>
+			) : null}
+			{history.hasMore ? (
+				<button
+					type="button"
+					onClick={onLoadMore}
+					disabled={history.loading}
+					className="w-full rounded border border-dark-800 px-2 py-1.5 text-xs text-dark-300 hover:bg-dark-900 disabled:opacity-50"
+				>
+					{history.loading ? "Loading…" : "Load more"}
+				</button>
+			) : null}
+		</div>
+	);
+}
+
+interface CronHistoryExpansionState {
+	autoExpandedFirstKey: string | null;
+	expandedKeys: string[];
+}
+
+export function reconcileCronHistoryExpansion(
+	state: CronHistoryExpansionState,
+	entries: BrowserCronRunEntry[],
+): CronHistoryExpansionState {
+	const entryKeys = entries.map(getCronRunKey);
+	const validKeys = new Set(entryKeys);
+	const expandedKeys = state.expandedKeys.filter((key) => validKeys.has(key));
+	const firstKey = entryKeys[0] ?? null;
+
+	if (firstKey && state.autoExpandedFirstKey !== firstKey) {
+		expandedKeys.push(firstKey);
+	}
+
+	return {
+		autoExpandedFirstKey: firstKey,
+		expandedKeys: Array.from(new Set(expandedKeys)),
+	};
+}
+
+export function mergeCronHistoryEntries(
+	currentEntries: BrowserCronRunEntry[],
+	incomingEntries: BrowserCronRunEntry[],
+): BrowserCronRunEntry[] {
+	const seen = new Set<string>();
+	const result: BrowserCronRunEntry[] = [];
+	for (const entry of [...currentEntries, ...incomingEntries]) {
+		const key = getCronRunKey(entry);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		result.push(entry);
+	}
+	return result.sort(compareCronRunEntries);
+}
+
+function compareCronRunEntries(
+	left: BrowserCronRunEntry,
+	right: BrowserCronRunEntry,
+): number {
+	if (left.ranAt !== right.ranAt) {
+		return right.ranAt - left.ranAt;
+	}
+	const providerOrder = right.providerId.localeCompare(left.providerId);
+	if (providerOrder !== 0) {
+		return providerOrder;
+	}
+	return right.sessionId.localeCompare(left.sessionId);
+}
+
+function sameStringSet(left: Set<string>, right: string[]): boolean {
+	if (left.size !== right.length) {
+		return false;
+	}
+	return right.every((value) => left.has(value));
+}
+
+function getCronRunKey(entry: BrowserCronRunEntry): string {
+	return `${entry.providerId}:${entry.sessionId}`;
+}
+
+export function formatHistoryTimestamp(timestamp: number): string {
+	const date = new Date(timestamp);
+	if (Number.isNaN(date.getTime())) {
+		return String(timestamp);
+	}
+	const time = date.toLocaleTimeString(undefined, {
+		hour: "numeric",
+		minute: "2-digit",
+	});
+	const day = date.toLocaleDateString(undefined, {
+		month: "short",
+		day: "numeric",
+	});
+	const year = date.toLocaleDateString(undefined, {
+		year: "numeric",
+	});
+	return `${time}, ${day}, ${year}`;
 }

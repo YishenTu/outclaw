@@ -2,6 +2,8 @@ import type {
 	BrowserAgentsResponse,
 	BrowserConfigResponse,
 	BrowserCronEntry,
+	BrowserCronHistoryCursor,
+	BrowserCronHistoryResponse,
 	BrowserFileResponse,
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
@@ -64,6 +66,28 @@ export async function fetchAgentCron(
 	return parseJsonResponse(
 		await fetch(`/api/agents/${encodeURIComponent(agentId)}/cron`),
 	);
+}
+
+export async function fetchAgentCronHistory(
+	agentId: string,
+	params: {
+		jobName: string;
+		limit: number;
+		before?: BrowserCronHistoryCursor;
+	},
+): Promise<BrowserCronHistoryResponse> {
+	const url = new URL(
+		`/api/agents/${encodeURIComponent(agentId)}/cron/history`,
+		window.location.origin,
+	);
+	url.searchParams.set("name", params.jobName);
+	url.searchParams.set("limit", String(params.limit));
+	if (params.before) {
+		url.searchParams.set("beforeRanAt", String(params.before.ranAt));
+		url.searchParams.set("beforeProviderId", params.before.providerId);
+		url.searchParams.set("beforeSessionId", params.before.sessionId);
+	}
+	return parseJsonResponse(await fetch(url));
 }
 
 export async function fetchAgentInbox(

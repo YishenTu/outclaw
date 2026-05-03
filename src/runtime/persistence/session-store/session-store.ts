@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type {
+	BrowserCronHistoryCursor,
 	FrontendNotice,
 	TranscriptTurn,
 	UsageInfo,
@@ -69,8 +70,9 @@ export class SessionStore {
 		model: string;
 		source?: string;
 		tag?: SessionTag;
+		timestamp?: number;
 	}) {
-		const now = Date.now();
+		const now = params.timestamp ?? Date.now();
 		this.db
 			.query(
 				`INSERT INTO sessions (
@@ -221,6 +223,79 @@ export class SessionStore {
 				)
 				.get(params) as Parameters<typeof mapSessionRow>[0],
 		);
+	}
+
+	listCronRunsByTitle(
+		title: string,
+		options: { limit: number; before?: BrowserCronHistoryCursor },
+	): Array<{
+		providerId: string;
+		sessionId: string;
+		ranAt: number;
+		resultText: string;
+	}> {
+		const conditions = [
+			"s.agent_id = $agentId",
+			"s.tag = 'cron'",
+			"s.title = $title",
+		];
+		const params: Record<string, string | number> = {
+			$agentId: this.agentId,
+			$title: title,
+			$limit: options.limit,
+		};
+		if (options.before) {
+			conditions.push(
+				`(
+					s.last_active < $beforeRanAt
+					OR (
+						s.last_active = $beforeRanAt
+						AND s.provider_id < $beforeProviderId
+					)
+					OR (
+						s.last_active = $beforeRanAt
+						AND s.provider_id = $beforeProviderId
+						AND s.sdk_session_id < $beforeSessionId
+					)
+				)`,
+			);
+			params.$beforeRanAt = options.before.ranAt;
+			params.$beforeProviderId = options.before.providerId;
+			params.$beforeSessionId = options.before.sessionId;
+		}
+
+		return this.withRecoveredConnection(() => {
+			const sessionRows = this.db
+				.query(
+					`SELECT
+						s.sdk_session_id,
+						s.provider_id,
+						s.last_active
+					 FROM sessions s
+					 WHERE ${conditions.join(" AND ")}
+					 ORDER BY s.last_active DESC, s.provider_id DESC, s.sdk_session_id DESC
+					 LIMIT $limit`,
+				)
+				.all(params) as Array<{
+				sdk_session_id: string;
+				provider_id: string;
+				last_active: number;
+			}>;
+
+			if (sessionRows.length === 0) {
+				return [];
+			}
+
+			return sessionRows.map((row) => ({
+				providerId: row.provider_id,
+				sessionId: row.sdk_session_id,
+				ranAt: row.last_active,
+				resultText: this.readIndexedAssistantText(
+					row.provider_id,
+					row.sdk_session_id,
+				),
+			}));
+		});
 	}
 
 	list(limit = 20, tag?: SessionTag, providerId?: string): SessionRow[] {
@@ -379,6 +454,31 @@ export class SessionStore {
 
 	close() {
 		closeSqliteDatabase(this.db, this.dbFileKey);
+	}
+
+	private readIndexedAssistantText(
+		providerId: string,
+		sdkSessionId: string,
+	): string {
+		return (
+			this.db
+				.query(
+					`SELECT body_text
+					 FROM transcript_turns
+					 WHERE agent_id = $agentId
+					   AND provider_id = $providerId
+					   AND sdk_session_id = $id
+					   AND role = 'assistant'
+					 ORDER BY turn_index ASC`,
+				)
+				.all({
+					$agentId: this.agentId,
+					$providerId: providerId,
+					$id: sdkSessionId,
+				}) as Array<{ body_text: string }>
+		)
+			.map((turn) => turn.body_text)
+			.join("\n");
 	}
 
 	private withRecoveredConnection<T>(operation: () => T): T {

@@ -798,7 +798,14 @@ describe("browser runtime server events", () => {
 			options,
 		);
 		handleBrowserServerEvent(
-			{ type: "cron_result", jobName: "daily", text: "ok" },
+			{
+				type: "cron_result",
+				jobName: "daily",
+				providerId: "mock",
+				text: "ok",
+				sessionId: "cron-session-1",
+				ranAt: 0,
+			},
 			options,
 		);
 		handleBrowserServerEvent({ type: "ask_response", text: "ok" }, options);

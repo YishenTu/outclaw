@@ -32,6 +32,10 @@ export class SessionService {
 		return this.state.sessionId;
 	}
 
+	get providerId(): string {
+		return this.state.providerId;
+	}
+
 	get lastUserTarget(): LastUserTarget | undefined {
 		return this.state.getLastUserTarget();
 	}
@@ -206,14 +210,30 @@ export class SessionService {
 		);
 	}
 
-	recordCronRun(params: { sessionId: string; jobName: string; model: string }) {
+	recordCronRun(params: {
+		sessionId: string;
+		jobName: string;
+		model: string;
+		ranAt: number;
+		resultText?: string;
+	}) {
 		this.store?.upsert({
 			providerId: this.state.providerId,
 			sdkSessionId: params.sessionId,
 			title: params.jobName,
 			model: params.model,
 			tag: "cron",
+			timestamp: params.ranAt,
 		});
+		if (params.resultText !== undefined && params.resultText !== "") {
+			this.store?.replaceTranscript(this.state.providerId, params.sessionId, [
+				{
+					role: "assistant",
+					content: params.resultText,
+					timestamp: params.ranAt,
+				},
+			]);
+		}
 	}
 
 	async refreshTranscript(

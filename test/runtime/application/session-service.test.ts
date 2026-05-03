@@ -377,6 +377,7 @@ describe("SessionService", () => {
 			sessionId: "cron-session-1",
 			jobName: "daily-summary",
 			model: "haiku",
+			ranAt: 1234,
 		});
 
 		expect(store.get(PROVIDER_ID, "cron-session-1")).toMatchObject({
@@ -385,6 +386,39 @@ describe("SessionService", () => {
 			tag: "cron",
 		});
 		expect(store.getActiveSessionId(PROVIDER_ID)).toBe("sdk-main");
+		expect(store.listCronRunsByTitle("daily-summary", { limit: 1 })).toEqual([
+			{
+				providerId: PROVIDER_ID,
+				sessionId: "cron-session-1",
+				ranAt: 1234,
+				resultText: "",
+			},
+		]);
+
+		store.close();
+	});
+
+	test("recordCronRun can persist fallback result text for failed cron runs", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		sessions.recordCronRun({
+			sessionId: "cron-session-error",
+			jobName: "daily-summary",
+			model: "haiku",
+			ranAt: 1234,
+			resultText: "[error] agent exploded",
+		});
+
+		expect(store.listCronRunsByTitle("daily-summary", { limit: 1 })).toEqual([
+			{
+				providerId: PROVIDER_ID,
+				sessionId: "cron-session-error",
+				ranAt: 1234,
+				resultText: "[error] agent exploded",
+			},
+		]);
 
 		store.close();
 	});

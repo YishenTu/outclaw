@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
 	type EffortLevel,
 	resolveCompatibleEffort,
@@ -13,6 +14,7 @@ export interface CronAgentRunResult {
 export interface CronExecutionResult {
 	jobName: string;
 	model: string;
+	persistResultText?: boolean;
 	sessionId?: string;
 	suppressDelivery?: boolean;
 	telegramChatId?: number;
@@ -101,7 +103,7 @@ export class CronExecutionPolicy {
 					sessionId: runResult.sessionId,
 					suppressDelivery: true,
 					telegramChatId: job.telegramChatId,
-					text: "",
+					text: runResult.text,
 				});
 				return;
 			}
@@ -117,11 +119,24 @@ export class CronExecutionPolicy {
 			await this.options.onResult({
 				jobName: job.config.name,
 				model,
+				persistResultText: true,
+				sessionId: extractErrorSessionId(err) ?? randomUUID(),
 				telegramChatId: job.telegramChatId,
 				text: `[error] ${extractError(err)}`,
 			});
 		}
 	}
+}
+
+function extractErrorSessionId(err: unknown): string | undefined {
+	if (!err || typeof err !== "object" || !("sessionId" in err)) {
+		return undefined;
+	}
+
+	const sessionId = (err as { sessionId?: unknown }).sessionId;
+	return typeof sessionId === "string" && sessionId !== ""
+		? sessionId
+		: undefined;
 }
 
 function normalizeRunResult(

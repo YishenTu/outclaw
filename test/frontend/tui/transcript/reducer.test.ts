@@ -255,7 +255,9 @@ describe("mapEventToActions", () => {
 			mapEventToActions({
 				type: "cron_result",
 				jobName: "daily-summary",
+				providerId: "mock",
 				text: "All clear",
+				ranAt: 0,
 			}),
 		).toEqual([
 			{ type: "push", role: "info", text: "[cron] daily-summary" },
