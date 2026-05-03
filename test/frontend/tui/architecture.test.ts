@@ -17,11 +17,14 @@ describe("TUI architecture", () => {
 	test("keeps transcript state in the transcript boundary", () => {
 		expect(initialTuiState()).toEqual({
 			messages: [],
+			activePrompt: undefined,
 			streaming: "",
 			streamingThinking: "",
 			heartbeatPending: false,
 			heartbeatStreaming: "",
 			heartbeatStreamingThinking: "",
+			pendingPromptStart: false,
+			queuedPrompts: [],
 			running: false,
 			compacting: false,
 			nextId: 1,
@@ -35,11 +38,14 @@ describe("TUI architecture", () => {
 		expect(actions).toEqual([{ type: "append_streaming", text: "hello" }]);
 		expect(applyAction(initialTuiState(), actions[0] as TuiAction)).toEqual({
 			messages: [],
+			activePrompt: undefined,
 			streaming: "hello",
 			streamingThinking: "",
 			heartbeatPending: false,
 			heartbeatStreaming: "",
 			heartbeatStreamingThinking: "",
+			pendingPromptStart: false,
+			queuedPrompts: [],
 			running: true,
 			compacting: false,
 			nextId: 1,

@@ -1,3 +1,4 @@
+import { canonicalizePromptSlashCommand } from "../../../common/commands.ts";
 import { HEARTBEAT_DISPLAY_LABEL } from "../../../common/heartbeat-prompt.ts";
 import type {
 	DisplaySystemMessage,
@@ -33,10 +34,7 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 					text: formatStatus(event),
 				},
 			];
-		case "user_prompt":
-			if (event.source === "tui") {
-				return [{ type: "noop" }];
-			}
+		case "user_prompt": {
 			if (event.source === "heartbeat") {
 				return [
 					{
@@ -57,20 +55,34 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 					},
 				];
 			}
+			const text = formatLivePrompt(
+				event.source,
+				event.prompt,
+				event.images,
+			).trimEnd();
+			const replyText = event.replyContext
+				? formatReplyText(event.replyContext)
+				: undefined;
+			if (event.source === "tui") {
+				return [
+					{
+						type: "confirm_tui_prompt",
+						text,
+						replyText,
+						compacting:
+							canonicalizePromptSlashCommand(event.prompt) === "/compact",
+					},
+				];
+			}
 			return [
 				{
 					type: "push",
 					role: "user",
-					text: formatLivePrompt(
-						event.source,
-						event.prompt,
-						event.images,
-					).trimEnd(),
-					replyText: event.replyContext
-						? formatReplyText(event.replyContext)
-						: undefined,
+					text,
+					replyText,
 				},
 			];
+		}
 		case "image":
 			return [{ type: "push", role: "info", text: `image: ${event.path}` }];
 		case "cron_result":

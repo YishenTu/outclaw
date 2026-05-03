@@ -506,6 +506,118 @@ describe("useRuntimeSession", () => {
 		}
 	});
 
+	test("keeps queued prompts pending until the runtime confirms the TUI prompt", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		let latest: Snapshot | undefined;
+		const stdout = createOutputStream();
+		const stderr = createOutputStream();
+		const stdin = new PassThrough() as unknown as NodeJS.ReadStream & {
+			isTTY: boolean;
+		};
+		stdin.isTTY = false;
+
+		const app = render(
+			<SessionObserver
+				url="ws://localhost:4100"
+				onSnapshot={(snapshot) => {
+					latest = snapshot;
+				}}
+			/>,
+			{
+				exitOnCtrlC: false,
+				patchConsole: false,
+				stderr,
+				stdin,
+				stdout,
+			},
+		);
+
+		try {
+			await waitFor(
+				() => FakeWebSocket.instances.length === 1,
+				"initial socket",
+			);
+			const socket = FakeWebSocket.instances[0] as FakeWebSocket;
+			socket.dispatch("open");
+			await waitFor(() => latest?.status === "connected", "connected status");
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "text",
+					text: "current response",
+				}),
+			});
+			await waitFor(
+				() => latest?.tuiState.streaming === "current response",
+				"streaming response",
+			);
+
+			expect(latest?.runPrompt("queued follow-up")).toBe(true);
+			await waitFor(
+				() => latest?.tuiState.queuedPrompts[0]?.text === "queued follow-up",
+				"queued prompt",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "done",
+					sessionId: "sdk-1",
+					durationMs: 1,
+				}),
+			});
+			await waitFor(
+				() =>
+					latest?.tuiState.messages.some(
+						(message) =>
+							message.role === "assistant" &&
+							message.text === "current response",
+					) === true,
+				"committed current response",
+			);
+			expect(latest?.tuiState.queuedPrompts).toEqual([
+				{ id: 1, text: "queued follow-up" },
+			]);
+			expect(
+				latest?.tuiState.messages.some(
+					(message) =>
+						message.role === "user" && message.text === "queued follow-up",
+				),
+			).toBe(false);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "runtime_status",
+					model: "sonnet",
+					effort: "think",
+					running: false,
+				}),
+			});
+			await flushUpdates();
+			expect(latest?.tuiState.queuedPrompts).toEqual([
+				{ id: 1, text: "queued follow-up" },
+			]);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "user_prompt",
+					source: "tui",
+					prompt: "queued follow-up",
+				}),
+			});
+			await waitFor(
+				() =>
+					latest?.tuiState.queuedPrompts.length === 0 &&
+					latest?.tuiState.activePrompt?.role === "user" &&
+					latest?.tuiState.activePrompt?.text === "queued follow-up",
+				"confirmed queued prompt",
+			);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("surfaces disconnected and send errors for commands and prompts", async () => {
 		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 

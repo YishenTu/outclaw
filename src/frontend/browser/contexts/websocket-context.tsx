@@ -39,7 +39,10 @@ import { createSidebarRefreshCoordinator } from "../sidebar/sidebar-refresh.ts";
 import { createSidebarRefreshGate } from "../sidebar/sidebar-refresh-gate.ts";
 import type { AgentEntry } from "../stores/agents.ts";
 import { useAgentsStore } from "../stores/agents.ts";
-import { useChatStore } from "../stores/chat.ts";
+import {
+	shouldQueuePromptInChatSession,
+	useChatStore,
+} from "../stores/chat.ts";
 import { useRuntimeStore } from "../stores/runtime.ts";
 import {
 	type SessionEntry,
@@ -117,6 +120,20 @@ function getCurrentSessionKey(agentId: string): string {
 	});
 }
 
+function shouldQueuePromptForSession(sessionKey: string): boolean {
+	const session = useChatStore.getState().getSession(sessionKey);
+	if (shouldQueuePromptInChatSession(session)) {
+		return true;
+	}
+
+	const activeAgentId = getActiveAgentId();
+	return (
+		activeAgentId !== null &&
+		useRuntimeStore.getState().running &&
+		getCurrentSessionKey(activeAgentId) === sessionKey
+	);
+}
+
 export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 	const wsRef = useRef<WebSocket | null>(null);
 	const sidebarRefreshGateRef = useRef(createSidebarRefreshGate());
@@ -177,6 +194,9 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				pushUserMessage: (sessionKey, message) => {
 					useChatStore.getState().pushMessage(sessionKey, message);
 				},
+				queueUserMessage: (sessionKey, message) => {
+					useChatStore.getState().queuePrompt(sessionKey, message);
+				},
 				sendCommand,
 				sendPrompt: (ws, prompt) => {
 					sendRuntimePrompt(ws, prompt);
@@ -187,8 +207,9 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				setSessionError: (sessionKey, error) => {
 					useChatStore.getState().setError(sessionKey, error);
 				},
-				startAssistantTurn: (sessionKey) => {
-					useChatStore.getState().startAssistantTurn(sessionKey);
+				shouldQueuePrompt: shouldQueuePromptForSession,
+				startAssistantTurn: (sessionKey, options) => {
+					useChatStore.getState().startAssistantTurn(sessionKey, options);
 				},
 			}),
 		[sendCommand],
@@ -212,6 +233,9 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				pushMessage: (sessionKey, message) => {
 					useChatStore.getState().pushMessage(sessionKey, message);
 				},
+				queueMessage: (sessionKey, message) => {
+					useChatStore.getState().queuePrompt(sessionKey, message);
+				},
 				sendCommand,
 				sendPrompt: (ws, prompt, uploadedImages) => {
 					sendRuntimePrompt(ws, prompt, undefined, uploadedImages);
@@ -222,8 +246,9 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				setSessionError: (sessionKey, error) => {
 					useChatStore.getState().setError(sessionKey, error);
 				},
-				startAssistantTurn: (sessionKey) => {
-					useChatStore.getState().startAssistantTurn(sessionKey);
+				shouldQueuePrompt: shouldQueuePromptForSession,
+				startAssistantTurn: (sessionKey, options) => {
+					useChatStore.getState().startAssistantTurn(sessionKey, options);
 				},
 				uploadImages: uploadPromptImages,
 			});

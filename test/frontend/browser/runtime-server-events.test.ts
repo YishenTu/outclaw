@@ -497,6 +497,69 @@ describe("browser runtime server events", () => {
 		]);
 	});
 
+	test("confirms queued browser prompts when the runtime starts the queued turn", () => {
+		setSystemTime(new Date("2026-04-27T00:00:00.000Z"));
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+			sessionId: "sdk-active",
+		});
+		const { options } = createHandlerOptions();
+		const sessionKey = "agent-railly:mock:sdk-active";
+
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "current prompt",
+		});
+		useChatStore.getState().startAssistantTurn(sessionKey);
+		useChatStore.getState().appendText(sessionKey, "current response");
+		useChatStore.getState().queuePrompt(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "queued follow-up",
+		});
+		useChatStore.getState().finalizeMessage(sessionKey);
+
+		expect(
+			useChatStore.getState().getSession(sessionKey)?.queuedPrompts,
+		).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "queued follow-up",
+			},
+		]);
+
+		handleBrowserServerEvent(
+			{
+				type: "user_prompt",
+				source: "browser",
+				prompt: "queued follow-up",
+				sessionId: "sdk-active",
+			},
+			options,
+		);
+
+		const session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.queuedPrompts).toEqual([]);
+		expect(session?.messages.at(-1)).toMatchObject({
+			kind: "chat",
+			role: "user",
+			content: "queued follow-up",
+		});
+		expect(session?.isStreaming).toBe(true);
+		expect(session?.isThinking).toBe(true);
+	});
+
 	test("adopts a pending live-run session when completion reports a new sdk session", () => {
 		setSystemTime(new Date("2026-04-27T00:00:00.000Z"));
 		useAgentsStore

@@ -98,7 +98,7 @@ export class PromptDispatcher {
 				task.source === "tui" ||
 				task.source === "browser")
 		) {
-			this.options.clients.sendMany(this.listObservers(task), {
+			this.options.clients.sendMany(this.listPromptStartObservers(task), {
 				type: "user_prompt",
 				prompt: task.prompt,
 				images: toDisplayImages(task.images),
@@ -240,6 +240,14 @@ export class PromptDispatcher {
 		}
 
 		return [];
+	}
+
+	private listPromptStartObservers(task: PromptExecution) {
+		const observers = this.listObservers(task);
+		if ((task.source === "browser" || task.source === "tui") && task.sender) {
+			return [task.sender, ...observers];
+		}
+		return observers;
 	}
 }
 

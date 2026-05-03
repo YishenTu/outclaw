@@ -73,7 +73,18 @@ export function applyOptimisticPromptState(
 		...withCompacting,
 		running: true,
 		compacting: compacting || withCompacting.compacting,
+		pendingPromptStart: true,
 	};
+}
+
+export function queueOptimisticPromptState(
+	previous: TuiState,
+	prompt: string,
+): TuiState {
+	return applyAction(previous, {
+		type: "queue_prompt",
+		text: prompt,
+	});
 }
 
 export function requestTuiSkillsOnce(params: {

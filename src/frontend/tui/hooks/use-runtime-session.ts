@@ -8,6 +8,7 @@ import type { AgentMenuData } from "../agents/types.ts";
 import type { ConnectionStatus, RuntimeInfo } from "../chrome/status-bar.tsx";
 import {
 	applyOptimisticPromptState,
+	queueOptimisticPromptState,
 	requestTuiFiles,
 	requestTuiSkillsOnce,
 	sendTuiRuntimeCommand,
@@ -22,11 +23,56 @@ import { applySessionEventToMenuData } from "../sessions/state.ts";
 import type { SessionMenuData } from "../sessions/types.ts";
 import { applyAction } from "../transcript/reducer.ts";
 import { mapEventToActions } from "../transcript/runtime-events.ts";
-import { initialTuiState } from "../transcript/state.ts";
+import { initialTuiState, type TuiState } from "../transcript/state.ts";
 
 const WORKSPACE_FILES_REFRESH_INTERVAL_MS = 2000;
 
-export function useRuntimeSession(url: string, agentName?: string) {
+interface UseRuntimeSessionOptions {
+	onTranscriptReset?: () => void;
+}
+
+function hasVisibleTuiWork(state: TuiState): boolean {
+	return (
+		state.running ||
+		state.activePrompt !== undefined ||
+		state.compacting ||
+		state.heartbeatPending ||
+		state.pendingPromptStart ||
+		state.queuedPrompts.length > 0 ||
+		state.streaming !== "" ||
+		state.streamingThinking !== "" ||
+		state.heartbeatStreaming !== "" ||
+		state.heartbeatStreamingThinking !== ""
+	);
+}
+
+function applyRuntimeRunningStatus(
+	state: TuiState,
+	running: boolean,
+): TuiState {
+	if (running) {
+		return {
+			...state,
+			pendingPromptStart: false,
+			running: true,
+		};
+	}
+
+	if (state.pendingPromptStart && state.running) {
+		return state;
+	}
+
+	return {
+		...state,
+		running: false,
+	};
+}
+
+export function useRuntimeSession(
+	url: string,
+	agentName?: string,
+	options: UseRuntimeSessionOptions = {},
+) {
 	const [agentMenuData, setAgentMenuData] = useState<AgentMenuData | null>(
 		null,
 	);
@@ -42,6 +88,11 @@ export function useRuntimeSession(url: string, agentName?: string) {
 	const lastFilesRequestAtRef = useRef<number | null>(null);
 	const agentNameRef = useRef<string | undefined>(undefined);
 	const wsRef = useRef<WebSocket | null>(null);
+	const onTranscriptResetRef = useRef(options.onTranscriptReset);
+
+	useEffect(() => {
+		onTranscriptResetRef.current = options.onTranscriptReset;
+	}, [options.onTranscriptReset]);
 
 	const pushLocalMessage = useCallback(
 		(role: "error" | "info", text: string) => {
@@ -125,10 +176,9 @@ export function useRuntimeSession(url: string, agentName?: string) {
 					agentNameRef.current = projection.agentName;
 					return projection.runtimeInfo;
 				});
-				setTuiState((previous) => ({
-					...previous,
-					running: event.running,
-				}));
+				setTuiState((previous) =>
+					applyRuntimeRunningStatus(previous, event.running),
+				);
 			}
 			if (event.type === "model_changed" || event.type === "effort_changed") {
 				setRuntimeInfo((previous) => projectRuntimeInfoEvent(previous, event));
@@ -142,6 +192,9 @@ export function useRuntimeSession(url: string, agentName?: string) {
 				}
 
 				setMenuData((previous) => applySessionEventToMenuData(previous, event));
+				if (action.type === "clear") {
+					onTranscriptResetRef.current?.();
+				}
 				setTuiState((previous) => applyAction(previous, action));
 			}
 		}
@@ -182,7 +235,13 @@ export function useRuntimeSession(url: string, agentName?: string) {
 				return false;
 			}
 
-			setTuiState((previous) => applyOptimisticPromptState(previous, prompt));
+			setTuiState((previous) => {
+				if (hasVisibleTuiWork(previous)) {
+					return queueOptimisticPromptState(previous, prompt);
+				}
+
+				return applyOptimisticPromptState(previous, prompt);
+			});
 			return true;
 		},
 		[pushLocalMessage],

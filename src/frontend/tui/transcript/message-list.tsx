@@ -1,18 +1,21 @@
 import { Box, Static, Text } from "ink";
 import { memo, type ReactNode } from "react";
+import { QUEUED_PROMPT_LABEL } from "../../../common/queued-prompt.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { MessageItem } from "./message-item.tsx";
 import { Spinner } from "./spinner.tsx";
-import type { TuiMessage } from "./state.ts";
+import type { TuiMessage, TuiQueuedPrompt } from "./state.ts";
 import { useAppendOnlyStaticTranscript } from "./static-transcript.ts";
 
 interface MessageListProps {
 	messages: TuiMessage[];
+	activePrompt?: TuiMessage;
 	streaming: string;
 	streamingThinking: string;
 	running: boolean;
 	compacting: boolean;
 	heartbeatPending?: boolean;
+	queuedPrompts?: TuiQueuedPrompt[];
 	columns: number;
 	transcriptVersion?: number;
 	staticPrefix?: ReactNode;
@@ -20,11 +23,13 @@ interface MessageListProps {
 
 export const MessageList = memo(function MessageList({
 	messages,
+	activePrompt,
 	streaming,
 	streamingThinking,
 	running,
 	compacting,
 	heartbeatPending = false,
+	queuedPrompts = [],
 	columns,
 	transcriptVersion = 0,
 	staticPrefix,
@@ -61,6 +66,9 @@ export const MessageList = memo(function MessageList({
 				{pendingHeartbeat ? (
 					<MessageItem message={pendingHeartbeat} columns={columns} />
 				) : null}
+				{activePrompt ? (
+					<MessageItem message={activePrompt} columns={columns} />
+				) : null}
 				{streamingThinking ? (
 					<Box marginTop={1} paddingLeft={3} paddingRight={1}>
 						<Text>
@@ -84,6 +92,17 @@ export const MessageList = memo(function MessageList({
 						/>
 					</Box>
 				) : null}
+				{queuedPrompts.map((prompt) => (
+					<Box key={prompt.id} flexDirection="column">
+						<MessageItem
+							message={{ id: prompt.id, role: "user", text: prompt.text }}
+							columns={columns}
+						/>
+						<Box paddingLeft={3} paddingRight={1}>
+							<Text dimColor>{QUEUED_PROMPT_LABEL}</Text>
+						</Box>
+					</Box>
+				))}
 			</Box>
 		</>
 	);

@@ -1,6 +1,7 @@
 import { clsx } from "clsx";
 import { Heart } from "lucide-react";
 import type { DisplayMessage } from "../../../../common/protocol.ts";
+import { QUEUED_PROMPT_LABEL } from "../../../../common/queued-prompt.ts";
 import { AssistantTurnUtilityBar } from "./assistant-turn-utility-bar.tsx";
 import { getImageThumbnailClassName } from "./image-thumbnail-styles.ts";
 import { MarkdownContent } from "./markdown-content.tsx";
@@ -14,6 +15,7 @@ import { ThinkingBlock } from "./thinking-block.tsx";
 
 interface MessageProps {
 	message: DisplayMessage;
+	queued?: boolean;
 	showUtilityBar?: boolean;
 }
 
@@ -48,7 +50,11 @@ function renderImageGallery(images: ChatImage[], role: "user" | "assistant") {
 	);
 }
 
-export function Message({ message, showUtilityBar = false }: MessageProps) {
+export function Message({
+	message,
+	queued = false,
+	showUtilityBar = false,
+}: MessageProps) {
 	if (message.kind === "system") {
 		if (message.event === "heartbeat") {
 			return (
@@ -91,6 +97,11 @@ export function Message({ message, showUtilityBar = false }: MessageProps) {
 					<div className="text-sm whitespace-pre-wrap break-words">
 						{message.content}
 					</div>
+					{queued ? (
+						<div className="font-mono-ui mt-2 border-t border-dark-700 pt-2 text-[10px] uppercase tracking-[0.12em] text-dark-400">
+							{QUEUED_PROMPT_LABEL}
+						</div>
+					) : null}
 				</div>
 			</div>
 		);

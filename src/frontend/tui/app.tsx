@@ -1,4 +1,4 @@
-import { Box, Text, useApp } from "ink";
+import { Box, Text, useApp, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	canonicalizePromptSlashCommand,
@@ -34,12 +34,18 @@ interface TuiAppProps {
 	url: string;
 }
 
+const CLEAR_TUI_VIEWPORT = "\u001B[2J\u001B[H";
+
 export function TuiApp({ url, agentName }: TuiAppProps) {
 	const { exit } = useApp();
+	const { write } = useStdout();
 	const { columns, rows: termRows } = useTerminalSize();
 	const [composerState, setComposerState] = useState(() =>
 		createComposerState(),
 	);
+	const resetTranscriptViewport = useCallback(() => {
+		write(CLEAR_TUI_VIEWPORT);
+	}, [write]);
 	const {
 		agentMenuData,
 		dismissAgentMenu,
@@ -54,7 +60,9 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		status,
 		tuiState,
 		workspaceFiles,
-	} = useRuntimeSession(url, agentName);
+	} = useRuntimeSession(url, agentName, {
+		onTranscriptReset: resetTranscriptViewport,
+	});
 	const composerStateRef = useLatestRef(composerState);
 	const input = composerState.draft.value;
 	const draftCursor = composerState.draft.cursor;
@@ -145,8 +153,8 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		[dismissAgentMenu, runCommand],
 	);
 
-	const inputActive =
-		!tuiState.running && menuData === null && agentMenuData === null;
+	const menuVisible = menuData !== null || agentMenuData !== null;
+	const inputActive = !menuVisible;
 
 	const mentionResolution = resolveMentionMenu(composerState, {
 		inputActive,
@@ -223,7 +231,7 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		},
 		shouldEnableGlobalStopShortcut(
 			tuiState.running,
-			menuData !== null || agentMenuData !== null,
+			menuVisible || mentionMenuVisible || cmdMenuVisible,
 		),
 	);
 
@@ -237,11 +245,13 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 			<Box marginTop={1} marginBottom={1} flexGrow={1} flexDirection="column">
 				<MessageList
 					messages={tuiState.messages}
+					activePrompt={tuiState.activePrompt}
 					streaming={tuiState.streaming}
 					streamingThinking={tuiState.streamingThinking}
 					running={tuiState.running}
 					compacting={tuiState.compacting}
 					heartbeatPending={tuiState.heartbeatPending}
+					queuedPrompts={tuiState.queuedPrompts}
 					columns={columns}
 					transcriptVersion={tuiState.transcriptVersion}
 					staticPrefix={staticTranscriptPrefix}

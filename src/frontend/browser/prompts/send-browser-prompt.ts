@@ -1,9 +1,10 @@
 import {
-	type DisplayImage,
+	type DisplayChatMessage,
 	extractError,
 	type ImageRef,
 } from "../../../common/protocol.ts";
 import type { ComposerImageAttachment } from "../attachments/composer-images.ts";
+import { applyOptimisticBrowserPrompt } from "./optimistic-browser-prompt.ts";
 import { preparePromptDispatch } from "./prepare-prompt-dispatch.ts";
 
 interface DispatchBrowserPromptParams<SocketLike> {
@@ -14,21 +15,17 @@ interface DispatchBrowserPromptParams<SocketLike> {
 	getSocket: () => SocketLike | null;
 	isSocketOpen: (socket: SocketLike | null) => socket is SocketLike;
 	pinSession?: (sessionKey: string) => void;
-	pushMessage: (
-		sessionKey: string,
-		message: {
-			kind: "chat";
-			role: "user";
-			content: string;
-			images?: DisplayImage[];
-			timestamp?: number;
-		},
-	) => void;
+	pushMessage: (sessionKey: string, message: DisplayChatMessage) => void;
+	queueMessage: (sessionKey: string, message: DisplayChatMessage) => void;
 	sendCommand: (command: string) => boolean;
 	sendPrompt: (socket: SocketLike, prompt: string, images?: ImageRef[]) => void;
 	setRuntimeError: (error: string | null) => void;
 	setSessionError: (sessionKey: string, error: string | null) => void;
-	startAssistantTurn: (sessionKey: string) => void;
+	shouldQueuePrompt?: (sessionKey: string) => boolean;
+	startAssistantTurn: (
+		sessionKey: string,
+		options?: { pendingPromptStart?: boolean },
+	) => void;
 	uploadImages: (files: File[]) => Promise<ImageRef[]>;
 }
 
@@ -88,14 +85,21 @@ export async function dispatchBrowserPrompt<SocketLike>(
 	}
 
 	params.pinSession?.(sessionKey);
-	params.pushMessage(sessionKey, {
+	const message: DisplayChatMessage = {
 		kind: "chat",
 		role: "user",
 		content: prompt,
 		images: images.map((image) => image.image),
 		timestamp: Date.now(),
+	};
+	applyOptimisticBrowserPrompt({
+		message,
+		pushMessage: params.pushMessage,
+		queueMessage: params.queueMessage,
+		sessionKey,
+		shouldQueuePrompt: params.shouldQueuePrompt,
+		startAssistantTurn: params.startAssistantTurn,
 	});
-	params.startAssistantTurn(sessionKey);
 	params.setSessionError(sessionKey, null);
 	params.setRuntimeError(null);
 	return true;

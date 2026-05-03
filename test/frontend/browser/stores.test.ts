@@ -524,6 +524,300 @@ describe("browser stores", () => {
 		expect(typeof session?.thinkingStartedAt).toBe("number");
 	});
 
+	test("chat store keeps queued prompts pending until prompt-start confirmation", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "current prompt",
+		});
+		useChatStore.getState().startAssistantTurn(sessionKey);
+		useChatStore.getState().appendText(sessionKey, "current response");
+		useChatStore.getState().queuePrompt(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "queued follow-up",
+		});
+
+		expect(
+			useChatStore.getState().getSession(sessionKey)?.queuedPrompts,
+		).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "queued follow-up",
+			},
+		]);
+
+		useChatStore.getState().finalizeMessage(sessionKey);
+
+		let session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.messages).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "current prompt",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "current response",
+			},
+		]);
+		expect(session?.queuedPrompts).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "queued follow-up",
+			},
+		]);
+		expect(session?.isStreaming).toBe(false);
+		expect(session?.isThinking).toBe(false);
+
+		useChatStore.getState().confirmPrompt(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "queued follow-up",
+		});
+
+		session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.messages).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "current prompt",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "current response",
+			},
+			{
+				kind: "chat",
+				role: "user",
+				content: "queued follow-up",
+			},
+		]);
+		expect(session?.queuedPrompts).toEqual([]);
+		expect(session?.isStreaming).toBe(true);
+		expect(session?.isThinking).toBe(true);
+	});
+
+	test("chat store confirms an optimistic local prompt without duplicating it", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "hello",
+		});
+		useChatStore
+			.getState()
+			.startAssistantTurn(sessionKey, { pendingPromptStart: true });
+		useChatStore.getState().confirmPrompt(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "hello",
+		});
+
+		const session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.messages).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "hello",
+			},
+		]);
+		expect(session?.isStreaming).toBe(true);
+		expect(session?.isThinking).toBe(true);
+	});
+
+	test("chat store requeues a local optimistic prompt when another browser prompt starts first", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "local prompt",
+		});
+		useChatStore
+			.getState()
+			.startAssistantTurn(sessionKey, { pendingPromptStart: true });
+		useChatStore.getState().queuePrompt(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "local follow-up",
+		});
+
+		useChatStore.getState().confirmPrompt(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "other browser prompt",
+		});
+
+		const session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.messages).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "other browser prompt",
+			},
+		]);
+		expect(session?.queuedPrompts).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "local prompt",
+			},
+			{
+				kind: "chat",
+				role: "user",
+				content: "local follow-up",
+			},
+		]);
+		expect(session?.pendingPromptStart).toBe(false);
+		expect(session?.isStreaming).toBe(true);
+		expect(session?.isThinking).toBe(true);
+	});
+
+	test("chat store confirms image prompt uploads without duplicating inline previews", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "describe this",
+			images: [
+				{
+					kind: "inline",
+					base64: "YWJj",
+					mediaType: "image/png",
+				},
+			],
+		});
+		useChatStore.getState().startAssistantTurn(sessionKey);
+		useChatStore.getState().confirmPrompt(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "describe this",
+			images: [
+				{
+					kind: "managed",
+					path: "/tmp/upload.png",
+					mediaType: "image/png",
+				},
+			],
+		});
+
+		const session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.messages).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "describe this",
+				images: [
+					{
+						kind: "inline",
+						base64: "YWJj",
+						mediaType: "image/png",
+					},
+				],
+			},
+		]);
+		expect(session?.isStreaming).toBe(true);
+		expect(session?.isThinking).toBe(true);
+	});
+
+	test("chat store keeps queued prompts pending while heartbeat output streams", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "system",
+			event: "heartbeat",
+			text: "Heartbeat",
+		});
+		useChatStore.getState().queuePrompt(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "queued follow-up",
+		});
+
+		useChatStore.getState().appendText(sessionKey, "heartbeat output");
+
+		let session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.messages).toEqual([
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+		]);
+		expect(session?.heartbeatStreamingText).toBe("heartbeat output");
+		expect(session?.queuedPrompts).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "queued follow-up",
+			},
+		]);
+
+		useChatStore.getState().finalizeMessage(sessionKey);
+
+		session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.messages).toEqual([
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "heartbeat output",
+				assistantTurn: {
+					source: "heartbeat",
+				},
+			},
+		]);
+		expect(session?.queuedPrompts).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "queued follow-up",
+			},
+		]);
+
+		useChatStore.getState().confirmPrompt(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "queued follow-up",
+		});
+
+		session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.messages).toEqual([
+			{
+				kind: "system",
+				event: "heartbeat",
+				text: "Heartbeat",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "heartbeat output",
+				assistantTurn: {
+					source: "heartbeat",
+				},
+			},
+			{
+				kind: "chat",
+				role: "user",
+				content: "queued follow-up",
+			},
+		]);
+		expect(session?.queuedPrompts).toEqual([]);
+	});
+
 	test("ensureRunningChatSession starts a pending assistant turn for observed runs", () => {
 		useAgentsStore
 			.getState()

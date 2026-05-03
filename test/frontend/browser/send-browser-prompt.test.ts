@@ -46,8 +46,13 @@ describe("dispatchBrowserPrompt", () => {
 					`push:${sessionKey}:${message.content}:${message.images?.length ?? 0}`,
 				);
 			},
-			startAssistantTurn: (sessionKey) => {
-				calls.push(`start:${sessionKey}`);
+			queueMessage: () => {
+				calls.push("queue");
+			},
+			startAssistantTurn: (sessionKey, options) => {
+				calls.push(
+					`start:${sessionKey}:${String(options?.pendingPromptStart ?? false)}`,
+				);
 			},
 			setSessionError: (sessionKey, error) => {
 				calls.push(`session-error:${sessionKey}:${error}`);
@@ -62,7 +67,7 @@ describe("dispatchBrowserPrompt", () => {
 			"upload:1",
 			"prompt:true:describe this:1",
 			"push:agent-a:claude:sdk-alpha:describe this:1",
-			"start:agent-a:claude:sdk-alpha",
+			"start:agent-a:claude:sdk-alpha:true",
 			"session-error:agent-a:claude:sdk-alpha:null",
 			"runtime-error:null",
 		]);
@@ -96,6 +101,9 @@ describe("dispatchBrowserPrompt", () => {
 			pushMessage: () => {
 				calls.push("push:sent");
 			},
+			queueMessage: () => {
+				calls.push("queue:sent");
+			},
 			startAssistantTurn: () => {
 				calls.push("start:sent");
 			},
@@ -116,6 +124,50 @@ describe("dispatchBrowserPrompt", () => {
 			"runtime-error:Conversation changed while images were uploading. Please resend.",
 		]);
 	});
+
+	test("queues image-capable prompts without starting a new assistant turn", async () => {
+		const socket = { id: "socket-1" };
+		const calls: string[] = [];
+
+		const sent = await dispatchBrowserPrompt({
+			input: "queued follow-up",
+			images: [],
+			getActiveAgentId: () => "agent-a",
+			getCurrentSessionKey: () => "agent-a:claude:sdk-alpha",
+			getSocket: () => socket,
+			isSocketOpen: (candidate): candidate is typeof socket =>
+				candidate === socket,
+			sendCommand: () => true,
+			uploadImages: async () => [],
+			sendPrompt: (target, prompt) => {
+				calls.push(`prompt:${target === socket}:${prompt}`);
+			},
+			pushMessage: () => {
+				calls.push("push");
+			},
+			queueMessage: (sessionKey, message) => {
+				calls.push(`queue:${sessionKey}:${message.content}`);
+			},
+			shouldQueuePrompt: () => true,
+			startAssistantTurn: () => {
+				calls.push("start");
+			},
+			setSessionError: (sessionKey, error) => {
+				calls.push(`session-error:${sessionKey}:${error}`);
+			},
+			setRuntimeError: (error) => {
+				calls.push(`runtime-error:${error}`);
+			},
+		});
+
+		expect(sent).toBe(true);
+		expect(calls).toEqual([
+			"prompt:true:queued follow-up",
+			"queue:agent-a:claude:sdk-alpha:queued follow-up",
+			"session-error:agent-a:claude:sdk-alpha:null",
+			"runtime-error:null",
+		]);
+	});
 });
 
 describe("dispatchBrowserTextPrompt", () => {
@@ -134,6 +186,9 @@ describe("dispatchBrowserTextPrompt", () => {
 			pushUserMessage: (sessionKey, message) => {
 				calls.push(`push:${sessionKey}:${message.content}`);
 			},
+			queueUserMessage: () => {
+				calls.push("queue");
+			},
 			sendCommand: (command) => {
 				calls.push(`command:${command}`);
 				return true;
@@ -145,7 +200,10 @@ describe("dispatchBrowserTextPrompt", () => {
 			setSessionError: (sessionKey, error) => {
 				calls.push(`session:${sessionKey}:${error}`);
 			},
-			startAssistantTurn: (sessionKey) => calls.push(`start:${sessionKey}`),
+			startAssistantTurn: (sessionKey, options) =>
+				calls.push(
+					`start:${sessionKey}:${String(options?.pendingPromptStart ?? false)}`,
+				),
 		});
 
 		expect(sent).toBe(true);
@@ -153,7 +211,7 @@ describe("dispatchBrowserTextPrompt", () => {
 			"prompt:true:/compact",
 			"pin:agent-a:claude:sdk-alpha",
 			"push:agent-a:claude:sdk-alpha:/compact",
-			"start:agent-a:claude:sdk-alpha",
+			"start:agent-a:claude:sdk-alpha:true",
 			"session:agent-a:claude:sdk-alpha:null",
 			"runtime:null",
 		]);
@@ -172,6 +230,7 @@ describe("dispatchBrowserTextPrompt", () => {
 				candidate === socket,
 			pinSession: (sessionKey) => calls.push(`pin:${sessionKey}`),
 			pushUserMessage: () => calls.push("push"),
+			queueUserMessage: () => calls.push("queue"),
 			sendCommand: (command) => {
 				calls.push(`command:${command}`);
 				return true;
@@ -200,6 +259,7 @@ describe("dispatchBrowserTextPrompt", () => {
 			isSocketOpen: (candidate): candidate is TestSocket => candidate !== null,
 			pinSession: (sessionKey) => calls.push(`pin:${sessionKey}`),
 			pushUserMessage: () => calls.push("push"),
+			queueUserMessage: () => calls.push("queue"),
 			sendCommand: () => true,
 			sendPrompt: () => calls.push("prompt"),
 			setRuntimeError: (error) => calls.push(`runtime:${error}`),
@@ -211,5 +271,45 @@ describe("dispatchBrowserTextPrompt", () => {
 
 		expect(sent).toBe(false);
 		expect(calls).toEqual(["runtime:Runtime disconnected"]);
+	});
+
+	test("queues text prompts without starting a new assistant turn", () => {
+		const socket = { id: "socket-1" };
+		const calls: string[] = [];
+
+		const sent = dispatchBrowserTextPrompt({
+			input: "queued follow-up",
+			getActiveAgentId: () => "agent-a",
+			getCurrentSessionKey: () => "agent-a:claude:sdk-alpha",
+			getSocket: () => socket,
+			isSocketOpen: (candidate): candidate is typeof socket =>
+				candidate === socket,
+			pinSession: (sessionKey) => calls.push(`pin:${sessionKey}`),
+			pushUserMessage: () => {
+				calls.push("push");
+			},
+			queueUserMessage: (sessionKey, message) => {
+				calls.push(`queue:${sessionKey}:${message.content}`);
+			},
+			shouldQueuePrompt: () => true,
+			sendCommand: () => true,
+			sendPrompt: (target, prompt) => {
+				calls.push(`prompt:${target === socket}:${prompt}`);
+			},
+			setRuntimeError: (error) => calls.push(`runtime:${error}`),
+			setSessionError: (sessionKey, error) => {
+				calls.push(`session:${sessionKey}:${error}`);
+			},
+			startAssistantTurn: () => calls.push("start"),
+		});
+
+		expect(sent).toBe(true);
+		expect(calls).toEqual([
+			"prompt:true:queued follow-up",
+			"pin:agent-a:claude:sdk-alpha",
+			"queue:agent-a:claude:sdk-alpha:queued follow-up",
+			"session:agent-a:claude:sdk-alpha:null",
+			"runtime:null",
+		]);
 	});
 });

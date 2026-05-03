@@ -6,6 +6,13 @@ export type TuiAction =
 	| { type: "append_streaming"; text: string }
 	| { type: "append_thinking"; text: string }
 	| { type: "commit_streaming" }
+	| { type: "queue_prompt"; text: string }
+	| {
+			type: "confirm_tui_prompt";
+			text: string;
+			replyText?: string;
+			compacting: boolean;
+	  }
 	| {
 			type: "push";
 			role: TuiMessageRole;
@@ -32,6 +39,9 @@ function flushStreamingBuffers(
 	nextId: number,
 	state: TuiState,
 ): { messages: TuiMessage[]; nextId: number } {
+	if (state.activePrompt) {
+		messages.push(state.activePrompt);
+	}
 	if (state.streamingThinking) {
 		messages.push({
 			id: nextId,
@@ -91,6 +101,7 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				heartbeatStreaming: state.heartbeatPending
 					? state.heartbeatStreaming + action.text
 					: state.heartbeatStreaming,
+				pendingPromptStart: false,
 				running: true,
 			};
 		case "append_thinking":
@@ -102,22 +113,31 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				heartbeatStreamingThinking: state.heartbeatPending
 					? state.heartbeatStreamingThinking + action.text
 					: state.heartbeatStreamingThinking,
+				pendingPromptStart: false,
 				running: true,
 			};
 		case "commit_streaming": {
 			if (
+				!state.activePrompt &&
 				!state.streaming &&
 				!state.streamingThinking &&
 				!state.heartbeatStreaming &&
 				!state.heartbeatStreamingThinking
 			) {
-				return { ...state, compacting: false, running: false };
+				return {
+					...state,
+					activePrompt: undefined,
+					compacting: false,
+					pendingPromptStart: false,
+					running: false,
+				};
 			}
 			const flushed = state.heartbeatPending
 				? flushHeartbeatBuffers(state)
 				: flushStreamingBuffers([...state.messages], state.nextId, state);
 			return {
 				...state,
+				activePrompt: undefined,
 				compacting: false,
 				messages: flushed.messages,
 				streaming: "",
@@ -125,17 +145,31 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				heartbeatPending: false,
 				heartbeatStreaming: "",
 				heartbeatStreamingThinking: "",
+				pendingPromptStart: false,
 				running: false,
 				nextId: flushed.nextId,
 			};
 		}
-		case "push":
+		case "queue_prompt":
 			return {
 				...state,
+				queuedPrompts: [
+					...state.queuedPrompts,
+					{ id: state.nextId, text: action.text },
+				],
+				nextId: state.nextId + 1,
+			};
+		case "confirm_tui_prompt":
+			return confirmTuiPrompt(state, action);
+		case "push": {
+			const stateWithPendingPromptQueued =
+				action.role === "user" ? queuePendingPromptStart(state) : state;
+			return {
+				...stateWithPendingPromptQueued,
 				messages: [
-					...state.messages,
+					...stateWithPendingPromptQueued.messages,
 					{
-						id: state.nextId,
+						id: stateWithPendingPromptQueued.nextId,
 						role: action.role,
 						text: action.text,
 						replyText: action.replyText,
@@ -144,13 +178,16 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				],
 				heartbeatPending: action.variant === "heartbeat",
 				heartbeatStreaming:
-					action.variant === "heartbeat" ? "" : state.heartbeatStreaming,
+					action.variant === "heartbeat"
+						? ""
+						: stateWithPendingPromptQueued.heartbeatStreaming,
 				heartbeatStreamingThinking:
 					action.variant === "heartbeat"
 						? ""
-						: state.heartbeatStreamingThinking,
-				nextId: state.nextId + 1,
+						: stateWithPendingPromptQueued.heartbeatStreamingThinking,
+				nextId: stateWithPendingPromptQueued.nextId + 1,
 			};
+		}
 		case "push_and_stop": {
 			const flushed = state.heartbeatPending
 				? flushHeartbeatBuffers(state)
@@ -164,6 +201,7 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 			});
 			return {
 				...state,
+				activePrompt: undefined,
 				compacting: false,
 				messages: flushed.messages,
 				streaming: "",
@@ -171,6 +209,7 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				heartbeatPending: false,
 				heartbeatStreaming: "",
 				heartbeatStreamingThinking: "",
+				pendingPromptStart: false,
 				running: false,
 				nextId: flushed.nextId + 1,
 			};
@@ -178,6 +217,7 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 		case "clear":
 			return {
 				...state,
+				activePrompt: undefined,
 				compacting: false,
 				messages: [],
 				streaming: "",
@@ -185,6 +225,8 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				heartbeatPending: false,
 				heartbeatStreaming: "",
 				heartbeatStreamingThinking: "",
+				pendingPromptStart: false,
+				queuedPrompts: [],
 				running: false,
 				transcriptVersion: state.transcriptVersion + 1,
 			};
@@ -194,17 +236,20 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 			}, 0);
 			return {
 				...state,
+				activePrompt: undefined,
 				compacting: false,
 				messages: action.messages,
 				heartbeatPending: false,
 				heartbeatStreaming: "",
 				heartbeatStreamingThinking: "",
+				pendingPromptStart: false,
+				queuedPrompts: [],
 				nextId: maxId + 1,
 				transcriptVersion: state.transcriptVersion + 1,
 			};
 		}
 		case "start_compacting":
-			return { ...state, compacting: true };
+			return { ...state, compacting: true, pendingPromptStart: false };
 		case "finish_compacting":
 			return {
 				...state,
@@ -218,10 +263,92 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 						variant: "compact_boundary" as const,
 					},
 				],
+				pendingPromptStart: false,
 				nextId: state.nextId + 1,
 			};
 		case "noop":
 		case "session_menu":
 			return state;
 	}
+}
+
+function queuePendingPromptStart(state: TuiState): TuiState {
+	if (!state.pendingPromptStart) {
+		return state;
+	}
+
+	const pendingPrompt = state.messages.at(-1);
+	if (pendingPrompt?.role !== "user") {
+		return {
+			...state,
+			pendingPromptStart: false,
+		};
+	}
+
+	return {
+		...state,
+		messages: state.messages.slice(0, -1),
+		pendingPromptStart: false,
+		queuedPrompts: [
+			{ id: pendingPrompt.id, text: pendingPrompt.text },
+			...state.queuedPrompts,
+		],
+	};
+}
+
+function confirmTuiPrompt(
+	state: TuiState,
+	action: Extract<TuiAction, { type: "confirm_tui_prompt" }>,
+): TuiState {
+	const lastMessage = state.messages.at(-1);
+	const pendingState =
+		state.pendingPromptStart &&
+		lastMessage?.role === "user" &&
+		lastMessage.text !== action.text
+			? queuePendingPromptStart(state)
+			: state;
+
+	const [queuedPrompt, ...queuedPrompts] = pendingState.queuedPrompts;
+	if (queuedPrompt?.text === action.text) {
+		return {
+			...pendingState,
+			activePrompt: {
+				id: queuedPrompt.id,
+				role: "user",
+				text: action.text,
+				replyText: action.replyText,
+			},
+			compacting: action.compacting,
+			queuedPrompts,
+			pendingPromptStart: false,
+			running: true,
+		};
+	}
+
+	const pendingLastMessage = pendingState.messages.at(-1);
+	if (
+		pendingLastMessage?.role === "user" &&
+		pendingLastMessage.text === action.text
+	) {
+		return {
+			...pendingState,
+			compacting: action.compacting,
+			pendingPromptStart: false,
+			running: true,
+		};
+	}
+
+	return {
+		...pendingState,
+		activePrompt: {
+			id: pendingState.nextId,
+			role: "user",
+			text: action.text,
+			replyText: action.replyText,
+		},
+		compacting: action.compacting,
+		nextId: pendingState.nextId + 1,
+		pendingPromptStart: false,
+		running: true,
+	};
 }

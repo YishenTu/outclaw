@@ -99,15 +99,19 @@ export function applyBrowserChatEvent(
 				return true;
 			}
 
-			useChatStore.getState().pushMessage(
-				sessionKey,
+			const timestampedMessage =
 				message.kind === "chat"
 					? {
 							...message,
 							timestamp: Date.now(),
 						}
-					: message,
-			);
+					: message;
+			if (event.source === "browser" && timestampedMessage.kind === "chat") {
+				useChatStore.getState().confirmPrompt(sessionKey, timestampedMessage);
+				return true;
+			}
+
+			useChatStore.getState().pushMessage(sessionKey, timestampedMessage);
 			return true;
 		}
 		case "thinking": {

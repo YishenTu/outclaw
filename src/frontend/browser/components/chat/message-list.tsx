@@ -1,5 +1,8 @@
 import { memo, useEffect, useRef } from "react";
-import type { DisplayMessage } from "../../../../common/protocol.ts";
+import type {
+	DisplayChatMessage,
+	DisplayMessage,
+} from "../../../../common/protocol.ts";
 import { MarkdownContent } from "./markdown-content.tsx";
 import { Message } from "./message.tsx";
 import {
@@ -14,6 +17,7 @@ import { ThinkingIndicator } from "./thinking-indicator.tsx";
 interface MessageListProps {
 	sessionKey?: string | null;
 	messages: DisplayMessage[];
+	queuedPrompts?: DisplayChatMessage[];
 	streamingText: string;
 	streamingThinking: string;
 	isStreaming: boolean;
@@ -24,6 +28,7 @@ interface MessageListProps {
 export const MessageList = memo(function MessageList({
 	sessionKey = null,
 	messages,
+	queuedPrompts = [],
 	streamingText,
 	streamingThinking,
 	isStreaming,
@@ -39,6 +44,7 @@ export const MessageList = memo(function MessageList({
 		const autoScrollToken = createTranscriptAutoScrollToken({
 			sessionKey,
 			messages,
+			queuedPrompts,
 			streamingText,
 			streamingThinking,
 			isStreaming,
@@ -60,7 +66,14 @@ export const MessageList = memo(function MessageList({
 		}
 
 		container.scrollTop = container.scrollHeight;
-	}, [isStreaming, messages, sessionKey, streamingText, streamingThinking]);
+	}, [
+		isStreaming,
+		messages,
+		queuedPrompts,
+		sessionKey,
+		streamingText,
+		streamingThinking,
+	]);
 
 	const hasAssistantOutput = streamingThinking !== "" || streamingText !== "";
 
@@ -110,6 +123,17 @@ export const MessageList = memo(function MessageList({
 						</div>
 					</div>
 				)}
+				{queuedPrompts.map((message, index) => (
+					<Message
+						key={`queued-${displayMessageRenderKey({
+							message,
+							index,
+							sessionKey,
+						})}`}
+						message={message}
+						queued
+					/>
+				))}
 			</div>
 		</div>
 	);

@@ -23,7 +23,7 @@ export function formatLivePrompt(
 	images: DisplayImage[] | undefined,
 ): string {
 	const lines: string[] = [];
-	const prefix = source === "browser" ? "" : `[${source}] `;
+	const prefix = source === "browser" || source === "tui" ? "" : `[${source}] `;
 
 	if (prompt) {
 		lines.push(`${prefix}${prompt}`);

@@ -3,11 +3,23 @@ import type { ModelAlias } from "../../../../common/models.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import { resolveComposerSessionKey } from "../../sessions/session.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
-import { useChatStore } from "../../stores/chat.ts";
+import { type ChatSession, useChatStore } from "../../stores/chat.ts";
 import { useRuntimeStore } from "../../stores/runtime.ts";
 import { useSessionsStore } from "../../stores/sessions.ts";
 import { MessageInput } from "./composer/message-input.tsx";
 import { MessageList } from "./message-list.tsx";
+
+function hasRenderableTranscript(session: ChatSession | undefined): boolean {
+	if (!session) {
+		return false;
+	}
+	return (
+		session.messages.length > 0 ||
+		session.queuedPrompts.length > 0 ||
+		session.streamingText !== "" ||
+		session.streamingThinking !== ""
+	);
+}
 
 export function ChatPanel() {
 	const { sendBrowserPrompt, sendCommand } = useWs();
@@ -104,21 +116,20 @@ export function ChatPanel() {
 				</div>
 			)}
 
-			{(chatSession?.messages.length ?? 0) === 0 &&
-			(chatSession?.streamingText ?? "") === "" &&
-			(chatSession?.streamingThinking ?? "") === "" ? (
-				<div className="flex-1" />
-			) : (
+			{hasRenderableTranscript(chatSession) ? (
 				<MessageList
 					key={sessionKey ?? "no-session"}
 					sessionKey={sessionKey}
 					messages={chatSession?.messages ?? []}
+					queuedPrompts={chatSession?.queuedPrompts ?? []}
 					streamingText={chatSession?.streamingText ?? ""}
 					streamingThinking={chatSession?.streamingThinking ?? ""}
 					isStreaming={chatSession?.isStreaming ?? false}
 					isCompacting={chatSession?.isCompacting ?? false}
 					thinkingStartedAt={chatSession?.thinkingStartedAt ?? null}
 				/>
+			) : (
+				<div className="flex-1" />
 			)}
 
 			<MessageInput

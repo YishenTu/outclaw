@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { PassThrough } from "node:stream";
+import { stripVTControlCharacters } from "node:util";
 import { render } from "ink";
 import { TuiApp } from "../../../src/frontend/tui/app.tsx";
+import { createRuntime } from "../../../src/runtime/transport/ws-server.ts";
+import { MockFacade } from "../../helpers/mock-facade.ts";
 
 class FakeWebSocket {
 	static readonly CONNECTING = 0;
@@ -91,7 +94,13 @@ async function flushUpdates() {
 	}
 }
 
-async function renderApp({ rows = 24 }: { rows?: number } = {}) {
+async function renderApp({
+	debug = true,
+	rows = 24,
+}: {
+	debug?: boolean;
+	rows?: number;
+} = {}) {
 	const stdout = createOutputStream(rows);
 	const stderr = createOutputStream(rows);
 	const stdin = new PassThrough() as PassThrough & {
@@ -104,7 +113,7 @@ async function renderApp({ rows = 24 }: { rows?: number } = {}) {
 	});
 
 	const app = render(<TuiApp url="ws://localhost:4100" />, {
-		debug: true,
+		debug,
 		exitOnCtrlC: false,
 		patchConsole: false,
 		stderr,
@@ -122,7 +131,50 @@ async function renderApp({ rows = 24 }: { rows?: number } = {}) {
 		app,
 		socket,
 		stdin,
+		getFrameCount: () => frames.length,
 		getOutput: () => frames.at(-1) ?? "",
+		getOutputSince: (index: number) => frames.slice(index).join(""),
+	};
+}
+
+async function renderAppAtUrl(
+	url: string,
+	{
+		debug = true,
+		rows = 24,
+	}: {
+		debug?: boolean;
+		rows?: number;
+	} = {},
+) {
+	const stdout = createOutputStream(rows);
+	const stderr = createOutputStream(rows);
+	const stdin = new PassThrough() as PassThrough & {
+		isTTY: boolean;
+	};
+	stdin.isTTY = false;
+	const frames: string[] = [];
+	stdout.on("data", (chunk) => {
+		frames.push(chunk.toString());
+	});
+
+	const app = render(<TuiApp url={url} />, {
+		debug,
+		exitOnCtrlC: false,
+		patchConsole: false,
+		stderr,
+		stdin: stdin as unknown as NodeJS.ReadStream & { isTTY: boolean },
+		stdout,
+	});
+
+	await flushUpdates();
+
+	return {
+		app,
+		stdin,
+		getFrameCount: () => frames.length,
+		getOutput: () => frames.at(-1) ?? "",
+		getOutputSince: (index: number) => frames.slice(index).join(""),
 	};
 }
 
@@ -175,6 +227,21 @@ async function waitFor(predicate: () => boolean, label: string) {
 		await flushUpdates();
 	}
 	throw new Error(`Timed out waiting for ${label}`);
+}
+
+async function waitForRuntime(predicate: () => boolean, label: string) {
+	for (let index = 0; index < 100; index += 1) {
+		if (predicate()) {
+			return;
+		}
+		await new Promise<void>((resolve) => setTimeout(resolve, 5));
+		await flushUpdates();
+	}
+	throw new Error(`Timed out waiting for ${label}`);
+}
+
+function countOccurrences(value: string, search: string): number {
+	return value.split(search).length - 1;
 }
 
 describe("TuiApp", () => {
@@ -320,6 +387,233 @@ describe("TuiApp", () => {
 			await pressEnter(stdin);
 
 			expect(socket.sent).toContain('{"type":"prompt","prompt":"fe"}');
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("keeps the composer usable while assistant output is streaming", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin, getFrameCount, getOutput, getOutputSince } =
+			await renderApp();
+
+		try {
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "text",
+					text: "streaming response",
+				}),
+			});
+			await flushUpdates();
+
+			await typeText(stdin, "queued follow-up");
+			expect(getOutput()).toContain("queued follow-up");
+
+			await pressEnter(stdin);
+			expect(socket.sent).toContain(
+				'{"type":"prompt","prompt":"queued follow-up"}',
+			);
+			expect(getOutput()).toContain(
+				"Queued - will be sent once the current turn completes.",
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "done",
+					sessionId: "sdk-1",
+					durationMs: 1,
+				}),
+			});
+			await flushUpdates();
+
+			const output = getOutput();
+			expect(output.indexOf("streaming response")).toBeLessThan(
+				output.indexOf("queued follow-up"),
+			);
+			expect(output).toContain(
+				"Queued - will be sent once the current turn completes.",
+			);
+
+			const beforeConfirmFrame = getFrameCount();
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "user_prompt",
+					source: "tui",
+					prompt: "queued follow-up",
+				}),
+			});
+			await waitFor(
+				() =>
+					stripVTControlCharacters(getOutputSince(beforeConfirmFrame)).includes(
+						"queued follow-up",
+					),
+				"confirmed queued prompt output",
+			);
+			const confirmedOutput = stripVTControlCharacters(
+				getOutputSince(beforeConfirmFrame),
+			);
+			expect(confirmedOutput).toContain("queued follow-up");
+			expect(confirmedOutput).not.toContain(
+				"Queued - will be sent once the current turn completes.",
+			);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("keeps later TUI queued prompts pending across the runtime gap between turns", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin, getOutput } = await renderApp();
+
+		try {
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "text",
+					text: "streaming response",
+				}),
+			});
+			await flushUpdates();
+
+			await typeText(stdin, "queued one");
+			await pressEnter(stdin);
+			await typeText(stdin, "queued two");
+			await pressEnter(stdin);
+
+			expect(socket.sent).toContain('{"type":"prompt","prompt":"queued one"}');
+			expect(socket.sent).toContain('{"type":"prompt","prompt":"queued two"}');
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "done",
+					sessionId: "sdk-1",
+					durationMs: 1,
+				}),
+			});
+			await flushUpdates();
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "runtime_status",
+					model: "sonnet",
+					effort: "think",
+					running: false,
+				}),
+			});
+			await flushUpdates();
+
+			const output = getOutput();
+			expect(output).toContain("queued one");
+			expect(output).toContain("queued two");
+			expect(
+				countOccurrences(
+					output,
+					"Queued - will be sent once the current turn completes.",
+				),
+			).toBe(2);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("promotes a queued prompt when the real runtime starts the queued turn", async () => {
+		globalThis.WebSocket = realWebSocket;
+
+		const facade = new MockFacade();
+		facade.delayMs = 40;
+		const runtime = createRuntime({ port: 0, facade });
+		const { app, stdin, getFrameCount, getOutput, getOutputSince } =
+			await renderAppAtUrl(`ws://localhost:${runtime.port}`);
+
+		try {
+			await waitForRuntime(
+				() => stripVTControlCharacters(getOutput()).includes("connected"),
+				"runtime connection",
+			);
+
+			await typeText(stdin, "current prompt");
+			await pressEnter(stdin);
+			await typeText(stdin, "queued follow-up");
+			await pressEnter(stdin);
+
+			await waitForRuntime(
+				() =>
+					stripVTControlCharacters(getOutput()).includes(
+						"Queued - will be sent once the current turn completes.",
+					),
+				"queued indicator",
+			);
+			const queuedIndicatorFrame = getFrameCount();
+			await waitForRuntime(
+				() =>
+					facade.callOrder.length === 2 &&
+					stripVTControlCharacters(
+						getOutputSince(queuedIndicatorFrame),
+					).includes("echo: queued follow-up"),
+				"queued turn completion",
+			);
+
+			const output = stripVTControlCharacters(
+				getOutputSince(queuedIndicatorFrame),
+			);
+			expect(output).toContain("queued follow-up");
+			expect(output).toContain("echo: queued follow-up");
+			expect(output).not.toContain(
+				"Queued - will be sent once the current turn completes.",
+			);
+		} finally {
+			app.unmount();
+			app.cleanup();
+			await runtime.stop();
+		}
+	});
+
+	test("shows a fresh header and composer after the runtime clears the session", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, getFrameCount, getOutputSince } = await renderApp({
+			debug: false,
+		});
+
+		try {
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "history_replay",
+					sdkSessionId: "sdk-old",
+					messages: [
+						{
+							kind: "chat",
+							role: "user",
+							content: "old question",
+						},
+						{
+							kind: "chat",
+							role: "assistant",
+							content: "old answer",
+						},
+					],
+				}),
+			});
+			await flushUpdates();
+
+			const clearFrameStart = getFrameCount();
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_cleared",
+				}),
+			});
+			await flushUpdates();
+
+			const rawOutput = getOutputSince(clearFrameStart);
+			expect(rawOutput).toContain("\u001B[2J\u001B[H");
+			const output = stripVTControlCharacters(rawOutput);
+			expect(output).toContain("██████");
+			expect(output).toContain("❯");
+			expect(output).not.toContain("old question");
+			expect(output).not.toContain("old answer");
 		} finally {
 			app.unmount();
 			app.cleanup();

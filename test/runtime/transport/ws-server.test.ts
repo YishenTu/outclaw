@@ -362,10 +362,16 @@ describe("Runtime server", () => {
 		await new Promise((r) => setTimeout(r, 50));
 		const collecting = collectUntilDone(tui);
 		tui.send(JSON.stringify({ type: "prompt", prompt: "tui only" }));
-		await collecting;
+		const tuiEvents = await collecting;
 
 		await new Promise((r) => setTimeout(r, 50));
 
+		expect(tuiEvents).toContainEqual({
+			type: "user_prompt",
+			prompt: "tui only",
+			source: "tui",
+			sessionId: "mock-session-123",
+		});
 		expect(observerEvents.length).toBe(0);
 
 		observer.close();
@@ -403,6 +409,23 @@ describe("Runtime server", () => {
 		tui.close();
 	});
 
+	test("sends browser prompt-start confirmation back to the browser sender", async () => {
+		const browser = await connectBrowserWs(port);
+		await new Promise((r) => setTimeout(r, 50));
+		const collecting = collectUntilDone(browser);
+		browser.send(JSON.stringify({ type: "prompt", prompt: "confirm me" }));
+		const browserEvents = await collecting;
+
+		expect(browserEvents).toContainEqual({
+			type: "user_prompt",
+			prompt: "confirm me",
+			source: "browser",
+			sessionId: "mock-session-123",
+		});
+
+		browser.close();
+	});
+
 	test("queues concurrent prompts and processes in order", async () => {
 		const queueFacade = new MockFacade();
 		queueFacade.delayMs = 30;
@@ -436,6 +459,11 @@ describe("Runtime server", () => {
 
 		// Should be processed in order
 		expect(queueFacade.callOrder).toEqual(["A", "B", "C"]);
+		expect(
+			allEvents
+				.filter((event) => event.type === "user_prompt")
+				.map((event) => event.prompt),
+		).toEqual(["A", "B", "C"]);
 
 		// Events must be strictly sequential: text A, done A, text B, done B, text C, done C
 		const significant = allEvents.filter(

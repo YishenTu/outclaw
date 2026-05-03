@@ -1,10 +1,14 @@
-import type { DisplayMessage } from "../../../../common/protocol.ts";
+import type {
+	DisplayChatMessage,
+	DisplayMessage,
+} from "../../../../common/protocol.ts";
 
 const BOTTOM_STICKY_TOLERANCE_PX = 32;
 
 interface TranscriptAutoScrollTokenParams {
 	sessionKey: string | null;
 	messages: DisplayMessage[];
+	queuedPrompts?: DisplayChatMessage[];
 	streamingText: string;
 	streamingThinking: string;
 	isStreaming: boolean;
@@ -22,6 +26,7 @@ export function createTranscriptAutoScrollToken(
 	return [
 		params.sessionKey ?? "",
 		params.messages.map(displayMessageKey).join("\u0001"),
+		params.queuedPrompts?.map(displayMessageKey).join("\u0001") ?? "",
 		params.streamingThinking,
 		params.streamingText,
 		params.isStreaming ? "streaming" : "idle",

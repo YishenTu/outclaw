@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
 import type {
 	AssistantTurnMetadata,
+	DisplayChatMessage,
 	DisplayImage,
 	DisplayMessage,
 } from "../../../common/protocol.ts";
@@ -9,6 +10,7 @@ import { normalizeReplayHistory } from "../chat/replay-history.ts";
 
 export interface ChatSession {
 	messages: DisplayMessage[];
+	queuedPrompts: DisplayChatMessage[];
 	streamingText: string;
 	streamingThinking: string;
 	streamingImages: DisplayImage[];
@@ -19,6 +21,7 @@ export interface ChatSession {
 	isThinking: boolean;
 	isStreaming: boolean;
 	isCompacting: boolean;
+	pendingPromptStart: boolean;
 	error: string | null;
 	thinkingStartedAt: number | null;
 }
@@ -31,7 +34,12 @@ export interface ChatState {
 	getSession: (sessionKey: string) => ChatSession | undefined;
 
 	pushMessage: (sessionKey: string, message: DisplayMessage) => void;
-	startAssistantTurn: (sessionKey: string) => void;
+	queuePrompt: (sessionKey: string, message: DisplayChatMessage) => void;
+	confirmPrompt: (sessionKey: string, message: DisplayChatMessage) => void;
+	startAssistantTurn: (
+		sessionKey: string,
+		options?: { pendingPromptStart?: boolean },
+	) => void;
 	replaceHistory: (
 		sessionKey: string,
 		messages: DisplayMessage[],
@@ -68,6 +76,7 @@ export interface ChatState {
 function createEmptySession(): ChatSession {
 	return {
 		messages: [],
+		queuedPrompts: [],
 		streamingText: "",
 		streamingThinking: "",
 		streamingImages: [],
@@ -78,6 +87,7 @@ function createEmptySession(): ChatSession {
 		isThinking: false,
 		isStreaming: false,
 		isCompacting: false,
+		pendingPromptStart: false,
 		error: null,
 		thinkingStartedAt: null,
 	};
@@ -115,7 +125,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				},
 			};
 		}),
-	startAssistantTurn: (sessionKey) =>
+	queuePrompt: (sessionKey, message) =>
+		set((state) => {
+			const session = getOrCreateSession(state.sessions, sessionKey);
+			return {
+				sessions: {
+					...state.sessions,
+					[sessionKey]: {
+						...session,
+						queuedPrompts: [...session.queuedPrompts, message],
+						error: null,
+					},
+				},
+			};
+		}),
+	confirmPrompt: (sessionKey, message) =>
+		set((state) => {
+			const session = getOrCreateSession(state.sessions, sessionKey);
+			return {
+				sessions: {
+					...state.sessions,
+					[sessionKey]: confirmPromptStarted(session, message),
+				},
+			};
+		}),
+	startAssistantTurn: (sessionKey, options) =>
 		set((state) => {
 			const session = getOrCreateSession(state.sessions, sessionKey);
 			return {
@@ -128,6 +162,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 							hasPendingHeartbeatIndicator(session.messages),
 						isThinking: true,
 						isStreaming: true,
+						pendingPromptStart: options?.pendingPromptStart ?? false,
 						error: null,
 						thinkingStartedAt: session.thinkingStartedAt ?? Date.now(),
 					},
@@ -145,6 +180,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 					[sessionKey]: {
 						...session,
 						messages: normalizedMessages,
+						queuedPrompts: preservePendingTurn ? session.queuedPrompts : [],
 						streamingText: "",
 						streamingThinking: "",
 						streamingImages: [],
@@ -157,6 +193,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						heartbeatStreamingImages: [],
 						isThinking: preservePendingTurn ? session.isThinking : false,
 						isStreaming: preservePendingTurn ? session.isStreaming : false,
+						isCompacting: preservePendingTurn ? session.isCompacting : false,
+						pendingPromptStart: preservePendingTurn
+							? session.pendingPromptStart
+							: false,
 						error: null,
 						thinkingStartedAt:
 							preservePendingTurn && (session.isThinking || session.isStreaming)
@@ -180,6 +220,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						heartbeatStreamingText: session.heartbeatPending
 							? `${session.heartbeatStreamingText}${text}`
 							: session.heartbeatStreamingText,
+						pendingPromptStart: false,
 						isStreaming: true,
 					},
 				},
@@ -200,6 +241,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 							? `${session.heartbeatStreamingThinking}${text}`
 							: session.heartbeatStreamingThinking,
 						isThinking: true,
+						pendingPromptStart: false,
 						thinkingStartedAt: session.thinkingStartedAt ?? Date.now(),
 					},
 				},
@@ -220,6 +262,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 							? [...session.heartbeatStreamingImages, image]
 							: session.heartbeatStreamingImages,
 						isStreaming: true,
+						pendingPromptStart: false,
 					},
 				},
 			};
@@ -253,6 +296,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 							session.isStreaming ||
 							snapshot.text !== "" ||
 							snapshot.images.length > 0,
+						pendingPromptStart:
+							snapshot.thinking !== "" ||
+							snapshot.text !== "" ||
+							snapshot.images.length > 0
+								? false
+								: session.pendingPromptStart,
 						thinkingStartedAt:
 							session.thinkingStartedAt ??
 							(snapshot.thinking !== "" ||
@@ -309,24 +358,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	setError: (sessionKey, error) =>
 		set((state) => {
 			const session = getOrCreateSession(state.sessions, sessionKey);
+			const nextSession = {
+				...session,
+				error,
+				isThinking: error ? false : session.isThinking,
+				isStreaming: error ? false : session.isStreaming,
+				isCompacting: error ? false : session.isCompacting,
+				pendingPromptStart: error ? false : session.pendingPromptStart,
+				heartbeatPending: error ? false : session.heartbeatPending,
+				heartbeatStreamingText: error ? "" : session.heartbeatStreamingText,
+				heartbeatStreamingThinking: error
+					? ""
+					: session.heartbeatStreamingThinking,
+				heartbeatStreamingImages: error ? [] : session.heartbeatStreamingImages,
+				thinkingStartedAt: error ? null : session.thinkingStartedAt,
+			};
 			return {
 				sessions: {
 					...state.sessions,
-					[sessionKey]: {
-						...session,
-						error,
-						isThinking: error ? false : session.isThinking,
-						isStreaming: error ? false : session.isStreaming,
-						heartbeatPending: error ? false : session.heartbeatPending,
-						heartbeatStreamingText: error ? "" : session.heartbeatStreamingText,
-						heartbeatStreamingThinking: error
-							? ""
-							: session.heartbeatStreamingThinking,
-						heartbeatStreamingImages: error
-							? []
-							: session.heartbeatStreamingImages,
-						thinkingStartedAt: error ? null : session.thinkingStartedAt,
-					},
+					[sessionKey]: nextSession,
 				},
 			};
 		}),
@@ -334,24 +384,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		set((state) => {
 			const session = getOrCreateSession(state.sessions, sessionKey);
 			const messages = finalizeSessionMessages(session, options);
+			const settledSession = {
+				...session,
+				messages,
+				streamingText: "",
+				streamingThinking: "",
+				streamingImages: [],
+				heartbeatPending: false,
+				heartbeatStreamingText: "",
+				heartbeatStreamingThinking: "",
+				heartbeatStreamingImages: [],
+				isThinking: false,
+				isStreaming: false,
+				isCompacting: false,
+				pendingPromptStart: false,
+				error: null,
+				thinkingStartedAt: null,
+			};
 			return {
 				sessions: {
 					...state.sessions,
-					[sessionKey]: {
-						...session,
-						messages,
-						streamingText: "",
-						streamingThinking: "",
-						streamingImages: [],
-						heartbeatPending: false,
-						heartbeatStreamingText: "",
-						heartbeatStreamingThinking: "",
-						heartbeatStreamingImages: [],
-						isThinking: false,
-						isStreaming: false,
-						error: null,
-						thinkingStartedAt: null,
-					},
+					[sessionKey]: settledSession,
 				},
 			};
 		}),
@@ -459,6 +512,104 @@ function finalizeSessionMessages(
 				},
 			]
 		: session.messages;
+}
+
+export function hasActiveChatTurn(session: ChatSession): boolean {
+	return (
+		session.isThinking ||
+		session.isStreaming ||
+		session.isCompacting ||
+		session.pendingPromptStart ||
+		session.heartbeatPending ||
+		session.streamingText !== "" ||
+		session.streamingThinking !== "" ||
+		session.streamingImages.length > 0 ||
+		session.heartbeatStreamingText !== "" ||
+		session.heartbeatStreamingThinking !== "" ||
+		session.heartbeatStreamingImages.length > 0
+	);
+}
+
+export function shouldQueuePromptInChatSession(
+	session: ChatSession | undefined,
+): boolean {
+	return (
+		session !== undefined &&
+		(hasActiveChatTurn(session) || session.queuedPrompts.length > 0)
+	);
+}
+
+function confirmPromptStarted(
+	session: ChatSession,
+	message: DisplayChatMessage,
+): ChatSession {
+	const lastMessage = session.messages.at(-1);
+	const pendingSession =
+		session.pendingPromptStart &&
+		lastMessage?.kind === "chat" &&
+		lastMessage.role === "user" &&
+		!isSamePromptMessage(lastMessage, message)
+			? demotePendingPromptStart(session, lastMessage)
+			: session;
+
+	const [queuedPrompt, ...queuedPrompts] = pendingSession.queuedPrompts;
+	if (queuedPrompt && isSamePromptMessage(queuedPrompt, message)) {
+		return startConfirmedAssistantTurn({
+			...pendingSession,
+			messages: [...pendingSession.messages, queuedPrompt],
+			queuedPrompts,
+		});
+	}
+
+	const pendingLastMessage = pendingSession.messages.at(-1);
+	if (
+		hasActiveChatTurn(pendingSession) &&
+		pendingLastMessage?.kind === "chat" &&
+		pendingLastMessage.role === "user" &&
+		isSamePromptMessage(pendingLastMessage, message)
+	) {
+		return startConfirmedAssistantTurn(pendingSession);
+	}
+
+	return startConfirmedAssistantTurn({
+		...pendingSession,
+		messages: [...pendingSession.messages, message],
+	});
+}
+
+function startConfirmedAssistantTurn(session: ChatSession): ChatSession {
+	return {
+		...session,
+		isThinking: true,
+		isStreaming: true,
+		pendingPromptStart: false,
+		error: null,
+		thinkingStartedAt: session.thinkingStartedAt ?? Date.now(),
+	};
+}
+
+function demotePendingPromptStart(
+	session: ChatSession,
+	prompt: DisplayChatMessage,
+): ChatSession {
+	return {
+		...session,
+		messages: session.messages.slice(0, -1),
+		queuedPrompts: [prompt, ...session.queuedPrompts],
+		pendingPromptStart: false,
+	};
+}
+
+function isSamePromptMessage(
+	left: DisplayChatMessage,
+	right: DisplayChatMessage,
+): boolean {
+	return (
+		left.role === right.role &&
+		left.content === right.content &&
+		(left.images?.length ?? 0) === (right.images?.length ?? 0) &&
+		(left.replyContext?.text ?? "") === (right.replyContext?.text ?? "")
+	);
 }
 
 function createUserAssistantTurn(

@@ -30,6 +30,17 @@ function createMessageItem(
 	};
 }
 
+function createPrefixItem(
+	staticPrefix: ReactNode,
+	transcriptVersion: number,
+): StaticTranscriptItem {
+	return {
+		kind: "prefix",
+		key: `${transcriptVersion}:prefix`,
+		node: staticPrefix,
+	};
+}
+
 function initialStaticItems(
 	staticPrefix: ReactNode,
 	messages: TuiMessage[],
@@ -38,11 +49,7 @@ function initialStaticItems(
 ): StaticTranscriptItem[] {
 	const items: StaticTranscriptItem[] = [];
 	if (staticPrefix) {
-		items.push({
-			kind: "prefix",
-			key: "prefix",
-			node: staticPrefix,
-		});
+		items.push(createPrefixItem(staticPrefix, transcriptVersion));
 	}
 	for (const message of messages.slice(0, staticMessageCount)) {
 		items.push(createMessageItem(message, transcriptVersion));
@@ -76,6 +83,9 @@ export function useAppendOnlyStaticTranscript(
 	if (state.transcriptVersion !== transcriptVersion) {
 		state.items = [
 			...state.items,
+			...(staticPrefix
+				? [createPrefixItem(staticPrefix, transcriptVersion)]
+				: []),
 			...messages
 				.slice(0, staticMessageCount)
 				.map((message) => createMessageItem(message, transcriptVersion)),

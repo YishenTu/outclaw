@@ -210,6 +210,32 @@ describe("browser message list", () => {
 		expect(html).not.toContain("Working...");
 	});
 
+	test("renders queued prompts with a pending indicator", () => {
+		const html = renderToStaticMarkup(
+			<MessageList
+				messages={[]}
+				queuedPrompts={[
+					{
+						kind: "chat",
+						role: "user",
+						content: "queued follow-up",
+					},
+				]}
+				streamingText="current response"
+				streamingThinking=""
+				isStreaming={true}
+				isCompacting={false}
+				thinkingStartedAt={null}
+			/>,
+		);
+
+		expect(html).toContain("current response");
+		expect(html).toContain("queued follow-up");
+		expect(html).toContain(
+			"Queued - will be sent once the current turn completes.",
+		);
+	});
+
 	test("renders heartbeat prompts as a compact indicator instead of the raw prompt", () => {
 		const html = renderToStaticMarkup(
 			<MessageList

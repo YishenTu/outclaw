@@ -16,13 +16,21 @@ export interface TuiMessage {
 	readonly variant?: TuiMessageVariant;
 }
 
+export interface TuiQueuedPrompt {
+	readonly id: number;
+	readonly text: string;
+}
+
 export interface TuiState {
 	messages: TuiMessage[];
+	activePrompt?: TuiMessage;
 	streaming: string;
 	streamingThinking: string;
 	heartbeatPending: boolean;
 	heartbeatStreaming: string;
 	heartbeatStreamingThinking: string;
+	pendingPromptStart: boolean;
+	queuedPrompts: TuiQueuedPrompt[];
 	running: boolean;
 	compacting: boolean;
 	nextId: number;
@@ -32,11 +40,14 @@ export interface TuiState {
 export function initialTuiState(): TuiState {
 	return {
 		messages: [],
+		activePrompt: undefined,
 		streaming: "",
 		streamingThinking: "",
 		heartbeatPending: false,
 		heartbeatStreaming: "",
 		heartbeatStreamingThinking: "",
+		pendingPromptStart: false,
+		queuedPrompts: [],
 		running: false,
 		compacting: false,
 		nextId: 1,

@@ -152,14 +152,20 @@ describe("mapEventToActions", () => {
 		expect(sessionLine).toBe(`session  ${"A".repeat(37)}...`);
 	});
 
-	test("user_prompt from tui → noop (locally added)", () => {
+	test("user_prompt from tui → confirms the local prompt", () => {
 		expect(
 			mapEventToActions({
 				type: "user_prompt",
 				prompt: "hello",
 				source: "tui",
 			}),
-		).toEqual([{ type: "noop" }]);
+		).toEqual([
+			{
+				type: "confirm_tui_prompt",
+				text: "hello",
+				compacting: false,
+			},
+		]);
 	});
 
 	test("user_prompt from telegram → push user", () => {
@@ -785,6 +791,133 @@ describe("applyAction", () => {
 				replyText: "Earlier answer",
 			},
 		]);
+	});
+
+	test("confirm_tui_prompt activates the matching queued prompt", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: "current response",
+		});
+		state = applyAction(state, {
+			type: "queue_prompt",
+			text: "queued follow-up",
+		});
+		state = applyAction(state, { type: "commit_streaming" });
+		state = applyAction(state, {
+			type: "confirm_tui_prompt",
+			text: "queued follow-up",
+			compacting: false,
+		});
+
+		expect(state.messages).toEqual([
+			{
+				id: 2,
+				role: "assistant",
+				text: "current response",
+			},
+		]);
+		expect(state.activePrompt).toEqual({
+			id: 1,
+			role: "user",
+			text: "queued follow-up",
+		});
+		expect(state.queuedPrompts).toEqual([]);
+		expect(state.running).toBe(true);
+		expect(state.pendingPromptStart).toBe(false);
+
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: "queued response",
+		});
+		state = applyAction(state, { type: "commit_streaming" });
+
+		expect(state.messages).toEqual([
+			{
+				id: 2,
+				role: "assistant",
+				text: "current response",
+			},
+			{
+				id: 1,
+				role: "user",
+				text: "queued follow-up",
+			},
+			{
+				id: 3,
+				role: "assistant",
+				text: "queued response",
+			},
+		]);
+		expect(state.activePrompt).toBeUndefined();
+	});
+
+	test("confirm_tui_prompt does not duplicate an optimistic local prompt", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "push",
+			role: "user",
+			text: "hello",
+		});
+		state = {
+			...state,
+			pendingPromptStart: true,
+			running: true,
+		};
+		state = applyAction(state, {
+			type: "confirm_tui_prompt",
+			text: "hello",
+			compacting: false,
+		});
+
+		expect(state.messages).toEqual([
+			{
+				id: 1,
+				role: "user",
+				text: "hello",
+			},
+		]);
+		expect(state.nextId).toBe(2);
+		expect(state.pendingPromptStart).toBe(false);
+		expect(state.running).toBe(true);
+	});
+
+	test("external prompts requeue a local prompt that has not started yet", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "push",
+			role: "user",
+			text: "local prompt",
+		});
+		state = {
+			...state,
+			pendingPromptStart: true,
+			running: true,
+		};
+		state = applyAction(state, {
+			type: "queue_prompt",
+			text: "local follow-up",
+		});
+
+		state = applyAction(state, {
+			type: "push",
+			role: "user",
+			text: "browser prompt",
+		});
+
+		expect(state.messages).toEqual([
+			{
+				id: 3,
+				role: "user",
+				text: "browser prompt",
+			},
+		]);
+		expect(state.queuedPrompts).toEqual([
+			{ id: 1, text: "local prompt" },
+			{ id: 2, text: "local follow-up" },
+		]);
+		expect(state.pendingPromptStart).toBe(false);
+		expect(state.nextId).toBe(4);
 	});
 
 	test("push_and_stop adds message and stops running", () => {

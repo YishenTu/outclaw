@@ -82,6 +82,10 @@ describe("formatLivePrompt", () => {
 		expect(formatLivePrompt("browser", "hello", undefined)).toBe("hello\n");
 	});
 
+	test("omits the TUI source prefix", () => {
+		expect(formatLivePrompt("tui", "hello", undefined)).toBe("hello\n");
+	});
+
 	test("formats prompt with images", () => {
 		expect(
 			formatLivePrompt("telegram", "what is this?", [
