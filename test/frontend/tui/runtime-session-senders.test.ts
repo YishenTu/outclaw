@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
 	applyOptimisticPromptState,
+	requestTuiFiles,
 	requestTuiSkillsOnce,
 	sendWithOpenTuiSocket,
 } from "../../../src/frontend/tui/events/runtime-session-senders.ts";
@@ -75,5 +76,12 @@ describe("TUI runtime session senders", () => {
 		expect(requestTuiSkillsOnce({ alreadyRequested: false, ws: null })).toBe(
 			false,
 		);
+	});
+
+	test("requests workspace files through an open socket", () => {
+		const ws = createOpenSocket();
+		expect(requestTuiFiles({ ws })).toBe(true);
+		expect(ws.send).toHaveBeenCalledWith('{"type":"request_files"}');
+		expect(requestTuiFiles({ ws: null })).toBe(false);
 	});
 });

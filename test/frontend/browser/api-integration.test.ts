@@ -4,6 +4,7 @@ import {
 	fetchAgentCronHistory,
 	fetchAgentFile,
 	fetchAgentTree,
+	fetchAgentWorkspaceFiles,
 	fetchConfigFile,
 	fetchGitCommit,
 	fetchGitDiff,
@@ -143,6 +144,10 @@ describe("browser API client integration", () => {
 					},
 				];
 			},
+			listAgentWorkspaceFiles: async (agentId) => {
+				calls.push(`workspace-files:${agentId}`);
+				return [{ kind: "file", path: "AGENTS.md" }];
+			},
 			readConfigFile: async () =>
 				createConfigResponse(`${JSON.stringify(configDocument, null, "\t")}\n`),
 			writeConfigFile: async (document) => {
@@ -275,6 +280,9 @@ describe("browser API client integration", () => {
 		await expect(fetchAgentTree("agent-railly")).resolves.toEqual([
 			{ kind: "file", name: "AGENTS.md", path: "AGENTS.md" },
 		]);
+		await expect(fetchAgentWorkspaceFiles("agent-railly")).resolves.toEqual([
+			{ kind: "file", path: "AGENTS.md" },
+		]);
 		await expect(fetchAgentCron("agent-railly")).resolves.toMatchObject([
 			{ enabled: true, name: "daily", path: "cron/daily.yaml" },
 		]);
@@ -335,6 +343,7 @@ describe("browser API client integration", () => {
 
 		expect(calls).toEqual([
 			"tree:agent-railly",
+			"workspace-files:agent-railly",
 			"cron:list:agent-railly",
 			"cron:history:agent-railly:daily:3:200:mock:cron-session-2",
 			"cron:set:agent-railly:cron/daily.yaml:false",

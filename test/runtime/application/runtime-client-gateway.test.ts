@@ -59,6 +59,63 @@ describe("RuntimeClientGateway", () => {
 		});
 	});
 
+	test("requestWorkspaceFiles emits workspace_files_update with listed entries", async () => {
+		const gateway = new RuntimeClientGateway({
+			cwd: "/tmp/outclaw",
+			facade: createFacade(),
+			getStatusEvent: createStatusEvent,
+			listWorkspaceFiles: async () => [
+				{ kind: "file", path: "README.md" },
+				{ kind: "directory", path: "src" },
+			],
+		});
+		const ws = mockWs();
+
+		gateway.requestWorkspaceFiles(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(ws.events()).toContainEqual({
+			type: "workspace_files_update",
+			entries: [
+				{ kind: "file", path: "README.md" },
+				{ kind: "directory", path: "src" },
+			],
+		});
+	});
+
+	test("requestWorkspaceFiles reports lister failures as error events", async () => {
+		const gateway = new RuntimeClientGateway({
+			cwd: "/tmp/outclaw",
+			facade: createFacade(),
+			getStatusEvent: createStatusEvent,
+			listWorkspaceFiles: async () => {
+				throw new Error("listing exploded");
+			},
+		});
+		const ws = mockWs();
+
+		gateway.requestWorkspaceFiles(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(ws.events()).toContainEqual({
+			type: "error",
+			message: "listing exploded",
+		});
+	});
+
+	test("requestWorkspaceFiles is a no-op when no lister is configured", async () => {
+		const gateway = new RuntimeClientGateway({
+			facade: createFacade(),
+			getStatusEvent: createStatusEvent,
+		});
+		const ws = mockWs();
+
+		gateway.requestWorkspaceFiles(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(ws.events()).toEqual([]);
+	});
+
 	test("handleOpen reports history replay failures to the client", async () => {
 		const gateway = new RuntimeClientGateway({
 			facade: createFacade({

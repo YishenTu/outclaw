@@ -19,6 +19,7 @@ import type {
 	ImageMediaType,
 	ImageRef,
 	TranscriptTurn,
+	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
 import {
 	readStoredAgentConfig,
@@ -33,6 +34,7 @@ import {
 import { BROWSER_CONFIG_SCHEMA } from "./config/schema.ts";
 import { listCronRunsForJob } from "./cron/history.ts";
 import { listCronEntries, setCronEnabled } from "./cron/workbench.ts";
+import { listWorkspaceFiles } from "./files/list-workspace-files.ts";
 import { readBrowserFile } from "./files/read-browser-file.ts";
 import { listTreeEntries } from "./files/tree-workbench.ts";
 import {
@@ -90,6 +92,7 @@ export interface BrowserApi {
 	): Promise<BrowserCronHistoryResponse>;
 	listAgentInbox(agentId: string): Promise<BrowserInboxResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
+	listAgentWorkspaceFiles(agentId: string): Promise<WorkspaceFileEntry[]>;
 	readConfigFile(): Promise<BrowserConfigResponse>;
 	writeConfigFile(
 		document: Record<string, unknown>,
@@ -188,6 +191,10 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				ignoredGitPaths,
 			);
 			return await listTreeEntries(agent.homeDir, agent.homeDir, gitStatuses);
+		},
+		async listAgentWorkspaceFiles(agentId) {
+			const agent = requireAgent(agentsById, agentId);
+			return await listWorkspaceFiles(agent.homeDir);
 		},
 		async readConfigFile() {
 			const absolutePath = resolveExistingPathWithinRoot(

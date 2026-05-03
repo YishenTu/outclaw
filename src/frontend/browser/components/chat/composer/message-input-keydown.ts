@@ -15,6 +15,9 @@ interface MessageInputKeydownState {
 	selectedIndex: number;
 	interruptible: boolean;
 	isComposing: boolean;
+	showMentionMenu: boolean;
+	mentionItemCount: number;
+	mentionSelectedIndex: number;
 }
 
 interface MessageInputKeydownActions {
@@ -22,6 +25,9 @@ interface MessageInputKeydownActions {
 	applySelectedSlashCommand: (index: number) => void;
 	sendStopCommand: () => boolean;
 	submitValue: () => void;
+	setMentionSelectedIndex: (index: number) => void;
+	applySelectedMention: (index: number) => void;
+	dismissMentionMenu: () => void;
 }
 
 const IME_KEYCODE = 229;
@@ -44,6 +50,42 @@ export function handleMessageInputKeydown(
 	state: MessageInputKeydownState,
 	actions: MessageInputKeydownActions,
 ): boolean {
+	if (state.showMentionMenu && event.key === "ArrowDown") {
+		event.preventDefault();
+		actions.setMentionSelectedIndex(
+			Math.min(state.mentionSelectedIndex + 1, state.mentionItemCount - 1),
+		);
+		return true;
+	}
+
+	if (state.showMentionMenu && event.key === "ArrowUp") {
+		event.preventDefault();
+		actions.setMentionSelectedIndex(
+			Math.max(state.mentionSelectedIndex - 1, 0),
+		);
+		return true;
+	}
+
+	if (
+		state.showMentionMenu &&
+		(event.key === "Enter" || event.key === "Tab") &&
+		event.shiftKey !== true
+	) {
+		if (isImeConfirmationKeydown(event, state.isComposing)) {
+			return false;
+		}
+
+		event.preventDefault();
+		actions.applySelectedMention(state.mentionSelectedIndex);
+		return true;
+	}
+
+	if (state.showMentionMenu && event.key === "Escape") {
+		event.preventDefault();
+		actions.dismissMentionMenu();
+		return true;
+	}
+
 	if (state.showSlashMenu && event.key === "ArrowDown") {
 		event.preventDefault();
 		actions.setSelectedIndex(

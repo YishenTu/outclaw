@@ -15,11 +15,14 @@ import {
 	clampCommandMenuIndex,
 	createComposerState,
 	reduceComposerBatch,
+	resolveMentionMenu,
 } from "./composer/state.ts";
 import { TextArea } from "./composer/text-area.tsx";
 import { useLatestRef } from "./hooks/use-latest-ref.ts";
 import { useRuntimeSession } from "./hooks/use-runtime-session.ts";
 import { useTerminalSize } from "./hooks/use-terminal-size.ts";
+import { MentionMenu } from "./mention-menu/menu.tsx";
+import { clampMentionMenuIndex } from "./mention-menu/state.ts";
 import { sessionMenuChoices } from "./sessions/format.ts";
 import { SessionMenu } from "./sessions/menu.tsx";
 import { shouldEnableGlobalStopShortcut } from "./sessions/state.ts";
@@ -42,6 +45,7 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		dismissAgentMenu,
 		dismissSessionMenu,
 		menuData,
+		requestFiles,
 		requestSkills,
 		runCommand,
 		runPrompt,
@@ -49,6 +53,7 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		skills,
 		status,
 		tuiState,
+		workspaceFiles,
 	} = useRuntimeSession(url, agentName);
 	const composerStateRef = useLatestRef(composerState);
 	const input = composerState.draft.value;
@@ -143,12 +148,23 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 	const inputActive =
 		!tuiState.running && menuData === null && agentMenuData === null;
 
+	const mentionResolution = resolveMentionMenu(composerState, {
+		inputActive,
+		skills,
+		workspaceFiles,
+	});
+	const mentionMenuIndex = clampMentionMenuIndex(
+		composerState.mentionMenuIndex,
+		mentionResolution.matches.length,
+	);
+	const mentionMenuVisible = mentionResolution.visible;
 	const matchedCommands = matchCommands(composerState.draft.value, skills);
 	const cmdMenuIndex = clampCommandMenuIndex(
 		composerState.cmdMenuIndex,
 		matchedCommands.length,
 	);
 	const cmdMenuVisible =
+		!mentionMenuVisible &&
 		matchedCommands.length > 0 &&
 		inputActive &&
 		!composerState.cmdMenuDismissed;
@@ -157,6 +173,11 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		inputActive &&
 		skills.length === 0 &&
 		composerState.draft.value.trimStart().startsWith("/");
+	const shouldRequestFiles =
+		status === "connected" &&
+		inputActive &&
+		workspaceFiles.length === 0 &&
+		composerState.draft.value.includes("@");
 
 	useEffect(() => {
 		if (!shouldRequestSkills) {
@@ -166,10 +187,20 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		requestSkills();
 	}, [requestSkills, shouldRequestSkills]);
 
+	useEffect(() => {
+		if (!shouldRequestFiles) {
+			return;
+		}
+
+		requestFiles();
+	}, [requestFiles, shouldRequestFiles]);
+
 	useTextAreaInput((events) => {
 		const result = reduceComposerBatch(composerStateRef.current, events, {
 			inputActive,
+			onMentionTokenActive: requestFiles,
 			skills,
+			workspaceFiles,
 		});
 
 		if (result.state !== composerStateRef.current) {
@@ -257,12 +288,17 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 						</Box>
 					</Box>
 					<Text dimColor>{divider}</Text>
-					{cmdMenuVisible && (
+					{mentionMenuVisible ? (
+						<MentionMenu
+							items={mentionResolution.matches}
+							selectedIndex={mentionMenuIndex}
+						/>
+					) : cmdMenuVisible ? (
 						<CommandMenu items={matchedCommands} selectedIndex={cmdMenuIndex} />
-					)}
+					) : null}
 				</Box>
 			)}
-			{!cmdMenuVisible && (
+			{!cmdMenuVisible && !mentionMenuVisible && (
 				<Box paddingX={1}>
 					<StatusBar
 						status={status}

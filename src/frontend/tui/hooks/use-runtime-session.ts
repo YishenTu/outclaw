@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ServerEvent, SkillInfo } from "../../../common/protocol.ts";
+import type {
+	ServerEvent,
+	SkillInfo,
+	WorkspaceFileEntry,
+} from "../../../common/protocol.ts";
 import type { AgentMenuData } from "../agents/types.ts";
 import type { ConnectionStatus, RuntimeInfo } from "../chrome/status-bar.tsx";
 import {
 	applyOptimisticPromptState,
+	requestTuiFiles,
 	requestTuiSkillsOnce,
 	sendTuiRuntimeCommand,
 	sendTuiRuntimePrompt,
@@ -19,6 +24,8 @@ import { applyAction } from "../transcript/reducer.ts";
 import { mapEventToActions } from "../transcript/runtime-events.ts";
 import { initialTuiState } from "../transcript/state.ts";
 
+const WORKSPACE_FILES_REFRESH_INTERVAL_MS = 2000;
+
 export function useRuntimeSession(url: string, agentName?: string) {
 	const [agentMenuData, setAgentMenuData] = useState<AgentMenuData | null>(
 		null,
@@ -28,7 +35,11 @@ export function useRuntimeSession(url: string, agentName?: string) {
 	const [menuData, setMenuData] = useState<SessionMenuData | null>(null);
 	const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo>({});
 	const [skills, setSkills] = useState<SkillInfo[]>([]);
+	const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileEntry[]>(
+		[],
+	);
 	const skillsRequestedRef = useRef(false);
+	const lastFilesRequestAtRef = useRef<number | null>(null);
 	const agentNameRef = useRef<string | undefined>(undefined);
 	const wsRef = useRef<WebSocket | null>(null);
 
@@ -60,7 +71,9 @@ export function useRuntimeSession(url: string, agentName?: string) {
 						wsRef.current = null;
 					}
 					skillsRequestedRef.current = false;
+					lastFilesRequestAtRef.current = null;
 					setSkills([]);
+					setWorkspaceFiles([]);
 					setTuiState((previous) => ({ ...previous, compacting: false }));
 					setStatus("disconnected");
 					retryTimer = setTimeout(connect, 3000);
@@ -70,6 +83,7 @@ export function useRuntimeSession(url: string, agentName?: string) {
 				},
 				onOpen: () => {
 					skillsRequestedRef.current = false;
+					lastFilesRequestAtRef.current = null;
 					setStatus("connected");
 				},
 				url,
@@ -81,6 +95,10 @@ export function useRuntimeSession(url: string, agentName?: string) {
 		function handleRuntimeEvent(event: ServerEvent) {
 			if (event.type === "skills_update") {
 				setSkills(event.skills);
+				return;
+			}
+			if (event.type === "workspace_files_update") {
+				setWorkspaceFiles(event.entries);
 				return;
 			}
 			if (event.type === "agent_menu") {
@@ -183,6 +201,22 @@ export function useRuntimeSession(url: string, agentName?: string) {
 		return false;
 	}, []);
 
+	const requestFiles = useCallback(() => {
+		const now = Date.now();
+		const lastRequestedAt = lastFilesRequestAtRef.current;
+		if (
+			lastRequestedAt !== null &&
+			now - lastRequestedAt < WORKSPACE_FILES_REFRESH_INTERVAL_MS
+		) {
+			return false;
+		}
+		if (requestTuiFiles({ ws: wsRef.current })) {
+			lastFilesRequestAtRef.current = now;
+			return true;
+		}
+		return false;
+	}, []);
+
 	const dismissSessionMenu = useCallback(() => {
 		setMenuData(null);
 	}, []);
@@ -196,6 +230,7 @@ export function useRuntimeSession(url: string, agentName?: string) {
 		dismissAgentMenu,
 		dismissSessionMenu,
 		menuData,
+		requestFiles,
 		requestSkills,
 		runCommand,
 		runPrompt,
@@ -203,5 +238,6 @@ export function useRuntimeSession(url: string, agentName?: string) {
 		skills,
 		status,
 		tuiState,
+		workspaceFiles,
 	};
 }

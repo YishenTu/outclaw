@@ -3,6 +3,7 @@ import type {
 	RuntimeStatusEvent,
 	StreamingSyncEvent,
 	TranscriptTurn,
+	WorkspaceFileEntry,
 } from "../../../common/protocol.ts";
 import { extractError } from "../../../common/protocol.ts";
 import { ClientHub, type WsClient } from "../../transport/client-hub.ts";
@@ -14,6 +15,7 @@ interface RuntimeClientGatewayOptions {
 	facade: Facade;
 	getStreamingSyncEvent?: (sessionId: string) => StreamingSyncEvent | undefined;
 	getStatusEvent: () => RuntimeStatusEvent;
+	listWorkspaceFiles?: () => Promise<WorkspaceFileEntry[]>;
 }
 
 export class RuntimeClientGateway {
@@ -104,6 +106,26 @@ export class RuntimeClientGateway {
 					return;
 				}
 				this.send(ws, { type: "skills_update", skills });
+			})
+			.catch((err) => {
+				this.send(ws, {
+					type: "error",
+					message: extractError(err),
+				});
+			});
+	}
+
+	requestWorkspaceFiles(ws: WsClient) {
+		if (!this.options.listWorkspaceFiles) {
+			return;
+		}
+
+		void safeInvoke(() => this.options.listWorkspaceFiles?.())
+			.then((entries) => {
+				if (!entries) {
+					return;
+				}
+				this.send(ws, { type: "workspace_files_update", entries });
 			})
 			.catch((err) => {
 				this.send(ws, {

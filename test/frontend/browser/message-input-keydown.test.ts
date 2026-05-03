@@ -19,6 +19,9 @@ describe("browser message input keydown", () => {
 				selectedIndex: 0,
 				interruptible: false,
 				isComposing: false,
+				showMentionMenu: false,
+				mentionItemCount: 0,
+				mentionSelectedIndex: 0,
 			},
 			{
 				setSelectedIndex: () => {},
@@ -27,6 +30,9 @@ describe("browser message input keydown", () => {
 				submitValue: () => {
 					submitted = true;
 				},
+				setMentionSelectedIndex: () => {},
+				applySelectedMention: () => {},
+				dismissMentionMenu: () => {},
 			},
 		);
 
@@ -53,6 +59,9 @@ describe("browser message input keydown", () => {
 				selectedIndex: 0,
 				interruptible: false,
 				isComposing: false,
+				showMentionMenu: false,
+				mentionItemCount: 0,
+				mentionSelectedIndex: 0,
 			},
 			{
 				setSelectedIndex: () => {},
@@ -61,6 +70,9 @@ describe("browser message input keydown", () => {
 				submitValue: () => {
 					submitted = true;
 				},
+				setMentionSelectedIndex: () => {},
+				applySelectedMention: () => {},
+				dismissMentionMenu: () => {},
 			},
 		);
 
@@ -86,6 +98,9 @@ describe("browser message input keydown", () => {
 				selectedIndex: 1,
 				interruptible: false,
 				isComposing: true,
+				showMentionMenu: false,
+				mentionItemCount: 0,
+				mentionSelectedIndex: 0,
 			},
 			{
 				setSelectedIndex: () => {},
@@ -94,12 +109,93 @@ describe("browser message input keydown", () => {
 				},
 				sendStopCommand: () => false,
 				submitValue: () => {},
+				setMentionSelectedIndex: () => {},
+				applySelectedMention: () => {},
+				dismissMentionMenu: () => {},
 			},
 		);
 
 		expect(handled).toBe(false);
 		expect(selectedIndex).toBe(-1);
 		expect(prevented).toBe(false);
+	});
+
+	test("Tab applies the selected mention and prevents default", () => {
+		let appliedIndex = -1;
+		let prevented = false;
+
+		const handled = handleMessageInputKeydown(
+			{
+				key: "Tab",
+				preventDefault: () => {
+					prevented = true;
+				},
+			},
+			{
+				showSlashMenu: false,
+				filteredCommandCount: 0,
+				selectedIndex: 0,
+				interruptible: false,
+				isComposing: false,
+				showMentionMenu: true,
+				mentionItemCount: 4,
+				mentionSelectedIndex: 2,
+			},
+			{
+				setSelectedIndex: () => {},
+				applySelectedSlashCommand: () => {},
+				sendStopCommand: () => false,
+				submitValue: () => {},
+				setMentionSelectedIndex: () => {},
+				applySelectedMention: (index) => {
+					appliedIndex = index;
+				},
+				dismissMentionMenu: () => {},
+			},
+		);
+
+		expect(handled).toBe(true);
+		expect(appliedIndex).toBe(2);
+		expect(prevented).toBe(true);
+	});
+
+	test("Escape dismisses the mention menu", () => {
+		let dismissed = false;
+		let prevented = false;
+
+		const handled = handleMessageInputKeydown(
+			{
+				key: "Escape",
+				preventDefault: () => {
+					prevented = true;
+				},
+			},
+			{
+				showSlashMenu: false,
+				filteredCommandCount: 0,
+				selectedIndex: 0,
+				interruptible: true,
+				isComposing: false,
+				showMentionMenu: true,
+				mentionItemCount: 4,
+				mentionSelectedIndex: 0,
+			},
+			{
+				setSelectedIndex: () => {},
+				applySelectedSlashCommand: () => {},
+				sendStopCommand: () => true,
+				submitValue: () => {},
+				setMentionSelectedIndex: () => {},
+				applySelectedMention: () => {},
+				dismissMentionMenu: () => {
+					dismissed = true;
+				},
+			},
+		);
+
+		expect(handled).toBe(true);
+		expect(dismissed).toBe(true);
+		expect(prevented).toBe(true);
 	});
 
 	test("does not submit on the IME fallback keycode after composition events desync", () => {
@@ -120,6 +216,9 @@ describe("browser message input keydown", () => {
 				selectedIndex: 0,
 				interruptible: false,
 				isComposing: false,
+				showMentionMenu: false,
+				mentionItemCount: 0,
+				mentionSelectedIndex: 0,
 			},
 			{
 				setSelectedIndex: () => {},
@@ -128,6 +227,9 @@ describe("browser message input keydown", () => {
 				submitValue: () => {
 					submitted = true;
 				},
+				setMentionSelectedIndex: () => {},
+				applySelectedMention: () => {},
+				dismissMentionMenu: () => {},
 			},
 		);
 

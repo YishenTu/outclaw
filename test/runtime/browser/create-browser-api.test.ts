@@ -157,6 +157,8 @@ describe("createBrowserApi", () => {
 		const cronDir = join(agentHomeDir, "cron");
 		mkdirSync(cronDir, { recursive: true });
 		writeFileSync(join(agentHomeDir, "AGENTS.md"), "# Agent\n");
+		mkdirSync(join(agentHomeDir, "node_modules"));
+		writeFileSync(join(agentHomeDir, "node_modules", "dependency.js"), "");
 		writeFileSync(
 			join(cronDir, "daily.yaml"),
 			"name: Daily\nschedule: 15 6 * * *\nmodel: haiku\neffort: high\nenabled: true\nprompt: Check inbox\n",
@@ -193,9 +195,36 @@ describe("createBrowserApi", () => {
 				path: "cron",
 			},
 			{
+				children: [
+					{
+						kind: "file",
+						name: "dependency.js",
+						path: "node_modules/dependency.js",
+					},
+				],
+				kind: "directory",
+				name: "node_modules",
+				path: "node_modules",
+			},
+			{
 				kind: "file",
 				name: "AGENTS.md",
 				path: "AGENTS.md",
+			},
+		]);
+
+		await expect(api.listAgentWorkspaceFiles("agent-railly")).resolves.toEqual([
+			{
+				kind: "file",
+				path: "AGENTS.md",
+			},
+			{
+				kind: "directory",
+				path: "cron",
+			},
+			{
+				kind: "file",
+				path: "cron/daily.yaml",
 			},
 		]);
 

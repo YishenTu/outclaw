@@ -1,5 +1,16 @@
-import type { SkillInfo } from "../../../common/protocol.ts";
+import {
+	detectMentionToken,
+	replaceMentionToken,
+} from "../../../common/mention.ts";
+import type {
+	SkillInfo,
+	WorkspaceFileEntry,
+} from "../../../common/protocol.ts";
 import { matchCommands } from "../command-menu/state.ts";
+import {
+	clampMentionMenuIndex,
+	matchedMentions,
+} from "../mention-menu/state.ts";
 import { clampSelectionIndex, moveWrappedSelection } from "../selection.ts";
 import type { TextAreaInputEvent } from "./input.ts";
 import {
@@ -12,11 +23,15 @@ export interface ComposerState {
 	draft: CollapsedPasteDraft;
 	cmdMenuIndex: number;
 	cmdMenuDismissed: boolean;
+	mentionMenuIndex: number;
+	mentionMenuDismissed: boolean;
 }
 
 export interface ComposerBatchOptions {
 	inputActive: boolean;
 	skills: SkillInfo[];
+	workspaceFiles: WorkspaceFileEntry[];
+	onMentionTokenActive?: () => void;
 }
 
 export type ComposerBatchEffect =
@@ -33,6 +48,8 @@ export function createComposerState(): ComposerState {
 		draft: createPasteAwareDraft(),
 		cmdMenuIndex: 0,
 		cmdMenuDismissed: false,
+		mentionMenuIndex: 0,
+		mentionMenuDismissed: false,
 	};
 }
 
@@ -45,6 +62,8 @@ export function withComposerDraft(
 		draft,
 		cmdMenuIndex: 0,
 		cmdMenuDismissed: false,
+		mentionMenuIndex: 0,
+		mentionMenuDismissed: false,
 	};
 }
 
@@ -52,23 +71,50 @@ export function clampCommandMenuIndex(index: number, count: number): number {
 	return clampSelectionIndex(index, count);
 }
 
+export interface ResolvedMentionMenu {
+	matches: WorkspaceFileEntry[];
+	visible: boolean;
+}
+
+export function resolveMentionMenu(
+	state: ComposerState,
+	options: ComposerBatchOptions,
+): ResolvedMentionMenu {
+	const token = detectMentionToken(state.draft.value, state.draft.cursor);
+	if (!token) {
+		return { matches: [], visible: false };
+	}
+	const matches = matchedMentions(options.workspaceFiles, token);
+	return {
+		matches,
+		visible:
+			options.inputActive && matches.length > 0 && !state.mentionMenuDismissed,
+	};
+}
+
 function normalizeComposerState(
 	state: ComposerState,
 	options: ComposerBatchOptions,
 ): ComposerState {
+	let next = state;
 	const matchedCommands = matchCommands(state.draft.value, options.skills);
-	const nextIndex = clampCommandMenuIndex(
+	const cmdIndex = clampCommandMenuIndex(
 		state.cmdMenuIndex,
 		matchedCommands.length,
 	);
-	if (nextIndex === state.cmdMenuIndex) {
-		return state;
+	if (cmdIndex !== state.cmdMenuIndex) {
+		next = { ...next, cmdMenuIndex: cmdIndex };
 	}
 
-	return {
-		...state,
-		cmdMenuIndex: nextIndex,
-	};
+	const { matches } = resolveMentionMenu(next, options);
+	const mentionIndex = clampMentionMenuIndex(
+		next.mentionMenuIndex,
+		matches.length,
+	);
+	if (mentionIndex !== next.mentionMenuIndex) {
+		next = { ...next, mentionMenuIndex: mentionIndex };
+	}
+	return next;
 }
 
 export function reduceComposerBatch(
@@ -79,12 +125,84 @@ export function reduceComposerBatch(
 	let nextState = normalizeComposerState(state, options);
 
 	for (const { input, key, sequence } of events) {
+		const mentionToken = detectMentionToken(
+			nextState.draft.value,
+			nextState.draft.cursor,
+		);
+		if (mentionToken) {
+			options.onMentionTokenActive?.();
+		}
+		const mentionMatches = mentionToken
+			? matchedMentions(options.workspaceFiles, mentionToken)
+			: [];
+		const mentionMenuVisible =
+			options.inputActive &&
+			mentionToken !== null &&
+			mentionMatches.length > 0 &&
+			!nextState.mentionMenuDismissed;
+
+		if (mentionMenuVisible && mentionToken) {
+			if (key.upArrow || (key.ctrl && input === "p")) {
+				nextState = {
+					...nextState,
+					mentionMenuIndex: moveWrappedSelection(
+						nextState.mentionMenuIndex,
+						mentionMatches.length,
+						-1,
+					),
+				};
+				continue;
+			}
+
+			if (key.downArrow || (key.ctrl && input === "n")) {
+				nextState = {
+					...nextState,
+					mentionMenuIndex: moveWrappedSelection(
+						nextState.mentionMenuIndex,
+						mentionMatches.length,
+						1,
+					),
+				};
+				continue;
+			}
+
+			if (key.tab || key.return) {
+				const selected = mentionMatches[nextState.mentionMenuIndex];
+				if (!selected) {
+					return { effect: { type: "none" }, state: nextState };
+				}
+				const replaced = replaceMentionToken(
+					nextState.draft.value,
+					mentionToken,
+					selected.path,
+				);
+				return {
+					effect: { type: "none" },
+					state: withComposerDraft(
+						nextState,
+						createPasteAwareDraft(replaced.value, replaced.cursor),
+					),
+				};
+			}
+
+			if (key.escape) {
+				return {
+					effect: { type: "none" },
+					state: {
+						...nextState,
+						mentionMenuDismissed: true,
+					},
+				};
+			}
+		}
+
 		const matchedCommands = matchCommands(
 			nextState.draft.value,
 			options.skills,
 		);
 		const cmdMenuVisible =
 			options.inputActive &&
+			!mentionMenuVisible &&
 			matchedCommands.length > 0 &&
 			!nextState.cmdMenuDismissed;
 

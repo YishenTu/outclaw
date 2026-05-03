@@ -1,19 +1,28 @@
 import { Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { EffortLevel } from "../../../../../common/commands.ts";
+import {
+	detectMentionToken,
+	matchMentionEntries,
+	replaceMentionToken,
+} from "../../../../../common/mention.ts";
 import type { ModelAlias } from "../../../../../common/models.ts";
+import type { WorkspaceFileEntry } from "../../../../../common/protocol.ts";
 import {
 	type ComposerImageAttachment,
 	createComposerImageAttachment,
 	filterSupportedImageFiles,
 } from "../../../attachments/composer-images.ts";
 import { useWs } from "../../../contexts/websocket-context.tsx";
+import { useAgentFilesStore } from "../../../stores/agent-files.ts";
+import { useAgentsStore } from "../../../stores/agents.ts";
 import { useRuntimePopupStore } from "../../../stores/runtime-popup.ts";
 import { useSlashCommandsStore } from "../../../stores/slash-commands.ts";
 import { ContextGauge } from "../context-gauge.tsx";
 import { useGlobalStopShortcut } from "../global-stop-shortcut.ts";
 import { HeartbeatIndicator } from "../heartbeat-indicator.tsx";
 import { getImageThumbnailClassName } from "../image-thumbnail-styles.ts";
+import { MentionMenu } from "../mention-menu.tsx";
 import { ModelSelector } from "../model-selector.tsx";
 import { RuntimeCommandPopup } from "../runtime-command-popup.tsx";
 import { useRuntimePopupShortcuts } from "../runtime-popup-shortcuts.ts";
@@ -28,6 +37,9 @@ import {
 	clearSubmittedDraftIfUnchanged,
 } from "./message-input-draft.ts";
 import { handleMessageInputKeydown } from "./message-input-keydown.ts";
+
+const MAX_MENTION_RESULTS = 50;
+const EMPTY_FILES: WorkspaceFileEntry[] = [];
 
 interface MessageInputProps {
 	onSend: (submission: {
@@ -59,8 +71,11 @@ export function MessageInput({
 }: MessageInputProps) {
 	const { sendCommand } = useWs();
 	const [value, setValue] = useState("");
+	const [cursor, setCursor] = useState(0);
 	const [images, setImages] = useState<ComposerImageAttachment[]>([]);
 	const [selectedIndex, setSelectedIndex] = useState(0);
+	const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+	const [mentionDismissed, setMentionDismissed] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const isComposingRef = useRef(false);
@@ -71,8 +86,22 @@ export function MessageInput({
 	const commands = useSlashCommandsStore((state) => state.commands);
 	const runtimePopup = useRuntimePopupStore((state) => state.popup);
 	const closeRuntimePopup = useRuntimePopupStore((state) => state.closePopup);
+	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
+	const agentFilesEntry = useAgentFilesStore((state) =>
+		activeAgentId ? state.entriesByAgent[activeAgentId] : undefined,
+	);
+	const agentFiles = agentFilesEntry?.files ?? EMPTY_FILES;
+	const requestAgentFiles = useAgentFilesStore((state) => state.requestFiles);
+	const mentionToken = detectMentionToken(value, cursor);
+	const mentionMatches: WorkspaceFileEntry[] = mentionToken
+		? matchMentionEntries(agentFiles, mentionToken.query, {
+				limit: MAX_MENTION_RESULTS,
+			})
+		: [];
+	const showMentionMenu =
+		mentionToken !== null && mentionMatches.length > 0 && !mentionDismissed;
 	const filteredCommands = filterSlashCommands(value, commands);
-	const showSlashMenu = filteredCommands.length > 0;
+	const showSlashMenu = !showMentionMenu && filteredCommands.length > 0;
 	const canSend = canSubmitMessageInput({
 		disabled,
 		imageCount: images.length,
@@ -131,11 +160,58 @@ export function MessageInput({
 		selectedIndex,
 	]);
 
+	useEffect(() => {
+		if (mentionSelectedIndex < mentionMatches.length) {
+			return;
+		}
+		setMentionSelectedIndex(0);
+	}, [mentionMatches.length, mentionSelectedIndex]);
+
+	useEffect(() => {
+		if (!activeAgentId) {
+			return;
+		}
+		if (!value.includes("@")) {
+			return;
+		}
+		void requestAgentFiles(activeAgentId);
+	}, [activeAgentId, requestAgentFiles, value]);
+
+	function syncCursorFromTextarea() {
+		const textarea = textareaRef.current;
+		if (!textarea) {
+			return;
+		}
+		setCursor(textarea.selectionStart ?? value.length);
+	}
+
 	function applySlashCommand(name: string) {
 		closeRuntimePopup();
 		setValue(`/${name} `);
+		setCursor(`/${name} `.length);
 		setSelectedIndex(0);
+		setMentionDismissed(false);
 		focusTextarea();
+	}
+
+	function applyMentionEntry(index: number) {
+		if (!mentionToken) {
+			return;
+		}
+		const selected = mentionMatches[index] ?? mentionMatches[0];
+		if (!selected) {
+			return;
+		}
+		const replaced = replaceMentionToken(value, mentionToken, selected.path);
+		setValue(replaced.value);
+		setCursor(replaced.cursor);
+		setMentionSelectedIndex(0);
+		setMentionDismissed(false);
+		window.requestAnimationFrame(() => {
+			const textarea = textareaRef.current;
+			textarea?.focus();
+			textarea?.setSelectionRange(replaced.cursor, replaced.cursor);
+		});
 	}
 
 	async function appendFiles(files: File[]) {
@@ -220,6 +296,18 @@ export function MessageInput({
 							selectedIndex={selectedIndex}
 							onSelect={selectRuntimePopupItem}
 						/>
+					) : showMentionMenu ? (
+						<MentionMenu
+							entries={mentionMatches}
+							selectedIndex={mentionSelectedIndex}
+							onSelect={(entry) => {
+								const index = mentionMatches.findIndex(
+									(item) =>
+										item.path === entry.path && item.kind === entry.kind,
+								);
+								applyMentionEntry(index >= 0 ? index : 0);
+							}}
+						/>
 					) : showSlashMenu ? (
 						<SlashCommandMenu
 							commands={filteredCommands}
@@ -263,7 +351,16 @@ export function MessageInput({
 							ref={textareaRef}
 							value={value}
 							disabled={isInputDisabled}
-							onChange={(event) => setValue(event.target.value)}
+							onChange={(event) => {
+								setValue(event.target.value);
+								setCursor(
+									event.target.selectionStart ?? event.target.value.length,
+								);
+								setMentionDismissed(false);
+							}}
+							onSelect={syncCursorFromTextarea}
+							onClick={syncCursorFromTextarea}
+							onKeyUp={syncCursorFromTextarea}
 							onPaste={(event) => {
 								const files = filterSupportedImageFiles(
 									Array.from(event.clipboardData.files),
@@ -304,6 +401,9 @@ export function MessageInput({
 										selectedIndex,
 										interruptible,
 										isComposing: isComposingRef.current,
+										showMentionMenu,
+										mentionItemCount: mentionMatches.length,
+										mentionSelectedIndex,
 									},
 									{
 										setSelectedIndex,
@@ -317,6 +417,13 @@ export function MessageInput({
 										sendStopCommand: () => sendCommand("/stop"),
 										submitValue: () => {
 											void submitValue();
+										},
+										setMentionSelectedIndex,
+										applySelectedMention: (index) => {
+											applyMentionEntry(index);
+										},
+										dismissMentionMenu: () => {
+											setMentionDismissed(true);
 										},
 									},
 								);

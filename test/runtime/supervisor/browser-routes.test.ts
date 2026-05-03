@@ -140,6 +140,9 @@ describe("createSupervisor browser routes", () => {
 			browserApi: {
 				getAgentTerminalCwd: () => undefined,
 				listAgentCron: async () => [],
+				listAgentWorkspaceFiles: async () => [
+					{ kind: "file", path: "AGENTS.md" },
+				],
 				listAgentTree: async () => [],
 				listAgents: () => ({
 					activeAgentId: "agent-railly",
@@ -204,6 +207,14 @@ describe("createSupervisor browser routes", () => {
 			content: "# Agent\n",
 			truncated: false,
 		});
+
+		const workspaceFilesResponse = await fetch(
+			`http://localhost:${supervisor.port}/api/agents/agent-railly/workspace-files`,
+		);
+		expect(workspaceFilesResponse.status).toBe(200);
+		await expect(workspaceFilesResponse.json()).resolves.toEqual([
+			{ kind: "file", path: "AGENTS.md" },
+		]);
 	});
 
 	test("serves browser inbox list, note, archive, and restore actions over HTTP", async () => {

@@ -1,8 +1,11 @@
-import { afterEach, describe, expect, test, vi } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test, vi } from "bun:test";
 import { PassThrough } from "node:stream";
 import { render, Text } from "ink";
 import { useLayoutEffect } from "react";
-import type { SkillInfo } from "../../../src/common/protocol.ts";
+import type {
+	SkillInfo,
+	WorkspaceFileEntry,
+} from "../../../src/common/protocol.ts";
 import { useRuntimeSession } from "../../../src/frontend/tui/hooks/use-runtime-session.ts";
 
 class FakeWebSocket {
@@ -80,6 +83,7 @@ interface Snapshot {
 	agentMenuData: ReturnType<typeof useRuntimeSession>["agentMenuData"];
 	dismissSessionMenu: () => void;
 	menuData: ReturnType<typeof useRuntimeSession>["menuData"];
+	requestFiles: () => boolean;
 	requestSkills: () => boolean;
 	runCommand: (command: string) => boolean;
 	runPrompt: (prompt: string) => boolean;
@@ -87,6 +91,7 @@ interface Snapshot {
 	skills: SkillInfo[];
 	status: string;
 	tuiState: ReturnType<typeof useRuntimeSession>["tuiState"];
+	workspaceFiles: WorkspaceFileEntry[];
 }
 
 function SessionObserver({
@@ -103,6 +108,7 @@ function SessionObserver({
 			agentMenuData: session.agentMenuData,
 			dismissSessionMenu: session.dismissSessionMenu,
 			menuData: session.menuData,
+			requestFiles: session.requestFiles,
 			requestSkills: session.requestSkills,
 			runCommand: session.runCommand,
 			runPrompt: session.runPrompt,
@@ -110,12 +116,14 @@ function SessionObserver({
 			skills: session.skills,
 			status: session.status,
 			tuiState: session.tuiState,
+			workspaceFiles: session.workspaceFiles,
 		});
 	}, [
 		onSnapshot,
 		session.dismissSessionMenu,
 		session.agentMenuData,
 		session.menuData,
+		session.requestFiles,
 		session.requestSkills,
 		session.runCommand,
 		session.runPrompt,
@@ -123,6 +131,7 @@ function SessionObserver({
 		session.skills,
 		session.status,
 		session.tuiState,
+		session.workspaceFiles,
 	]);
 
 	return <Text>{session.status}</Text>;
@@ -246,6 +255,69 @@ describe("useRuntimeSession", () => {
 
 			latest?.requestSkills();
 			expect(secondSocket.sent).toContain('{"type":"request_skills"}');
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("throttles workspace file requests but allows refreshes after the interval", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+		setSystemTime(new Date("2026-05-03T00:00:00.000Z"));
+
+		let latest: Snapshot | undefined;
+		const stdout = createOutputStream();
+		const stderr = createOutputStream();
+		const stdin = new PassThrough() as unknown as NodeJS.ReadStream & {
+			isTTY: boolean;
+		};
+		stdin.isTTY = false;
+
+		const app = render(
+			<SessionObserver
+				url="ws://localhost:4100"
+				onSnapshot={(snapshot) => {
+					latest = snapshot;
+				}}
+			/>,
+			{
+				exitOnCtrlC: false,
+				patchConsole: false,
+				stderr,
+				stdin,
+				stdout,
+			},
+		);
+
+		try {
+			await waitFor(
+				() => FakeWebSocket.instances.length === 1,
+				"initial socket",
+			);
+			const socket = FakeWebSocket.instances[0] as FakeWebSocket;
+			socket.dispatch("open");
+			await waitFor(() => latest?.status === "connected", "connected status");
+
+			expect(latest?.requestFiles()).toBe(true);
+			expect(socket.sent).toContain('{"type":"request_files"}');
+			expect(latest?.requestFiles()).toBe(false);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "workspace_files_update",
+					entries: [{ kind: "file", path: "README.md" }],
+				}),
+			});
+			await waitFor(
+				() => latest?.workspaceFiles[0]?.path === "README.md",
+				"workspace files update",
+			);
+
+			setSystemTime(new Date("2026-05-03T00:00:03.000Z"));
+			expect(latest?.requestFiles()).toBe(true);
+			expect(
+				socket.sent.filter((message) => message === '{"type":"request_files"}'),
+			).toHaveLength(2);
 		} finally {
 			app.unmount();
 			app.cleanup();

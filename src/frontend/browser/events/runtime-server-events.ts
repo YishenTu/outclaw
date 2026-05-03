@@ -7,6 +7,7 @@ import {
 	createBrowserSessionRef,
 	createSessionKey,
 } from "../sessions/session.ts";
+import { useAgentFilesStore } from "../stores/agent-files.ts";
 import { useAgentsStore } from "../stores/agents.ts";
 import { useChatStore } from "../stores/chat.ts";
 import { useContextUsageStore } from "../stores/context-usage.ts";
@@ -234,6 +235,9 @@ export function handleBrowserServerEvent(
 			return;
 		case "browser_sidebar_invalidated":
 			useRightPanelRefreshStore.getState().invalidate(event);
+			if (event.agentId && event.sections.includes("tree")) {
+				useAgentFilesStore.getState().invalidate(event.agentId);
+			}
 			return;
 		case "cron_result":
 			return;

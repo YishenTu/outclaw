@@ -16,6 +16,7 @@ import type {
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 	ImageMediaType,
+	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
 
 export interface BrowserApi {
@@ -40,6 +41,7 @@ export interface BrowserApi {
 	): Promise<BrowserCronHistoryResponse>;
 	listAgentInbox?(agentId: string): Promise<BrowserInboxResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
+	listAgentWorkspaceFiles?(agentId: string): Promise<WorkspaceFileEntry[]>;
 	listAgents(): BrowserAgentsResponse;
 	readAgentFile(
 		agentId: string,
@@ -276,7 +278,7 @@ export async function handleBrowserApiRequest(
 		}
 
 		const agentMatch = url.pathname.match(
-			/^\/api\/agents\/([^/]+)\/(tree|files|cron|terminal-run-command)$/,
+			/^\/api\/agents\/([^/]+)\/(tree|workspace-files|files|cron|terminal-run-command)$/,
 		);
 		if (!agentMatch) {
 			return jsonError("Not found", 404);
@@ -321,6 +323,12 @@ export async function handleBrowserApiRequest(
 
 		if (resource === "tree") {
 			return Response.json(await browserApi.listAgentTree(agentId));
+		}
+		if (resource === "workspace-files") {
+			if (!browserApi.listAgentWorkspaceFiles) {
+				return jsonError("Workspace files API is not configured", 404);
+			}
+			return Response.json(await browserApi.listAgentWorkspaceFiles(agentId));
 		}
 		if (resource === "cron") {
 			return Response.json(await browserApi.listAgentCron(agentId));

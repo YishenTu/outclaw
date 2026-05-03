@@ -2,6 +2,7 @@ import { canonicalizePromptSlashCommand } from "../../../common/commands.ts";
 import { extractError } from "../../../common/protocol.ts";
 import {
 	isRuntimeSocketOpen,
+	sendRequestFiles,
 	sendRequestSkills,
 	sendRuntimeCommand,
 	sendRuntimePrompt,
@@ -85,6 +86,19 @@ export function requestTuiSkillsOnce(params: {
 
 	try {
 		sendRequestSkills(params.ws);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export function requestTuiFiles(params: { ws: WebSocket | null }): boolean {
+	if (!isRuntimeSocketOpen(params.ws)) {
+		return false;
+	}
+
+	try {
+		sendRequestFiles(params.ws);
 		return true;
 	} catch {
 		return false;

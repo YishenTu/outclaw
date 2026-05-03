@@ -2,6 +2,7 @@ import type {
 	Facade,
 	FrontendNotice,
 	HeartbeatResult,
+	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
 import type { WsClient } from "../transport/client-hub.ts";
 import { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
@@ -36,6 +37,7 @@ interface CreateRuntimeControllerOptions {
 	}) => Promise<void> | void;
 	facade: Facade;
 	getFrontendNotice?: () => FrontendNotice | undefined;
+	listWorkspaceFiles?: () => Promise<WorkspaceFileEntry[]>;
 	onExecutionStateChange?: () => void;
 	promptHomeDir?: string;
 	restart?: () => void;
@@ -54,6 +56,7 @@ export function createRuntimeController(
 		canSendToClient: options.canSendToClient,
 		cwd: options.cwd,
 		facade: options.facade,
+		listWorkspaceFiles: options.listWorkspaceFiles,
 		getStreamingSyncEvent: (sessionId) => {
 			const snapshot = streamingState.get(sessionId);
 			if (

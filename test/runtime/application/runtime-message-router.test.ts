@@ -30,11 +30,15 @@ function createRouter(overrides?: {
 	const ws = createWs(overrides?.wsData);
 	const enqueued: PromptExecution[] = [];
 	const requestedSkills: WsClient[] = [];
+	const requestedFiles: WsClient[] = [];
 	const commands: Array<{ command: string; ws: WsClient }> = [];
 	const router = new RuntimeMessageRouter({
 		clients: {
 			requestSkills(target) {
 				requestedSkills.push(target);
+			},
+			requestWorkspaceFiles(target) {
+				requestedFiles.push(target);
 			},
 			send(target, event) {
 				target.send(JSON.stringify(event));
@@ -62,7 +66,7 @@ function createRouter(overrides?: {
 		);
 	}
 
-	return { commands, enqueued, handle, requestedSkills, ws };
+	return { commands, enqueued, handle, requestedFiles, requestedSkills, ws };
 }
 
 describe("RuntimeMessageRouter", () => {
@@ -95,6 +99,13 @@ describe("RuntimeMessageRouter", () => {
 		handle({ type: "request_skills" });
 
 		expect(requestedSkills).toEqual([ws]);
+	});
+
+	test("routes workspace file requests through the client gateway", () => {
+		const { handle, requestedFiles, ws } = createRouter();
+		handle({ type: "request_files" });
+
+		expect(requestedFiles).toEqual([ws]);
 	});
 
 	test("routes command messages to the control plane", () => {

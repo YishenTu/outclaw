@@ -105,6 +105,11 @@ export function sendRequestSkills(ws: WebSocket) {
 	ws.send(serialize({ type: "request_skills" }));
 }
 
+export function sendRequestFiles(ws: WebSocket) {
+	assertRuntimeSocketOpen(ws);
+	ws.send(serialize({ type: "request_files" }));
+}
+
 export function sendRuntimeCommand(ws: WebSocket, command: string) {
 	assertRuntimeSocketOpen(ws);
 	ws.send(serialize({ type: "command", command }));

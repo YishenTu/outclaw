@@ -84,10 +84,15 @@ export interface RequestSkillsMessage {
 	type: "request_skills";
 }
 
+export interface RequestFilesMessage {
+	type: "request_files";
+}
+
 export type ClientMessage =
 	| PromptMessage
 	| CommandMessage
 	| RequestSkillsMessage
+	| RequestFilesMessage
 	| AskMessage
 	| CronRunMessage;
 
@@ -620,6 +625,16 @@ export interface SkillsUpdateEvent {
 	skills: SkillInfo[];
 }
 
+export interface WorkspaceFileEntry {
+	kind: "file" | "directory";
+	path: string;
+}
+
+export interface WorkspaceFilesUpdateEvent {
+	type: "workspace_files_update";
+	entries: WorkspaceFileEntry[];
+}
+
 export interface AskResponseEvent {
 	type: "ask_response";
 	text: string;
@@ -669,6 +684,7 @@ export type ServerEvent =
 	| CronResultEvent
 	| BrowserSidebarInvalidatedEvent
 	| SkillsUpdateEvent
+	| WorkspaceFilesUpdateEvent
 	| AskResponseEvent
 	| AskErrorEvent
 	| CronRunResponseEvent

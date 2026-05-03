@@ -8,6 +8,7 @@ import {
 	inferImageMediaTypeFromPath,
 } from "../../../src/frontend/browser/events/runtime-server-events.ts";
 import { createBrowserSessionRef } from "../../../src/frontend/browser/sessions/session.ts";
+import { useAgentFilesStore } from "../../../src/frontend/browser/stores/agent-files.ts";
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
 import { useChatStore } from "../../../src/frontend/browser/stores/chat.ts";
 import { useContextUsageStore } from "../../../src/frontend/browser/stores/context-usage.ts";
@@ -37,6 +38,7 @@ function resetStore<TState>(store: {
 
 function resetBrowserStores() {
 	resetStore(useAgentsStore);
+	resetStore(useAgentFilesStore);
 	resetStore(useSessionsStore);
 	resetStore(useChatStore);
 	resetStore(useContextUsageStore);
@@ -742,6 +744,15 @@ describe("browser runtime server events", () => {
 			{ name: "/test", description: "Test" },
 		]);
 
+		useAgentFilesStore.setState({
+			entriesByAgent: {
+				"agent-railly": {
+					files: [{ kind: "file", path: "stale.md" }],
+					loadedAt: 1,
+				},
+			},
+			loadingAgentId: null,
+		});
 		handleBrowserServerEvent(
 			{
 				type: "browser_sidebar_invalidated",
@@ -755,6 +766,9 @@ describe("browser runtime server events", () => {
 			gitRevision: 1,
 			treeRevisionByAgent: { "agent-railly": 1 },
 		});
+		expect(
+			useAgentFilesStore.getState().entriesByAgent["agent-railly"],
+		).toBeUndefined();
 
 		handleBrowserServerEvent(
 			{ type: "error", message: "provider failed", sessionId: "sdk-active" },

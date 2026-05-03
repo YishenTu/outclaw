@@ -15,6 +15,7 @@ import type {
 	BrowserInboxRestoreResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
+	WorkspaceFileEntry,
 } from "../../../common/protocol.ts";
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
@@ -57,6 +58,14 @@ export async function fetchAgentTree(
 ): Promise<BrowserTreeEntry[]> {
 	return parseJsonResponse(
 		await fetch(`/api/agents/${encodeURIComponent(agentId)}/tree`),
+	);
+}
+
+export async function fetchAgentWorkspaceFiles(
+	agentId: string,
+): Promise<WorkspaceFileEntry[]> {
+	return parseJsonResponse(
+		await fetch(`/api/agents/${encodeURIComponent(agentId)}/workspace-files`),
 	);
 }
 

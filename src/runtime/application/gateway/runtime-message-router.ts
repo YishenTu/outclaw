@@ -17,7 +17,10 @@ interface IncomingMessage {
 }
 
 interface RuntimeMessageRouterOptions {
-	clients: Pick<RuntimeClientGateway, "requestSkills" | "send">;
+	clients: Pick<
+		RuntimeClientGateway,
+		"requestSkills" | "requestWorkspaceFiles" | "send"
+	>;
 	controlPlane: Pick<RuntimeControlPlane, "handleCommand">;
 	execution: Pick<
 		RuntimeExecutionCoordinator,
@@ -50,6 +53,11 @@ export class RuntimeMessageRouter {
 
 		if (data.type === "request_skills") {
 			this.options.clients.requestSkills(ws);
+			return;
+		}
+
+		if (data.type === "request_files") {
+			this.options.clients.requestWorkspaceFiles(ws);
 			return;
 		}
 

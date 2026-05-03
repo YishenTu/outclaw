@@ -5,6 +5,7 @@ import type {
 	HeartbeatResult,
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
+import { listWorkspaceFiles } from "../browser/files/list-workspace-files.ts";
 import type { Config } from "../config/index.ts";
 import type { CronJobConfig, CronRunStartResult } from "../cron/index.ts";
 import { CronScheduler, createCronAgentRunner } from "../cron/index.ts";
@@ -119,12 +120,16 @@ export function createAgentRuntime(
 		onAcceptedInteractivePrompt: () => noteRolloverStateChange(),
 		onSessionStateChange: () => noteRolloverStateChange(),
 	});
+	const workspaceCwd = options.cwd;
 	const controller = createRuntimeController({
 		agentId: options.agentId,
 		canSendToClient: options.canSendToClient,
 		cwd: options.cwd,
 		facade,
 		getFrontendNotice: options.getFrontendNotice,
+		listWorkspaceFiles: workspaceCwd
+			? () => listWorkspaceFiles(workspaceCwd)
+			: undefined,
 		onExecutionStateChange: () => noteRolloverStateChange(),
 		restart: options.restart,
 		deliverCronResult: options.deliverCronResult,
