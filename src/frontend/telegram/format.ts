@@ -1,4 +1,4 @@
-import { Marked } from "marked";
+import { Marked, type TokenizerAndRendererExtension } from "marked";
 
 function escapeHtml(text: string): string {
 	return text
@@ -13,7 +13,40 @@ function escapeHtmlAttr(text: string): string {
 
 let listDepth = 0;
 
+/**
+ * Fallback tokenizer for `**...**` runs that the default CommonMark tokenizer
+ * rejects under the left/right-flanking punctuation rules — e.g. `word**"x"**`,
+ * `**"x"**word`, `1. **"x"**word`. The default tokenizer is tried first; this
+ * extension only fires when the default fails to consume the run, so well-formed
+ * emphasis is unaffected. Underscore (`__`) intra-word emphasis is intentionally
+ * left to the default tokenizer to preserve identifiers like `snake_case`.
+ */
+const lenientStrong: TokenizerAndRendererExtension = {
+	name: "lenientStrong",
+	level: "inline",
+	start(src: string) {
+		const idx = src.indexOf("**");
+		return idx === -1 ? undefined : idx;
+	},
+	tokenizer(src: string) {
+		const match = /^\*\*(\S(?:[^*\n]*?\S)?)\*\*/.exec(src);
+		if (!match) return undefined;
+		const inner = match[1] ?? "";
+		return {
+			type: "lenientStrong",
+			raw: match[0],
+			text: inner,
+			tokens: this.lexer.inlineTokens(inner),
+		};
+	},
+	renderer(token) {
+		const inner = this.parser.parseInline(token.tokens ?? []);
+		return `<b>${inner}</b>`;
+	},
+};
+
 const marked = new Marked({
+	extensions: [lenientStrong],
 	renderer: {
 		heading({ tokens, depth: _depth }) {
 			return `<b>${this.parser.parseInline(tokens)}</b>\n\n`;
@@ -256,6 +289,18 @@ export function splitTelegramHtml(html: string, limit: number): string[] {
 	}
 
 	return chunks;
+}
+
+export function hasTelegramVisibleText(html: string): boolean {
+	const text = html.replace(TAG_RE, "");
+	return text.trim() !== "";
+}
+
+export function splitTelegramVisibleHtml(
+	html: string,
+	limit: number,
+): string[] {
+	return splitTelegramHtml(html, limit).filter(hasTelegramVisibleText);
 }
 
 export function markdownToTelegramHtml(markdown: string): string {

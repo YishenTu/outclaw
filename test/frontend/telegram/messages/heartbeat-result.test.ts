@@ -62,6 +62,26 @@ describe("sendTelegramHeartbeatResult", () => {
 		expect(sendMessage).not.toHaveBeenCalled();
 	});
 
+	test("skips markup-only text messages", async () => {
+		const sendMessage = mock(async () => ({}));
+		const sendPhoto = mock(async () => ({ message_id: 1 }));
+
+		await sendTelegramHeartbeatResult(
+			{
+				sendMessage,
+				sendPhoto,
+			},
+			{
+				telegramChatId: 123,
+				text: "# ",
+				images: [],
+			},
+		);
+
+		expect(sendPhoto).not.toHaveBeenCalled();
+		expect(sendMessage).not.toHaveBeenCalled();
+	});
+
 	test("skips HEARTBEAT_OK text messages", async () => {
 		const sendMessage = mock(async () => ({}));
 		const sendPhoto = mock(async () => ({ message_id: 77 }));

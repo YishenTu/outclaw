@@ -6,8 +6,9 @@ import type {
 } from "../../../common/protocol.ts";
 import type { StreamChunk } from "../bridge/client.ts";
 import {
+	hasTelegramVisibleText,
 	markdownToTelegramHtml,
-	splitTelegramHtml,
+	splitTelegramVisibleHtml,
 	TELEGRAM_MESSAGE_LIMIT,
 } from "../format.ts";
 
@@ -69,8 +70,14 @@ async function sendOrEdit(
 	draft: DraftState,
 	html: string,
 ): Promise<boolean> {
-	const preview = splitTelegramHtml(html, TELEGRAM_MESSAGE_LIMIT)[0];
-	if (!preview || preview === draft.lastSentHtml) return false;
+	const preview = splitTelegramVisibleHtml(html, TELEGRAM_MESSAGE_LIMIT)[0];
+	if (
+		!preview ||
+		!hasTelegramVisibleText(preview) ||
+		preview === draft.lastSentHtml
+	) {
+		return false;
+	}
 
 	if (draft.messageId === undefined) {
 		const sent = await ctx.sendMessage(preview, {
@@ -94,7 +101,7 @@ async function finalizeDraft(
 	draft: DraftState,
 	html: string,
 ): Promise<void> {
-	const chunks = splitTelegramHtml(html, TELEGRAM_MESSAGE_LIMIT);
+	const chunks = splitTelegramVisibleHtml(html, TELEGRAM_MESSAGE_LIMIT);
 	if (chunks.length === 0) return;
 
 	const first = chunks[0] as string;

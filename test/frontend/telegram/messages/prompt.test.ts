@@ -115,6 +115,23 @@ describe("runTelegramPrompt", () => {
 		expect(ctx.sendMessage).not.toHaveBeenCalled();
 	});
 
+	test("does not send markup-only interim chunks", async () => {
+		const ctx = createContext();
+
+		await runTelegramPrompt(ctx, {
+			prompt: "summarize",
+			streamPrompt: () =>
+				(async function* () {
+					yield { type: "text" as const, text: "# " };
+					yield { type: "text" as const, text: "Title" };
+				})(),
+		});
+
+		expect(ctx.sendMessage).toHaveBeenCalledTimes(1);
+		expect(ctx.sendMessage.mock.calls[0]?.[0]).toBe("<b>Title</b>");
+		expect(ctx.editMessageText).not.toHaveBeenCalled();
+	});
+
 	test("re-sends typing updates on the interval and swallows interval failures", async () => {
 		const intervalCallbacks: Array<() => void> = [];
 		const clearInterval = mock((_handle: unknown) => {});

@@ -7,7 +7,7 @@ import type {
 } from "../../../common/protocol.ts";
 import {
 	markdownToTelegramHtml,
-	splitTelegramHtml,
+	splitTelegramVisibleHtml,
 	TELEGRAM_MESSAGE_LIMIT,
 } from "../format.ts";
 
@@ -239,7 +239,10 @@ async function sendMemoryFileContent(
 			? event.content
 			: `# ${event.path}\n\n${event.content}`;
 	const html = markdownToTelegramHtml(markdown);
-	const chunks = splitTelegramHtml(html || markdown, TELEGRAM_MESSAGE_LIMIT);
+	const chunks = splitTelegramVisibleHtml(
+		html || markdown,
+		TELEGRAM_MESSAGE_LIMIT,
+	);
 	for (const chunk of chunks) {
 		await ctx.reply(chunk, {
 			parse_mode: "HTML",

@@ -3,7 +3,7 @@ import { getImageInfo } from "../files/image-info.ts";
 import type { TelegramMessageFileRecord } from "../files/message-file-ref.ts";
 import {
 	markdownToTelegramHtml,
-	splitTelegramHtml,
+	splitTelegramVisibleHtml,
 	TELEGRAM_MESSAGE_LIMIT,
 } from "../format.ts";
 
@@ -68,7 +68,10 @@ export async function sendTelegramHeartbeatResult(
 	}
 
 	const html = markdownToTelegramHtml(params.text);
-	const chunks = splitTelegramHtml(html || params.text, TELEGRAM_MESSAGE_LIMIT);
+	const chunks = splitTelegramVisibleHtml(
+		html || params.text,
+		TELEGRAM_MESSAGE_LIMIT,
+	);
 	for (const chunk of chunks) {
 		await ctx.sendMessage(params.telegramChatId, chunk, {
 			parse_mode: "HTML",

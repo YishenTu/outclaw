@@ -173,6 +173,73 @@ describe("markdownToTelegramHtml", () => {
 	test("returns empty string for empty input", () => {
 		expect(markdownToTelegramHtml("")).toBe("");
 	});
+
+	describe("intra-word bold adjacent to punctuation", () => {
+		test("renders bold when ** sits between word and quoted punctuation", () => {
+			expect(markdownToTelegramHtml('word**"x"**')).toBe('word<b>"x"</b>');
+			expect(markdownToTelegramHtml('**"x"**word')).toBe('<b>"x"</b>word');
+			expect(markdownToTelegramHtml('word**"x"**word')).toBe(
+				'word<b>"x"</b>word',
+			);
+		});
+
+		test("renders bold for other punctuation adjacencies", () => {
+			expect(markdownToTelegramHtml("word**'x'**")).toBe("word<b>'x'</b>");
+			expect(markdownToTelegramHtml("word**(x)**")).toBe("word<b>(x)</b>");
+			expect(markdownToTelegramHtml("word**[x]**")).toBe("word<b>[x]</b>");
+			expect(markdownToTelegramHtml("word**.x.**")).toBe("word<b>.x.</b>");
+			expect(markdownToTelegramHtml("word**-x-**")).toBe("word<b>-x-</b>");
+		});
+
+		test("renders bold inside unordered list items", () => {
+			expect(markdownToTelegramHtml('- **"x"**word')).toBe('• <b>"x"</b>word');
+			expect(markdownToTelegramHtml('- word**"x"**')).toBe('• word<b>"x"</b>');
+		});
+
+		test("renders bold inside ordered list items", () => {
+			expect(markdownToTelegramHtml('1. **"x"**word')).toBe(
+				'1. <b>"x"</b>word',
+			);
+			expect(markdownToTelegramHtml('1. word**"x"**')).toBe(
+				'1. word<b>"x"</b>',
+			);
+		});
+
+		test("does not break standard bold cases", () => {
+			expect(markdownToTelegramHtml("**bold**")).toBe("<b>bold</b>");
+			expect(markdownToTelegramHtml("pre **bold** post")).toBe(
+				"pre <b>bold</b> post",
+			);
+			expect(markdownToTelegramHtml('**"hello"**')).toBe('<b>"hello"</b>');
+		});
+
+		test("leaves underscore intra-word unchanged to preserve identifiers", () => {
+			expect(markdownToTelegramHtml("snake_case_var")).toBe("snake_case_var");
+			expect(markdownToTelegramHtml("word__bold__word")).toBe(
+				"word__bold__word",
+			);
+		});
+
+		test("does not bold ** inside inline code", () => {
+			expect(markdownToTelegramHtml('`**"x"**`')).toBe('<code>**"x"**</code>');
+		});
+
+		test("does not bold ** inside fenced code blocks", () => {
+			const md = '```\n**"x"**\n```';
+			expect(markdownToTelegramHtml(md)).toBe(
+				'<pre><code>**"x"**</code></pre>',
+			);
+		});
+
+		test("leaves unmatched ** as literal text", () => {
+			expect(markdownToTelegramHtml("foo **bar")).toBe("foo **bar");
+			expect(markdownToTelegramHtml("foo bar**")).toBe("foo bar**");
+		});
+
+		test("does not bold a ** run that spans whitespace at boundary", () => {
+			expect(markdownToTelegramHtml("** x **")).toBe("** x **");
+		});
+	});
 });
 
 describe("splitTelegramHtml", () => {

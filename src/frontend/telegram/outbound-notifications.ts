@@ -1,7 +1,7 @@
 import type { TelegramMessageFileRecord } from "./files/message-file-ref.ts";
 import {
 	markdownToTelegramHtml,
-	splitTelegramHtml,
+	splitTelegramVisibleHtml,
 	TELEGRAM_MESSAGE_LIMIT,
 } from "./format.ts";
 import type { sendTelegramHeartbeatResult } from "./messages/heartbeat-result.ts";
@@ -35,7 +35,10 @@ export function createTelegramOutboundSender(params: {
 				? `[cron] ${params_.jobName}\n${params_.text}`
 				: `[cron] ${params_.jobName}`;
 			const html = markdownToTelegramHtml(raw);
-			const chunks = splitTelegramHtml(html || raw, TELEGRAM_MESSAGE_LIMIT);
+			const chunks = splitTelegramVisibleHtml(
+				html || raw,
+				TELEGRAM_MESSAGE_LIMIT,
+			);
 			for (const chunk of chunks) {
 				await params.api.sendMessage(params_.telegramChatId, chunk, {
 					parse_mode: "HTML",
@@ -66,7 +69,7 @@ export function createTelegramOutboundSender(params: {
 			text: string;
 		}) {
 			const html = markdownToTelegramHtml(params_.text);
-			const chunks = splitTelegramHtml(
+			const chunks = splitTelegramVisibleHtml(
 				html || params_.text,
 				TELEGRAM_MESSAGE_LIMIT,
 			);

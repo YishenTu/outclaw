@@ -80,4 +80,85 @@ describe("MarkdownContent", () => {
 		expect(html).toContain("katex-display");
 		expect(html).not.toContain("$$");
 	});
+
+	describe("intra-word bold adjacent to punctuation", () => {
+		test("renders bold when ** sits between word and quoted punctuation", () => {
+			const html = renderToStaticMarkup(
+				<MarkdownContent content={'word**"x"**'} />,
+			);
+			expect(html).toContain("<strong>");
+			expect(html).toContain("&quot;x&quot;</strong>");
+			expect(html).not.toContain("**");
+		});
+
+		test('renders bold for the mirror case **"x"**word', () => {
+			const html = renderToStaticMarkup(
+				<MarkdownContent content={'**"x"**word'} />,
+			);
+			expect(html).toContain("<strong>&quot;x&quot;</strong>word");
+			expect(html).not.toContain("**");
+		});
+
+		test("renders bold inside unordered list items", () => {
+			const html = renderToStaticMarkup(
+				<MarkdownContent content={'- **"first"**word\n- plain'} />,
+			);
+			expect(html).toContain("<strong>&quot;first&quot;</strong>word");
+			expect(html).not.toContain("**");
+		});
+
+		test("renders bold inside ordered list items", () => {
+			const html = renderToStaticMarkup(
+				<MarkdownContent content={'1. **"first"**word\n2. plain'} />,
+			);
+			expect(html).toContain("<strong>&quot;first&quot;</strong>word");
+			expect(html).not.toContain("**");
+		});
+
+		test("renders bold for non-quote punctuation adjacencies", () => {
+			for (const md of [
+				"word**'x'**",
+				"word**(x)**",
+				"word**[x]**",
+				"word**.x.**",
+				"word**-x-**",
+			]) {
+				const html = renderToStaticMarkup(<MarkdownContent content={md} />);
+				expect(html).toContain("<strong>");
+				expect(html).not.toContain("**");
+			}
+		});
+
+		test("does not bold ** inside inline code", () => {
+			const html = renderToStaticMarkup(
+				<MarkdownContent content={'`**"x"**`'} />,
+			);
+			expect(html).toContain("<code>**&quot;x&quot;**</code>");
+		});
+
+		test("does not bold ** inside fenced code blocks", () => {
+			const html = renderToStaticMarkup(
+				<MarkdownContent content={'```\n**"x"**\n```'} />,
+			);
+			expect(html).toContain("**&quot;x&quot;**");
+			expect(html).not.toContain("<strong>");
+		});
+
+		test("leaves underscore intra-word unchanged to preserve identifiers", () => {
+			const html = renderToStaticMarkup(
+				<MarkdownContent content={"snake_case_var"} />,
+			);
+			expect(html).toContain("snake_case_var");
+			expect(html).not.toContain("<strong>");
+			expect(html).not.toContain("<em>");
+		});
+
+		test("leaves unmatched ** as literal", () => {
+			const html = renderToStaticMarkup(
+				<MarkdownContent content={"foo **bar"} />,
+			);
+			expect(html).toContain("foo **bar");
+			expect(html).not.toContain("<strong>");
+		});
+	});
 });
