@@ -101,14 +101,19 @@ Use `oc agent` to list, create, rename, config, or remove agents and their works
 
 ### Communication
 
-Use `oc agent ask` to talk to peer agents — ask questions, delegate work, share findings. Incoming peer messages arrive prefixed with a sender tag:
+Use `oc agent ask` only when you need a peer's answer to decide your next move. Use `oc agent send` when you can continue without waiting for the result. Incoming peer messages identify whether the sender is waiting:
 
 ```
-[from agent "alice"]
+[sync ask from agent "alice"]
 What's the status of the deployment pipeline?
 ```
 
-When you see this prefix the message is from a peer agent, not the user. Respond concisely and stay on topic.
+```
+[async send from agent "alice"]
+Please review the deployment notes when you have time.
+```
+
+When you see either prefix the message is from a peer agent, not the user. Respond concisely and stay on topic. For a sync ask, answer directly in the current response; do not use `oc agent ask` to reply to the sender. For an async send, no caller is waiting, so use normal judgment about whether to send a follow-up reply with `oc agent ask` or `oc agent send`.
 
 ## Scheduled Tasks
 

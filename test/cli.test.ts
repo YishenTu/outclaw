@@ -193,7 +193,7 @@ describe("CLI", () => {
 			"<start|stop|restart|status|tui|browser|onboard|dev",
 		);
 		expect(stdout).toContain(
-			"oc agent <list|create|config|rename|remove|ask|name>",
+			"oc agent <list|create|config|rename|remove|ask|send|name>",
 		);
 		expect(stdout).toContain("first run:   oc build && oc start");
 		expect(stdout).toContain("command help: oc <command> -h");
@@ -232,11 +232,12 @@ describe("CLI", () => {
 	test("agent dash h prints agent-specific help and exits successfully", () => {
 		const { stdout, exitCode } = runCli(["agent", "-h"]);
 		expect(stdout).toContain(
-			"Usage: oc agent <list|create|config|rename|remove|ask|name>",
+			"Usage: oc agent <list|create|config|rename|remove|ask|send|name>",
 		);
 		expect(stdout).toContain("create");
 		expect(stdout).toContain("config");
 		expect(stdout).toContain("ask");
+		expect(stdout).toContain("send");
 		expect(stdout).toContain("open TUI attached to that agent");
 		expect(exitCode).toBe(0);
 	});
@@ -944,6 +945,54 @@ describe("CLI", () => {
 			);
 			expect(result.exitCode).toBe(0);
 			expect(result.stdout).toContain("hello back");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("agent send resolves sender from cwd and prints nothing on acceptance", async () => {
+		createAgentHome("railly", "agent-railly");
+		createAgentHome("mimi", "agent-mimi");
+		const server = createTestServer({
+			port: 0,
+			fetch(req, websocketServer) {
+				if (websocketServer.upgrade(req)) {
+					return;
+				}
+				return new Response("ok");
+			},
+			websocket: {
+				message(ws, rawMessage) {
+					const message = JSON.parse(String(rawMessage));
+					expect(message).toEqual({
+						type: "send",
+						fromAgentId: "agent-railly",
+						to: "mimi",
+						message: "please continue independently",
+					});
+					ws.send(JSON.stringify({ type: "send_response" }));
+				},
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				[
+					"agent",
+					"send",
+					"--to",
+					"mimi",
+					"please",
+					"continue",
+					"independently",
+				],
+				{
+					cwd: join(OUTCLAW_DIR, "agents", "railly"),
+				},
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("");
 		} finally {
 			server.stop();
 		}

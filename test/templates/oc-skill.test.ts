@@ -9,6 +9,7 @@ import {
 	formatAgentListUsage,
 	formatAgentRemoveUsage,
 	formatAgentRenameUsage,
+	formatAgentSendUsage,
 	formatConfigRuntimeUsage,
 	formatConfigSecureUsage,
 	formatCronRunUsage,
@@ -68,6 +69,33 @@ describe("oc skill template contract", () => {
 		}
 	});
 
+	test("documents ask versus send peer communication guardrails", () => {
+		const skill = readOcTemplate("SKILL.md");
+		const agentCom = readOcTemplate("references/agent-com.md");
+
+		expectReferenceIncludesUsage(agentCom, formatAgentAskUsage());
+		expectReferenceIncludesUsage(agentCom, formatAgentSendUsage());
+		expect(skill).toContain(
+			"Use `oc agent ask` only when the peer's answer determines your next move; use `oc agent send` when you can continue without waiting.",
+		);
+		expect(agentCom).toContain(
+			"Use `ask` only when you need the peer's answer to decide your next move.",
+		);
+		expect(agentCom).toContain(
+			"Use `send` when you can continue without waiting for the peer's result.",
+		);
+		expect(agentCom).toContain('[sync ask from agent "<sender>"]');
+		expect(agentCom).toContain('[async send from agent "<sender>"]');
+		expect(agentCom).not.toContain("state that the sender");
+		expect(agentCom).not.toContain("The sender is waiting");
+		expect(agentCom).not.toContain("The sender is not waiting");
+		expect(agentCom).toContain(
+			"The daemon rejects calls that would form a peer-ask cycle",
+		);
+		expect(agentCom).not.toContain("async delegation");
+		expect(agentCom).not.toContain("background execution");
+	});
+
 	test("daemon, agent, and config references match CLI usage syntax", () => {
 		const daemon = readOcTemplate("references/daemon-operations.md");
 		const agent = readOcTemplate("references/agent-management.md");
@@ -80,7 +108,8 @@ describe("oc skill template contract", () => {
 		expectReferenceIncludesUsage(agent, formatAgentConfigUsage());
 		expectReferenceIncludesUsage(agent, formatAgentRenameUsage());
 		expectReferenceIncludesUsage(agent, formatAgentRemoveUsage());
-		expectReferenceIncludesUsage(agent, formatAgentAskUsage());
+		expect(agent).not.toContain("`oc agent ask");
+		expect(agent).not.toContain("`oc agent send");
 		expect(agent).toContain("`--rollover-idle`");
 		expect(agent).toContain("`rollover.idleMinutes`");
 		expectReferenceIncludesUsage(config, formatConfigRuntimeUsage());

@@ -226,6 +226,18 @@ describe("seedTemplates", () => {
 			expect(readFileSync(join(agentTarget, "AGENTS.md"), "utf-8")).toContain(
 				"~/.outclaw/agents/railly/",
 			);
+			expect(readFileSync(join(agentTarget, "AGENTS.md"), "utf-8")).toContain(
+				"For a sync ask, answer directly in the current response; do not use `oc agent ask` to reply to the sender.",
+			);
+			expect(readFileSync(join(agentTarget, "AGENTS.md"), "utf-8")).toContain(
+				"For an async send, no caller is waiting, so use normal judgment about whether to send a follow-up reply with `oc agent ask` or `oc agent send`.",
+			);
+			expect(
+				readFileSync(join(agentTarget, "AGENTS.md"), "utf-8"),
+			).not.toContain("The sender is waiting for this response.");
+			expect(
+				readFileSync(join(agentTarget, "AGENTS.md"), "utf-8"),
+			).not.toContain("The sender is not waiting for this response.");
 			expect(result.seeded).not.toContain("MEMORY.md");
 			expect(result.seeded).toContain(
 				"skills/voice-mode/scripts/transcribe.mjs",

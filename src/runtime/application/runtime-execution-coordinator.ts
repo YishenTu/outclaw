@@ -219,6 +219,17 @@ export class RuntimeExecutionCoordinator {
 		});
 	}
 
+	enqueueAgentMessage(task: PromptExecution): boolean {
+		if (this.shuttingDown) {
+			return false;
+		}
+
+		this.options.state.preparePrompt(task.prompt, task.images);
+		const context = this.options.state.capturePromptContext();
+		const lane = this.getOrCreateLane(context);
+		return lane.queue.enqueue(() => this.runPromptInLane(lane, task, context));
+	}
+
 	setRolloverNoticeHandler(
 		handler: RuntimeExecutionCoordinatorOptions["deliverRolloverNotice"],
 	) {

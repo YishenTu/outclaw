@@ -36,6 +36,8 @@ interface IncomingMessage {
 }
 
 export class SupervisorController {
+	private readonly activeAskEdges = new Map<string, Map<string, number>>();
+
 	constructor(private readonly options: SupervisorControllerOptions) {}
 
 	broadcastBrowserSidebarInvalidated(event: BrowserSidebarInvalidatedEvent) {
@@ -108,6 +110,11 @@ export class SupervisorController {
 			return;
 		}
 
+		if (data?.type === "send") {
+			this.handleSendMessage(ws, data);
+			return;
+		}
+
 		if (
 			data?.type !== "ask" ||
 			typeof data.fromAgentId !== "string" ||
@@ -135,6 +142,16 @@ export class SupervisorController {
 			return;
 		}
 
+		const askCycle = this.findAskCycle(sender, target);
+		if (askCycle) {
+			this.sendAskError(
+				ws,
+				`cannot ask ${target.name} because it would create a peer ask cycle (${askCycle.join(" -> ")}); answer the peer request directly in your current response`,
+			);
+			return;
+		}
+
+		this.addActiveAskEdge(sender.agentId, target.agentId);
 		try {
 			const text = await target.askFromAgent({
 				fromAgentId: sender.agentId,
@@ -149,7 +166,54 @@ export class SupervisorController {
 			);
 		} catch (error) {
 			this.sendAskError(ws, extractError(error));
+		} finally {
+			this.removeActiveAskEdge(sender.agentId, target.agentId);
 		}
+	}
+
+	private handleSendMessage(ws: WsClient, data: IncomingMessage) {
+		if (
+			data.type !== "send" ||
+			typeof data.fromAgentId !== "string" ||
+			typeof data.to !== "string" ||
+			typeof data.message !== "string"
+		) {
+			this.sendSendError(ws, "Invalid send request");
+			return;
+		}
+
+		const sender = this.options.registry.getById(data.fromAgentId);
+		if (!sender) {
+			this.sendSendError(ws, "Unknown sender agent");
+			return;
+		}
+
+		const target = this.options.registry.getByName(data.to);
+		if (!target) {
+			this.sendSendError(ws, `agent "${data.to}" not found`);
+			return;
+		}
+
+		if (sender.agentId === target.agentId) {
+			this.sendSendError(ws, "cannot send to self");
+			return;
+		}
+
+		const accepted = target.sendFromAgent({
+			fromAgentId: sender.agentId,
+			fromAgentName: sender.name,
+			message: data.message,
+		});
+		if (!accepted) {
+			this.sendSendError(ws, "Runtime shutting down");
+			return;
+		}
+
+		ws.send(
+			serialize({
+				type: "send_response",
+			}),
+		);
 	}
 
 	private handleCronRunMessage(ws: WsClient, data: IncomingMessage) {
@@ -292,6 +356,15 @@ export class SupervisorController {
 		);
 	}
 
+	private sendSendError(ws: WsClient, message: string) {
+		ws.send(
+			serialize({
+				type: "send_error",
+				message,
+			}),
+		);
+	}
+
 	private sendCronRunError(ws: WsClient, message: string) {
 		ws.send(
 			serialize({
@@ -299,6 +372,73 @@ export class SupervisorController {
 				message,
 			}),
 		);
+	}
+
+	private addActiveAskEdge(fromAgentId: string, toAgentId: string) {
+		const targets =
+			this.activeAskEdges.get(fromAgentId) ?? new Map<string, number>();
+		targets.set(toAgentId, (targets.get(toAgentId) ?? 0) + 1);
+		this.activeAskEdges.set(fromAgentId, targets);
+	}
+
+	private removeActiveAskEdge(fromAgentId: string, toAgentId: string) {
+		const targets = this.activeAskEdges.get(fromAgentId);
+		if (!targets) {
+			return;
+		}
+
+		const count = targets.get(toAgentId) ?? 0;
+		if (count > 1) {
+			targets.set(toAgentId, count - 1);
+			return;
+		}
+
+		targets.delete(toAgentId);
+		if (targets.size === 0) {
+			this.activeAskEdges.delete(fromAgentId);
+		}
+	}
+
+	private findAskCycle(
+		sender: AgentRuntime,
+		target: AgentRuntime,
+	): string[] | undefined {
+		const path = this.findActiveAskPath(
+			target.agentId,
+			sender.agentId,
+			new Set(),
+		);
+		if (!path) {
+			return undefined;
+		}
+
+		return [...path, target.agentId].map(
+			(agentId) => this.options.registry.getById(agentId)?.name ?? agentId,
+		);
+	}
+
+	private findActiveAskPath(
+		fromAgentId: string,
+		toAgentId: string,
+		visited: Set<string>,
+	): string[] | undefined {
+		if (fromAgentId === toAgentId) {
+			return [fromAgentId];
+		}
+		if (visited.has(fromAgentId)) {
+			return undefined;
+		}
+		visited.add(fromAgentId);
+
+		const nextAgentIds = this.activeAskEdges.get(fromAgentId)?.keys() ?? [];
+		for (const nextAgentId of nextAgentIds) {
+			const path = this.findActiveAskPath(nextAgentId, toAgentId, visited);
+			if (path) {
+				return [fromAgentId, ...path];
+			}
+		}
+
+		return undefined;
 	}
 
 	private resolveRuntimeFromCwd(cwd: string): AgentRuntime | undefined {

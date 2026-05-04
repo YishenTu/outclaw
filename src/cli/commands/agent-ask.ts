@@ -1,9 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { listAgents } from "../../runtime/agents/list-agents.ts";
 import { loadGlobalConfig } from "../../runtime/config/index.ts";
 import { requestControlMessage } from "../support/control-client.ts";
 import { formatAgentAskUsage, printAgentAskUsage } from "../support/usage.ts";
+import { parseAgentMessageArgs, resolveSenderAgent } from "./agent-message.ts";
 
 export async function askAgentCommand(homeDir: string, argv: string[]) {
 	const args = argv.slice(4);
@@ -53,11 +51,9 @@ export function parseAskArgs(args: string[]): {
 	target?: string;
 	timeoutSeconds?: number;
 } {
-	let target: string | undefined;
 	let timeoutValue: string | undefined;
 	let parseFlags = true;
-	const messageParts: string[] = [];
-	let valid = true;
+	const messageArgs: string[] = [];
 
 	for (let index = 0; index < args.length; index += 1) {
 		const value = args[index];
@@ -66,39 +62,26 @@ export function parseAskArgs(args: string[]): {
 		}
 		if (parseFlags && value === "--") {
 			parseFlags = false;
-			continue;
-		}
-		if (parseFlags && value === "--to") {
-			const nextValue = args[index + 1];
-			if (!nextValue || nextValue.startsWith("--")) {
-				valid = false;
-				break;
-			}
-			target = nextValue;
-			index += 1;
+			messageArgs.push(value);
 			continue;
 		}
 		if (parseFlags && value === "--timeout") {
 			const nextValue = args[index + 1];
 			if (!nextValue || nextValue.startsWith("--")) {
-				valid = false;
-				break;
+				messageArgs.push(value);
+				continue;
 			}
 			timeoutValue = nextValue;
 			index += 1;
 			continue;
 		}
-		if (parseFlags && value.startsWith("--")) {
-			valid = false;
-			break;
-		}
-		messageParts.push(value);
+		messageArgs.push(value);
 	}
 
+	const parsed = parseAgentMessageArgs(messageArgs);
 	return {
-		message:
-			valid && messageParts.length > 0 ? messageParts.join(" ") : undefined,
-		target: valid ? target : undefined,
+		message: parsed.message,
+		target: parsed.target,
 		timeoutSeconds: parseTimeoutSeconds(timeoutValue),
 	};
 }
@@ -144,19 +127,4 @@ async function requestAgentResponse(params: {
 		toResult: (message) =>
 			typeof message.text === "string" ? message.text : "",
 	});
-}
-
-function resolveSenderAgent(
-	homeDir: string,
-	cwd: string,
-): { agentId: string; name: string } | undefined {
-	const agentIdPath = join(cwd, ".agent-id");
-	if (!existsSync(agentIdPath)) {
-		return undefined;
-	}
-	const agentId = readFileSync(agentIdPath, "utf-8").trim();
-	if (!agentId) {
-		return undefined;
-	}
-	return listAgents(homeDir).find((agent) => agent.agentId === agentId);
 }

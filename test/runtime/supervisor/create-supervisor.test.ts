@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { FacadeEvent, RunParams } from "../../../src/common/protocol.ts";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
 import { createSupervisor } from "../../../src/runtime/supervisor/create-supervisor.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
@@ -135,6 +136,56 @@ prompt: ${prompt}
 `.trim(),
 	);
 	return dir;
+}
+
+class BlockingFacade extends MockFacade {
+	private releaseRun: (() => void) | undefined;
+	private resolveStarted: (() => void) | undefined;
+	readonly started = new Promise<void>((resolve) => {
+		this.resolveStarted = resolve;
+	});
+
+	release() {
+		this.releaseRun?.();
+	}
+
+	override async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		this.lastParams = params;
+		this.allParams.push({ ...params });
+		this.callCount++;
+		this.callOrder.push(params.prompt);
+		this.resolveStarted?.();
+
+		await new Promise<void>((resolve) => {
+			this.releaseRun = resolve;
+			params.abortController?.signal.addEventListener(
+				"abort",
+				() => resolve(),
+				{
+					once: true,
+				},
+			);
+		});
+
+		if (params.abortController?.signal.aborted) {
+			yield { type: "error", message: "aborted" };
+			return;
+		}
+
+		if (this.textChunks) {
+			for (const text of this.textChunks) {
+				yield { type: "text", text };
+			}
+		} else {
+			yield { type: "text", text: `echo: ${params.prompt}` };
+		}
+		yield {
+			type: "done",
+			sessionId: "blocking-session-123",
+			durationMs: 1,
+			costUsd: 0,
+		};
+	}
 }
 
 async function waitForCondition(
@@ -706,6 +757,119 @@ describe("createSupervisor", () => {
 			type: "ask_response",
 			text: "from mimi",
 		});
+		expect(mimiFacade.callOrder).toEqual([
+			['[sync ask from agent "railly"]', "hello"].join("\n"),
+		]);
+		ws.close();
+	});
+
+	test("control ask rejects cycles while a peer ask is pending", async () => {
+		const raillyFacade = new MockFacade();
+		raillyFacade.textChunks = ["from railly"];
+		const mimiFacade = new BlockingFacade();
+		mimiFacade.textChunks = ["from mimi"];
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: raillyFacade,
+				}),
+				createAgentRuntime({
+					agentId: "agent-mimi",
+					name: "mimi",
+					facade: mimiFacade,
+				}),
+			],
+		});
+		cleanup = () => supervisor.stop();
+		const raillyWs = await connectControlWs(supervisor.port);
+		const mimiWs = await connectControlWs(supervisor.port);
+
+		raillyWs.send(
+			JSON.stringify({
+				type: "ask",
+				fromAgentId: "agent-railly",
+				to: "mimi",
+				message: "hello",
+			}),
+		);
+		await mimiFacade.started;
+
+		mimiWs.send(
+			JSON.stringify({
+				type: "ask",
+				fromAgentId: "agent-mimi",
+				to: "railly",
+				message: "reply via ask",
+			}),
+		);
+
+		expect(
+			await waitForEvent(mimiWs, (event) => event.type === "ask_error"),
+		).toEqual({
+			type: "ask_error",
+			message:
+				"cannot ask railly because it would create a peer ask cycle (railly -> mimi -> railly); answer the peer request directly in your current response",
+		});
+		expect(raillyFacade.callOrder).toEqual([]);
+		mimiFacade.release();
+		expect(
+			await waitForEvent(raillyWs, (event) => event.type === "ask_response"),
+		).toEqual({
+			type: "ask_response",
+			text: "from mimi",
+		});
+
+		raillyWs.close();
+		mimiWs.close();
+	});
+
+	test("control send accepts without waiting for the target agent result", async () => {
+		const raillyFacade = new MockFacade();
+		const mimiFacade = new BlockingFacade();
+		mimiFacade.textChunks = ["from mimi"];
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: raillyFacade,
+				}),
+				createAgentRuntime({
+					agentId: "agent-mimi",
+					name: "mimi",
+					facade: mimiFacade,
+				}),
+			],
+		});
+		cleanup = () => supervisor.stop();
+		const ws = await connectControlWs(supervisor.port);
+
+		ws.send(
+			JSON.stringify({
+				type: "send",
+				fromAgentId: "agent-railly",
+				to: "mimi",
+				message: "please continue independently",
+			}),
+		);
+
+		expect(
+			await waitForEvent(ws, (event) => event.type === "send_response"),
+		).toEqual({
+			type: "send_response",
+		});
+		await mimiFacade.started;
+		expect(mimiFacade.callOrder).toEqual([
+			[
+				'[async send from agent "railly"]',
+				"please continue independently",
+			].join("\n"),
+		]);
+		mimiFacade.release();
 		ws.close();
 	});
 

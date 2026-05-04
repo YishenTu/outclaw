@@ -6,6 +6,7 @@ import {
 	formatAgentListUsage,
 	formatAgentRemoveUsage,
 	formatAgentRenameUsage,
+	formatAgentSendUsage,
 	formatAgentUsage,
 	formatConfigRuntimeUsage,
 	formatConfigSecureUsage,
@@ -30,6 +31,7 @@ import {
 	printAgentListUsage,
 	printAgentRemoveUsage,
 	printAgentRenameUsage,
+	printAgentSendUsage,
 	printAgentUsage,
 	printConfigRuntimeUsage,
 	printConfigSecureUsage,
@@ -90,7 +92,7 @@ describe("CLI usage text", () => {
 			[
 				formatAgentUsage(),
 				[
-					"Usage: oc agent <list|create|config|rename|remove|ask|name>",
+					"Usage: oc agent <list|create|config|rename|remove|ask|send|name>",
 					"<name>",
 				],
 			],
@@ -114,6 +116,10 @@ describe("CLI usage text", () => {
 			[
 				formatAgentAskUsage(),
 				["Usage: oc agent ask --to <target>", "current agent workspace"],
+			],
+			[
+				formatAgentSendUsage(),
+				["Usage: oc agent send --to <target>", "without waiting"],
 			],
 			[
 				formatConfigUsage(),
@@ -182,6 +188,7 @@ describe("CLI usage text", () => {
 			[printAgentRenameUsage, formatAgentRenameUsage],
 			[printAgentRemoveUsage, formatAgentRemoveUsage],
 			[printAgentAskUsage, formatAgentAskUsage],
+			[printAgentSendUsage, formatAgentSendUsage],
 			[printConfigUsage, formatConfigUsage],
 			[printConfigRuntimeUsage, formatConfigRuntimeUsage],
 			[printConfigSecureUsage, formatConfigSecureUsage],

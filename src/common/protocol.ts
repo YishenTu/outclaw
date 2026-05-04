@@ -52,6 +52,13 @@ export interface AskMessage {
 	message: string;
 }
 
+export interface SendMessage {
+	type: "send";
+	fromAgentId: string;
+	to: string;
+	message: string;
+}
+
 export interface CronRunMessage {
 	type: "cron_run";
 	cwd: string;
@@ -94,6 +101,7 @@ export type ClientMessage =
 	| RequestSkillsMessage
 	| RequestFilesMessage
 	| AskMessage
+	| SendMessage
 	| CronRunMessage;
 
 // --- Server → Client events ---
@@ -645,6 +653,15 @@ export interface AskErrorEvent {
 	message: string;
 }
 
+export interface SendResponseEvent {
+	type: "send_response";
+}
+
+export interface SendErrorEvent {
+	type: "send_error";
+	message: string;
+}
+
 export interface CronRunResponseEvent {
 	type: "cron_run_response";
 	jobName: string;
@@ -687,6 +704,8 @@ export type ServerEvent =
 	| WorkspaceFilesUpdateEvent
 	| AskResponseEvent
 	| AskErrorEvent
+	| SendResponseEvent
+	| SendErrorEvent
 	| CronRunResponseEvent
 	| CronRunErrorEvent;
 

@@ -62,6 +62,11 @@ export interface AgentRuntime {
 		fromAgentName: string;
 		message: string;
 	}): Promise<string>;
+	sendFromAgent(params: {
+		fromAgentId: string;
+		fromAgentName: string;
+		message: string;
+	}): boolean;
 	currentModel: string;
 	cwd?: string;
 	broadcastRuntimeStatus(): void;
@@ -208,6 +213,7 @@ export function createAgentRuntime(
 	return {
 		agentId: options.agentId,
 		askFromAgent: controller.askFromAgent.bind(controller),
+		sendFromAgent: controller.sendFromAgent.bind(controller),
 		cwd: options.cwd,
 		get currentModel() {
 			return controller.currentModel;

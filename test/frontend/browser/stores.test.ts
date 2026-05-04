@@ -950,6 +950,54 @@ describe("browser stores", () => {
 		]);
 	});
 
+	test("chat store does not duplicate a replayed in-progress assistant tail", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "hello",
+		});
+		useChatStore.getState().startAssistantTurn(sessionKey);
+		useChatStore.getState().appendText(sessionKey, "Hel");
+
+		useChatStore.getState().replaceHistory(
+			sessionKey,
+			[
+				{
+					kind: "chat",
+					role: "user",
+					content: "hello",
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "Hello",
+				},
+			],
+			{ preservePendingTurn: true },
+		);
+		useChatStore.getState().restoreStreamingState(sessionKey, {
+			images: [],
+			text: "Hello there",
+			thinking: "",
+		});
+		useChatStore.getState().appendText(sessionKey, "!");
+		useChatStore.getState().finalizeMessage(sessionKey);
+
+		expect(useChatStore.getState().getMessages(sessionKey)).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "hello",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Hello there!",
+			},
+		]);
+	});
+
 	test("chat store restores streaming snapshots into the heartbeat channel when a heartbeat indicator is pending", () => {
 		const sessionKey = "agent-a:claude:sdk-alpha";
 		useChatStore.getState().replaceHistory(sessionKey, [

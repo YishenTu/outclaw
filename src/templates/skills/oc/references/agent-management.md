@@ -9,7 +9,6 @@
 | `oc agent config <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]` | Update an existing agent's settings |
 | `oc agent rename <old-name> <new-name>` | Rename an agent |
 | `oc agent remove <name>` | Remove an agent |
-| `oc agent ask --to <target> [--timeout <seconds>] "<message>"` | Send a message from the current agent workspace to another agent |
 | `oc agent <name>` | Open the TUI attached to that agent |
 
 Each agent has its own workspace under `~/.outclaw/agents/<name>/`.

@@ -212,7 +212,34 @@ export class RuntimeController {
 				fromAgentId: params.fromAgentId,
 				fromAgentName: params.fromAgentName,
 			},
-			prompt: `[from agent "${params.fromAgentName}"]\n${params.message}`,
+			prompt: formatAgentPrompt("ask", params.fromAgentName, params.message),
 		});
 	}
+
+	sendFromAgent(params: {
+		fromAgentId: string;
+		fromAgentName: string;
+		message: string;
+	}): boolean {
+		return this.execution.enqueueAgentMessage({
+			source: "agent",
+			agentMessage: {
+				fromAgentId: params.fromAgentId,
+				fromAgentName: params.fromAgentName,
+			},
+			prompt: formatAgentPrompt("send", params.fromAgentName, params.message),
+		});
+	}
+}
+
+function formatAgentPrompt(
+	mode: "ask" | "send",
+	fromAgentName: string,
+	message: string,
+): string {
+	if (mode === "ask") {
+		return [`[sync ask from agent "${fromAgentName}"]`, message].join("\n");
+	}
+
+	return [`[async send from agent "${fromAgentName}"]`, message].join("\n");
 }

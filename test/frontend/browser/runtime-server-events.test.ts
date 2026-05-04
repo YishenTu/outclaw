@@ -887,6 +887,8 @@ describe("browser runtime server events", () => {
 		);
 		handleBrowserServerEvent({ type: "ask_response", text: "ok" }, options);
 		handleBrowserServerEvent({ type: "ask_error", message: "nope" }, options);
+		handleBrowserServerEvent({ type: "send_response" }, options);
+		handleBrowserServerEvent({ type: "send_error", message: "nope" }, options);
 
 		expect(useRuntimeStore.getState()).toMatchObject({
 			model: "sonnet",

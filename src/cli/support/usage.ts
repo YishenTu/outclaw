@@ -15,7 +15,7 @@ export function formatUsage() {
 		"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|session|cron|note|schema>",
 		"       oc start|restart [--lan] [--host HOST]",
 		"       oc onboard",
-		"       oc agent <list|create|config|rename|remove|ask|name>",
+		"       oc agent <list|create|config|rename|remove|ask|send|name>",
 		"       oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N] [--thinking-effort LEVEL]",
 		"       oc config secure",
 		"       oc session list [--limit N] [--tag cron]",
@@ -73,12 +73,13 @@ export function printOnboardUsage() {
 
 export function formatAgentUsage() {
 	return joinLines([
-		"Usage: oc agent <list|create|config|rename|remove|ask|name>",
+		"Usage: oc agent <list|create|config|rename|remove|ask|send|name>",
 		"       oc agent create <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]",
 		"       oc agent config <name> [--bot-token <token>] [--users <ids>] [--default-cron-user <id>] [--rollover-idle <minutes>]",
 		"       oc agent rename <old-name> <new-name>",
 		"       oc agent remove <name>",
 		'       oc agent ask --to <target> [--timeout <seconds>] "<message>"',
+		'       oc agent send --to <target> "<message>"',
 		"",
 		"Commands:",
 		"       list      list configured agents",
@@ -86,7 +87,8 @@ export function formatAgentUsage() {
 		"       config    update telegram settings for an agent",
 		"       rename    rename an agent",
 		"       remove    remove an agent",
-		"       ask       send a message from the current agent workspace",
+		"       ask       ask another agent and wait for the response",
+		"       send      send another agent a message without waiting",
 		"       <name>    open TUI attached to that agent",
 	]);
 }
@@ -166,6 +168,19 @@ export function formatAgentAskUsage() {
 
 export function printAgentAskUsage() {
 	console.log(formatAgentAskUsage());
+}
+
+export function formatAgentSendUsage() {
+	return joinLines([
+		'Usage: oc agent send --to <target> "<message>"',
+		"",
+		"Send a message from the current agent workspace to another agent without waiting for the result.",
+		"Run this inside an agent workspace so the sender can be resolved from cwd.",
+	]);
+}
+
+export function printAgentSendUsage() {
+	console.log(formatAgentSendUsage());
 }
 
 export function formatConfigUsage() {

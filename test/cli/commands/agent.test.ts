@@ -74,6 +74,7 @@ describe("agentCommand", () => {
 			["agent", "remove", "--help"],
 			["agent", "config", "--help"],
 			["agent", "ask", "--help"],
+			["agent", "send", "--help"],
 		]) {
 			const output = await captureExitOutput(() =>
 				agentCommand(createOptions(homeDir, argv)),
@@ -95,6 +96,7 @@ describe("agentCommand", () => {
 			[["agent", "remove"], "Usage: oc agent remove <name>"],
 			[["agent", "config"], "Usage: oc agent config <name>"],
 			[["agent", "ask", "--to", "mimi"], "Usage: oc agent ask --to <target>"],
+			[["agent", "send", "--to", "mimi"], "Usage: oc agent send --to <target>"],
 		] as const) {
 			const output = await captureExitOutput(() =>
 				agentCommand(createOptions(homeDir, argv)),
@@ -158,6 +160,27 @@ describe("agentCommand", () => {
 			[
 				["agent", "ask", "--to", "mimi", "--unknown", "hello"],
 				"Usage: oc agent ask --to <target>",
+			],
+		] as const) {
+			const output = await captureExitOutput(() =>
+				agentCommand(createOptions(homeDir, argv)),
+			);
+			expect(output.code).toBe(1);
+			expect(output.errors.join("\n")).toContain(error);
+		}
+	});
+
+	test("validates agent send flags before resolving the sender workspace", async () => {
+		const homeDir = createHomeDir();
+
+		for (const [argv, error] of [
+			[
+				["agent", "send", "--timeout", "10", "hello"],
+				"Usage: oc agent send --to <target>",
+			],
+			[
+				["agent", "send", "--to", "mimi", "--unknown", "hello"],
+				"Usage: oc agent send --to <target>",
 			],
 		] as const) {
 			const output = await captureExitOutput(() =>

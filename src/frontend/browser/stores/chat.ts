@@ -8,6 +8,8 @@ import type {
 } from "../../../common/protocol.ts";
 import { normalizeReplayHistory } from "../chat/replay-history.ts";
 
+type AssistantChatMessage = DisplayChatMessage & { role: "assistant" };
+
 export interface ChatSession {
 	messages: DisplayMessage[];
 	queuedPrompts: DisplayChatMessage[];
@@ -270,14 +272,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	restoreStreamingState: (sessionKey, snapshot) =>
 		set((state) => {
 			const session = getOrCreateSession(state.sessions, sessionKey);
+			const messages = dropReplayedStreamingAssistantTail(
+				session.messages,
+				snapshot,
+			);
 			const heartbeatPending =
-				session.heartbeatPending ||
-				hasPendingHeartbeatIndicator(session.messages);
+				session.heartbeatPending || hasPendingHeartbeatIndicator(messages);
 			return {
 				sessions: {
 					...state.sessions,
 					[sessionKey]: {
 						...session,
+						messages,
 						streamingText: heartbeatPending ? "" : snapshot.text,
 						streamingThinking: heartbeatPending ? "" : snapshot.thinking,
 						streamingImages: heartbeatPending ? [] : snapshot.images,
@@ -658,6 +664,84 @@ function dropPendingHeartbeatIndicator(
 	}
 
 	return messages;
+}
+
+function dropReplayedStreamingAssistantTail(
+	messages: DisplayMessage[],
+	snapshot: {
+		images: DisplayImage[];
+		text: string;
+		thinking: string;
+	},
+): DisplayMessage[] {
+	const lastMessage = messages.at(-1);
+	if (
+		!isAssistantChatMessage(lastMessage) ||
+		!streamingSnapshotContainsMessage(lastMessage, snapshot)
+	) {
+		return messages;
+	}
+
+	return messages.slice(0, -1);
+}
+
+function streamingSnapshotContainsMessage(
+	message: AssistantChatMessage,
+	snapshot: {
+		images: DisplayImage[];
+		text: string;
+		thinking: string;
+	},
+): boolean {
+	const replayedThinking = message.thinking ?? "";
+	const replayedImages = message.images ?? [];
+	const hasReplayedOutput =
+		message.content !== "" ||
+		replayedThinking !== "" ||
+		replayedImages.length > 0;
+	if (!hasReplayedOutput) {
+		return false;
+	}
+
+	return (
+		snapshot.text.startsWith(message.content) &&
+		snapshot.thinking.startsWith(replayedThinking) &&
+		imageListStartsWith(snapshot.images, replayedImages)
+	);
+}
+
+function imageListStartsWith(
+	images: DisplayImage[],
+	prefix: DisplayImage[],
+): boolean {
+	if (prefix.length > images.length) {
+		return false;
+	}
+
+	return prefix.every((image, index) => {
+		const candidate = images[index];
+		if (!candidate || candidate.kind !== image.kind) {
+			return false;
+		}
+		if (image.mediaType !== candidate.mediaType) {
+			return false;
+		}
+
+		if (image.kind === "managed") {
+			return candidate.kind === "managed" && candidate.path === image.path;
+		}
+		if (image.kind === "inline") {
+			return candidate.kind === "inline" && candidate.base64 === image.base64;
+		}
+
+		return candidate.kind === "placeholder";
+	});
+}
+
+function isAssistantChatMessage(
+	message: DisplayMessage | undefined,
+): message is AssistantChatMessage {
+	return message?.kind === "chat" && message.role === "assistant";
 }
 
 function hasPendingHeartbeatIndicator(messages: DisplayMessage[]): boolean {

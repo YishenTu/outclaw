@@ -248,6 +248,8 @@ export function handleBrowserServerEvent(
 			return;
 		case "ask_response":
 		case "ask_error":
+		case "send_response":
+		case "send_error":
 			return;
 	}
 }

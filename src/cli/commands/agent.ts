@@ -7,6 +7,7 @@ import {
 	removeAgentCommand,
 	renameAgentCommand,
 } from "./agent-lifecycle.ts";
+import { sendAgentCommand } from "./agent-send.ts";
 
 interface AgentCommandOptions {
 	argv: string[];
@@ -41,6 +42,9 @@ export async function agentCommand(options: AgentCommandOptions) {
 			return;
 		case "ask":
 			await askAgentCommand(options.homeDir, options.argv);
+			return;
+		case "send":
+			await sendAgentCommand(options.homeDir, options.argv);
 			return;
 		default:
 			options.tui(subcommand);
