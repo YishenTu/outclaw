@@ -13,6 +13,8 @@ export interface SessionRow {
 	tag: SessionTag;
 	createdAt: number;
 	lastActive: number;
+	failedAt?: number;
+	failureMessage?: string;
 }
 
 export interface TableColumnInfo {
@@ -43,9 +45,11 @@ export const SESSION_TABLE_COLUMNS = [
 	"created_at",
 	"last_active",
 	...SESSION_USAGE_COLUMNS,
+	"failed_at",
+	"failure_message",
 ] as const;
 
-interface SessionDatabaseRow {
+export interface SessionDatabaseRow {
 	agent_id: string;
 	provider_id: string;
 	sdk_session_id: string;
@@ -56,6 +60,8 @@ interface SessionDatabaseRow {
 	tag: SessionTag;
 	created_at: number;
 	last_active: number;
+	failed_at?: number | null;
+	failure_message?: string | null;
 }
 
 interface SessionUsageRow {
@@ -87,6 +93,8 @@ export function mapSessionRow(
 		tag: row.tag,
 		createdAt: row.created_at,
 		lastActive: row.last_active,
+		failedAt: row.failed_at ?? undefined,
+		failureMessage: row.failure_message ?? undefined,
 	};
 }
 
@@ -102,6 +110,8 @@ export function mapSessionRows(rows: SessionDatabaseRow[]): SessionRow[] {
 		tag: row.tag,
 		createdAt: row.created_at,
 		lastActive: row.last_active,
+		failedAt: row.failed_at ?? undefined,
+		failureMessage: row.failure_message ?? undefined,
 	}));
 }
 

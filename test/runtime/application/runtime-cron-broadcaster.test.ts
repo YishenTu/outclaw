@@ -40,6 +40,10 @@ function createSessionsRecorder() {
 		jobName: string;
 		model: string;
 		resultText?: string;
+		failure?: {
+			failedAt: number;
+			message: string;
+		};
 		sessionId: string;
 		ranAt: number;
 	}> = [];
@@ -51,6 +55,10 @@ function createSessionsRecorder() {
 				jobName: string;
 				model: string;
 				resultText?: string;
+				failure?: {
+					failedAt: number;
+					message: string;
+				};
 				sessionId: string;
 				ranAt: number;
 			}) {
@@ -192,6 +200,7 @@ describe("RuntimeCronBroadcaster", () => {
 		});
 
 		await broadcaster.broadcastResult({
+			failureMessage: "agent exploded",
 			jobName: "daily",
 			model: "haiku",
 			persistResultText: true,
@@ -206,6 +215,10 @@ describe("RuntimeCronBroadcaster", () => {
 				sessionId: "cron-session-error",
 				ranAt: expect.any(Number),
 				resultText: "[error] agent exploded",
+				failure: {
+					failedAt: expect.any(Number),
+					message: "agent exploded",
+				},
 			},
 		]);
 		expect(browser.events()).toContainEqual(

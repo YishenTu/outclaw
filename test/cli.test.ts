@@ -80,6 +80,8 @@ function seedSession(params: {
 	tag?: "chat" | "cron";
 	createdAt: number;
 	lastActive: number;
+	failedAt?: number;
+	failureMessage?: string;
 }) {
 	const dbPath = join(OUTCLAW_DIR, "db.sqlite");
 	const store = new SessionStore(dbPath, { agentId: params.agentId });
@@ -89,6 +91,13 @@ function seedSession(params: {
 		title: params.title,
 		model: "opus",
 		tag: params.tag,
+		failure:
+			params.failedAt === undefined || params.failureMessage === undefined
+				? undefined
+				: {
+						failedAt: params.failedAt,
+						message: params.failureMessage,
+					},
 	});
 	store.close();
 
@@ -269,8 +278,9 @@ describe("CLI", () => {
 
 	test("cron dash h prints cron-specific help and exits successfully", () => {
 		const { stdout, exitCode } = runCli(["cron", "-h"]);
-		expect(stdout).toContain("Usage: oc cron <run>");
+		expect(stdout).toContain("Usage: oc cron <run|status>");
 		expect(stdout).toContain("oc cron run <cron-name>");
+		expect(stdout).toContain("oc cron status --failed");
 		expect(exitCode).toBe(0);
 	});
 
@@ -278,6 +288,13 @@ describe("CLI", () => {
 		const { stdout, exitCode } = runCli(["cron", "run", "-h"]);
 		expect(stdout).toContain("Usage: oc cron run <cron-name>");
 		expect(stdout).toContain("Triggers a cron job in the running daemon.");
+		expect(exitCode).toBe(0);
+	});
+
+	test("cron status dash h prints status help and exits successfully", () => {
+		const { stdout, exitCode } = runCli(["cron", "status", "-h"]);
+		expect(stdout).toContain("Usage: oc cron status --failed");
+		expect(stdout).toContain("--since");
 		expect(exitCode).toBe(0);
 	});
 
@@ -1421,6 +1438,118 @@ describe("CLI", () => {
 				"railly\trailly-cron-\tRailly cron\t2025-01-19 08:00\t2025-01-19 08:00",
 			].join("\n"),
 		);
+	});
+
+	test("cron status --failed lists failed cron runs scoped by cwd", () => {
+		const raillyHome = createAgentHome("railly", "agent-railly");
+		createAgentHome("mimi", "agent-mimi");
+		seedSession({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "railly-cron-success",
+			title: "daily-summary",
+			tag: "cron",
+			createdAt: Date.parse("2025-01-20T08:00:00.000Z"),
+			lastActive: Date.parse("2025-01-20T08:00:00.000Z"),
+		});
+		seedSession({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "railly-cron-failed-1",
+			title: "memory-route",
+			tag: "cron",
+			createdAt: Date.parse("2025-01-20T09:00:00.000Z"),
+			lastActive: Date.parse("2025-01-20T09:00:00.000Z"),
+			failedAt: Date.parse("2025-01-20T09:01:00.000Z"),
+			failureMessage: "agent exploded",
+		});
+		seedSession({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "railly-cron-failed-2",
+			title: "daily-summary",
+			tag: "cron",
+			createdAt: Date.parse("2025-01-19T09:00:00.000Z"),
+			lastActive: Date.parse("2025-01-19T09:00:00.000Z"),
+			failedAt: Date.parse("2025-01-19T09:01:00.000Z"),
+			failureMessage: "network timeout",
+		});
+		seedSession({
+			agentId: "agent-mimi",
+			providerId: "claude",
+			sdkSessionId: "mimi-cron-failed",
+			title: "daily-summary",
+			tag: "cron",
+			createdAt: Date.parse("2025-01-20T10:00:00.000Z"),
+			lastActive: Date.parse("2025-01-20T10:00:00.000Z"),
+			failedAt: Date.parse("2025-01-20T10:01:00.000Z"),
+			failureMessage: "other agent failed",
+		});
+
+		const result = runCli(
+			["cron", "status", "--failed", "--since", "2025-01-20T00:00:00.000Z"],
+			{ cwd: raillyHome },
+		);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toBe(
+			[
+				"agent\tjob\tid\tfailed_at\terror",
+				"railly\tmemory-route\trailly-cron-\t2025-01-20 09:01\tagent exploded",
+			].join("\n"),
+		);
+	});
+
+	test("cron status --failed --names prints unique failed job names", () => {
+		const raillyHome = createAgentHome("railly", "agent-railly");
+		seedSession({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "railly-cron-failed-1",
+			title: "memory-route",
+			tag: "cron",
+			createdAt: Date.parse("2025-01-20T09:00:00.000Z"),
+			lastActive: Date.parse("2025-01-20T09:00:00.000Z"),
+			failedAt: Date.parse("2025-01-20T09:01:00.000Z"),
+			failureMessage: "agent exploded",
+		});
+		seedSession({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "railly-cron-failed-2",
+			title: "daily-summary",
+			tag: "cron",
+			createdAt: Date.parse("2025-01-19T09:00:00.000Z"),
+			lastActive: Date.parse("2025-01-19T09:00:00.000Z"),
+			failedAt: Date.parse("2025-01-19T09:01:00.000Z"),
+			failureMessage: "network timeout",
+		});
+		seedSession({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "railly-cron-failed-3",
+			title: "memory-route",
+			tag: "cron",
+			createdAt: Date.parse("2025-01-18T09:00:00.000Z"),
+			lastActive: Date.parse("2025-01-18T09:00:00.000Z"),
+			failedAt: Date.parse("2025-01-18T09:01:00.000Z"),
+			failureMessage: "old failure",
+		});
+
+		const result = runCli(
+			[
+				"cron",
+				"status",
+				"--failed",
+				"--since",
+				"2025-01-01T00:00:00.000Z",
+				"--names",
+			],
+			{ cwd: raillyHome },
+		);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toBe(["memory-route", "daily-summary"].join("\n"));
 	});
 
 	test("session transcript resolves a scoped prefix and prints timestamped turns", () => {

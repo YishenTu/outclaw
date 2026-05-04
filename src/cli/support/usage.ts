@@ -22,6 +22,7 @@ export function formatUsage() {
 		"       oc session search <query> [--limit N]",
 		"       oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
 		"       oc cron run <cron-name>",
+		"       oc cron status --failed [--since DURATION|DATE] [--limit N] [--job NAME] [--names] [--json]",
 		'       oc note "<content>" [--salience <tag>] [--hint <schema>]',
 		"       oc schema <status|stale> [--agent <name|id>] [--json]",
 		"",
@@ -210,11 +211,13 @@ export function printConfigSecureUsage() {
 
 export function formatCronUsage() {
 	return joinLines([
-		"Usage: oc cron <run>",
+		"Usage: oc cron <run|status>",
 		"       oc cron run <cron-name>",
+		"       oc cron status --failed [--since DURATION|DATE] [--limit N] [--job NAME] [--names] [--json]",
 		"",
 		"Commands:",
-		"       run    trigger a cron job in the running daemon",
+		"       run     trigger a cron job in the running daemon",
+		"       status  list failed cron runs",
 		"",
 		"Run inside an agent workspace so the agent can be resolved from cwd.",
 	]);
@@ -236,6 +239,21 @@ export function formatCronRunUsage() {
 
 export function printCronRunUsage() {
 	console.log(formatCronRunUsage());
+}
+
+export function formatCronStatusUsage() {
+	return joinLines([
+		"Usage: oc cron status --failed [--since DURATION|DATE] [--limit N] [--job NAME] [--names] [--json]",
+		"",
+		"Lists failed cron runs.",
+		"Default since: 7d",
+		"Use --names when piping failed job names into oc cron run.",
+		"Run inside an agent workspace to scope results to that agent.",
+	]);
+}
+
+export function printCronStatusUsage() {
+	console.log(formatCronStatusUsage());
 }
 
 export function formatSchemaUsage() {

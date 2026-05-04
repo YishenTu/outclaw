@@ -153,6 +153,7 @@ describe("CronExecutionPolicy", () => {
 
 		expect(results).toEqual([
 			{
+				failureMessage: "agent exploded",
 				jobName: "test-job",
 				model: "opus",
 				persistResultText: true,

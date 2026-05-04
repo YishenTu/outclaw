@@ -23,6 +23,7 @@ One-time `runAt` values must be ISO 8601 datetimes with explicit `Z` or numeric 
 | Command | Purpose |
 | --- | --- |
 | `oc cron run <cron-name>` | Fire a cron job in the running daemon |
+| `oc cron status --failed [--since DURATION\|DATE] [--limit N] [--job NAME] [--names] [--json]` | List failed cron runs |
 | `oc session list --tag cron` | List recorded cron sessions (most recent first) |
 | `oc session transcript <id-or-prefix> --tag cron` | Inspect a cron run transcript |
 
@@ -38,11 +39,17 @@ Common failures (these *do* surface in your shell):
 - `Cron job not found: <name>` — check the `name:` field in the YAML under `cron/`.
 - `Cron job is disabled: <name>` — flip `enabled: true` in the YAML before triggering.
 
-## Finding Failed or Past Runs
+## Finding Failed Runs
 
-Cron runs are stored separately from chat sessions. To investigate a failure or check whether a run happened:
+When the user asks about failed cron jobs, start with:
 
-1. `oc session list --tag cron` — find the run by timestamp / job name.
-2. `oc session transcript <id-or-prefix> --tag cron` — inspect what the cron actually produced (or failed with).
+1. `oc cron status --failed` — show recent failed runs for the current agent.
+2. `oc cron status --failed --since 24h` — narrow the check to a recent window.
+3. `oc cron status --failed --job <name>` — check one job.
+4. `oc cron status --failed --names` — print job names for rerun pipelines.
 
-When the user references a failed cron, start here before doing anything else — the transcript usually tells you exactly why it failed (auth error, tool error, no-op reply, etc.), which determines whether a simple rerun will fix it or the root cause needs attention first.
+Use `oc session transcript <id-or-prefix> --tag cron` after `oc cron status --failed` when the error line is not enough to decide what to do next.
+
+## Finding Past Runs
+
+Use `oc session list --tag cron` to browse past cron runs by timestamp and job name. Use `oc session transcript <id-or-prefix> --tag cron` when you need the run output.

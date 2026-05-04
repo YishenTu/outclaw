@@ -14,6 +14,7 @@ export interface CronAgentRunResult {
 export interface CronExecutionResult {
 	jobName: string;
 	model: string;
+	failureMessage?: string;
 	persistResultText?: boolean;
 	sessionId?: string;
 	suppressDelivery?: boolean;
@@ -116,13 +117,15 @@ export class CronExecutionPolicy {
 				text: runResult.text,
 			});
 		} catch (err) {
+			const failureMessage = extractError(err);
 			await this.options.onResult({
+				failureMessage,
 				jobName: job.config.name,
 				model,
 				persistResultText: true,
 				sessionId: extractErrorSessionId(err) ?? randomUUID(),
 				telegramChatId: job.telegramChatId,
-				text: `[error] ${extractError(err)}`,
+				text: `[error] ${failureMessage}`,
 			});
 		}
 	}

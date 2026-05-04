@@ -9,6 +9,7 @@ import { CronScheduler } from "../../../src/runtime/cron/scheduler.ts";
 interface ScheduledCronResult {
 	jobName: string;
 	model: string;
+	failureMessage?: string;
 	persistResultText?: boolean;
 	sessionId?: string;
 	suppressDelivery?: boolean;

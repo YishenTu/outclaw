@@ -216,6 +216,10 @@ export class SessionService {
 		model: string;
 		ranAt: number;
 		resultText?: string;
+		failure?: {
+			failedAt: number;
+			message: string;
+		};
 	}) {
 		this.store?.upsert({
 			providerId: this.state.providerId,
@@ -224,6 +228,7 @@ export class SessionService {
 			model: params.model,
 			tag: "cron",
 			timestamp: params.ranAt,
+			failure: params.failure,
 		});
 		if (params.resultText !== undefined && params.resultText !== "") {
 			this.store?.replaceTranscript(this.state.providerId, params.sessionId, [

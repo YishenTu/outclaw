@@ -140,11 +140,11 @@ export function resolveScopedAgent(
 	return agents.find((agent) => agent.agentId === agentId);
 }
 
-function createAgentNameMap(agents: AgentRecord[]) {
+export function createAgentNameMap(agents: AgentRecord[]) {
 	return new Map(agents.map((agent) => [agent.agentId, agent.name]));
 }
 
-function createDisplayIds(ids: string[]): string[] {
+export function createDisplayIds(ids: string[]): string[] {
 	const lengths = ids.map((id) => Math.min(12, id.length));
 	let changed = true;
 
@@ -176,11 +176,11 @@ function createDisplayIds(ids: string[]): string[] {
 	return ids.map((id, index) => id.slice(0, lengths[index] ?? 12));
 }
 
-function sanitizeTitle(title: string): string {
+export function sanitizeTitle(title: string): string {
 	return title.replaceAll(/\s+/g, " ").trim();
 }
 
-function formatTimestamp(timestamp: number): string {
+export function formatTimestamp(timestamp: number): string {
 	const date = new Date(timestamp);
 	const year = date.getFullYear();
 	const month = String(date.getMonth() + 1).padStart(2, "0");

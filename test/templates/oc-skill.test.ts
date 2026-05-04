@@ -12,6 +12,7 @@ import {
 	formatConfigRuntimeUsage,
 	formatConfigSecureUsage,
 	formatCronRunUsage,
+	formatCronStatusUsage,
 	formatSchemaStatusUsage,
 	formatSessionListUsage,
 	formatSessionSearchUsage,
@@ -96,6 +97,7 @@ describe("oc skill template contract", () => {
 		expectReferenceIncludesUsage(session, formatSessionSearchUsage());
 		expectReferenceIncludesUsage(session, formatSessionTranscriptUsage());
 		expectReferenceIncludesUsage(cron, formatCronRunUsage());
+		expectReferenceIncludesUsage(cron, formatCronStatusUsage());
 		expect(note).toContain(firstUsageSyntax(formatNoteUsage()));
 		expectReferenceIncludesUsage(schema, formatSchemaStatusUsage());
 	});

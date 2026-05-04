@@ -409,8 +409,16 @@ describe("SessionService", () => {
 			model: "haiku",
 			ranAt: 1234,
 			resultText: "[error] agent exploded",
+			failure: {
+				failedAt: 1234,
+				message: "agent exploded",
+			},
 		});
 
+		expect(store.get(PROVIDER_ID, "cron-session-error")).toMatchObject({
+			failedAt: 1234,
+			failureMessage: "agent exploded",
+		});
 		expect(store.listCronRunsByTitle("daily-summary", { limit: 1 })).toEqual([
 			{
 				providerId: PROVIDER_ID,

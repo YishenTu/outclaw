@@ -19,6 +19,8 @@ describe("session-store-records", () => {
 				tag: "chat",
 				created_at: 1,
 				last_active: 2,
+				failed_at: 3,
+				failure_message: "agent exploded",
 			}),
 		).toEqual({
 			agentId: "agent-railly",
@@ -31,6 +33,8 @@ describe("session-store-records", () => {
 			tag: "chat",
 			createdAt: 1,
 			lastActive: 2,
+			failedAt: 3,
+			failureMessage: "agent exploded",
 		});
 	});
 
@@ -48,6 +52,8 @@ describe("session-store-records", () => {
 					tag: "chat",
 					created_at: 10,
 					last_active: 20,
+					failed_at: null,
+					failure_message: null,
 				},
 				{
 					agent_id: "agent-mimi",
@@ -60,6 +66,8 @@ describe("session-store-records", () => {
 					tag: "cron",
 					created_at: 30,
 					last_active: 40,
+					failed_at: 41,
+					failure_message: "cron failed",
 				},
 			]),
 		).toEqual([
@@ -74,6 +82,8 @@ describe("session-store-records", () => {
 				tag: "chat",
 				createdAt: 10,
 				lastActive: 20,
+				failedAt: undefined,
+				failureMessage: undefined,
 			},
 			{
 				agentId: "agent-mimi",
@@ -86,6 +96,8 @@ describe("session-store-records", () => {
 				tag: "cron",
 				createdAt: 30,
 				lastActive: 40,
+				failedAt: 41,
+				failureMessage: "cron failed",
 			},
 		]);
 	});

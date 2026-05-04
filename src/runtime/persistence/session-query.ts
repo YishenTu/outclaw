@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import {
 	mapSessionRows,
+	type SessionDatabaseRow,
 	type SessionRow,
 	type SessionTag,
 } from "./session-store/session-store-records.ts";
@@ -23,6 +24,13 @@ interface SessionQuerySearchOptions {
 	limit?: number;
 	query: string;
 	tag: SessionTag;
+}
+
+interface FailedCronRunListOptions {
+	agentId?: string;
+	jobName?: string;
+	limit?: number;
+	since?: number;
 }
 
 export interface SessionSearchTurn {
@@ -84,6 +92,53 @@ export class SessionQuery {
 					LIMIT $limit`,
 				)
 				.all(params) as Parameters<typeof mapSessionRows>[0],
+		);
+	}
+
+	listFailedCronRuns(options: FailedCronRunListOptions): SessionRow[] {
+		const conditions = ["tag = 'cron'", "failed_at IS NOT NULL"];
+		const params: Record<string, string | number> = {};
+
+		if (options.agentId) {
+			conditions.push("agent_id = $agentId");
+			params.$agentId = options.agentId;
+		}
+		if (options.jobName) {
+			conditions.push("title = $jobName");
+			params.$jobName = options.jobName;
+		}
+		if (options.since !== undefined) {
+			conditions.push("failed_at >= $since");
+			params.$since = options.since;
+		}
+
+		const limitClause =
+			options.limit === undefined ? "" : "\n\t\t\t\t\t\tLIMIT $limit";
+		if (options.limit !== undefined) {
+			params.$limit = options.limit;
+		}
+
+		return mapSessionRows(
+			this.db
+				.query(
+					`SELECT
+						agent_id,
+						provider_id,
+						sdk_session_id,
+						oc_session_id,
+						title,
+						model,
+						source,
+						tag,
+						created_at,
+						last_active,
+						failed_at,
+						failure_message
+					FROM sessions
+					WHERE ${conditions.join(" AND ")}
+					ORDER BY failed_at DESC, sdk_session_id DESC${limitClause}`,
+				)
+				.all(params) as SessionDatabaseRow[],
 		);
 	}
 

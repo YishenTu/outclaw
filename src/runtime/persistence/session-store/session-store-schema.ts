@@ -50,8 +50,10 @@ function createSessionsTable(db: Database) {
 			max_output_tokens INTEGER,
 			context_tokens INTEGER,
 			percentage INTEGER,
-				PRIMARY KEY (agent_id, provider_id, sdk_session_id)
-				)`);
+			failed_at INTEGER,
+			failure_message TEXT,
+			PRIMARY KEY (agent_id, provider_id, sdk_session_id)
+		)`);
 }
 
 function migrateSessionsTable(db: Database, columns: TableColumnInfo[]) {
@@ -60,6 +62,20 @@ function migrateSessionsTable(db: Database, columns: TableColumnInfo[]) {
 		db.exec("ALTER TABLE sessions ADD COLUMN oc_session_id TEXT");
 		columns.push({
 			name: "oc_session_id",
+			pk: 0,
+		});
+	}
+	if (!columnNames.has("failed_at")) {
+		db.exec("ALTER TABLE sessions ADD COLUMN failed_at INTEGER");
+		columns.push({
+			name: "failed_at",
+			pk: 0,
+		});
+	}
+	if (!columnNames.has("failure_message")) {
+		db.exec("ALTER TABLE sessions ADD COLUMN failure_message TEXT");
+		columns.push({
+			name: "failure_message",
 			pk: 0,
 		});
 	}

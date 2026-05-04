@@ -9,6 +9,7 @@ import type { SessionService } from "./session-service.ts";
 interface CronExecutionResult {
 	jobName: string;
 	model: string;
+	failureMessage?: string;
 	persistResultText?: boolean;
 	sessionId?: string;
 	suppressDelivery?: boolean;
@@ -45,6 +46,12 @@ export class RuntimeCronBroadcaster {
 				model: result.model,
 				ranAt,
 				resultText: result.persistResultText ? result.text : undefined,
+				failure: result.failureMessage
+					? {
+							failedAt: ranAt,
+							message: result.failureMessage,
+						}
+					: undefined,
 			});
 			this.notifyBrowserCronChanged();
 		}
