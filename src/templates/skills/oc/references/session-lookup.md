@@ -4,18 +4,11 @@
 
 | Command | Purpose |
 | --- | --- |
-| `oc session list [--limit N] [--tag cron]` | List sessions (scoped to current agent when run from an agent workspace) |
-| `oc session list --tag cron` | List cron sessions |
-| `oc session list --limit N` | Show N most recent sessions (default: 20) |
-| `oc session search <query> [--limit N]` | Find past chat sessions by keyword |
-| `oc session search <query> --limit N` | Show up to N matching sessions (default: all matches) |
-| `oc session transcript <id-or-prefix> [--limit N] [--tag cron]` | Print a past conversation transcript with timestamps |
-| `oc session transcript <id-or-prefix> --tag cron` | Read a cron session transcript |
-| `oc session transcript <id-or-prefix> --limit N` | Show only the last N turns of the transcript |
+| `oc session list [--limit N] [--tag cron]` | List sessions, scoped to current agent when run from an agent workspace. Default 20 results; pass `--tag cron` for cron sessions. |
+| `oc session search <query> [--limit N]` | Find past chat sessions by keyword. Returns all matches unless `--limit` is passed. |
+| `oc session transcript <id-or-prefix> [--limit N] [--tag cron]` | Print a past conversation transcript with timestamps. Pass `--tag cron` for cron transcripts; `--limit N` shows only the last N turns. |
 
 Flags can be combined: `oc session list --limit 50 --tag cron`.
-
-Use `oc session -h` or `oc session <subcommand> -h` for the current syntax and defaults.
 
 ## Workflow
 

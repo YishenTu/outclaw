@@ -9,7 +9,6 @@
 
 ## Guidance
 
-- Use `oc config -h` or `oc config runtime -h` for the current flag syntax.
 - Use `oc config runtime` when the user wants to change daemon-level config through the CLI instead of editing `config.json` by hand.
 - `oc config runtime` owns only runtime globals: `host`, `port`, `autoCompact`, `heartbeat`, and `thinkingEffort`.
 - `thinkingEffort` is the daemon-start default for new runtime state. Runtime `/thinking ...` changes are live but do not persist back into `config.json`.

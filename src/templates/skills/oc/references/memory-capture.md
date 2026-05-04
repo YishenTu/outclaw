@@ -61,9 +61,9 @@ The `- ` line is still the addressable observation; continuation lines belong to
 
 ## Session attribution
 
-`oc note` reads `OC_SESSION_ID` and `OC_MEMORY_ROOT` from its environment. Both are injected by the outclaw runtime when it spawns the agent, so the CLI just works from inside an agent session. If either is missing, the command errors out (`oc note: must run inside an outclaw-managed agent session`) rather than silently writing to the wrong place.
+`oc note` must run inside an outclaw-managed agent session — the runtime provides the session and workspace context. Outside such a session the command errors out rather than silently writing to the wrong place.
 
-A conversation's observations share one `## Session` stanza — `OC_SESSION_ID` stays stable across resumed runs of the same SDK session. A new conversation (or a new cron invocation) produces a new stanza.
+A conversation's observations share one `## Session` stanza in the daily file. A new conversation (or a new cron invocation) produces a new stanza.
 
 ## Gotchas
 

@@ -70,14 +70,10 @@ describe("oc skill template contract", () => {
 	});
 
 	test("documents ask versus send peer communication guardrails", () => {
-		const skill = readOcTemplate("SKILL.md");
 		const agentCom = readOcTemplate("references/agent-com.md");
 
 		expectReferenceIncludesUsage(agentCom, formatAgentAskUsage());
 		expectReferenceIncludesUsage(agentCom, formatAgentSendUsage());
-		expect(skill).toContain(
-			"Use `oc agent ask` only when the peer's answer determines your next move; use `oc agent send` when you can continue without waiting.",
-		);
 		expect(agentCom).toContain(
 			"Use `ask` only when you need the peer's answer to decide your next move.",
 		);

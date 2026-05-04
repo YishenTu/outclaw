@@ -41,14 +41,13 @@ Common failures (these *do* surface in your shell):
 
 ## Finding Failed Runs
 
-When the user asks about failed cron jobs, start with:
+`oc cron status --failed` shows recent failed runs for the current agent (default window: 7d). Modifiers:
 
-1. `oc cron status --failed` — show recent failed runs for the current agent.
-2. `oc cron status --failed --since 24h` — narrow the check to a recent window.
-3. `oc cron status --failed --job <name>` — check one job.
-4. `oc cron status --failed --names` — print job names for rerun pipelines.
+- `--since 24h` — narrow to a recent window (any duration or ISO date).
+- `--job <name>` — restrict to one job.
+- `--names` — print only job names, suitable for piping into `oc cron run`.
 
-Use `oc session transcript <id-or-prefix> --tag cron` after `oc cron status --failed` when the error line is not enough to decide what to do next.
+Use `oc session transcript <id-or-prefix> --tag cron` when the failure summary isn't enough to decide what to do next.
 
 ## Finding Past Runs
 

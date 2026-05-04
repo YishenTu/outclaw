@@ -13,8 +13,6 @@
 
 Each agent has its own workspace under `~/.outclaw/agents/<name>/`.
 
-Use `oc agent -h` or `oc agent <subcommand> -h` for current command syntax.
-
 ## Creating an Agent
 
 Always use `oc agent create` to create agents. Never create an agent by manually making directories or files — the CLI handles workspace scaffolding, ID generation, and config registration.
