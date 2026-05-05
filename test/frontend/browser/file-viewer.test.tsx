@@ -3,6 +3,7 @@ import {
 	CodePreview,
 	FileViewer,
 	MarkdownPreview,
+	resolveFilePreviewScrollRestoreTrigger,
 } from "../../../src/frontend/browser/components/file-viewer/file-viewer.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
@@ -106,6 +107,12 @@ describe("MarkdownPreview", () => {
 });
 
 describe("FileViewer", () => {
+	test("changes the scroll restore trigger when a file reload settles", () => {
+		expect(resolveFilePreviewScrollRestoreTrigger({ loading: true })).not.toBe(
+			resolveFilePreviewScrollRestoreTrigger({ loading: false }),
+		);
+	});
+
 	test("does not render a manual refresh button in the preview header", () => {
 		const html = renderToStaticMarkup(
 			<FileViewer

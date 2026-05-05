@@ -160,4 +160,25 @@ describe("runtime popup shortcuts", () => {
 		expect(closedCount).toBe(1);
 		expect(secondEscapeEvent.defaultPrevented).toBe(false);
 	});
+
+	test("does not register shortcuts when disabled", () => {
+		let closedCount = 0;
+		const target = new EventTarget();
+		const cleanup = registerRuntimePopupShortcuts(target, agentPopup, {
+			enabled: false,
+			selectedIndex: 0,
+			setSelectedIndex: () => {},
+			selectIndex: () => {},
+			closePopup: () => {
+				closedCount += 1;
+			},
+		});
+
+		const escapeEvent = new KeydownEvent("Escape");
+		target.dispatchEvent(escapeEvent);
+		cleanup();
+
+		expect(closedCount).toBe(0);
+		expect(escapeEvent.defaultPrevented).toBe(false);
+	});
 });

@@ -21,7 +21,11 @@ function hasRenderableTranscript(session: ChatSession | undefined): boolean {
 	);
 }
 
-export function ChatPanel() {
+interface ChatPanelProps {
+	active?: boolean;
+}
+
+export function ChatPanel({ active = true }: ChatPanelProps) {
 	const { sendBrowserPrompt, sendCommand } = useWs();
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
 	const agents = useAgentsStore((state) => state.agents);
@@ -90,6 +94,7 @@ export function ChatPanel() {
 					onSend={({ text, images }) => sendBrowserPrompt(text, images)}
 					disabled
 					interruptible={false}
+					active={active}
 					model={model}
 					effort={effort}
 					onModelChange={handleModelChange}
@@ -134,7 +139,7 @@ export function ChatPanel() {
 
 			<MessageInput
 				onSend={({ text, images }) => sendBrowserPrompt(text, images)}
-				draftKey="tab:chat"
+				active={active}
 				interruptible={
 					runtimeRunning ||
 					(chatSession?.isStreaming ?? false) ||

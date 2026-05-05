@@ -16,12 +16,10 @@ import {
 import {
 	type ComposerDraft,
 	clearSubmittedDraftIfUnchanged,
-	createEmptyComposerDraft,
 } from "../../../chat/composer-draft.ts";
 import { useWs } from "../../../contexts/websocket-context.tsx";
 import { useAgentFilesStore } from "../../../stores/agent-files.ts";
 import { useAgentsStore } from "../../../stores/agents.ts";
-import { useComposerDraftsStore } from "../../../stores/composer-drafts.ts";
 import { useRuntimePopupStore } from "../../../stores/runtime-popup.ts";
 import { useSlashCommandsStore } from "../../../stores/slash-commands.ts";
 import { ContextGauge } from "../context-gauge.tsx";
@@ -55,7 +53,7 @@ interface MessageInputProps {
 	effort: string | null;
 	onModelChange: (model: ModelAlias) => boolean;
 	onEffortChange: (effort: EffortLevel) => boolean;
-	draftKey?: string | null;
+	active?: boolean;
 	headerSlot?: React.ReactNode;
 	compact?: boolean;
 }
@@ -69,30 +67,24 @@ export function MessageInput({
 	effort,
 	onModelChange,
 	onEffortChange,
-	draftKey = null,
+	active = true,
 	headerSlot,
 	compact = false,
 }: MessageInputProps) {
 	const { sendCommand } = useWs();
-	const initialDraft = useRef<ComposerDraft>(
-		draftKey
-			? useComposerDraftsStore.getState().getDraft(draftKey)
-			: createEmptyComposerDraft(),
-	);
-	const [value, setValue] = useState(initialDraft.current.text);
+	const [value, setValue] = useState("");
 	const [cursor, setCursor] = useState(0);
-	const [images, setImages] = useState<ComposerImageAttachment[]>(
-		initialDraft.current.images,
-	);
+	const [images, setImages] = useState<ComposerImageAttachment[]>([]);
 	const [selectedIndex, setSelectedIndex] = useState(0);
 	const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
 	const [mentionDismissed, setMentionDismissed] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const isComposingRef = useRef(false);
-	const draftKeyRef = useRef<string | null>(draftKey);
-	const draftRef = useRef<ComposerDraft>(initialDraft.current);
-	const setPersistedDraft = useComposerDraftsStore((state) => state.setDraft);
+	const draftRef = useRef<ComposerDraft>({
+		text: "",
+		images: [],
+	});
 	const commands = useSlashCommandsStore((state) => state.commands);
 	const runtimePopup = useRuntimePopupStore((state) => state.popup);
 	const closeRuntimePopup = useRuntimePopupStore((state) => state.closePopup);
@@ -122,14 +114,19 @@ export function MessageInput({
 	const runtimePopupItemCount = resolveRuntimePopupItemCount(runtimePopup);
 
 	function focusTextarea() {
+		if (!active) {
+			return;
+		}
+
 		window.requestAnimationFrame(() => {
 			textareaRef.current?.focus();
 		});
 	}
 
-	useGlobalStopShortcut(interruptible, () => sendCommand("/stop"));
+	useGlobalStopShortcut(active && interruptible, () => sendCommand("/stop"));
 
 	useRuntimePopupShortcuts(runtimePopup, {
+		enabled: active,
 		selectedIndex,
 		setSelectedIndex,
 		selectIndex: (index) => {
@@ -140,30 +137,12 @@ export function MessageInput({
 	});
 
 	useEffect(() => {
-		if (!runtimePopup) {
+		if (!active || !runtimePopup) {
 			return;
 		}
 
 		textareaRef.current?.blur();
-	}, [runtimePopup]);
-
-	useEffect(() => {
-		if (draftKeyRef.current === draftKey) {
-			return;
-		}
-
-		const nextDraft = draftKey
-			? useComposerDraftsStore.getState().getDraft(draftKey)
-			: createEmptyComposerDraft();
-		draftKeyRef.current = draftKey;
-		draftRef.current = nextDraft;
-		setValue(nextDraft.text);
-		setImages(nextDraft.images);
-		setCursor(nextDraft.text.length);
-		setSelectedIndex(0);
-		setMentionSelectedIndex(0);
-		setMentionDismissed(false);
-	}, [draftKey]);
+	}, [active, runtimePopup]);
 
 	useEffect(() => {
 		const itemCount = runtimePopup
@@ -210,9 +189,6 @@ export function MessageInput({
 		draftRef.current = nextDraft;
 		setValue(nextDraft.text);
 		setImages(nextDraft.images);
-		if (draftKey) {
-			setPersistedDraft(draftKey, nextDraft);
-		}
 	}
 
 	function replaceDraftText(text: string) {

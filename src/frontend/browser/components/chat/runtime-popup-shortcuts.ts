@@ -9,6 +9,7 @@ export interface RuntimePopupKeyEvent {
 }
 
 interface RuntimePopupShortcutHandlers {
+	enabled?: boolean;
 	selectedIndex: number;
 	setSelectedIndex: (index: number) => void;
 	selectIndex: (index: number) => void;
@@ -103,7 +104,7 @@ export function registerRuntimePopupShortcuts(
 	popup: BrowserRuntimePopup | null,
 	handlers: RuntimePopupShortcutHandlers,
 ): () => void {
-	if (!popup) {
+	if (!popup || handlers.enabled === false) {
 		return () => {};
 	}
 

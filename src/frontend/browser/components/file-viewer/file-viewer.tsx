@@ -17,6 +17,7 @@ import { splitMarkdownFrontmatter } from "./markdown-frontmatter.ts";
 import { remarkHtmlComments } from "./remark-html-comments.ts";
 
 interface FileViewerProps {
+	active?: boolean;
 	tabId: string;
 	path: string;
 	agentId: string;
@@ -36,6 +37,14 @@ function buildCodeFence(content: string, language?: string): string {
 	);
 	const fence = "`".repeat(Math.max(3, longestBacktickRun + 1));
 	return `${fence}${language ?? ""}\n${content}\n${fence}`;
+}
+
+export function resolveFilePreviewScrollRestoreTrigger({
+	loading,
+}: {
+	loading: boolean;
+}): string {
+	return loading ? "loading" : "settled";
 }
 
 export function MarkdownPreview({ content }: { content: string }) {
@@ -98,7 +107,12 @@ export function CodePreview({
 	);
 }
 
-export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
+export function FileViewer({
+	active = true,
+	tabId,
+	path,
+	agentId,
+}: FileViewerProps) {
 	const [file, setFile] = useState<BrowserFileResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -108,6 +122,9 @@ export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
 	);
 	const scrollTop = useTabsStore((state) => state.scrollPositions[tabId] ?? 0);
 	const setScrollPosition = useTabsStore((state) => state.setScrollPosition);
+	const scrollRestoreTrigger = resolveFilePreviewScrollRestoreTrigger({
+		loading,
+	});
 
 	useEffect(() => {
 		void treeRevision;
@@ -146,13 +163,19 @@ export function FileViewer({ tabId, path, agentId }: FileViewerProps) {
 	const breadcrumb = useMemo(() => path.split("/"), [path]);
 
 	useEffect(() => {
+		void scrollRestoreTrigger;
+
+		if (!active) {
+			return;
+		}
+
 		const container = containerRef.current;
 		if (!container) {
 			return;
 		}
 
 		container.scrollTop = scrollTop;
-	});
+	}, [active, scrollRestoreTrigger, scrollTop]);
 
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-dark-950">
