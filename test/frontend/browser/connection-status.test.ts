@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { describeRuntimeConnectionStatus } from "../../../src/frontend/browser/components/agent-sidebar/sidebar-runtime-status.tsx";
+import {
+	describeRuntimeConnectionStatus,
+	formatRuntimeLatencyLabel,
+} from "../../../src/frontend/browser/components/agent-sidebar/sidebar-runtime-status.tsx";
 
 describe("describeRuntimeConnectionStatus", () => {
 	test("returns the connected presentation", () => {
@@ -21,5 +24,46 @@ describe("describeRuntimeConnectionStatus", () => {
 			dotClassName: "bg-danger",
 			label: "Offline",
 		});
+	});
+});
+
+describe("formatRuntimeLatencyLabel", () => {
+	test("formats connected RTT measurements", () => {
+		expect(
+			formatRuntimeLatencyLabel("connected", {
+				rttMs: 4,
+				status: "ready",
+			}),
+		).toBe("RTT 4ms");
+	});
+
+	test("keeps latency scoped to connected runtime status", () => {
+		expect(
+			formatRuntimeLatencyLabel("disconnected", {
+				rttMs: 4,
+				status: "ready",
+			}),
+		).toBeNull();
+	});
+
+	test("formats transient and failed measurements", () => {
+		expect(
+			formatRuntimeLatencyLabel("connected", {
+				rttMs: null,
+				status: "measuring",
+			}),
+		).toBe("RTT ...");
+		expect(
+			formatRuntimeLatencyLabel("connected", {
+				rttMs: null,
+				status: "timeout",
+			}),
+		).toBe("RTT timeout");
+		expect(
+			formatRuntimeLatencyLabel("connected", {
+				rttMs: null,
+				status: "error",
+			}),
+		).toBe("RTT --");
 	});
 });

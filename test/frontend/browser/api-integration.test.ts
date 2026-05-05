@@ -9,6 +9,7 @@ import {
 	fetchGitCommit,
 	fetchGitDiff,
 	fetchGitStatus,
+	fetchRuntimeLatency,
 	fetchSidebarSummary,
 	initGitRepo,
 	updateAgentCronEnabled,
@@ -270,6 +271,10 @@ describe("browser API client integration", () => {
 					],
 				},
 			],
+		});
+		await expect(fetchRuntimeLatency()).resolves.toMatchObject({
+			ok: true,
+			serverTimeMs: expect.any(Number),
 		});
 		await expect(fetchConfigFile()).resolves.toMatchObject({
 			content: '{\n\t"port": 4000\n}\n',

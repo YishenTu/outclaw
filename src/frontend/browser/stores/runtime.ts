@@ -11,10 +11,25 @@ export type BrowserConnectionStatus =
 	| "connected"
 	| "disconnected";
 
+export type BrowserRuntimeLatency =
+	| {
+			rttMs: number | null;
+			status: "idle" | "measuring";
+	  }
+	| {
+			rttMs: number;
+			status: "ready";
+	  }
+	| {
+			rttMs: null;
+			status: "error" | "timeout";
+	  };
+
 export interface BrowserRuntimeState {
 	connectionStatus: BrowserConnectionStatus;
 	dismissedNoticeKey: string | null;
 	error: string | null;
+	latency: BrowserRuntimeLatency;
 	agentName: string | null;
 	providerId: string | null;
 	model: string | null;
@@ -28,6 +43,7 @@ export interface BrowserRuntimeState {
 	heartbeatDeferred: boolean;
 
 	setConnectionStatus: (status: BrowserConnectionStatus) => void;
+	setLatency: (latency: BrowserRuntimeLatency) => void;
 	dismissNotice: () => void;
 	setError: (error: string | null) => void;
 	updateFromStatus: (event: RuntimeStatusEvent) => void;
@@ -51,6 +67,10 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 	connectionStatus: "connecting",
 	dismissedNoticeKey: null,
 	error: null,
+	latency: {
+		rttMs: null,
+		status: "idle",
+	},
 	agentName: null,
 	providerId: null,
 	model: null,
@@ -63,6 +83,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 	nextHeartbeatAt: undefined,
 	heartbeatDeferred: false,
 	setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
+	setLatency: (latency) => set({ latency }),
 	dismissNotice: () =>
 		set((state) => ({
 			dismissedNoticeKey:

@@ -40,6 +40,33 @@ describe("createSupervisor browser routes", () => {
 		}
 	});
 
+	test("serves browser latency probes without browser API configuration", async () => {
+		const supervisor = createSupervisor({
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+				}),
+			],
+			port: 0,
+		});
+		cleanup = () => supervisor.stop();
+
+		const response = await fetch(
+			`http://localhost:${supervisor.port}/api/latency`,
+		);
+		const body = (await response.json()) as {
+			ok?: unknown;
+			serverTimeMs?: unknown;
+		};
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get("cache-control")).toBe("no-store");
+		expect(body.ok).toBe(true);
+		expect(typeof body.serverTimeMs).toBe("number");
+	});
+
 	test("serves browser agent summaries over HTTP", async () => {
 		const supervisor = createSupervisor({
 			agents: [

@@ -13,6 +13,7 @@ import type {
 	BrowserInboxCreateNoteResponse,
 	BrowserInboxResponse,
 	BrowserInboxRestoreResponse,
+	BrowserLatencyResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 	ImageMediaType,
@@ -78,6 +79,23 @@ export async function handleBrowserApiRequest(
 	url: URL,
 	browserApi: BrowserApi | undefined,
 ): Promise<Response> {
+	if (url.pathname === "/api/latency") {
+		if (req.method !== "GET") {
+			return jsonError("Method not allowed", 405);
+		}
+		return Response.json(
+			{
+				ok: true,
+				serverTimeMs: Date.now(),
+			} satisfies BrowserLatencyResponse,
+			{
+				headers: {
+					"cache-control": "no-store",
+				},
+			},
+		);
+	}
+
 	if (!browserApi) {
 		return jsonError("Browser API is not configured", 404);
 	}

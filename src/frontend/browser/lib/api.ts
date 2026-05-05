@@ -13,6 +13,7 @@ import type {
 	BrowserInboxCreateNoteResponse,
 	BrowserInboxResponse,
 	BrowserInboxRestoreResponse,
+	BrowserLatencyResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 	WorkspaceFileEntry,
@@ -31,6 +32,17 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 
 export async function fetchSidebarSummary(): Promise<BrowserAgentsResponse> {
 	return parseJsonResponse(await fetch("/api/agents"));
+}
+
+export async function fetchRuntimeLatency(
+	signal?: AbortSignal,
+): Promise<BrowserLatencyResponse> {
+	return parseJsonResponse(
+		await fetch("/api/latency", {
+			cache: "no-store",
+			signal,
+		}),
+	);
 }
 
 export async function fetchConfigFile(): Promise<BrowserConfigResponse> {

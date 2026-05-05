@@ -1,5 +1,8 @@
 import { RotateCcw, Settings2 } from "lucide-react";
-import type { BrowserConnectionStatus } from "../../stores/runtime.ts";
+import type {
+	BrowserConnectionStatus,
+	BrowserRuntimeLatency,
+} from "../../stores/runtime.ts";
 import { useRuntimeStore } from "../../stores/runtime.ts";
 
 interface RuntimeConnectionPresentation {
@@ -29,26 +32,60 @@ export function describeRuntimeConnectionStatus(
 	}
 }
 
+export function formatRuntimeLatencyLabel(
+	connectionStatus: BrowserConnectionStatus,
+	latency: BrowserRuntimeLatency,
+): string | null {
+	if (connectionStatus !== "connected") {
+		return null;
+	}
+
+	if (latency.status === "ready") {
+		return `RTT ${latency.rttMs}ms`;
+	}
+	if (latency.status === "measuring") {
+		return latency.rttMs === null ? "RTT ..." : `RTT ${latency.rttMs}ms`;
+	}
+	if (latency.status === "timeout") {
+		return "RTT timeout";
+	}
+	if (latency.status === "error") {
+		return "RTT --";
+	}
+	return "RTT --";
+}
+
 interface SidebarRuntimeStatusProps {
 	configOpen?: boolean;
 	onToggleConfig?: () => void;
 	onRestart?: () => void;
 }
 
-export function SidebarRuntimeStatus({
+interface SidebarRuntimeStatusViewProps extends SidebarRuntimeStatusProps {
+	connectionStatus: BrowserConnectionStatus;
+	error: string | null;
+	latency: BrowserRuntimeLatency;
+}
+
+export function SidebarRuntimeStatusView({
 	configOpen = false,
+	connectionStatus,
+	error,
+	latency,
 	onToggleConfig = () => {},
 	onRestart = () => {},
-}: SidebarRuntimeStatusProps) {
-	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
-	const error = useRuntimeStore((state) => state.error);
+}: SidebarRuntimeStatusViewProps) {
 	const presentation = describeRuntimeConnectionStatus(connectionStatus);
+	const latencyLabel = formatRuntimeLatencyLabel(connectionStatus, latency);
+	const statusLabel = latencyLabel
+		? `${presentation.label} · ${latencyLabel}`
+		: presentation.label;
 
 	return (
 		<div className="border-t border-dark-800 px-4 py-3">
 			<div className="flex items-center justify-between gap-3">
 				<div
-					title={error ?? presentation.label}
+					title={error ?? statusLabel}
 					className="flex min-w-0 items-center gap-2"
 				>
 					<span
@@ -56,7 +93,7 @@ export function SidebarRuntimeStatus({
 						className={`h-1.5 w-1.5 shrink-0 rounded-full ${presentation.dotClassName}`}
 					/>
 					<span className="truncate font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-						{presentation.label}
+						{statusLabel}
 					</span>
 				</div>
 				<div className="flex items-center gap-2">
@@ -84,5 +121,20 @@ export function SidebarRuntimeStatus({
 				</div>
 			</div>
 		</div>
+	);
+}
+
+export function SidebarRuntimeStatus(props: SidebarRuntimeStatusProps) {
+	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
+	const error = useRuntimeStore((state) => state.error);
+	const latency = useRuntimeStore((state) => state.latency);
+
+	return (
+		<SidebarRuntimeStatusView
+			{...props}
+			connectionStatus={connectionStatus}
+			error={error}
+			latency={latency}
+		/>
 	);
 }

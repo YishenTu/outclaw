@@ -27,6 +27,7 @@ import {
 	applySidebarSummary,
 	handleBrowserServerEvent,
 } from "../events/runtime-server-events.ts";
+import { useRuntimeLatencyPolling } from "../latency/use-runtime-latency.ts";
 import { fetchSidebarSummary, uploadPromptImages } from "../lib/api.ts";
 import { dispatchBrowserPrompt as dispatchBrowserPromptMessage } from "../prompts/send-browser-prompt.ts";
 import { dispatchBrowserTextPrompt } from "../prompts/send-browser-text-prompt.ts";
@@ -143,6 +144,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			getProviderId: () => useRuntimeStore.getState().providerId,
 		}),
 	);
+	useRuntimeLatencyPolling();
 
 	const sendCommand = useCallback((command: string): boolean => {
 		const ws = wsRef.current;

@@ -427,6 +427,11 @@ export interface BrowserAgentsResponse {
 	agents: BrowserAgentSummary[];
 }
 
+export interface BrowserLatencyResponse {
+	ok: true;
+	serverTimeMs: number;
+}
+
 export interface BrowserTerminalRunCommandResponse {
 	command: string;
 }
