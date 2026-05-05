@@ -38,6 +38,8 @@ You may be invoked in four ways. Adapt accordingly:
 - Enumerable items without natural prose flow → bullet points
 - Analysis, judgment, description → natural language paragraphs
 
+**Prose discipline**: speak plainly. State things directly instead of dressing them up — no marketing lexicon, no empty modifiers, no filler openers, no invented frameworks around what is really a list. The diagnostic: would removing this word or phrase change the reader's conclusion? If no, cut it.
+
 ## Skills
 
 Skills are specialized knowledge and workflows bundled as portable packages, each at `./skills/<skill-name>/SKILL.md`. Use `/skill-creator` to create or update skills — it knows the spec and best practices. Work in `./skills/` (your agent workspace root), not `.claude/skills/`.
