@@ -13,9 +13,15 @@ import {
 	createComposerImageAttachment,
 	filterSupportedImageFiles,
 } from "../../../attachments/composer-images.ts";
+import {
+	type ComposerDraft,
+	clearSubmittedDraftIfUnchanged,
+	createEmptyComposerDraft,
+} from "../../../chat/composer-draft.ts";
 import { useWs } from "../../../contexts/websocket-context.tsx";
 import { useAgentFilesStore } from "../../../stores/agent-files.ts";
 import { useAgentsStore } from "../../../stores/agents.ts";
+import { useComposerDraftsStore } from "../../../stores/composer-drafts.ts";
 import { useRuntimePopupStore } from "../../../stores/runtime-popup.ts";
 import { useSlashCommandsStore } from "../../../stores/slash-commands.ts";
 import { ContextGauge } from "../context-gauge.tsx";
@@ -32,10 +38,6 @@ import {
 	filterSlashCommands,
 	resolveRuntimePopupItemCount,
 } from "./message-input-behavior.ts";
-import {
-	type ComposerDraft,
-	clearSubmittedDraftIfUnchanged,
-} from "./message-input-draft.ts";
 import { handleMessageInputKeydown } from "./message-input-keydown.ts";
 
 const MAX_MENTION_RESULTS = 50;
@@ -53,6 +55,7 @@ interface MessageInputProps {
 	effort: string | null;
 	onModelChange: (model: ModelAlias) => boolean;
 	onEffortChange: (effort: EffortLevel) => boolean;
+	draftKey?: string | null;
 	headerSlot?: React.ReactNode;
 	compact?: boolean;
 }
@@ -66,23 +69,30 @@ export function MessageInput({
 	effort,
 	onModelChange,
 	onEffortChange,
+	draftKey = null,
 	headerSlot,
 	compact = false,
 }: MessageInputProps) {
 	const { sendCommand } = useWs();
-	const [value, setValue] = useState("");
+	const initialDraft = useRef<ComposerDraft>(
+		draftKey
+			? useComposerDraftsStore.getState().getDraft(draftKey)
+			: createEmptyComposerDraft(),
+	);
+	const [value, setValue] = useState(initialDraft.current.text);
 	const [cursor, setCursor] = useState(0);
-	const [images, setImages] = useState<ComposerImageAttachment[]>([]);
+	const [images, setImages] = useState<ComposerImageAttachment[]>(
+		initialDraft.current.images,
+	);
 	const [selectedIndex, setSelectedIndex] = useState(0);
 	const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
 	const [mentionDismissed, setMentionDismissed] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const isComposingRef = useRef(false);
-	const draftRef = useRef<ComposerDraft>({
-		text: "",
-		images: [],
-	});
+	const draftKeyRef = useRef<string | null>(draftKey);
+	const draftRef = useRef<ComposerDraft>(initialDraft.current);
+	const setPersistedDraft = useComposerDraftsStore((state) => state.setDraft);
 	const commands = useSlashCommandsStore((state) => state.commands);
 	const runtimePopup = useRuntimePopupStore((state) => state.popup);
 	const closeRuntimePopup = useRuntimePopupStore((state) => state.closePopup);
@@ -138,11 +148,22 @@ export function MessageInput({
 	}, [runtimePopup]);
 
 	useEffect(() => {
-		draftRef.current = {
-			text: value,
-			images,
-		};
-	}, [images, value]);
+		if (draftKeyRef.current === draftKey) {
+			return;
+		}
+
+		const nextDraft = draftKey
+			? useComposerDraftsStore.getState().getDraft(draftKey)
+			: createEmptyComposerDraft();
+		draftKeyRef.current = draftKey;
+		draftRef.current = nextDraft;
+		setValue(nextDraft.text);
+		setImages(nextDraft.images);
+		setCursor(nextDraft.text.length);
+		setSelectedIndex(0);
+		setMentionSelectedIndex(0);
+		setMentionDismissed(false);
+	}, [draftKey]);
 
 	useEffect(() => {
 		const itemCount = runtimePopup
@@ -185,9 +206,34 @@ export function MessageInput({
 		setCursor(textarea.selectionStart ?? value.length);
 	}
 
+	function replaceDraft(nextDraft: ComposerDraft) {
+		draftRef.current = nextDraft;
+		setValue(nextDraft.text);
+		setImages(nextDraft.images);
+		if (draftKey) {
+			setPersistedDraft(draftKey, nextDraft);
+		}
+	}
+
+	function replaceDraftText(text: string) {
+		replaceDraft({
+			...draftRef.current,
+			text,
+		});
+	}
+
+	function updateDraftImages(
+		updater: (images: ComposerImageAttachment[]) => ComposerImageAttachment[],
+	) {
+		replaceDraft({
+			...draftRef.current,
+			images: updater(draftRef.current.images),
+		});
+	}
+
 	function applySlashCommand(name: string) {
 		closeRuntimePopup();
-		setValue(`/${name} `);
+		replaceDraftText(`/${name} `);
 		setCursor(`/${name} `.length);
 		setSelectedIndex(0);
 		setMentionDismissed(false);
@@ -203,7 +249,7 @@ export function MessageInput({
 			return;
 		}
 		const replaced = replaceMentionToken(value, mentionToken, selected.path);
-		setValue(replaced.value);
+		replaceDraftText(replaced.value);
 		setCursor(replaced.cursor);
 		setMentionSelectedIndex(0);
 		setMentionDismissed(false);
@@ -223,7 +269,7 @@ export function MessageInput({
 		const nextImages = await Promise.all(
 			supportedFiles.map((file) => createComposerImageAttachment(file)),
 		);
-		setImages((current) => [...current, ...nextImages]);
+		updateDraftImages((current) => [...current, ...nextImages]);
 	}
 
 	function selectRuntimePopupItem(index: number) {
@@ -274,8 +320,7 @@ export function MessageInput({
 					draftRef.current,
 					submittedDraft,
 				);
-				setValue(nextDraft.text);
-				setImages(nextDraft.images);
+				replaceDraft(nextDraft);
 				setSelectedIndex(0);
 			}
 		} finally {
@@ -332,7 +377,7 @@ export function MessageInput({
 									<button
 										type="button"
 										onClick={() =>
-											setImages((current) =>
+											updateDraftImages((current) =>
 												current.filter((entry) => entry.id !== image.id),
 											)
 										}
@@ -352,7 +397,7 @@ export function MessageInput({
 							value={value}
 							disabled={isInputDisabled}
 							onChange={(event) => {
-								setValue(event.target.value);
+								replaceDraftText(event.target.value);
 								setCursor(
 									event.target.selectionStart ?? event.target.value.length,
 								);

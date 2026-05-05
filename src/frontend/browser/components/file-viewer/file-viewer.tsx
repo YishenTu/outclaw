@@ -22,6 +22,9 @@ interface FileViewerProps {
 	agentId: string;
 }
 
+const FILE_PREVIEW_CODE_BLOCK_CLASSES =
+	"[&_pre]:overflow-x-hidden [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere] [&_pre_code]:whitespace-pre-wrap";
+
 function isMarkdownFile(path: string): boolean {
 	return path.toLowerCase().endsWith(".md");
 }
@@ -50,7 +53,9 @@ export function MarkdownPreview({ content }: { content: string }) {
 			)}
 
 			{hasMarkdownBody ? (
-				<div className="prose prose-invert prose-sm max-w-none text-dark-100 [&_code::before]:content-none [&_code::after]:content-none">
+				<div
+					className={`prose prose-invert prose-sm max-w-none text-dark-100 [&_code::before]:content-none [&_code::after]:content-none ${FILE_PREVIEW_CODE_BLOCK_CLASSES}`}
+				>
 					<ReactMarkdown
 						remarkPlugins={[
 							...BROWSER_MARKDOWN_REMARK_PLUGINS,
@@ -80,7 +85,9 @@ export function CodePreview({
 	}, [content, language]);
 
 	return (
-		<div className="prose prose-invert max-w-none text-dark-100 [&_pre]:m-0 [&_pre]:overflow-x-hidden [&_pre]:whitespace-pre-wrap [&_pre]:border-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-[12px] [&_pre]:leading-5 [&_pre]:[overflow-wrap:anywhere] [&_pre_code]:bg-transparent [&_pre_code]:whitespace-pre-wrap">
+		<div
+			className={`prose prose-invert max-w-none text-dark-100 [&_pre]:m-0 [&_pre]:border-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-[12px] [&_pre]:leading-5 [&_pre_code]:bg-transparent ${FILE_PREVIEW_CODE_BLOCK_CLASSES}`}
+		>
 			<ReactMarkdown
 				remarkPlugins={BROWSER_MARKDOWN_REMARK_PLUGINS}
 				rehypePlugins={BROWSER_MARKDOWN_REHYPE_PLUGINS}

@@ -1,8 +1,15 @@
-import type { ComposerImageAttachment } from "../../../attachments/composer-images.ts";
+import type { ComposerImageAttachment } from "../attachments/composer-images.ts";
 
 export interface ComposerDraft {
 	text: string;
 	images: ComposerImageAttachment[];
+}
+
+export function createEmptyComposerDraft(): ComposerDraft {
+	return {
+		text: "",
+		images: [],
+	};
 }
 
 export function clearSubmittedDraftIfUnchanged(
@@ -16,10 +23,7 @@ export function clearSubmittedDraftIfUnchanged(
 		return current;
 	}
 
-	return {
-		text: "",
-		images: [],
-	};
+	return createEmptyComposerDraft();
 }
 
 function hasSameAttachmentIds(

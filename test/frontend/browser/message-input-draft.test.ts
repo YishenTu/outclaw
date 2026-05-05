@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { clearSubmittedDraftIfUnchanged } from "../../../src/frontend/browser/components/chat/composer/message-input-draft.ts";
+import { clearSubmittedDraftIfUnchanged } from "../../../src/frontend/browser/chat/composer-draft.ts";
 
 function createAttachment(id: string) {
 	return {

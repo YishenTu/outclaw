@@ -134,6 +134,7 @@ export function ChatPanel() {
 
 			<MessageInput
 				onSend={({ text, images }) => sendBrowserPrompt(text, images)}
+				draftKey="tab:chat"
 				interruptible={
 					runtimeRunning ||
 					(chatSession?.isStreaming ?? false) ||

@@ -82,6 +82,19 @@ describe("MarkdownPreview", () => {
 		expect(html).not.toContain("Frontmatter");
 	});
 
+	test("wraps fenced code blocks without horizontal scrolling", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownPreview
+				content={"```ts\nconst value = '0123456789'.repeat(40);\n```"}
+			/>,
+		);
+
+		expect(html).toContain("[&amp;_pre]:overflow-x-hidden");
+		expect(html).toContain("[&amp;_pre]:whitespace-pre-wrap");
+		expect(html).toContain("[&amp;_pre]:[overflow-wrap:anywhere]");
+		expect(html).toContain("[&amp;_pre_code]:whitespace-pre-wrap");
+	});
+
 	test("removes typography backticks from inline code", () => {
 		const html = renderToStaticMarkup(
 			<MarkdownPreview content={"Use `code` inline"} />,
