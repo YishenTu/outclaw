@@ -40,4 +40,26 @@ describe("browser live run bridge", () => {
 			sessionKey: "agent-a:claude:sdk-final",
 		});
 	});
+
+	test("binds a pending browser run when status reveals the provider session", () => {
+		const bridge = createBrowserLiveRunBridge({
+			getCurrentSessionKey: () => "agent-a:claude:__pending__",
+			getProviderId: () => "claude",
+		});
+
+		bridge.pinSession("agent-a:claude:__pending__");
+
+		expect(
+			bridge.bindLiveRunSession(
+				"agent-a:claude:sdk-final",
+				"agent-a:claude:__pending__",
+			),
+		).toEqual({
+			adoptFromSessionKey: "agent-a:claude:__pending__",
+			sessionKey: "agent-a:claude:sdk-final",
+		});
+		expect(bridge.routeObservedSessionKey("agent-a")).toBe(
+			"agent-a:claude:sdk-final",
+		);
+	});
 });

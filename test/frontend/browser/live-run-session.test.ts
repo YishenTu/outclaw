@@ -33,6 +33,23 @@ describe("browser live run session router", () => {
 		});
 	});
 
+	test("binds a pending run to its provider session before completion", () => {
+		const router = createLiveRunSessionRouter();
+		const pendingSessionKey = "agent-a:claude:__pending__";
+		const nextSessionKey = "agent-a:claude:sdk-next";
+
+		router.pin(pendingSessionKey);
+
+		expect(router.bind(nextSessionKey, pendingSessionKey)).toEqual({
+			sessionKey: nextSessionKey,
+			adoptFromSessionKey: pendingSessionKey,
+		});
+		expect(router.route(pendingSessionKey)).toBe(nextSessionKey);
+		expect(router.complete(nextSessionKey, pendingSessionKey)).toEqual({
+			sessionKey: nextSessionKey,
+		});
+	});
+
 	test("falls back to the current session key when no run was pinned", () => {
 		const router = createLiveRunSessionRouter();
 		const pendingSessionKey = "agent-a:claude:__pending__";

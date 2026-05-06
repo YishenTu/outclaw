@@ -554,6 +554,8 @@ describe("handleRuntimeCommand", () => {
 					type: "session_renamed",
 					sdkSessionId: "sdk-123",
 					title: "Renamed",
+					providerId: "mock",
+					active: false,
 				},
 			);
 			expect(
@@ -562,6 +564,8 @@ describe("handleRuntimeCommand", () => {
 				type: "session_renamed",
 				sdkSessionId: "sdk-123",
 				title: "Renamed",
+				providerId: "mock",
+				active: false,
 			});
 		});
 	});

@@ -48,6 +48,7 @@ export interface BrowserRuntimeState {
 	setError: (error: string | null) => void;
 	updateFromStatus: (event: RuntimeStatusEvent) => void;
 	setAgentName: (name: string | null) => void;
+	setSessionTitle: (title: string | null) => void;
 	setModel: (model: string) => void;
 	setEffort: (effort: string) => void;
 	clearSession: () => void;
@@ -94,14 +95,22 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 		set((state) => {
 			const notice = event.notice ?? null;
 			const noticeKey = createRuntimeNoticeKey(notice);
+			const providerId = event.providerId ?? state.providerId;
+			const keepRunningSession =
+				event.running &&
+				event.sessionId === undefined &&
+				providerId === state.providerId;
 			return {
 				agentName: event.agentName ?? state.agentName,
-				providerId: event.providerId ?? state.providerId,
+				providerId,
 				model: event.model,
 				effort: event.effort,
 				running: event.running,
-				sessionId: event.sessionId ?? null,
-				sessionTitle: event.sessionTitle ?? null,
+				sessionId:
+					event.sessionId ?? (keepRunningSession ? state.sessionId : null),
+				sessionTitle:
+					event.sessionTitle ??
+					(keepRunningSession ? state.sessionTitle : null),
 				notice,
 				dismissedNoticeKey:
 					noticeKey && noticeKey === state.dismissedNoticeKey
@@ -113,6 +122,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 			};
 		}),
 	setAgentName: (agentName) => set({ agentName }),
+	setSessionTitle: (sessionTitle) => set({ sessionTitle }),
 	setModel: (model) => set({ model }),
 	setEffort: (effort) => set({ effort }),
 	clearSession: () =>

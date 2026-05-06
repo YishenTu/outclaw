@@ -322,6 +322,11 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 	const handleServerEvent = useCallback(
 		(event: ServerEvent) => {
 			handleBrowserServerEvent(event, {
+				bindLiveRunSession: (nextSessionKey, currentSessionKey) =>
+					liveRunBridgeRef.current.bindLiveRunSession(
+						nextSessionKey,
+						currentSessionKey,
+					),
 				clearLiveRunSessions: () => {
 					liveRunBridgeRef.current.clearLiveRunSessions();
 				},

@@ -194,9 +194,10 @@ export class SessionService {
 	}
 
 	renameSession(sessionId: string, title: string) {
+		const isActiveSession = this.state.sessionId === sessionId;
 		this.state.renameSession(sessionId, title);
 		this.store?.rename(this.state.providerId, sessionId, title);
-		this.notifySessionRenamed(sessionId, title);
+		this.notifySessionRenamed(sessionId, title, isActiveSession);
 	}
 
 	configureCallbacks(callbacks: SessionServiceCallbacks) {
@@ -232,7 +233,7 @@ export class SessionService {
 		if (isActiveSession) {
 			this.state.renameSession(params.sessionId, params.title);
 		}
-		this.notifySessionRenamed(params.sessionId, params.title);
+		this.notifySessionRenamed(params.sessionId, params.title, isActiveSession);
 		if (isActiveSession) {
 			this.callbacks.onSessionStateChange?.();
 		}
@@ -424,11 +425,17 @@ export class SessionService {
 		};
 	}
 
-	private notifySessionRenamed(sessionId: string, title: string) {
+	private notifySessionRenamed(
+		sessionId: string,
+		title: string,
+		active: boolean,
+	) {
 		this.callbacks.onSessionRenamed?.({
 			type: "session_renamed",
 			sdkSessionId: sessionId,
 			title,
+			providerId: this.state.providerId,
+			active,
 		});
 	}
 }

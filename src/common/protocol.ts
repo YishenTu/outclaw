@@ -227,6 +227,8 @@ export interface SessionRenamedEvent {
 	type: "session_renamed";
 	sdkSessionId: string;
 	title: string;
+	providerId?: string;
+	active?: boolean;
 }
 
 export interface SessionDeletedEvent {

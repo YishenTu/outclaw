@@ -924,6 +924,8 @@ describe("RuntimeController", () => {
 				type: "session_renamed",
 				sdkSessionId: "sdk-auto-main",
 				title: "WebSocket routing bug",
+				providerId: PROVIDER_ID,
+				active: true,
 			});
 			expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
 				title: "WebSocket routing bug",
@@ -931,13 +933,18 @@ describe("RuntimeController", () => {
 			});
 			expect(facade.titleCalls).toHaveLength(1);
 			expect(facade.titleCalls[0]).toMatchObject({
-				prompt: "Explain websocket routing bugs in the browser sidebar",
 				model: "haiku",
 				effort: "low",
 				stream: false,
 				tools: [],
 				ephemeral: true,
 			});
+			expect(facade.titleCalls[0]?.prompt).toContain(
+				"Do not answer the request",
+			);
+			expect(facade.titleCalls[0]?.prompt).toContain(
+				"<request>\nExplain websocket routing bugs in the browser sidebar\n</request>",
+			);
 			expect(facade.titleCalls[0]?.images).toBeUndefined();
 			expect(facade.titleCalls[0]?.replyContext).toBeUndefined();
 			expect(facade.titleCalls[0]?.systemPrompt).toContain(
@@ -1087,6 +1094,8 @@ describe("RuntimeController", () => {
 					type: "session_renamed",
 					sdkSessionId: "sdk-auto-main",
 					title: "Manual title",
+					providerId: PROVIDER_ID,
+					active: true,
 				},
 			]);
 
@@ -1121,6 +1130,8 @@ describe("RuntimeController", () => {
 				type: "session_renamed",
 				sdkSessionId: "sdk-auto-main",
 				title: "Generated title",
+				providerId: PROVIDER_ID,
+				active: false,
 			});
 			expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
 				title: "Generated title",

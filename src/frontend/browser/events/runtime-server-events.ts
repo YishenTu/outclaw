@@ -89,6 +89,10 @@ export function formatSessionInfoSummary(
 
 interface BrowserServerEventHandlerOptions
 	extends BrowserChatEventHandlerOptions {
+	bindLiveRunSession: (
+		nextSessionKey: string,
+		currentSessionKey: string,
+	) => ReturnType<BrowserChatEventHandlerOptions["completeLiveRunSession"]>;
 	invalidateSidebarRefresh: () => void;
 }
 
@@ -113,33 +117,50 @@ export function handleBrowserServerEvent(
 			return;
 		}
 		case "runtime_status": {
+			const agentId = options.getActiveAgentId();
+			const providerId =
+				event.providerId ?? useRuntimeStore.getState().providerId;
+			const currentSessionKey =
+				agentId && event.running && event.sessionId && providerId
+					? options.getCurrentSessionKey(agentId)
+					: undefined;
 			useRuntimeStore.getState().updateFromStatus(event);
 			if (event.requested) {
 				useRuntimePopupStore.getState().openStatus(formatStatusCompact(event));
 			}
-			const agentId = options.getActiveAgentId();
 			if (!agentId) {
 				return;
 			}
 
-			useSessionsStore
-				.getState()
-				.setActiveSession(
-					agentId,
-					event.sessionId && event.providerId
-						? createBrowserSessionRef(
-								agentId,
-								event.providerId,
-								event.sessionId,
-							)
-						: null,
+			if (event.running && event.sessionId && providerId && currentSessionKey) {
+				const nextSessionKey = createSessionKey(
+					createBrowserSessionRef(agentId, providerId, event.sessionId),
 				);
-			if (event.sessionId && event.usage) {
-				const providerId =
-					event.providerId ?? useRuntimeStore.getState().providerId;
-				if (!providerId) {
-					return;
+				const binding = options.bindLiveRunSession(
+					nextSessionKey,
+					currentSessionKey,
+				);
+				if (
+					binding.adoptFromSessionKey &&
+					binding.adoptFromSessionKey !== binding.sessionKey
+				) {
+					useChatStore
+						.getState()
+						.adoptSession(binding.adoptFromSessionKey, binding.sessionKey);
 				}
+			}
+
+			if (event.sessionId && providerId) {
+				useSessionsStore
+					.getState()
+					.setActiveSession(
+						agentId,
+						createBrowserSessionRef(agentId, providerId, event.sessionId),
+					);
+			} else if (!event.running) {
+				useSessionsStore.getState().setActiveSession(agentId, null);
+			}
+			if (event.sessionId && event.usage && providerId) {
 				useContextUsageStore
 					.getState()
 					.setUsage(
@@ -184,8 +205,30 @@ export function handleBrowserServerEvent(
 			return;
 		}
 		case "session_renamed": {
-			useRuntimePopupStore.getState().closePopup();
-			options.refreshSidebar();
+			const agentId = options.getActiveAgentId();
+			const runtime = useRuntimeStore.getState();
+			const providerId = event.providerId ?? runtime.providerId;
+			if (!agentId || !providerId) {
+				return;
+			}
+			const sessionRef = createBrowserSessionRef(
+				agentId,
+				providerId,
+				event.sdkSessionId,
+			);
+			const activeSession =
+				useSessionsStore.getState().activeSessionByAgent[agentId] ?? null;
+			useSessionsStore.getState().renameSession(sessionRef, event.title);
+
+			const matchesActiveSession =
+				activeSession?.providerId === providerId &&
+				activeSession.sdkSessionId === event.sdkSessionId;
+			const matchesRuntimeSession =
+				runtime.providerId === providerId &&
+				runtime.sessionId === event.sdkSessionId;
+			if (matchesActiveSession || matchesRuntimeSession) {
+				useRuntimeStore.getState().setSessionTitle(event.title);
+			}
 			return;
 		}
 		case "session_deleted": {

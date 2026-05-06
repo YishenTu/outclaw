@@ -16,6 +16,8 @@ export function createBrowserLiveRunBridge({
 	const router = createLiveRunSessionRouter();
 
 	return {
+		bindLiveRunSession: (nextSessionKey: string, currentSessionKey: string) =>
+			router.bind(nextSessionKey, currentSessionKey),
 		clearLiveRunSessions: () => {
 			router.clear();
 		},

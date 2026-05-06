@@ -53,6 +53,10 @@ function createHandlerOptions(overrides: Record<string, unknown> = {}) {
 	return {
 		calls,
 		options: {
+			bindLiveRunSession: (nextSessionKey: string) => {
+				calls.push(`live:bind:${nextSessionKey}`);
+				return { sessionKey: nextSessionKey };
+			},
 			clearLiveRunSessions: () => calls.push("live:clear"),
 			completeLiveRunSession: (nextSessionKey: string) => {
 				calls.push(`live:complete:${nextSessionKey}`);
@@ -268,6 +272,16 @@ describe("browser runtime server events", () => {
 			kind: "status",
 			text: "Sessions\nNext  sonnet",
 		});
+		useSessionsStore.getState().setSessions("agent-mimi", [
+			{
+				agentId: "agent-mimi",
+				providerId: "mock",
+				sdkSessionId: "sdk-next",
+				title: "Next",
+				model: "sonnet",
+				lastActive: 1,
+			},
+		]);
 
 		handleBrowserServerEvent(
 			{ type: "session_switched", sdkSessionId: "sdk-next", title: "Next" },
@@ -281,8 +295,18 @@ describe("browser runtime server events", () => {
 			{ type: "session_renamed", sdkSessionId: "sdk-next", title: "Renamed" },
 			options,
 		);
+		expect(useSessionsStore.getState().sessionsByAgent["agent-mimi"]).toEqual([
+			{
+				agentId: "agent-mimi",
+				providerId: "mock",
+				sdkSessionId: "sdk-next",
+				title: "Renamed",
+				model: "sonnet",
+				lastActive: 1,
+			},
+		]);
 		expect(useRuntimePopupStore.getState().popup).toBeNull();
-		expect(calls.filter((call) => call === "sidebar:refresh").length).toBe(3);
+		expect(calls.filter((call) => call === "sidebar:refresh").length).toBe(2);
 	});
 
 	test("clears browser session state after a session clear event", () => {
@@ -399,6 +423,415 @@ describe("browser runtime server events", () => {
 			isThinking: true,
 		});
 		expect(session?.streamingImages).toHaveLength(1);
+	});
+
+	test("adopts pending chat content when runtime status binds a new running session", () => {
+		setSystemTime(new Date("2026-04-27T00:00:00.000Z"));
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+		});
+		const pendingSessionKey = "agent-railly:mock:__pending__";
+		const finalSessionKey = "agent-railly:mock:sdk-auto-main";
+		useChatStore.getState().pushMessage(pendingSessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "new task",
+			timestamp: Date.parse("2026-04-27T00:00:00.000Z"),
+		});
+		useChatStore.getState().startAssistantTurn(pendingSessionKey);
+		const { calls, options } = createHandlerOptions({
+			bindLiveRunSession: (
+				nextSessionKey: string,
+				currentSessionKey: string,
+			) => {
+				calls.push(`live:bind:${currentSessionKey}->${nextSessionKey}`);
+				return {
+					adoptFromSessionKey: currentSessionKey,
+					sessionKey: nextSessionKey,
+				};
+			},
+			getCurrentSessionKey: () => pendingSessionKey,
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "runtime_status",
+				agentName: "railly",
+				providerId: "mock",
+				model: "opus",
+				effort: "medium",
+				running: true,
+				sessionId: "sdk-auto-main",
+				sessionTitle: "Generated title",
+			},
+			options,
+		);
+
+		expect(
+			useChatStore.getState().getSession(pendingSessionKey),
+		).toBeUndefined();
+		expect(useChatStore.getState().getSession(finalSessionKey)).toMatchObject({
+			messages: [
+				{
+					kind: "chat",
+					role: "user",
+					content: "new task",
+					timestamp: Date.parse("2026-04-27T00:00:00.000Z"),
+				},
+			],
+			isStreaming: true,
+			isThinking: true,
+		});
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
+		).toEqual(createBrowserSessionRef("agent-railly", "mock", "sdk-auto-main"));
+		expect(useRuntimeStore.getState()).toMatchObject({
+			running: true,
+			sessionId: "sdk-auto-main",
+			sessionTitle: "Generated title",
+		});
+		expect(calls).toEqual([
+			"live:bind:agent-railly:mock:__pending__->agent-railly:mock:sdk-auto-main",
+		]);
+	});
+
+	test("keeps a bound running chat when a later status omits the session id", () => {
+		setSystemTime(new Date("2026-04-27T00:00:00.000Z"));
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+		});
+		const pendingSessionKey = "agent-railly:mock:__pending__";
+		const finalSessionKey = "agent-railly:mock:sdk-auto-main";
+		useChatStore.getState().pushMessage(pendingSessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "new task",
+			timestamp: Date.parse("2026-04-27T00:00:00.000Z"),
+		});
+		useChatStore.getState().startAssistantTurn(pendingSessionKey);
+		const { options } = createHandlerOptions({
+			bindLiveRunSession: (
+				nextSessionKey: string,
+				currentSessionKey: string,
+			) => ({
+				adoptFromSessionKey: currentSessionKey,
+				sessionKey: nextSessionKey,
+			}),
+			getCurrentSessionKey: () => pendingSessionKey,
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "runtime_status",
+				agentName: "railly",
+				providerId: "mock",
+				model: "opus",
+				effort: "medium",
+				running: true,
+				sessionId: "sdk-auto-main",
+				sessionTitle: "Generated title",
+			},
+			options,
+		);
+		handleBrowserServerEvent(
+			{
+				type: "runtime_status",
+				agentName: "railly",
+				providerId: "mock",
+				model: "opus",
+				effort: "medium",
+				running: true,
+			},
+			options,
+		);
+
+		expect(useChatStore.getState().getSession(finalSessionKey)).toMatchObject({
+			messages: [
+				{
+					kind: "chat",
+					role: "user",
+					content: "new task",
+					timestamp: Date.parse("2026-04-27T00:00:00.000Z"),
+				},
+			],
+			isStreaming: true,
+			isThinking: true,
+		});
+		expect(
+			useChatStore.getState().getSession(pendingSessionKey),
+		).toBeUndefined();
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
+		).toEqual(createBrowserSessionRef("agent-railly", "mock", "sdk-auto-main"));
+		expect(useRuntimeStore.getState()).toMatchObject({
+			running: true,
+			sessionId: "sdk-auto-main",
+			sessionTitle: "Generated title",
+		});
+	});
+
+	test("silently applies generated titles without binding pending chat early", () => {
+		setSystemTime(new Date("2026-04-27T00:00:00.000Z"));
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+		});
+		useSessionsStore.getState().setSessions("agent-railly", [
+			{
+				agentId: "agent-railly",
+				providerId: "mock",
+				sdkSessionId: "sdk-auto-main",
+				title: "Fallback prompt",
+				model: "opus",
+				lastActive: 1,
+			},
+		]);
+		const pendingSessionKey = "agent-railly:mock:__pending__";
+		useChatStore.getState().pushMessage(pendingSessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "Fallback prompt",
+			timestamp: Date.parse("2026-04-27T00:00:00.000Z"),
+		});
+		useChatStore.getState().startAssistantTurn(pendingSessionKey);
+		useRuntimePopupStore.getState().openStatus("Keep this popup open");
+		const { calls, options } = createHandlerOptions({
+			bindLiveRunSession: (
+				nextSessionKey: string,
+				currentSessionKey: string,
+			) => {
+				calls.push(`live:bind:${currentSessionKey}->${nextSessionKey}`);
+				return {
+					adoptFromSessionKey: currentSessionKey,
+					sessionKey: nextSessionKey,
+				};
+			},
+			getCurrentSessionKey: () => pendingSessionKey,
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "session_renamed",
+				sdkSessionId: "sdk-auto-main",
+				title: "Generated title",
+				providerId: "mock",
+				active: true,
+			},
+			options,
+		);
+
+		expect(calls).toEqual([]);
+		expect(useRuntimePopupStore.getState().popup).toEqual({
+			kind: "status",
+			text: "Keep this popup open",
+		});
+		expect(useChatStore.getState().getSession(pendingSessionKey)).toMatchObject(
+			{
+				messages: [
+					{
+						kind: "chat",
+						role: "user",
+						content: "Fallback prompt",
+						timestamp: Date.parse("2026-04-27T00:00:00.000Z"),
+					},
+				],
+				isStreaming: true,
+				isThinking: true,
+			},
+		);
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
+		).toBeUndefined();
+		expect(useSessionsStore.getState().sessionsByAgent["agent-railly"]).toEqual(
+			[
+				{
+					agentId: "agent-railly",
+					providerId: "mock",
+					sdkSessionId: "sdk-auto-main",
+					title: "Generated title",
+					model: "opus",
+					lastActive: 1,
+				},
+			],
+		);
+		expect(useRuntimeStore.getState()).toMatchObject({
+			running: true,
+			sessionId: null,
+			sessionTitle: null,
+		});
+	});
+
+	test("updates the visible title when a renamed session is already selected", () => {
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+			sessionId: "sdk-auto-main",
+			sessionTitle: "Fallback prompt",
+		});
+		useSessionsStore.getState().setSessions("agent-railly", [
+			{
+				agentId: "agent-railly",
+				providerId: "mock",
+				sdkSessionId: "sdk-auto-main",
+				title: "Fallback prompt",
+				model: "opus",
+				lastActive: 1,
+			},
+		]);
+		useSessionsStore
+			.getState()
+			.setActiveSession(
+				"agent-railly",
+				createBrowserSessionRef("agent-railly", "mock", "sdk-auto-main"),
+			);
+		useRuntimePopupStore.getState().openStatus("Keep this popup open");
+		const { calls, options } = createHandlerOptions();
+
+		handleBrowserServerEvent(
+			{
+				type: "session_renamed",
+				sdkSessionId: "sdk-auto-main",
+				title: "Generated title",
+				providerId: "mock",
+				active: true,
+			},
+			options,
+		);
+
+		expect(calls).toEqual([]);
+		expect(useRuntimePopupStore.getState().popup).toEqual({
+			kind: "status",
+			text: "Keep this popup open",
+		});
+		expect(useRuntimeStore.getState()).toMatchObject({
+			sessionId: "sdk-auto-main",
+			sessionTitle: "Generated title",
+		});
+		expect(useSessionsStore.getState().sessionsByAgent["agent-railly"]).toEqual(
+			[
+				{
+					agentId: "agent-railly",
+					providerId: "mock",
+					sdkSessionId: "sdk-auto-main",
+					title: "Generated title",
+					model: "opus",
+					lastActive: 1,
+				},
+			],
+		);
+	});
+
+	test("keeps visible title when another provider renames the same session id", () => {
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+			sessionId: "sdk-auto-main",
+			sessionTitle: "Mock title",
+		});
+		useSessionsStore.getState().setSessions("agent-railly", [
+			{
+				agentId: "agent-railly",
+				providerId: "mock",
+				sdkSessionId: "sdk-auto-main",
+				title: "Mock title",
+				model: "opus",
+				lastActive: 1,
+			},
+			{
+				agentId: "agent-railly",
+				providerId: "other",
+				sdkSessionId: "sdk-auto-main",
+				title: "Other title",
+				model: "sonnet",
+				lastActive: 2,
+			},
+		]);
+		useSessionsStore
+			.getState()
+			.setActiveSession(
+				"agent-railly",
+				createBrowserSessionRef("agent-railly", "mock", "sdk-auto-main"),
+			);
+		const { options } = createHandlerOptions();
+
+		handleBrowserServerEvent(
+			{
+				type: "session_renamed",
+				sdkSessionId: "sdk-auto-main",
+				title: "Other generated title",
+				providerId: "other",
+				active: true,
+			},
+			options,
+		);
+
+		expect(useRuntimeStore.getState()).toMatchObject({
+			providerId: "mock",
+			sessionId: "sdk-auto-main",
+			sessionTitle: "Mock title",
+		});
+		expect(useSessionsStore.getState().sessionsByAgent["agent-railly"]).toEqual(
+			[
+				{
+					agentId: "agent-railly",
+					providerId: "mock",
+					sdkSessionId: "sdk-auto-main",
+					title: "Mock title",
+					model: "opus",
+					lastActive: 1,
+				},
+				{
+					agentId: "agent-railly",
+					providerId: "other",
+					sdkSessionId: "sdk-auto-main",
+					title: "Other generated title",
+					model: "sonnet",
+					lastActive: 2,
+				},
+			],
+		);
 	});
 
 	test("routes streamed browser events into the observed chat session", () => {

@@ -5,6 +5,17 @@ import type { RuntimePromptContext } from "./state/runtime-state.ts";
 export const AUTO_TITLE_SYSTEM_PROMPT =
 	"Generate a 3-6 word title summarizing the user's request. Reply with the title only - no quotes, punctuation, prefixes, or explanations. Match the language of the user's message.";
 
+export function buildAutoTitlePrompt(prompt: string): string {
+	return [
+		"Create a concise 3-6 word title for the user's request below.",
+		"Do not answer the request. Summarize the user's intent as a title only.",
+		"",
+		"<request>",
+		prompt.trim(),
+		"</request>",
+	].join("\n");
+}
+
 const DEFAULT_TIMEOUT_MS = 15_000;
 const AUTO_TITLE_SOURCES = new Set(["tui", "browser", "telegram"]);
 
@@ -164,7 +175,7 @@ class AutoTitleAttempt {
 				effort: "low",
 				ephemeral: true,
 				model: this.options.model,
-				prompt: this.options.prompt,
+				prompt: buildAutoTitlePrompt(this.options.prompt),
 				stream: false,
 				systemPrompt: AUTO_TITLE_SYSTEM_PROMPT,
 				tools: [],

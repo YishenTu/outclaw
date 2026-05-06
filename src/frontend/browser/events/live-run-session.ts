@@ -10,6 +10,7 @@ export interface LiveRunCompletion {
 }
 
 export interface LiveRunSessionRouter {
+	bind: (sessionKey: string, fallbackSessionKey: string) => LiveRunCompletion;
 	clear: () => void;
 	complete: (
 		sessionKey: string,
@@ -23,6 +24,25 @@ export function createLiveRunSessionRouter(): LiveRunSessionRouter {
 	let pinnedSessionKey: string | null = null;
 
 	return {
+		bind: (sessionKey, fallbackSessionKey) => {
+			const routedSessionKey = pinnedSessionKey ?? fallbackSessionKey;
+			if (routedSessionKey === sessionKey) {
+				pinnedSessionKey = sessionKey;
+				return { sessionKey };
+			}
+			if (isPendingSessionKey(routedSessionKey)) {
+				pinnedSessionKey = sessionKey;
+				return {
+					sessionKey,
+					adoptFromSessionKey: routedSessionKey,
+				};
+			}
+			if (pinnedSessionKey === null) {
+				pinnedSessionKey = sessionKey;
+				return { sessionKey };
+			}
+			return { sessionKey: routedSessionKey };
+		},
 		clear: () => {
 			pinnedSessionKey = null;
 		},
