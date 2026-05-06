@@ -15,6 +15,7 @@ export interface SessionRow {
 	lastActive: number;
 	failedAt?: number;
 	failureMessage?: string;
+	autoTitleAttempted?: boolean;
 }
 
 export interface TableColumnInfo {
@@ -47,6 +48,7 @@ export const SESSION_TABLE_COLUMNS = [
 	...SESSION_USAGE_COLUMNS,
 	"failed_at",
 	"failure_message",
+	"auto_title_attempted",
 ] as const;
 
 export interface SessionDatabaseRow {
@@ -62,6 +64,7 @@ export interface SessionDatabaseRow {
 	last_active: number;
 	failed_at?: number | null;
 	failure_message?: string | null;
+	auto_title_attempted?: number | null;
 }
 
 interface SessionUsageRow {
@@ -95,6 +98,7 @@ export function mapSessionRow(
 		lastActive: row.last_active,
 		failedAt: row.failed_at ?? undefined,
 		failureMessage: row.failure_message ?? undefined,
+		autoTitleAttempted: row.auto_title_attempted === 1,
 	};
 }
 
@@ -112,6 +116,7 @@ export function mapSessionRows(rows: SessionDatabaseRow[]): SessionRow[] {
 		lastActive: row.last_active,
 		failedAt: row.failed_at ?? undefined,
 		failureMessage: row.failure_message ?? undefined,
+		autoTitleAttempted: row.auto_title_attempted === 1,
 	}));
 }
 

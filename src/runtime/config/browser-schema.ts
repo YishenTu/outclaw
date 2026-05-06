@@ -24,6 +24,12 @@ export function createBrowserConfigSchema(): BrowserConfigSchemaNode {
 		kind: "object",
 		properties: {
 			autoCompact: booleanLeaf,
+			autoTitle: {
+				kind: "object",
+				properties: {
+					model: stringLeaf,
+				},
+			},
 			heartbeat: {
 				kind: "object",
 				properties: {

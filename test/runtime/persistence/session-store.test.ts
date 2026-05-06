@@ -49,6 +49,7 @@ describe("SessionStore", () => {
 		expect(session?.ocSessionId).toBe("oc-123");
 		expect(session?.title).toBe("Hello world");
 		expect(session?.model).toBe("sonnet");
+		expect(session?.autoTitleAttempted).toBe(false);
 		expect(session?.createdAt).toBeGreaterThan(0);
 
 		store.close();
@@ -686,6 +687,90 @@ describe("SessionStore", () => {
 
 		store.rename(CLAUDE_PROVIDER, "sdk-ren", "New title");
 		expect(store.get(CLAUDE_PROVIDER, "sdk-ren")?.title).toBe("New title");
+
+		store.close();
+	});
+
+	test("applyAutoTitle writes once when the stored title is still the fallback", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-auto",
+			title: "Explain the websocket routing bug in detail",
+			model: "opus",
+		});
+
+		expect(
+			store.applyAutoTitle({
+				providerId: CLAUDE_PROVIDER,
+				sdkSessionId: "sdk-auto",
+				expectedTitle: "Explain the websocket routing bug in detail",
+				title: "WebSocket Routing Bug",
+			}),
+		).toBe(true);
+		expect(store.get(CLAUDE_PROVIDER, "sdk-auto")).toMatchObject({
+			title: "WebSocket Routing Bug",
+			autoTitleAttempted: true,
+		});
+		expect(
+			store.applyAutoTitle({
+				providerId: CLAUDE_PROVIDER,
+				sdkSessionId: "sdk-auto",
+				expectedTitle: "WebSocket Routing Bug",
+				title: "Late Title",
+			}),
+		).toBe(false);
+		expect(store.get(CLAUDE_PROVIDER, "sdk-auto")?.title).toBe(
+			"WebSocket Routing Bug",
+		);
+
+		store.close();
+	});
+
+	test("applyAutoTitle preserves a manual rename and still records the attempt", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-manual",
+			title: "Original fallback title",
+			model: "opus",
+		});
+		store.rename(CLAUDE_PROVIDER, "sdk-manual", "Manual title");
+
+		expect(
+			store.applyAutoTitle({
+				providerId: CLAUDE_PROVIDER,
+				sdkSessionId: "sdk-manual",
+				expectedTitle: "Original fallback title",
+				title: "Generated title",
+			}),
+		).toBe(false);
+		expect(store.get(CLAUDE_PROVIDER, "sdk-manual")).toMatchObject({
+			title: "Manual title",
+			autoTitleAttempted: true,
+		});
+
+		store.close();
+	});
+
+	test("markAutoTitleAttempted records failed attempts without changing title", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-failed-title",
+			title: "Fallback title",
+			model: "opus",
+		});
+
+		store.markAutoTitleAttempted(CLAUDE_PROVIDER, "sdk-failed-title");
+
+		expect(store.get(CLAUDE_PROVIDER, "sdk-failed-title")).toMatchObject({
+			title: "Fallback title",
+			autoTitleAttempted: true,
+		});
 
 		store.close();
 	});

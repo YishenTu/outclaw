@@ -14,6 +14,18 @@ import type {
 	RuntimeState,
 } from "./state/runtime-state.ts";
 
+interface AutoTitleRunner {
+	cancel(ocSessionId: string): void;
+	cancelAll(): void;
+	drain(): Promise<void>;
+	resolveSession(ocSessionId: string, sdkSessionId: string): void;
+	start(params: {
+		context: RuntimePromptContext;
+		prompt: string;
+		source: string;
+	}): void;
+}
+
 interface HeartbeatTask {
 	prompt: string;
 	scheduledAt: number;
@@ -21,6 +33,7 @@ interface HeartbeatTask {
 }
 
 interface RuntimeExecutionCoordinatorOptions {
+	autoTitle?: AutoTitleRunner;
 	deliverRolloverNotice?: (params: {
 		telegramChatId: number;
 		text: string;
@@ -96,16 +109,18 @@ export class RuntimeExecutionCoordinator {
 		}
 		this.shuttingDown = true;
 		this.heartbeatPolicy.beginShutdown();
+		this.options.autoTitle?.cancelAll();
 		for (const lane of this.lanes.values()) {
 			lane.activeAbort?.abort();
 			lane.queue.close(true);
 		}
 	}
 
-	drain(): Promise<void> {
-		return Promise.all(
-			[...this.lanes.values()].map((lane) => lane.queue.drain()),
-		).then(() => undefined);
+	async drain(): Promise<void> {
+		await Promise.all([
+			...[...this.lanes.values()].map((lane) => lane.queue.drain()),
+			this.options.autoTitle?.drain() ?? Promise.resolve(),
+		]);
 	}
 
 	enqueueHeartbeat(
@@ -148,6 +163,11 @@ export class RuntimeExecutionCoordinator {
 		this.options.state.preparePrompt(task.prompt, task.images);
 		const context = this.options.state.capturePromptContext();
 		const lane = this.getOrCreateLane(context);
+		this.options.autoTitle?.start({
+			context,
+			prompt: task.prompt,
+			source: task.source,
+		});
 		this.heartbeatPolicy.noteUserActivity();
 		if (
 			task.source === "telegram" ||
@@ -400,6 +420,16 @@ export class RuntimeExecutionCoordinator {
 			...task,
 			onEvent: (event) => {
 				task.onEvent?.(event);
+				if (event.type === "session_initialized") {
+					completedSessionId = event.sessionId;
+					lane.resolvedSessionId = event.sessionId;
+					if (!context.sessionId) {
+						this.options.autoTitle?.resolveSession(
+							context.ocSessionId,
+							event.sessionId,
+						);
+					}
+				}
 				if (event.type === "done") {
 					completedSessionId = event.sessionId;
 				}
@@ -419,10 +449,31 @@ export class RuntimeExecutionCoordinator {
 		} finally {
 			if (completedSessionId) {
 				lane.resolvedSessionId = completedSessionId;
+				if (!context.sessionId) {
+					this.options.autoTitle?.resolveSession(
+						context.ocSessionId,
+						completedSessionId,
+					);
+				}
+			} else if (
+				abortController.signal.aborted &&
+				!context.sessionId &&
+				shouldResolveInterruptedAutoTitle(task.source)
+			) {
+				this.options.autoTitle?.resolveSession(
+					context.ocSessionId,
+					context.ocSessionId,
+				);
+			} else if (!context.sessionId) {
+				this.options.autoTitle?.cancel(context.ocSessionId);
 			}
 			lane.activeAbort = undefined;
 			lane.activeContext = undefined;
 			this.options.onStatusChange?.();
 		}
 	}
+}
+
+function shouldResolveInterruptedAutoTitle(source: PromptExecution["source"]) {
+	return source === "browser" || source === "telegram" || source === "tui";
 }

@@ -195,6 +195,10 @@ export class RuntimeState {
 		this.sessions.completeRun(event, source, telegramChatId);
 	}
 
+	initializeRun(sessionId: string, source?: string) {
+		this.sessions.initializeRun(sessionId, source);
+	}
+
 	matchesVisiblePromptContext(context: RuntimePromptContext): boolean {
 		if (context.sessionId) {
 			return this.sessions.sessionId === context.sessionId;

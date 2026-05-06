@@ -200,7 +200,8 @@ export class SessionQuery {
 						s.source,
 						s.tag,
 						s.created_at,
-						s.last_active
+						s.last_active,
+						s.auto_title_attempted
 					FROM sessions s
 					WHERE ${conditions.join(" AND ")}
 					  AND EXISTS (
@@ -225,6 +226,7 @@ export class SessionQuery {
 					ms.tag,
 					ms.created_at,
 					ms.last_active,
+					ms.auto_title_attempted,
 					t.role,
 					t.body_text,
 					t.timestamp,
@@ -249,7 +251,7 @@ export class SessionQuery {
 			const key = `${row.agent_id}\u0000${row.provider_id}\u0000${row.sdk_session_id}`;
 			if (key !== currentKey) {
 				currentKey = key;
-				currentMatch = {
+				const nextMatch: SessionSearchMatch = {
 					session: {
 						agentId: row.agent_id,
 						providerId: row.provider_id,
@@ -260,9 +262,11 @@ export class SessionQuery {
 						tag: row.tag,
 						createdAt: row.created_at,
 						lastActive: row.last_active,
+						autoTitleAttempted: row.auto_title_attempted === 1,
 					},
 					turns: [],
 				};
+				currentMatch = nextMatch;
 				matches.push(currentMatch);
 			}
 
@@ -318,6 +322,7 @@ interface SearchDatabaseRow {
 	body_text: string;
 	created_at: number;
 	last_active: number;
+	auto_title_attempted?: number | null;
 	model: string;
 	provider_id: string;
 	role: "user" | "assistant";

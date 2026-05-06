@@ -148,7 +148,24 @@ export class RuntimeSessionState {
 		this.lastUserTarget = target;
 	}
 
+	initializeRun(sessionId: string, source?: string) {
+		this.setSessionSource(source);
+		this.activeSessionId = sessionId;
+		if (!this.activeOcSessionId) {
+			this.activeOcSessionId = sessionId;
+		}
+	}
+
 	completeRun(event: DoneEvent, source?: string, _telegramChatId?: number) {
+		this.setSessionSource(source);
+		this.activeSessionId = event.sessionId;
+		if (!this.activeOcSessionId) {
+			this.activeOcSessionId = event.sessionId;
+		}
+		this.lastUsage = event.usage;
+	}
+
+	private setSessionSource(source?: string) {
 		if (source === "telegram") {
 			this.activeSessionSource = "telegram";
 		} else if (
@@ -160,12 +177,6 @@ export class RuntimeSessionState {
 		} else if (source === "agent" && this.activeSessionId === undefined) {
 			this.activeSessionSource = "agent";
 		}
-
-		this.activeSessionId = event.sessionId;
-		if (!this.activeOcSessionId) {
-			this.activeOcSessionId = event.sessionId;
-		}
-		this.lastUsage = event.usage;
 	}
 }
 

@@ -143,12 +143,13 @@ export class SessionStore {
 						oc_session_id,
 						title,
 						model,
-							source,
-							tag,
-							created_at,
-							last_active,
-							failed_at,
-							failure_message
+								source,
+								tag,
+								created_at,
+								last_active,
+								failed_at,
+								failure_message,
+								auto_title_attempted
 					FROM sessions
 					WHERE agent_id = $agentId
 					  AND provider_id = $providerId
@@ -187,7 +188,8 @@ export class SessionStore {
 							created_at,
 							last_active,
 							failed_at,
-							failure_message
+							failure_message,
+							auto_title_attempted
 					FROM sessions
 					WHERE agent_id = $agentId
 					  AND provider_id = $providerId
@@ -233,7 +235,8 @@ export class SessionStore {
 							created_at,
 							last_active,
 							failed_at,
-							failure_message
+							failure_message,
+							auto_title_attempted
 					FROM sessions
 					WHERE ${conditions.join(" AND ")}
 					ORDER BY last_active DESC
@@ -346,9 +349,10 @@ export class SessionStore {
 							source,
 							tag,
 							created_at,
-							last_active,
-							failed_at,
-							failure_message
+								last_active,
+								failed_at,
+								failure_message,
+								auto_title_attempted
 						FROM sessions
 						WHERE ${conditions.join(" AND ")}
 						ORDER BY last_active DESC
@@ -397,6 +401,60 @@ export class SessionStore {
 				$providerId: providerId,
 				$id: sdkSessionId,
 				$title: title,
+			});
+	}
+
+	applyAutoTitle(params: {
+		providerId: string;
+		sdkSessionId: string;
+		expectedTitle: string;
+		title: string;
+	}): boolean {
+		return this.db.transaction(() => {
+			const result = this.db
+				.query(
+					`UPDATE sessions
+					 SET title = $title,
+					     auto_title_attempted = 1
+					 WHERE agent_id = $agentId
+					   AND provider_id = $providerId
+					   AND sdk_session_id = $id
+					   AND tag = 'chat'
+					   AND auto_title_attempted = 0
+					   AND title = $expectedTitle`,
+				)
+				.run({
+					$agentId: this.agentId,
+					$providerId: params.providerId,
+					$id: params.sdkSessionId,
+					$expectedTitle: params.expectedTitle,
+					$title: params.title,
+				});
+
+			if (result.changes > 0) {
+				return true;
+			}
+
+			this.markAutoTitleAttempted(params.providerId, params.sdkSessionId);
+			return false;
+		})();
+	}
+
+	markAutoTitleAttempted(providerId: string, sdkSessionId: string) {
+		this.db
+			.query(
+				`UPDATE sessions
+				 SET auto_title_attempted = 1
+				 WHERE agent_id = $agentId
+				   AND provider_id = $providerId
+				   AND sdk_session_id = $id
+				   AND tag = 'chat'
+				   AND auto_title_attempted = 0`,
+			)
+			.run({
+				$agentId: this.agentId,
+				$providerId: providerId,
+				$id: sdkSessionId,
 			});
 	}
 

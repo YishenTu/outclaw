@@ -7,6 +7,7 @@ import { createSupervisor } from "../supervisor/create-supervisor.ts";
 interface RuntimeOptions {
 	port: number;
 	facade: Facade;
+	autoTitle?: Config["autoTitle"];
 	cwd?: string;
 	restart?: () => void;
 	cronDir?: string;
@@ -29,6 +30,7 @@ interface RuntimeOptions {
 export function createRuntime(options: RuntimeOptions) {
 	const runtime = createAgentRuntime({
 		agentId: "agent-default",
+		autoTitle: options.autoTitle,
 		cwd: options.cwd,
 		cronDir: options.cronDir,
 		deliverCronResult: options.deliverCronResult,

@@ -1,6 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { EffortLevel } from "../../common/commands.ts";
 import {
+	getModelAliasMetadata,
+	MODELS,
+	modelAliasForModel,
+} from "../../common/models.ts";
+import {
+	type ConfigDocument,
 	configPathFor,
 	DEFAULT_GLOBAL_CONFIG,
 	ensureConfigHomeDir,
@@ -10,6 +16,9 @@ import { loadSharedEnv } from "./env.ts";
 
 export interface GlobalConfig {
 	autoCompact: boolean;
+	autoTitle: {
+		model: string;
+	};
 	heartbeat: {
 		intervalMinutes: number;
 		deferMinutes: number;
@@ -32,7 +41,7 @@ export interface GlobalConfigPatch {
 	thinkingEffort?: EffortLevel;
 }
 
-const DEFAULTS: GlobalConfig = DEFAULT_GLOBAL_CONFIG;
+const DEFAULTS = DEFAULT_GLOBAL_CONFIG;
 
 export function loadGlobalConfig(homeDir: string): GlobalConfig {
 	loadSharedEnv(homeDir);
@@ -43,6 +52,7 @@ export function loadGlobalConfig(homeDir: string): GlobalConfig {
 		writeFileSync(configPath, `${JSON.stringify(DEFAULTS, null, "\t")}\n`);
 		return {
 			autoCompact: DEFAULTS.autoCompact,
+			autoTitle: { model: MODELS.haiku.id },
 			heartbeat: { ...DEFAULTS.heartbeat },
 			host: DEFAULTS.host,
 			port: DEFAULTS.port,
@@ -59,6 +69,7 @@ export function loadGlobalConfig(homeDir: string): GlobalConfig {
 
 	return {
 		autoCompact: merged.autoCompact ?? DEFAULTS.autoCompact,
+		autoTitle: { model: resolveAutoTitleModel(merged) },
 		heartbeat: {
 			intervalMinutes:
 				merged.heartbeat?.intervalMinutes ?? DEFAULTS.heartbeat.intervalMinutes,
@@ -107,6 +118,7 @@ export function updateGlobalConfig(
 
 	return {
 		autoCompact: nextDocument.autoCompact ?? DEFAULTS.autoCompact,
+		autoTitle: { model: resolveAutoTitleModel(nextDocument) },
 		heartbeat: {
 			intervalMinutes:
 				nextDocument.heartbeat?.intervalMinutes ??
@@ -118,4 +130,25 @@ export function updateGlobalConfig(
 		port: nextDocument.port ?? DEFAULTS.port,
 		thinkingEffort: nextDocument.thinkingEffort ?? DEFAULTS.thinkingEffort,
 	};
+}
+
+function resolveAutoTitleModel(document: ConfigDocument): string {
+	const autoTitle = document.autoTitle;
+	const rawModel =
+		autoTitle && typeof autoTitle.model === "string"
+			? autoTitle.model.trim()
+			: "";
+	if (!rawModel) {
+		return MODELS.haiku.id;
+	}
+
+	const alias = getModelAliasMetadata(rawModel);
+	if (alias) {
+		return alias.id;
+	}
+	if (modelAliasForModel(rawModel)) {
+		return rawModel;
+	}
+
+	throw new Error(`Invalid autoTitle.model: ${rawModel}`);
 }

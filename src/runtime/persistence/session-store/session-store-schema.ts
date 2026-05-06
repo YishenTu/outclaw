@@ -52,6 +52,7 @@ function createSessionsTable(db: Database) {
 			percentage INTEGER,
 			failed_at INTEGER,
 			failure_message TEXT,
+			auto_title_attempted INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (agent_id, provider_id, sdk_session_id)
 		)`);
 }
@@ -76,6 +77,20 @@ function migrateSessionsTable(db: Database, columns: TableColumnInfo[]) {
 		db.exec("ALTER TABLE sessions ADD COLUMN failure_message TEXT");
 		columns.push({
 			name: "failure_message",
+			pk: 0,
+		});
+	}
+	if (!columnNames.has("auto_title_attempted")) {
+		db.exec(
+			"ALTER TABLE sessions ADD COLUMN auto_title_attempted INTEGER NOT NULL DEFAULT 0",
+		);
+		db.exec(
+			columnNames.has("tag")
+				? "UPDATE sessions SET auto_title_attempted = 1 WHERE tag = 'chat'"
+				: "UPDATE sessions SET auto_title_attempted = 1",
+		);
+		columns.push({
+			name: "auto_title_attempted",
 			pk: 0,
 		});
 	}

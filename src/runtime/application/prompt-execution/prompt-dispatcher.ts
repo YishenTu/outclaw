@@ -5,6 +5,7 @@ import type {
 	HeartbeatResult,
 	ImageRef,
 	ReplyContext,
+	SessionInitializedEvent,
 	TranscriptTurn,
 } from "../../../common/protocol.ts";
 import { extractError } from "../../../common/protocol.ts";
@@ -41,6 +42,8 @@ export interface PromptExecution {
 	telegramBotId?: string;
 	telegramChatId?: number;
 }
+
+type ClientFacadeEvent = Exclude<FacadeEvent, SessionInitializedEvent>;
 
 interface PromptDispatcherOptions {
 	clients: RuntimeClientGateway;
@@ -110,8 +113,23 @@ export class PromptDispatcher {
 		}
 
 		const emit = (event: FacadeEvent) => {
-			const observedEvent = attachObservedSessionId(event, observedSessionId);
 			const visible = isVisible();
+			if (event.type === "session_initialized") {
+				if (!context.resumeSessionId) {
+					this.options.sessions.recordSessionInitialized({
+						active: visible,
+						sessionId: event.sessionId,
+						ocSessionId: context.ocSessionId,
+						title: context.sessionTitle ?? "Untitled",
+						model: context.model,
+						source: toStoredSessionSource(task.source),
+					});
+				}
+				task.onEvent?.(event);
+				return;
+			}
+
+			const observedEvent = attachObservedSessionId(event, observedSessionId);
 			if (
 				event.type === "error" &&
 				abortController.signal.aborted &&
@@ -282,9 +300,9 @@ function toDisplayImages(
 }
 
 function attachObservedSessionId(
-	event: FacadeEvent,
+	event: ClientFacadeEvent,
 	observedSessionId: string | undefined,
-): FacadeEvent {
+): ClientFacadeEvent {
 	if (
 		observedSessionId === undefined ||
 		event.type === "done" ||

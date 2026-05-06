@@ -157,6 +157,11 @@ export interface DoneEvent {
 	usage?: UsageInfo;
 }
 
+export interface SessionInitializedEvent {
+	type: "session_initialized";
+	sessionId: string;
+}
+
 export interface UserPromptEvent {
 	type: "user_prompt";
 	prompt: string;
@@ -722,6 +727,7 @@ export type FacadeEvent =
 	| ImageEvent
 	| StatusEvent
 	| ErrorEvent
+	| SessionInitializedEvent
 	| DoneEvent
 	| CompactingStartedEvent
 	| CompactingFinishedEvent;
@@ -745,6 +751,16 @@ export interface RunParams {
 	model?: string;
 	effort?: string;
 	stream?: boolean;
+	/**
+	 * Tool names allowed for this run. Omitted means the adapter default tool set.
+	 * An empty list means no tools.
+	 */
+	tools?: string[];
+	/**
+	 * Hint that provider-native artifacts created only for this run should be
+	 * discarded after the run settles when the adapter supports cleanup.
+	 */
+	ephemeral?: boolean;
 	/**
 	 * Environment variables to inject into the agent session and its tool
 	 * subprocesses. Provider-neutral; the adapter maps this to its transport

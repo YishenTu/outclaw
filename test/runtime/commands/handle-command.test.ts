@@ -28,6 +28,9 @@ function setup() {
 	const ws = mockWs();
 	const state = new RuntimeState(PROVIDER_ID);
 	const sessions = new SessionService(state);
+	sessions.configureCallbacks({
+		onSessionRenamed: (event) => hub.broadcast(event),
+	});
 	hub.add(ws);
 
 	async function run(command: string) {
@@ -478,6 +481,9 @@ describe("handleRuntimeCommand", () => {
 			const observer = mockWs();
 			const state = new RuntimeState(PROVIDER_ID);
 			const sessions = new SessionService(state);
+			sessions.configureCallbacks({
+				onSessionRenamed: (event) => hub.broadcast(event),
+			});
 			hub.add(sender);
 			hub.add(observer);
 			state.preparePrompt("Current chat");
@@ -527,6 +533,9 @@ describe("handleRuntimeCommand", () => {
 			const observer = mockWs();
 			const state = new RuntimeState(PROVIDER_ID);
 			const sessions = new SessionService(state);
+			sessions.configureCallbacks({
+				onSessionRenamed: (event) => hub.broadcast(event),
+			});
 			hub.add(sender);
 			hub.add(observer);
 

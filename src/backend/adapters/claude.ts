@@ -17,7 +17,10 @@ import {
 } from "./claude-prompt-input.ts";
 import { buildClaudeSdkOptions } from "./claude-sdk-options.ts";
 import { ensureClaudeSkillsSymlink } from "./claude-setup.ts";
-import { probeClaudeSkills } from "./claude-skill-probe.ts";
+import {
+	cleanupClaudeSessionFile,
+	probeClaudeSkills,
+} from "./claude-skill-probe.ts";
 import { normalizeClaudeStream } from "./claude-stream-normalizer.ts";
 
 type SdkQueryFn = (params: {
@@ -93,6 +96,7 @@ export class ClaudeAdapter implements Facade {
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		const sdk = await this.loadSdk();
 		const abortController = params.abortController ?? new AbortController();
+		let ephemeralSessionId: string | undefined;
 
 		try {
 			const conversation = sdk.query({
@@ -108,14 +112,31 @@ export class ClaudeAdapter implements Facade {
 				conversation,
 				model: params.model,
 				stream: params.stream,
+				onInitSession: (sessionId) => {
+					ephemeralSessionId = sessionId;
+				},
 				onSkills: (skills) => {
 					this.skills = skills;
 				},
 			})) {
+				if (event.type === "done") {
+					ephemeralSessionId = ephemeralSessionId ?? event.sessionId;
+				}
 				yield event;
 			}
 		} catch (err) {
 			yield { type: "error", message: extractError(err) };
+		} finally {
+			if (params.ephemeral && ephemeralSessionId) {
+				await cleanupClaudeSessionFile(
+					{
+						sleep: this.sleep,
+						unlinkFile: this.unlinkFile,
+					},
+					params.cwd,
+					ephemeralSessionId,
+				);
+			}
 		}
 	}
 

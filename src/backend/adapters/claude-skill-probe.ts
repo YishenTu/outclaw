@@ -52,7 +52,7 @@ export async function probeClaudeSkills(
 	}
 
 	if (sessionId) {
-		await cleanupProbeSession(
+		await cleanupClaudeSessionFile(
 			{
 				sleep: options.sleep,
 				unlinkFile: options.unlinkFile,
@@ -97,7 +97,7 @@ function isClaudeInitEvent(event: unknown): event is {
 	return record.type === "system" && record.subtype === "init";
 }
 
-async function cleanupProbeSession(
+export async function cleanupClaudeSessionFile(
 	deps: {
 		sleep: (ms: number) => Promise<void>;
 		unlinkFile: (path: string) => void;

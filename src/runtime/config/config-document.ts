@@ -13,6 +13,9 @@ import {
 export interface ConfigDocument extends Record<string, unknown> {
 	agents?: Record<string, StoredAgentConfig>;
 	autoCompact?: boolean;
+	autoTitle?: {
+		model?: string;
+	};
 	heartbeat?: {
 		intervalMinutes?: number;
 		deferMinutes?: number;

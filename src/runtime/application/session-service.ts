@@ -1,4 +1,8 @@
-import type { DoneEvent, TranscriptTurn } from "../../common/protocol.ts";
+import type {
+	DoneEvent,
+	SessionRenamedEvent,
+	TranscriptTurn,
+} from "../../common/protocol.ts";
 import type { LastUserTarget } from "../persistence/last-user-target.ts";
 import type {
 	SessionRow,
@@ -16,6 +20,7 @@ export interface SessionListEntry {
 
 interface SessionServiceCallbacks {
 	onAcceptedInteractivePrompt?: () => void;
+	onSessionRenamed?: (event: SessionRenamedEvent) => void;
 	onSessionStateChange?: () => void;
 }
 
@@ -34,6 +39,10 @@ export class SessionService {
 
 	get providerId(): string {
 		return this.state.providerId;
+	}
+
+	get canPersistSessions(): boolean {
+		return this.store !== undefined;
 	}
 
 	get lastUserTarget(): LastUserTarget | undefined {
@@ -88,14 +97,36 @@ export class SessionService {
 		ocSessionId?: string;
 		source: string;
 	}) {
+		const existing = this.store?.get(
+			this.state.providerId,
+			params.event.sessionId,
+		);
 		this.persistSession({
 			sessionId: params.event.sessionId,
 			ocSessionId: params.ocSessionId,
-			title: params.title,
+			title: existing?.title ?? params.title,
 			model: params.model,
 			source: params.source,
 			usage: params.event.usage,
 		});
+	}
+
+	recordSessionInitialized(params: {
+		active: boolean;
+		sessionId: string;
+		title: string;
+		model: string;
+		ocSessionId?: string;
+		source: "agent" | "telegram" | "tui";
+	}) {
+		if (params.active) {
+			this.state.initializeRun(params.sessionId, params.source);
+			this.store?.setActiveSessionId(this.state.providerId, params.sessionId);
+		}
+		this.persistSession(params);
+		if (params.active) {
+			this.callbacks.onSessionStateChange?.();
+		}
 	}
 
 	recordInterruptedRun(params: {
@@ -118,6 +149,7 @@ export class SessionService {
 				tag: "chat",
 				createdAt: Date.now(),
 				lastActive: Date.now(),
+				autoTitleAttempted: false,
 			},
 			undefined,
 		);
@@ -164,6 +196,51 @@ export class SessionService {
 	renameSession(sessionId: string, title: string) {
 		this.state.renameSession(sessionId, title);
 		this.store?.rename(this.state.providerId, sessionId, title);
+		this.notifySessionRenamed(sessionId, title);
+	}
+
+	configureCallbacks(callbacks: SessionServiceCallbacks) {
+		this.callbacks.onAcceptedInteractivePrompt =
+			callbacks.onAcceptedInteractivePrompt ??
+			this.callbacks.onAcceptedInteractivePrompt;
+		this.callbacks.onSessionRenamed =
+			callbacks.onSessionRenamed ?? this.callbacks.onSessionRenamed;
+		this.callbacks.onSessionStateChange =
+			callbacks.onSessionStateChange ?? this.callbacks.onSessionStateChange;
+	}
+
+	applyAutoTitle(params: {
+		sessionId: string;
+		expectedTitle: string;
+		title: string;
+	}): boolean {
+		if (!this.store) {
+			return false;
+		}
+
+		const renamed = this.store.applyAutoTitle({
+			providerId: this.state.providerId,
+			sdkSessionId: params.sessionId,
+			expectedTitle: params.expectedTitle,
+			title: params.title,
+		});
+		if (!renamed) {
+			return false;
+		}
+
+		const isActiveSession = this.state.sessionId === params.sessionId;
+		if (isActiveSession) {
+			this.state.renameSession(params.sessionId, params.title);
+		}
+		this.notifySessionRenamed(params.sessionId, params.title);
+		if (isActiveSession) {
+			this.callbacks.onSessionStateChange?.();
+		}
+		return true;
+	}
+
+	markAutoTitleAttempted(sessionId: string) {
+		this.store?.markAutoTitleAttempted(this.state.providerId, sessionId);
 	}
 
 	switchToSession(selector: string): SessionRow | undefined {
@@ -343,7 +420,16 @@ export class SessionService {
 			tag: "chat",
 			createdAt: 0,
 			lastActive: 0,
+			autoTitleAttempted: false,
 		};
+	}
+
+	private notifySessionRenamed(sessionId: string, title: string) {
+		this.callbacks.onSessionRenamed?.({
+			type: "session_renamed",
+			sdkSessionId: sessionId,
+			title,
+		});
 	}
 }
 

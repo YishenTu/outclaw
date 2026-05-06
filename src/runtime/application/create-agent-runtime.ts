@@ -23,6 +23,7 @@ import { RuntimeState } from "./state/runtime-state.ts";
 
 interface CreateAgentRuntimeOptions {
 	agentId: string;
+	autoTitle?: Config["autoTitle"];
 	canSendToClient?: (ws: WsClient) => boolean;
 	cwd?: string;
 	deliverCronResult?: (params: {
@@ -128,6 +129,7 @@ export function createAgentRuntime(
 	const workspaceCwd = options.cwd;
 	const controller = createRuntimeController({
 		agentId: options.agentId,
+		autoTitle: options.autoTitle,
 		canSendToClient: options.canSendToClient,
 		cwd: options.cwd,
 		facade,

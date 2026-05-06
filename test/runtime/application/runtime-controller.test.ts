@@ -58,6 +58,10 @@ function createController<TFacade extends Facade = MockFacade>(
 			telegramChatId: number;
 			text: string;
 		}) => Promise<void> | void;
+		autoTitle?: {
+			model: string;
+			timeoutMs?: number;
+		};
 		promptHomeDir?: string;
 		store?: SessionStore;
 		historyReader?: (id: string) => Promise<HistoryReplayEvent["messages"]>;
@@ -83,6 +87,7 @@ function createController<TFacade extends Facade = MockFacade>(
 			deliverCronResult: overrides.deliverCronResult,
 			deliverHeartbeatResult: overrides.deliverHeartbeatResult,
 			deliverRolloverNotice: overrides.deliverRolloverNotice,
+			autoTitle: overrides.autoTitle,
 			sessions,
 			state,
 		}),
@@ -157,6 +162,42 @@ async function waitForDoneCount(
 	});
 }
 
+async function waitForServerEvent(
+	ws: WsClient & { events: () => ServerEvent[] },
+	type: ServerEvent["type"],
+): Promise<ServerEvent> {
+	return new Promise<ServerEvent>((resolve, reject) => {
+		const timeout = setTimeout(() => {
+			clearInterval(check);
+			reject(new Error(`Timed out waiting for ${type}`));
+		}, 1_000);
+		const check = setInterval(() => {
+			const event = ws.events().find((candidate) => candidate.type === type);
+			if (event) {
+				clearTimeout(timeout);
+				clearInterval(check);
+				resolve(event);
+			}
+		}, 5);
+	});
+}
+
+async function waitForCondition(assertion: () => boolean): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
+		const timeout = setTimeout(() => {
+			clearInterval(check);
+			reject(new Error("Timed out waiting for condition"));
+		}, 1_000);
+		const check = setInterval(() => {
+			if (assertion()) {
+				clearTimeout(timeout);
+				clearInterval(check);
+				resolve();
+			}
+		}, 5);
+	});
+}
+
 function cleanupStore(path: string) {
 	if (existsSync(path)) rmSync(path);
 	if (existsSync(`${path}-wal`)) rmSync(`${path}-wal`);
@@ -212,6 +253,171 @@ class AbortErrorFacade implements Facade {
 			);
 		});
 		yield { type: "error", message: "AbortError: operation aborted" };
+	}
+}
+
+class AutoTitleFacade implements Facade {
+	providerId = PROVIDER_ID;
+	allParams: RunParams[] = [];
+	mainSessionId = "sdk-auto-main";
+	titleError: string | undefined;
+	titleText = '"WebSocket routing bug?"';
+	private readonly titleRelease = createDeferred();
+	private readonly titleSettled = createDeferred();
+
+	constructor(private readonly delayTitle = false) {}
+
+	get titleCalls(): RunParams[] {
+		return this.allParams.filter((params) => params.tools?.length === 0);
+	}
+
+	releaseTitle() {
+		this.titleRelease.resolve();
+	}
+
+	waitForTitleSettled(): Promise<void> {
+		return this.titleSettled.promise;
+	}
+
+	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		this.allParams.push({ ...params });
+
+		if (params.tools?.length === 0) {
+			if (this.delayTitle) {
+				await this.titleRelease.promise;
+			}
+			if (this.titleError) {
+				yield { type: "error", message: this.titleError };
+				this.titleSettled.resolve();
+				return;
+			}
+			yield { type: "text", text: this.titleText };
+			yield {
+				type: "done",
+				sessionId: "ephemeral-title-session",
+				durationMs: 1,
+			};
+			this.titleSettled.resolve();
+			return;
+		}
+
+		yield { type: "text", text: "main answer" };
+		yield {
+			type: "done",
+			sessionId: this.mainSessionId,
+			durationMs: 1,
+		};
+	}
+}
+
+class ShutdownAutoTitleFacade implements Facade {
+	providerId = PROVIDER_ID;
+	allParams: RunParams[] = [];
+	titleAbortObserved = false;
+	private readonly titleRelease = createDeferred();
+	private readonly titleSettled = createDeferred();
+
+	get titleCalls(): RunParams[] {
+		return this.allParams.filter((params) => params.tools?.length === 0);
+	}
+
+	releaseTitle() {
+		this.titleRelease.resolve();
+	}
+
+	waitForTitleSettled(): Promise<void> {
+		return this.titleSettled.promise;
+	}
+
+	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		this.allParams.push({ ...params });
+
+		if (params.tools?.length === 0) {
+			try {
+				if (params.abortController?.signal.aborted) {
+					this.titleAbortObserved = true;
+					this.titleRelease.resolve();
+				} else {
+					params.abortController?.signal.addEventListener(
+						"abort",
+						() => {
+							this.titleAbortObserved = true;
+							this.titleRelease.resolve();
+						},
+						{ once: true },
+					);
+				}
+				await this.titleRelease.promise;
+				if (this.titleAbortObserved) {
+					return;
+				}
+				yield { type: "text", text: "Shutdown title" };
+				yield {
+					type: "done",
+					sessionId: "ephemeral-title-session",
+					durationMs: 1,
+				};
+				return;
+			} finally {
+				this.titleSettled.resolve();
+			}
+		}
+
+		yield { type: "text", text: "main answer" };
+		yield {
+			type: "done",
+			sessionId: "sdk-auto-main",
+			durationMs: 1,
+		};
+	}
+}
+
+class EarlySessionAutoTitleFacade implements Facade {
+	providerId = PROVIDER_ID;
+	allParams: RunParams[] = [];
+	private readonly mainRelease = createDeferred();
+	private readonly titleSettled = createDeferred();
+
+	get titleCalls(): RunParams[] {
+		return this.allParams.filter((params) => params.tools?.length === 0);
+	}
+
+	releaseMain() {
+		this.mainRelease.resolve();
+	}
+
+	waitForTitleSettled(): Promise<void> {
+		return this.titleSettled.promise;
+	}
+
+	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		this.allParams.push({ ...params });
+
+		if (params.tools?.length === 0) {
+			try {
+				yield { type: "text", text: "Early generated title" };
+				yield {
+					type: "done",
+					sessionId: "ephemeral-title-session",
+					durationMs: 1,
+				};
+				return;
+			} finally {
+				this.titleSettled.resolve();
+			}
+		}
+
+		yield {
+			type: "session_initialized",
+			sessionId: "sdk-early-main",
+		} as FacadeEvent;
+		await this.mainRelease.promise;
+		yield { type: "text", text: "main answer" };
+		yield {
+			type: "done",
+			sessionId: "sdk-early-main",
+			durationMs: 1,
+		};
 	}
 }
 
@@ -683,6 +889,323 @@ describe("RuntimeController", () => {
 				| undefined;
 			expect(menu).toBeDefined();
 			expect(menu?.sessions[0]?.title).toBe("What is the meaning of life?");
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
+		test("auto-generates a persisted title for the first text prompt and broadcasts the rename", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new AutoTitleFacade();
+			const { controller } = createController({
+				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				facade,
+				store,
+			});
+			const tui = mockWs("tui");
+			const browser = mockWs("browser");
+			controller.handleOpen(tui);
+			controller.handleOpen(browser);
+
+			controller.handleMessage(
+				tui,
+				prompt(
+					"Explain websocket routing bugs in the browser sidebar",
+					undefined,
+					[{ path: "/tmp/ignored.png", mediaType: "image/png" }],
+					undefined,
+					{ text: "reply context is ignored for titles" },
+				),
+			);
+			await waitForDone(tui);
+			const renamed = await waitForServerEvent(browser, "session_renamed");
+
+			expect(renamed).toEqual({
+				type: "session_renamed",
+				sdkSessionId: "sdk-auto-main",
+				title: "WebSocket routing bug",
+			});
+			expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
+				title: "WebSocket routing bug",
+				autoTitleAttempted: true,
+			});
+			expect(facade.titleCalls).toHaveLength(1);
+			expect(facade.titleCalls[0]).toMatchObject({
+				prompt: "Explain websocket routing bugs in the browser sidebar",
+				model: "haiku",
+				effort: "low",
+				stream: false,
+				tools: [],
+				ephemeral: true,
+			});
+			expect(facade.titleCalls[0]?.images).toBeUndefined();
+			expect(facade.titleCalls[0]?.replyContext).toBeUndefined();
+			expect(facade.titleCalls[0]?.systemPrompt).toContain(
+				"Generate a 3-6 word title",
+			);
+			const latestStatus = browser
+				.events()
+				.filter((event) => event.type === "runtime_status")
+				.at(-1) as { sessionTitle?: string } | undefined;
+			expect(latestStatus?.sessionTitle).toBe("WebSocket routing bug");
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
+		test("auto-title skips image-only first prompts", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new AutoTitleFacade();
+			const { controller } = createController({
+				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				facade,
+				store,
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(
+				ws,
+				prompt("", undefined, [
+					{ path: "/tmp/cat.png", mediaType: "image/png" },
+				]),
+			);
+			await waitForDone(ws);
+
+			expect(facade.titleCalls).toHaveLength(0);
+			expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
+				title: "Image",
+				autoTitleAttempted: false,
+			});
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
+		test("auto-title does not run again on resumed prompts", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new AutoTitleFacade();
+			const { controller } = createController({
+				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				facade,
+				store,
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("Explain the first request"));
+			await waitForDone(ws);
+			await waitForCondition(
+				() =>
+					store.get(PROVIDER_ID, "sdk-auto-main")?.autoTitleAttempted === true,
+			);
+			controller.handleMessage(ws, prompt("Follow up on that"));
+			await waitForDoneCount(ws, 2);
+
+			expect(facade.titleCalls).toHaveLength(1);
+			expect(
+				facade.allParams.find((params) => params.prompt === "Follow up on that")
+					?.resume,
+			).toBe("sdk-auto-main");
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
+		test("auto-title failure preserves the fallback title and records the attempt", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new AutoTitleFacade();
+			facade.titleError = "title failed";
+			const { controller } = createController({
+				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				facade,
+				store,
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(
+				ws,
+				prompt("Write release notes for the sidebar"),
+			);
+			await waitForDone(ws);
+			await waitForCondition(
+				() =>
+					store.get(PROVIDER_ID, "sdk-auto-main")?.autoTitleAttempted === true,
+			);
+
+			expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
+				title: "Write release notes for the sidebar",
+				autoTitleAttempted: true,
+			});
+			expect(
+				ws.events().find((event) => event.type === "session_renamed"),
+			).toBeUndefined();
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
+		test("manual rename wins over a late auto-title result", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new AutoTitleFacade(true);
+			facade.titleText = "Generated title";
+			const { controller } = createController({
+				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				facade,
+				store,
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("Summarize the config panel bug"));
+			await waitForDone(ws);
+			controller.handleMessage(
+				ws,
+				command("/session rename sdk-auto-main Manual title"),
+			);
+			await waitForServerEvent(ws, "session_renamed");
+			await waitForCondition(() => facade.titleCalls.length === 1);
+			facade.releaseTitle();
+			await waitForCondition(
+				() =>
+					store.get(PROVIDER_ID, "sdk-auto-main")?.autoTitleAttempted === true,
+			);
+
+			expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
+				title: "Manual title",
+				autoTitleAttempted: true,
+			});
+			expect(
+				ws.events().filter((event) => event.type === "session_renamed"),
+			).toEqual([
+				{
+					type: "session_renamed",
+					sdkSessionId: "sdk-auto-main",
+					title: "Manual title",
+				},
+			]);
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
+		test("delayed auto-title renames persisted sessions after /new without reactivating them", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new AutoTitleFacade(true);
+			facade.titleText = "Generated title";
+			const { controller } = createController({
+				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				facade,
+				store,
+			});
+			const tui = mockWs("tui");
+			const browser = mockWs("browser");
+			controller.handleOpen(tui);
+			controller.handleOpen(browser);
+
+			controller.handleMessage(tui, prompt("Summarize the config panel bug"));
+			await waitForDone(tui);
+			controller.handleMessage(tui, command("/new"));
+			await waitForServerEvent(browser, "session_cleared");
+			await waitForCondition(() => facade.titleCalls.length === 1);
+			facade.releaseTitle();
+			const renamed = await waitForServerEvent(browser, "session_renamed");
+
+			expect(renamed).toEqual({
+				type: "session_renamed",
+				sdkSessionId: "sdk-auto-main",
+				title: "Generated title",
+			});
+			expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
+				title: "Generated title",
+				autoTitleAttempted: true,
+			});
+			const latestStatus = browser
+				.events()
+				.filter((event) => event.type === "runtime_status")
+				.at(-1) as { sessionId?: string; sessionTitle?: string } | undefined;
+			expect(latestStatus?.sessionId).toBeUndefined();
+			expect(latestStatus?.sessionTitle).toBeUndefined();
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
+		test("auto-title can bind to an initialized session before the main run completes", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new EarlySessionAutoTitleFacade();
+			const { controller } = createController({
+				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				facade,
+				store,
+			});
+			const ws = mockWs("tui");
+			controller.handleOpen(ws);
+
+			try {
+				controller.handleMessage(ws, prompt("Explain early session binding"));
+				await facade.waitForTitleSettled();
+				await waitForCondition(
+					() =>
+						store.get(PROVIDER_ID, "sdk-early-main")?.title ===
+						"Early generated title",
+				);
+
+				expect(ws.events().some((event) => event.type === "done")).toBe(false);
+				expect(store.get(PROVIDER_ID, "sdk-early-main")).toMatchObject({
+					title: "Early generated title",
+					autoTitleAttempted: true,
+				});
+			} finally {
+				facade.releaseMain();
+				await waitForDone(ws);
+				store.close();
+				cleanupStore(TEST_DB);
+			}
+		});
+
+		test("failed delayed auto-title marks the persisted session after /new", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new AutoTitleFacade(true);
+			facade.titleError = "title failed";
+			const { controller } = createController({
+				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				facade,
+				store,
+			});
+			const ws = mockWs("tui");
+			controller.handleOpen(ws);
+
+			controller.handleMessage(
+				ws,
+				prompt("Write release notes for the sidebar"),
+			);
+			await waitForDone(ws);
+			controller.handleMessage(ws, command("/new"));
+			await waitForServerEvent(ws, "session_cleared");
+			await waitForCondition(() => facade.titleCalls.length === 1);
+			facade.releaseTitle();
+			await waitForCondition(
+				() =>
+					store.get(PROVIDER_ID, "sdk-auto-main")?.autoTitleAttempted === true,
+			);
+
+			expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
+				title: "Write release notes for the sidebar",
+				autoTitleAttempted: true,
+			});
+			expect(
+				ws.events().find((event) => event.type === "session_renamed"),
+			).toBeUndefined();
+
 			store.close();
 			cleanupStore(TEST_DB);
 		});
@@ -2018,6 +2541,48 @@ describe("RuntimeController", () => {
 			const firstCall = facade.allParams.find((p) => p.prompt === "first");
 			expect(firstCall?.abortController?.signal.aborted).toBe(true);
 			expect(facade.callOrder).toEqual(["first"]);
+		});
+
+		test("beginShutdown aborts and drains pending auto-title attempts", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new ShutdownAutoTitleFacade();
+			const { controller } = createController({
+				autoTitle: { model: "haiku", timeoutMs: 60_000 },
+				facade,
+				store,
+			});
+			const ws = mockWs();
+			controller.handleOpen(ws);
+
+			try {
+				controller.handleMessage(ws, prompt("Summarize shutdown behavior"));
+				await waitForDone(ws);
+				await waitForCondition(() => facade.titleCalls.length === 1);
+
+				controller.beginShutdown();
+				await controller.drain();
+
+				const titleCall = facade.titleCalls[0];
+				expect(titleCall?.abortController?.signal.aborted).toBe(true);
+				expect(facade.titleAbortObserved).toBe(true);
+				expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
+					title: "Summarize shutdown behavior",
+					autoTitleAttempted: false,
+				});
+			} finally {
+				facade.releaseTitle();
+				await facade.waitForTitleSettled();
+				if (!facade.titleAbortObserved) {
+					await waitForCondition(
+						() =>
+							store.get(PROVIDER_ID, "sdk-auto-main")?.autoTitleAttempted ===
+							true,
+					).catch(() => {});
+				}
+				store.close();
+				cleanupStore(TEST_DB);
+			}
 		});
 
 		test("/stop aborts a running prompt", async () => {

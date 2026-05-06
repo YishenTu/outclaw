@@ -35,6 +35,7 @@ describe("session-store-records", () => {
 			lastActive: 2,
 			failedAt: 3,
 			failureMessage: "agent exploded",
+			autoTitleAttempted: false,
 		});
 	});
 
@@ -84,6 +85,7 @@ describe("session-store-records", () => {
 				lastActive: 20,
 				failedAt: undefined,
 				failureMessage: undefined,
+				autoTitleAttempted: false,
 			},
 			{
 				agentId: "agent-mimi",
@@ -98,6 +100,7 @@ describe("session-store-records", () => {
 				lastActive: 40,
 				failedAt: 41,
 				failureMessage: "cron failed",
+				autoTitleAttempted: false,
 			},
 		]);
 	});

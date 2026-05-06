@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MODELS } from "../../../src/common/models.ts";
 import {
 	loadGlobalConfig,
 	updateGlobalConfig,
@@ -25,6 +26,7 @@ describe("loadGlobalConfig", () => {
 			expect(config.host).toBe("127.0.0.1");
 			expect(config.port).toBe(4000);
 			expect(config.thinkingEffort).toBe("medium");
+			expect(config.autoTitle).toEqual({ model: MODELS.haiku.id });
 			expect(config.heartbeat).toEqual({
 				intervalMinutes: 30,
 				deferMinutes: 0,
@@ -193,6 +195,63 @@ describe("loadGlobalConfig", () => {
 			const config = loadGlobalConfig(dir);
 			expect(config.autoCompact).toBe(false);
 			expect(config.thinkingEffort).toBe("medium");
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
+	test("defaults autoTitle model to haiku when the block is omitted or empty", () => {
+		const dir = tmp();
+		try {
+			writeFileSync(
+				join(dir, "config.json"),
+				JSON.stringify({ autoTitle: { model: "" } }),
+			);
+
+			const config = loadGlobalConfig(dir);
+
+			expect(config.autoTitle).toEqual({ model: MODELS.haiku.id });
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
+	test("resolves autoTitle model aliases and accepts known resolved model ids", () => {
+		const aliasDir = tmp();
+		const resolvedDir = tmp();
+		try {
+			writeFileSync(
+				join(aliasDir, "config.json"),
+				JSON.stringify({ autoTitle: { model: "opus" } }),
+			);
+			writeFileSync(
+				join(resolvedDir, "config.json"),
+				JSON.stringify({ autoTitle: { model: MODELS.opus.id } }),
+			);
+
+			expect(loadGlobalConfig(aliasDir).autoTitle).toEqual({
+				model: MODELS.opus.id,
+			});
+			expect(loadGlobalConfig(resolvedDir).autoTitle).toEqual({
+				model: MODELS.opus.id,
+			});
+		} finally {
+			rmSync(aliasDir, { recursive: true });
+			rmSync(resolvedDir, { recursive: true });
+		}
+	});
+
+	test("rejects unknown autoTitle model values", () => {
+		const dir = tmp();
+		try {
+			writeFileSync(
+				join(dir, "config.json"),
+				JSON.stringify({ autoTitle: { model: "gpt-unknown" } }),
+			);
+
+			expect(() => loadGlobalConfig(dir)).toThrow(
+				"Invalid autoTitle.model: gpt-unknown",
+			);
 		} finally {
 			rmSync(dir, { recursive: true });
 		}
@@ -367,6 +426,7 @@ describe("loadGlobalConfig", () => {
 
 			expect(config).toEqual({
 				autoCompact: false,
+				autoTitle: { model: MODELS.haiku.id },
 				host: "0.0.0.0",
 				heartbeat: {
 					intervalMinutes: 60,

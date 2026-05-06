@@ -55,11 +55,6 @@ export async function handleSessionCommand(
 			return;
 		}
 		options.sessions.renameSession(renameId, newTitle);
-		options.hub.broadcast({
-			type: "session_renamed",
-			sdkSessionId: renameId,
-			title: newTitle,
-		});
 		return;
 	}
 

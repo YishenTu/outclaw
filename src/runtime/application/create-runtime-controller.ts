@@ -5,6 +5,7 @@ import type {
 	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
 import type { WsClient } from "../transport/client-hub.ts";
+import { AutoTitleCoordinator } from "./auto-title.ts";
 import { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
 import { RuntimeMessageRouter } from "./gateway/runtime-message-router.ts";
 import { PromptDispatcher } from "./prompt-execution/prompt-dispatcher.ts";
@@ -19,6 +20,10 @@ import type { RuntimeState } from "./state/runtime-state.ts";
 
 interface CreateRuntimeControllerOptions {
 	agentId?: string;
+	autoTitle?: {
+		model: string;
+		timeoutMs?: number;
+	};
 	canSendToClient?: (ws: WsClient) => boolean;
 	cwd?: string;
 	deliverCronResult?: (params: {
@@ -83,6 +88,21 @@ export function createRuntimeController(
 		facade: options.facade,
 		promptHomeDir: options.promptHomeDir,
 	});
+	options.sessions.configureCallbacks({
+		onSessionRenamed: (event) => {
+			clients.broadcast(event);
+			clients.broadcastStatus();
+		},
+	});
+	const autoTitle = options.autoTitle
+		? new AutoTitleCoordinator({
+				cwd: options.cwd,
+				facade: options.facade,
+				model: options.autoTitle.model,
+				sessions: options.sessions,
+				timeoutMs: options.autoTitle.timeoutMs,
+			})
+		: undefined;
 	const promptDispatcher = new PromptDispatcher({
 		clients,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
@@ -94,6 +114,7 @@ export function createRuntimeController(
 		streamingState,
 	});
 	const execution = new RuntimeExecutionCoordinator({
+		autoTitle,
 		deliverRolloverNotice: options.deliverRolloverNotice,
 		onStatusChange: () => {
 			clients.broadcastStatus();

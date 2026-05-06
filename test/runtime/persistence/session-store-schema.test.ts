@@ -56,6 +56,7 @@ describe("session-store-schema", () => {
 			"percentage",
 			"failed_at",
 			"failure_message",
+			"auto_title_attempted",
 		]);
 	});
 
@@ -164,5 +165,62 @@ describe("session-store-schema", () => {
 		expect(() => ensureSessionStoreSchema(db)).not.toThrow();
 		expect(getColumnNames(db, "sessions")).toContain("failed_at");
 		expect(getColumnNames(db, "sessions")).toContain("failure_message");
+	});
+
+	test("adds auto-title marker and opts existing chat rows out", () => {
+		const db = new Database(":memory:");
+		databases.push(db);
+		db.exec(`CREATE TABLE sessions (
+				agent_id TEXT NOT NULL,
+				provider_id TEXT NOT NULL,
+				sdk_session_id TEXT NOT NULL,
+				oc_session_id TEXT,
+				title TEXT NOT NULL,
+				model TEXT NOT NULL,
+				source TEXT NOT NULL DEFAULT 'tui',
+				tag TEXT NOT NULL DEFAULT 'chat',
+				created_at INTEGER NOT NULL,
+				last_active INTEGER NOT NULL,
+				input_tokens INTEGER,
+				output_tokens INTEGER,
+				cache_creation_tokens INTEGER,
+				cache_read_tokens INTEGER,
+				context_window INTEGER,
+				max_output_tokens INTEGER,
+				context_tokens INTEGER,
+				percentage INTEGER,
+				failed_at INTEGER,
+				failure_message TEXT,
+				PRIMARY KEY (agent_id, provider_id, sdk_session_id)
+			)`);
+		db.exec(`INSERT INTO sessions (
+				agent_id,
+				provider_id,
+				sdk_session_id,
+				title,
+				model,
+				source,
+				tag,
+				created_at,
+				last_active
+			) VALUES
+				('agent-default', 'claude', 'sdk-chat', 'Existing chat', 'opus', 'tui', 'chat', 1, 1),
+				('agent-default', 'claude', 'sdk-cron', 'daily-summary', 'haiku', 'tui', 'cron', 1, 1)`);
+
+		ensureSessionStoreSchema(db);
+
+		expect(getColumnNames(db, "sessions")).toContain("auto_title_attempted");
+		expect(
+			db
+				.query(
+					`SELECT sdk_session_id, auto_title_attempted
+					 FROM sessions
+					 ORDER BY sdk_session_id`,
+				)
+				.all(),
+		).toEqual([
+			{ sdk_session_id: "sdk-chat", auto_title_attempted: 1 },
+			{ sdk_session_id: "sdk-cron", auto_title_attempted: 0 },
+		]);
 	});
 });

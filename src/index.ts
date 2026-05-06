@@ -96,6 +96,7 @@ function startMultiAgentDaemon(
 
 		return createAgentRuntime({
 			agentId: agent.agentId,
+			autoTitle: config.autoTitle,
 			cwd: agent.homeDir,
 			cronDir: join(agent.homeDir, "cron"),
 			defaultEffort: config.thinkingEffort,

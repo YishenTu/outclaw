@@ -534,6 +534,108 @@ describe("ClaudeAdapter", () => {
 		expect(args.options.env?.PATH).toBe("/custom/bin");
 	});
 
+	test("passes an explicit empty tools list through to the SDK", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "result",
+					session_id: "sdk-no-tools",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+		const { adapter } = createAdapter({ query });
+
+		for await (const _event of adapter.run({
+			prompt: "generate a title",
+			tools: [],
+		})) {
+			// Drain
+		}
+
+		const args = query.mock.calls[0]?.[0] as {
+			options?: { tools?: string[] };
+		};
+		expect(args.options?.tools).toEqual([]);
+	});
+
+	test("emits an early session initialization event from the SDK init event", async () => {
+		const query = mock(() => ({
+			supportedCommands: async () => [],
+			async *[Symbol.asyncIterator]() {
+				yield {
+					type: "system",
+					subtype: "init",
+					session_id: "sdk-init-session",
+				};
+				yield {
+					type: "result",
+					session_id: "sdk-init-session",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			},
+		}));
+		const { adapter } = createAdapter({ query });
+		const events = [];
+
+		for await (const event of adapter.run({ prompt: "hello" })) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{
+				type: "session_initialized",
+				sessionId: "sdk-init-session",
+			},
+			{
+				type: "done",
+				sessionId: "sdk-init-session",
+				durationMs: 1,
+				costUsd: 0,
+			},
+		]);
+	});
+
+	test("cleans up provider storage for ephemeral runs after observing the init session id", async () => {
+		const query = mock(() => ({
+			supportedCommands: async () => [],
+			async *[Symbol.asyncIterator]() {
+				yield {
+					type: "system",
+					subtype: "init",
+					session_id: "ephemeral-title-session",
+				};
+				yield {
+					type: "result",
+					session_id: "ephemeral-title-session",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			},
+		}));
+		const unlinkFile = mock(() => {});
+		const { adapter } = createAdapter({
+			query,
+			sleep: async () => {},
+			unlinkFile,
+		});
+
+		for await (const _event of adapter.run({
+			cwd: "/tmp/outclaw",
+			ephemeral: true,
+			prompt: "generate a title",
+			tools: [],
+		})) {
+			// Drain
+		}
+
+		expect(unlinkFile).toHaveBeenCalledWith(
+			`${process.env.HOME}/.claude/projects/-tmp-outclaw/ephemeral-title-session.jsonl`,
+		);
+	});
+
 	test("streams text deltas and merges usage from the main assistant message with result model metadata", async () => {
 		const query = mock((_params: unknown) =>
 			(async function* () {
