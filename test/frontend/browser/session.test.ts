@@ -4,6 +4,8 @@ import {
 	resolveBrowserSessionKey,
 	resolveComposerSessionKey,
 	resolveCurrentBrowserSessionKey,
+	resolveDisplayedAgentSessionKey,
+	resolveDisplayedSessionTitle,
 } from "../../../src/frontend/browser/sessions/session.ts";
 
 describe("resolveBrowserSessionKey", () => {
@@ -130,5 +132,109 @@ describe("resolveComposerSessionKey", () => {
 				runtimeSessionId: "sdk-live-other-agent",
 			}),
 		).toBe("agent-mimi:claude:sdk-123");
+	});
+});
+
+describe("resolveDisplayedAgentSessionKey", () => {
+	test("uses the runtime session for the agent currently running in the runtime", () => {
+		expect(
+			resolveDisplayedAgentSessionKey({
+				agentId: "agent-railly",
+				agentName: "railly",
+				activeSession: createBrowserSessionRef(
+					"agent-railly",
+					"claude",
+					"sdk-stale",
+				),
+				providerId: "claude",
+				runtimeAgentName: "railly",
+				runtimeSessionId: "sdk-live",
+			}),
+		).toBe("agent-railly:claude:sdk-live");
+	});
+
+	test("uses the selected agent session when another agent is running", () => {
+		expect(
+			resolveDisplayedAgentSessionKey({
+				agentId: "agent-mimi",
+				agentName: "mimi",
+				activeSession: createBrowserSessionRef(
+					"agent-mimi",
+					"claude",
+					"sdk-mimi",
+				),
+				providerId: "claude",
+				runtimeAgentName: "railly",
+				runtimeSessionId: "sdk-railly",
+			}),
+		).toBe("agent-mimi:claude:sdk-mimi");
+	});
+});
+
+describe("resolveDisplayedSessionTitle", () => {
+	test("uses New conversation for the active runtime session while its title is pending", () => {
+		expect(
+			resolveDisplayedSessionTitle({
+				activeSession: createBrowserSessionRef(
+					"agent-railly",
+					"claude",
+					"sdk-live",
+				),
+				agentName: "railly",
+				providerId: "claude",
+				runtimeAgentName: "railly",
+				runtimeSessionId: "sdk-live",
+				sessionTitleFromRuntime: null,
+			}),
+		).toBe("New conversation");
+	});
+
+	test("keeps persisted titles and falls back to ids only for non-runtime sessions", () => {
+		expect(
+			resolveDisplayedSessionTitle({
+				activeSession: createBrowserSessionRef(
+					"agent-railly",
+					"claude",
+					"sdk-live",
+				),
+				activeSessionTitle: "Generated title",
+				agentName: "railly",
+				providerId: "claude",
+				runtimeAgentName: "railly",
+				runtimeSessionId: "sdk-live",
+			}),
+		).toBe("Generated title");
+
+		expect(
+			resolveDisplayedSessionTitle({
+				activeSession: createBrowserSessionRef(
+					"agent-mimi",
+					"claude",
+					"sdk-mimi",
+				),
+				agentName: "mimi",
+				providerId: "claude",
+				runtimeAgentName: "railly",
+				runtimeSessionId: "sdk-railly",
+			}),
+		).toBe("sdk-mimi");
+	});
+
+	test("ignores runtime titles from another displayed agent", () => {
+		expect(
+			resolveDisplayedSessionTitle({
+				activeSession: createBrowserSessionRef(
+					"agent-mimi",
+					"claude",
+					"sdk-mimi",
+				),
+				activeSessionTitle: "Mimi active",
+				agentName: "mimi",
+				providerId: "claude",
+				runtimeAgentName: "railly",
+				runtimeSessionId: "sdk-railly",
+				sessionTitleFromRuntime: "Railly live title",
+			}),
+		).toBe("Mimi active");
 	});
 });

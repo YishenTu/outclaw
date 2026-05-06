@@ -108,6 +108,21 @@ describe("RuntimeState", () => {
 			expect(state.sessionTitle).toBe("What is the meaning of life?");
 		});
 
+		test("can defer the first prompt title into prompt context", () => {
+			const state = new RuntimeState(PROVIDER_ID);
+			state.preparePrompt("What is the meaning of life?", undefined, {
+				deferTitle: true,
+			});
+
+			expect(state.sessionTitle).toBeUndefined();
+			expect(state.sessionTitleFallback).toBe("What is the meaning of life?");
+			expect(state.capturePromptContext()).toMatchObject({
+				fallbackSessionTitle: "What is the meaning of life?",
+				sessionTitle: undefined,
+			});
+			expect(state.createStatusEvent().sessionTitle).toBeUndefined();
+		});
+
 		test("truncates long titles to 100 chars", () => {
 			const state = new RuntimeState(PROVIDER_ID);
 			const longPrompt = "a".repeat(200);

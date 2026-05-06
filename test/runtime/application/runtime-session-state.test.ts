@@ -45,6 +45,16 @@ describe("RuntimeSessionState", () => {
 			expect(state.sessionTitle).toBe("What is the meaning of life?");
 		});
 
+		test("can defer the first prompt title as a fallback", () => {
+			const state = new RuntimeSessionState();
+			state.preparePrompt("What is the meaning of life?", undefined, {
+				deferTitle: true,
+			});
+
+			expect(state.sessionTitle).toBeUndefined();
+			expect(state.sessionTitleFallback).toBe("What is the meaning of life?");
+		});
+
 		test("derives title from image-only prompts", () => {
 			const state = new RuntimeSessionState();
 			state.preparePrompt("", [
