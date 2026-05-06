@@ -152,7 +152,10 @@ describe("SessionService", () => {
 		const store = createTestStore();
 		const state = new RuntimeState(PROVIDER_ID);
 		const sessions = new SessionService(state, store);
-		store.setRolloverNotice("Previous session auto-finalized after 8h idle.");
+		store.setRolloverNotice({
+			kind: "rollover",
+			message: "Previous session auto-finalized after 8h idle.",
+		});
 
 		sessions.recordAcceptedPromptTarget("tui");
 
@@ -174,9 +177,11 @@ describe("SessionService", () => {
 		expect(store.getLastHandledRolloverInteractiveAt()).toBe(123);
 		expect(store.getActiveSessionId(PROVIDER_ID)).toBeUndefined();
 		expect(state.sessionId).toBeUndefined();
-		expect(store.getRolloverNotice()).toBe(
-			"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
-		);
+		expect(store.getRolloverNotice()).toEqual({
+			kind: "rollover",
+			message:
+				"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
+		});
 
 		store.close();
 	});
@@ -192,9 +197,12 @@ describe("SessionService", () => {
 			idleMinutes: 480,
 		});
 
-		expect(store.getRolloverNotice()).toBe(
-			"Previous session auto-finalized after 8h idle. Final check failed. A new session will begin with your next message. Use /session to resume.",
-		);
+		expect(store.getRolloverNotice()).toEqual({
+			kind: "rollover",
+			message:
+				"Previous session auto-finalized after 8h idle. Final check failed. A new session will begin with your next message. Use /session to resume.",
+			finalCheck: "failed",
+		});
 
 		store.close();
 	});
