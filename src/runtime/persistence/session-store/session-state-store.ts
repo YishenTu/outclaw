@@ -1,7 +1,11 @@
 import type { Database } from "bun:sqlite";
-import type { FrontendNotice } from "../../../common/protocol.ts";
+import type {
+	FrontendNotice,
+	RolloverNotice,
+} from "../../../common/protocol.ts";
 import {
 	parseFrontendNotice,
+	parseRolloverNotice,
 	serializeFrontendNotice,
 } from "../frontend-notice.ts";
 import {
@@ -91,17 +95,22 @@ export class SessionStateStore {
 		);
 	}
 
-	getRolloverNotice(): string | undefined {
-		return this.getStateValue(rolloverNoticeKey(this.agentId));
+	getRolloverNotice(): RolloverNotice | undefined {
+		return parseRolloverNotice(
+			this.getStateValue(rolloverNoticeKey(this.agentId)),
+		);
 	}
 
-	setRolloverNotice(message: string | undefined) {
-		if (!message) {
+	setRolloverNotice(notice: RolloverNotice | undefined) {
+		if (!notice) {
 			this.deleteStateValue(rolloverNoticeKey(this.agentId));
 			return;
 		}
 
-		this.setStateValue(rolloverNoticeKey(this.agentId), message);
+		this.setStateValue(
+			rolloverNoticeKey(this.agentId),
+			serializeFrontendNotice(notice),
+		);
 	}
 
 	getLastInteractiveAgentId(): string | undefined {

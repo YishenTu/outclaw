@@ -315,7 +315,7 @@ export class RuntimeExecutionCoordinator {
 				task.idleMinutes,
 			);
 			started = true;
-			void this.deliverRolloverStartedNotice(deliveryTarget, notice);
+			void this.deliverRolloverStartedNotice(deliveryTarget, notice.message);
 			await this.runPromptInLane(
 				lane,
 				{

@@ -61,6 +61,45 @@ describe("TUI runtime status projection", () => {
 		).toBe("mimi");
 	});
 
+	test("projects rollover runtime notices to concise TUI copy", () => {
+		expect(
+			projectRuntimeStatus({
+				event: {
+					type: "runtime_status",
+					model: "sonnet",
+					effort: "think",
+					running: false,
+					notice: {
+						kind: "rollover",
+						message:
+							"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
+					},
+				},
+				previous: {},
+			}).runtimeInfo.notice,
+		).toBe("Rollover done; next prompt starts a new session.");
+	});
+
+	test("preserves rollover final-check failure in concise TUI copy", () => {
+		expect(
+			projectRuntimeStatus({
+				event: {
+					type: "runtime_status",
+					model: "sonnet",
+					effort: "think",
+					running: false,
+					notice: {
+						kind: "rollover",
+						message:
+							"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
+						finalCheck: "failed",
+					},
+				},
+				previous: {},
+			}).runtimeInfo.notice,
+		).toBe("Rollover final check failed; next prompt starts a new session.");
+	});
+
 	test("applies incremental agent, model, and effort events", () => {
 		expect(
 			projectRuntimeInfoEvent(

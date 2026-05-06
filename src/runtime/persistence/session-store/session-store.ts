@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import type {
 	BrowserCronHistoryCursor,
 	FrontendNotice,
+	RolloverNotice,
 	TranscriptTurn,
 	UsageInfo,
 } from "../../../common/protocol.ts";
@@ -490,12 +491,12 @@ export class SessionStore {
 		this.stateStore.setLastHandledRolloverInteractiveAt(timestamp);
 	}
 
-	getRolloverNotice(): string | undefined {
+	getRolloverNotice(): RolloverNotice | undefined {
 		return this.stateStore.getRolloverNotice();
 	}
 
-	setRolloverNotice(message: string | undefined) {
-		this.stateStore.setRolloverNotice(message);
+	setRolloverNotice(notice: RolloverNotice | undefined) {
+		this.stateStore.setRolloverNotice(notice);
 	}
 
 	getLastInteractiveAgentId(): string | undefined {

@@ -293,6 +293,7 @@ export interface RestartRequiredNotice {
 export interface RolloverNotice {
 	kind: "rollover";
 	message: string;
+	finalCheck?: "failed";
 }
 
 export type FrontendNotice = RestartRequiredNotice | RolloverNotice;

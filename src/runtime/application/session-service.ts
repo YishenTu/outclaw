@@ -1,5 +1,6 @@
 import type {
 	DoneEvent,
+	RolloverNotice,
 	SessionRenamedEvent,
 	TranscriptTurn,
 } from "../../common/protocol.ts";
@@ -192,7 +193,7 @@ export class SessionService {
 		return this.store?.getLastHandledRolloverInteractiveAt();
 	}
 
-	getRolloverNotice(): string | undefined {
+	getRolloverNotice(): RolloverNotice | undefined {
 		return this.store?.getRolloverNotice();
 	}
 
@@ -269,7 +270,7 @@ export class SessionService {
 		}
 
 		this.clearActiveSession();
-		const notice = formatRolloverStartedNotice(idleMinutes);
+		const notice = createRolloverNotice(idleMinutes);
 		this.store?.setRolloverNotice(notice);
 		return notice;
 	}
@@ -279,16 +280,21 @@ export class SessionService {
 			return;
 		}
 
-		const expectedStartedMessage = formatRolloverStartedNotice(
-			params.idleMinutes,
-		);
-		if (this.store?.getRolloverNotice() !== expectedStartedMessage) {
+		const expectedStartedNotice = createRolloverNotice(params.idleMinutes);
+		const currentNotice = this.store?.getRolloverNotice();
+		if (
+			currentNotice?.kind !== "rollover" ||
+			currentNotice.message !== expectedStartedNotice.message ||
+			currentNotice.finalCheck === "failed"
+		) {
 			return;
 		}
 
-		this.store?.setRolloverNotice(
-			formatRolloverFailedNotice(params.idleMinutes),
-		);
+		this.store?.setRolloverNotice({
+			...expectedStartedNotice,
+			message: formatRolloverFailedNotice(params.idleMinutes),
+			finalCheck: "failed",
+		});
 	}
 
 	recordCronRun(params: {
@@ -452,6 +458,13 @@ export function formatRolloverStartedNotice(idleMinutes: number): string {
 	return `Previous session auto-finalized after ${formatIdleWindow(
 		idleMinutes,
 	)} idle. A new session will begin with your next message. Use /session to resume.`;
+}
+
+function createRolloverNotice(idleMinutes: number): RolloverNotice {
+	return {
+		kind: "rollover",
+		message: formatRolloverStartedNotice(idleMinutes),
+	};
 }
 
 function formatRolloverFailedNotice(idleMinutes: number): string {
