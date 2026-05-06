@@ -9,7 +9,10 @@ import type {
 	SessionStore,
 	SessionTag,
 } from "../persistence/session-store/session-store.ts";
-import type { RuntimeState } from "./state/runtime-state.ts";
+import {
+	type RuntimeState,
+	resolveSessionTitleForPersistence,
+} from "./state/runtime-state.ts";
 
 export interface SessionListEntry {
 	sdkSessionId: string;
@@ -337,11 +340,16 @@ export class SessionService {
 			return;
 		}
 
+		const existing = this.store?.get(this.state.providerId, sessionId);
 		this.store?.setActiveSessionId(this.state.providerId, sessionId);
 		this.persistSession({
 			sessionId,
 			ocSessionId: this.state.ocSessionId,
-			title: this.state.sessionTitle ?? "Untitled",
+			title: resolveSessionTitleForPersistence({
+				existingTitle: existing?.title,
+				fallbackSessionTitle: this.state.sessionTitleFallback,
+				sessionTitle: this.state.sessionTitle,
+			}),
 			model: this.state.model,
 			source: this.state.sessionSource,
 			usage: this.state.usage,

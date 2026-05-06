@@ -1,7 +1,10 @@
 import type { EffortLevel } from "../../../../common/commands.ts";
 import type { ModelAlias } from "../../../../common/models.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
-import { resolveComposerSessionKey } from "../../sessions/session.ts";
+import {
+	resolveDisplayedAgentSessionKey,
+	resolveDisplayedSessionTitle,
+} from "../../sessions/session.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import { type ChatSession, useChatStore } from "../../stores/chat.ts";
 import { useRuntimeStore } from "../../stores/runtime.ts";
@@ -34,6 +37,7 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 		activeAgentId ? (state.activeSessionByAgent[activeAgentId] ?? null) : null,
 	);
 	const providerId = useRuntimeStore((state) => state.providerId);
+	const runtimeAgentName = useRuntimeStore((state) => state.agentName);
 	const runtimeSessionId = useRuntimeStore((state) => state.sessionId);
 	const sessionTitleFromRuntime = useRuntimeStore(
 		(state) => state.sessionTitle,
@@ -44,11 +48,13 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 	const runtimeRunning = useRuntimeStore((state) => state.running);
 	const activeAgent = agents.find((agent) => agent.agentId === activeAgentId);
 	const sessionKey =
-		activeAgentId === null
+		activeAgentId === null || activeAgent === undefined
 			? null
-			: resolveComposerSessionKey({
+			: resolveDisplayedAgentSessionKey({
 					agentId: activeAgentId,
+					agentName: activeAgent.name,
 					activeSession,
+					runtimeAgentName,
 					providerId,
 					runtimeSessionId,
 				});
@@ -63,10 +69,15 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 						session.sdkSessionId === activeSession.sdkSessionId,
 				)
 			: undefined;
-	const sessionTitle =
-		sessionTitleFromRuntime ??
-		activeSessionEntry?.title ??
-		(activeSession ? activeSession.sdkSessionId : "New conversation");
+	const sessionTitle = resolveDisplayedSessionTitle({
+		activeSession,
+		activeSessionTitle: activeSessionEntry?.title,
+		agentName: activeAgent?.name ?? "",
+		providerId,
+		runtimeAgentName,
+		runtimeSessionId,
+		sessionTitleFromRuntime,
+	});
 
 	function handleModelChange(model: ModelAlias) {
 		return sendCommand(`/model ${model}`);

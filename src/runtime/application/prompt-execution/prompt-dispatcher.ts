@@ -15,6 +15,7 @@ import type {
 	RuntimePromptContext,
 	RuntimeState,
 } from "../state/runtime-state.ts";
+import { resolveSessionTitleForPersistence } from "../state/runtime-state.ts";
 import type { PromptRunner } from "./prompt-runner.ts";
 import type { StreamingStateStore } from "./streaming-state-store.ts";
 
@@ -120,7 +121,7 @@ export class PromptDispatcher {
 						active: visible,
 						sessionId: event.sessionId,
 						ocSessionId: context.ocSessionId,
-						title: context.sessionTitle ?? "Untitled",
+						title: titleForPersistence(context),
 						model: context.model,
 						source: toStoredSessionSource(task.source),
 					});
@@ -170,7 +171,7 @@ export class PromptDispatcher {
 						model: context.model,
 						ocSessionId: context.ocSessionId,
 						source: toStoredSessionSource(task.source),
-						title: context.sessionTitle ?? "Untitled",
+						title: titleForPersistence(context),
 					});
 				}
 			}
@@ -201,7 +202,7 @@ export class PromptDispatcher {
 		) {
 			this.options.sessions.recordInterruptedRun({
 				sessionId: context.ocSessionId,
-				title: context.sessionTitle ?? "Untitled",
+				title: titleForPersistence(context),
 				model: context.model,
 				source: toStoredSessionSource(task.source),
 			});
@@ -267,6 +268,10 @@ export class PromptDispatcher {
 		}
 		return observers;
 	}
+}
+
+function titleForPersistence(context: RuntimePromptContext): string {
+	return resolveSessionTitleForPersistence(context);
 }
 
 function toStoredSessionSource(

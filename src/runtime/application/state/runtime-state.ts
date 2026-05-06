@@ -13,6 +13,7 @@ import type {
 	RuntimeStatusEvent,
 	UsageInfo,
 } from "../../../common/protocol.ts";
+import { PENDING_SESSION_TITLE } from "../../../common/session-title.ts";
 import { recalculateUsageForContextWindow } from "../../../common/usage.ts";
 import type { LastUserTarget } from "../../persistence/last-user-target.ts";
 import type { SessionRow } from "../../persistence/session-store/session-store.ts";
@@ -21,6 +22,7 @@ import { RuntimeSettingsState } from "./runtime-settings-state.ts";
 
 export interface RuntimePromptContext {
 	effort: EffortLevel;
+	fallbackSessionTitle?: string;
 	generation: number;
 	model: ModelAlias;
 	ocSessionId: string;
@@ -32,6 +34,23 @@ export interface RuntimePromptContext {
 
 interface RuntimeStateOptions {
 	defaultEffort?: EffortLevel;
+}
+
+export function resolveSessionTitleForPersistence(params: {
+	existingTitle?: string | null;
+	fallbackSessionTitle?: string | null;
+	sessionTitle?: string | null;
+}): string {
+	if (params.sessionTitle !== undefined && params.sessionTitle !== null) {
+		return params.sessionTitle;
+	}
+	if (
+		params.fallbackSessionTitle !== undefined &&
+		params.fallbackSessionTitle !== null
+	) {
+		return PENDING_SESSION_TITLE;
+	}
+	return params.existingTitle ?? "Untitled";
 }
 
 export class RuntimeState {
@@ -92,6 +111,10 @@ export class RuntimeState {
 		return this.sessions.sessionTitle;
 	}
 
+	get sessionTitleFallback(): string | undefined {
+		return this.sessions.sessionTitleFallback;
+	}
+
 	get usage(): UsageInfo | undefined {
 		return this.sessions.usage;
 	}
@@ -99,6 +122,7 @@ export class RuntimeState {
 	capturePromptContext(): RuntimePromptContext {
 		return {
 			effort: this.settings.effort,
+			fallbackSessionTitle: this.sessions.sessionTitleFallback,
 			generation: this.sessions.generation,
 			model: this.settings.model,
 			ocSessionId: this.sessions.ensureOcSessionId(),
@@ -135,8 +159,12 @@ export class RuntimeState {
 		return this.sessions.createLastUserDeliveryTarget();
 	}
 
-	preparePrompt(prompt: string, images?: ImageRef[]) {
-		this.sessions.preparePrompt(prompt, images);
+	preparePrompt(
+		prompt: string,
+		images?: ImageRef[],
+		options?: { deferTitle?: boolean },
+	) {
+		this.sessions.preparePrompt(prompt, images, options);
 	}
 
 	clearSession() {
