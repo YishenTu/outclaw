@@ -50,14 +50,7 @@ export function loadGlobalConfig(homeDir: string): GlobalConfig {
 	if (!existsSync(configPath)) {
 		ensureConfigHomeDir(homeDir);
 		writeFileSync(configPath, `${JSON.stringify(DEFAULTS, null, "\t")}\n`);
-		return {
-			autoCompact: DEFAULTS.autoCompact,
-			autoTitle: { model: MODELS.haiku.id },
-			heartbeat: { ...DEFAULTS.heartbeat },
-			host: DEFAULTS.host,
-			port: DEFAULTS.port,
-			thinkingEffort: DEFAULTS.thinkingEffort,
-		};
+		return globalConfigFromDocument(DEFAULTS);
 	}
 
 	const raw = JSON.parse(readFileSync(configPath, "utf-8")) as unknown;
@@ -67,19 +60,7 @@ export function loadGlobalConfig(homeDir: string): GlobalConfig {
 		writeFileSync(configPath, `${JSON.stringify(merged, null, "\t")}\n`);
 	}
 
-	return {
-		autoCompact: merged.autoCompact ?? DEFAULTS.autoCompact,
-		autoTitle: { model: resolveAutoTitleModel(merged) },
-		heartbeat: {
-			intervalMinutes:
-				merged.heartbeat?.intervalMinutes ?? DEFAULTS.heartbeat.intervalMinutes,
-			deferMinutes:
-				merged.heartbeat?.deferMinutes ?? DEFAULTS.heartbeat.deferMinutes,
-		},
-		host: merged.host ?? DEFAULTS.host,
-		port: merged.port ?? DEFAULTS.port,
-		thinkingEffort: merged.thinkingEffort ?? DEFAULTS.thinkingEffort,
-	};
+	return globalConfigFromDocument(merged);
 }
 
 export const loadConfig = loadGlobalConfig;
@@ -116,19 +97,23 @@ export function updateGlobalConfig(
 	ensureConfigHomeDir(homeDir);
 	writeFileSync(configPath, `${JSON.stringify(nextDocument, null, "\t")}\n`);
 
+	return globalConfigFromDocument(nextDocument);
+}
+
+function globalConfigFromDocument(document: ConfigDocument): GlobalConfig {
 	return {
-		autoCompact: nextDocument.autoCompact ?? DEFAULTS.autoCompact,
-		autoTitle: { model: resolveAutoTitleModel(nextDocument) },
+		autoCompact: document.autoCompact ?? DEFAULTS.autoCompact,
+		autoTitle: { model: resolveAutoTitleModel(document) },
 		heartbeat: {
 			intervalMinutes:
-				nextDocument.heartbeat?.intervalMinutes ??
+				document.heartbeat?.intervalMinutes ??
 				DEFAULTS.heartbeat.intervalMinutes,
 			deferMinutes:
-				nextDocument.heartbeat?.deferMinutes ?? DEFAULTS.heartbeat.deferMinutes,
+				document.heartbeat?.deferMinutes ?? DEFAULTS.heartbeat.deferMinutes,
 		},
-		host: nextDocument.host ?? DEFAULTS.host,
-		port: nextDocument.port ?? DEFAULTS.port,
-		thinkingEffort: nextDocument.thinkingEffort ?? DEFAULTS.thinkingEffort,
+		host: document.host ?? DEFAULTS.host,
+		port: document.port ?? DEFAULTS.port,
+		thinkingEffort: document.thinkingEffort ?? DEFAULTS.thinkingEffort,
 	};
 }
 

@@ -112,15 +112,12 @@ export class ClaudeAdapter implements Facade {
 				conversation,
 				model: params.model,
 				stream: params.stream,
-				onInitSession: (sessionId) => {
-					ephemeralSessionId = sessionId;
-				},
 				onSkills: (skills) => {
 					this.skills = skills;
 				},
 			})) {
-				if (event.type === "done") {
-					ephemeralSessionId = ephemeralSessionId ?? event.sessionId;
+				if (event.type === "session_initialized" || event.type === "done") {
+					ephemeralSessionId ??= event.sessionId;
 				}
 				yield event;
 			}

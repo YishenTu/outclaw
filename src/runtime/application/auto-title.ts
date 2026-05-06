@@ -81,10 +81,10 @@ export class AutoTitleCoordinator {
 	}
 
 	cancelAll() {
-		for (const [ocSessionId, run] of this.pending) {
+		for (const run of this.pending.values()) {
 			run.attempt.cancel();
-			this.started.delete(ocSessionId);
 		}
+		this.started.clear();
 	}
 
 	async drain(): Promise<void> {

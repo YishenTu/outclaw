@@ -3,6 +3,7 @@ import {
 	type HeartbeatAttemptResult,
 	HeartbeatRuntimePolicy,
 } from "../heartbeat/runtime-policy.ts";
+import type { AutoTitleCoordinator } from "./auto-title.ts";
 import { MessageQueue } from "./gateway/message-queue.ts";
 import type {
 	PromptDispatcher,
@@ -14,18 +15,6 @@ import type {
 	RuntimeState,
 } from "./state/runtime-state.ts";
 
-interface AutoTitleRunner {
-	cancel(ocSessionId: string): void;
-	cancelAll(): void;
-	drain(): Promise<void>;
-	resolveSession(ocSessionId: string, sdkSessionId: string): void;
-	start(params: {
-		context: RuntimePromptContext;
-		prompt: string;
-		source: string;
-	}): void;
-}
-
 interface HeartbeatTask {
 	prompt: string;
 	scheduledAt: number;
@@ -33,7 +22,10 @@ interface HeartbeatTask {
 }
 
 interface RuntimeExecutionCoordinatorOptions {
-	autoTitle?: AutoTitleRunner;
+	autoTitle?: Pick<
+		AutoTitleCoordinator,
+		"cancel" | "cancelAll" | "drain" | "resolveSession" | "start"
+	>;
 	deliverRolloverNotice?: (params: {
 		telegramChatId: number;
 		text: string;
@@ -416,6 +408,14 @@ export class RuntimeExecutionCoordinator {
 		lane.activeAbort = abortController;
 		lane.activeContext = context;
 		let completedSessionId = lane.resolvedSessionId ?? context.sessionId;
+		const resolveAutoTitleEarly = (sdkSessionId: string) => {
+			if (!context.sessionId) {
+				this.options.autoTitle?.resolveSession(
+					context.ocSessionId,
+					sdkSessionId,
+				);
+			}
+		};
 		const wrappedTask: PromptExecution = {
 			...task,
 			onEvent: (event) => {
@@ -423,12 +423,7 @@ export class RuntimeExecutionCoordinator {
 				if (event.type === "session_initialized") {
 					completedSessionId = event.sessionId;
 					lane.resolvedSessionId = event.sessionId;
-					if (!context.sessionId) {
-						this.options.autoTitle?.resolveSession(
-							context.ocSessionId,
-							event.sessionId,
-						);
-					}
+					resolveAutoTitleEarly(event.sessionId);
 				}
 				if (event.type === "done") {
 					completedSessionId = event.sessionId;
@@ -449,31 +444,25 @@ export class RuntimeExecutionCoordinator {
 		} finally {
 			if (completedSessionId) {
 				lane.resolvedSessionId = completedSessionId;
-				if (!context.sessionId) {
+				resolveAutoTitleEarly(completedSessionId);
+			} else if (!context.sessionId) {
+				if (
+					abortController.signal.aborted &&
+					(task.source === "browser" ||
+						task.source === "telegram" ||
+						task.source === "tui")
+				) {
 					this.options.autoTitle?.resolveSession(
 						context.ocSessionId,
-						completedSessionId,
+						context.ocSessionId,
 					);
+				} else {
+					this.options.autoTitle?.cancel(context.ocSessionId);
 				}
-			} else if (
-				abortController.signal.aborted &&
-				!context.sessionId &&
-				shouldResolveInterruptedAutoTitle(task.source)
-			) {
-				this.options.autoTitle?.resolveSession(
-					context.ocSessionId,
-					context.ocSessionId,
-				);
-			} else if (!context.sessionId) {
-				this.options.autoTitle?.cancel(context.ocSessionId);
 			}
 			lane.activeAbort = undefined;
 			lane.activeContext = undefined;
 			this.options.onStatusChange?.();
 		}
 	}
-}
-
-function shouldResolveInterruptedAutoTitle(source: PromptExecution["source"]) {
-	return source === "browser" || source === "telegram" || source === "tui";
 }

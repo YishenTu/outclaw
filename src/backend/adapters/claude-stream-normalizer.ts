@@ -13,7 +13,6 @@ interface ClaudeStreamConversation extends AsyncIterable<unknown> {
 interface ClaudeStreamNormalizerOptions {
 	conversation: ClaudeStreamConversation;
 	model?: string;
-	onInitSession?: (sessionId: string) => void;
 	onSkills?: (skills: Awaited<ReturnType<typeof extractClaudeSkills>>) => void;
 	stream?: boolean;
 }
@@ -64,7 +63,6 @@ export async function* normalizeClaudeStream(
 
 		if (event.type === "system" && event.subtype === "init") {
 			if (event.session_id) {
-				options.onInitSession?.(event.session_id);
 				yield {
 					type: "session_initialized",
 					sessionId: event.session_id,

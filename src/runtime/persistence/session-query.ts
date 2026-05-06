@@ -251,7 +251,7 @@ export class SessionQuery {
 			const key = `${row.agent_id}\u0000${row.provider_id}\u0000${row.sdk_session_id}`;
 			if (key !== currentKey) {
 				currentKey = key;
-				const nextMatch: SessionSearchMatch = {
+				currentMatch = {
 					session: {
 						agentId: row.agent_id,
 						providerId: row.provider_id,
@@ -266,7 +266,6 @@ export class SessionQuery {
 					},
 					turns: [],
 				};
-				currentMatch = nextMatch;
 				matches.push(currentMatch);
 			}
 

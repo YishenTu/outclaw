@@ -132,49 +132,39 @@ export function handleBrowserServerEvent(
 				return;
 			}
 
-			if (event.running && event.sessionId && providerId && currentSessionKey) {
-				const nextSessionKey = createSessionKey(
-					createBrowserSessionRef(agentId, providerId, event.sessionId),
-				);
-				const binding = options.bindLiveRunSession(
-					nextSessionKey,
-					currentSessionKey,
-				);
-				if (
-					binding.adoptFromSessionKey &&
-					binding.adoptFromSessionKey !== binding.sessionKey
-				) {
-					useChatStore
-						.getState()
-						.adoptSession(binding.adoptFromSessionKey, binding.sessionKey);
-				}
-			}
-
 			if (event.sessionId && providerId) {
-				useSessionsStore
-					.getState()
-					.setActiveSession(
-						agentId,
-						createBrowserSessionRef(agentId, providerId, event.sessionId),
+				const sessionRef = createBrowserSessionRef(
+					agentId,
+					providerId,
+					event.sessionId,
+				);
+				const sessionKey = createSessionKey(sessionRef);
+
+				if (event.running && currentSessionKey) {
+					const binding = options.bindLiveRunSession(
+						sessionKey,
+						currentSessionKey,
 					);
+					if (
+						binding.adoptFromSessionKey &&
+						binding.adoptFromSessionKey !== binding.sessionKey
+					) {
+						useChatStore
+							.getState()
+							.adoptSession(binding.adoptFromSessionKey, binding.sessionKey);
+					}
+				}
+
+				useSessionsStore.getState().setActiveSession(agentId, sessionRef);
+				if (event.usage) {
+					useContextUsageStore.getState().setUsage(sessionKey, event.usage);
+				}
 			} else if (!event.running) {
 				useSessionsStore.getState().setActiveSession(agentId, null);
 			}
-			if (event.sessionId && event.usage && providerId) {
-				useContextUsageStore
-					.getState()
-					.setUsage(
-						createSessionKey(
-							createBrowserSessionRef(agentId, providerId, event.sessionId),
-						),
-						event.usage,
-					);
-			}
+
 			if (event.running) {
-				ensureRunningChatSession(
-					agentId,
-					event.providerId ?? useRuntimeStore.getState().providerId,
-				);
+				ensureRunningChatSession(agentId, providerId);
 			}
 			return;
 		}
