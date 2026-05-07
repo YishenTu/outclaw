@@ -1,11 +1,15 @@
 import hljs from "highlight.js";
-import { AlertCircle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, GitCompare } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import type { BrowserFileResponse } from "../../../../common/protocol.ts";
+import type {
+	BrowserFileGitChange,
+	BrowserFileResponse,
+} from "../../../../common/protocol.ts";
 import { fetchAgentFile } from "../../lib/api.ts";
 import {
 	selectAgentTreeRevision,
+	selectGitRevision,
 	useRightPanelRefreshStore,
 } from "../../stores/right-panel-refresh.ts";
 import { useTabsStore } from "../../stores/tabs.ts";
@@ -45,6 +49,16 @@ export function resolveFilePreviewScrollRestoreTrigger({
 	loading: boolean;
 }): string {
 	return loading ? "loading" : "settled";
+}
+
+export function resolveFilePreviewReloadTrigger({
+	gitRevision,
+	treeRevision,
+}: {
+	gitRevision: number;
+	treeRevision: number;
+}): string {
+	return `${treeRevision}:${gitRevision}`;
 }
 
 export function MarkdownPreview({ content }: { content: string }) {
@@ -107,6 +121,40 @@ export function CodePreview({
 	);
 }
 
+export function FilePreviewHeader({
+	gitChange,
+	onOpenGitPreview,
+	path,
+}: {
+	gitChange?: BrowserFileGitChange;
+	onOpenGitPreview?: (path: string) => void;
+	path: string;
+}) {
+	const breadcrumb = useMemo(() => path.split("/"), [path]);
+	const showGitPreview = Boolean(gitChange && onOpenGitPreview);
+
+	return (
+		<div className="h-8 shrink-0 border-b border-dark-800 px-6">
+			<div className="mx-auto flex h-full max-w-5xl items-center gap-4">
+				<div className="min-w-0 flex-1 truncate font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
+					{breadcrumb.join(" / ")}
+				</div>
+				{showGitPreview && gitChange ? (
+					<button
+						type="button"
+						onClick={() => onOpenGitPreview?.(gitChange.path)}
+						aria-label={`Open git preview for ${path}`}
+						className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded border border-dark-800 px-2 font-mono-ui text-[11px] uppercase text-dark-300 transition-colors hover:border-dark-600 hover:text-dark-50"
+					>
+						<GitCompare size={13} className="shrink-0" />
+						<span>Git preview</span>
+					</button>
+				) : null}
+			</div>
+		</div>
+	);
+}
+
 export function FileViewer({
 	active = true,
 	tabId,
@@ -120,14 +168,20 @@ export function FileViewer({
 	const treeRevision = useRightPanelRefreshStore((state) =>
 		selectAgentTreeRevision(state, agentId),
 	);
+	const gitRevision = useRightPanelRefreshStore(selectGitRevision);
 	const scrollTop = useTabsStore((state) => state.scrollPositions[tabId] ?? 0);
 	const setScrollPosition = useTabsStore((state) => state.setScrollPosition);
 	const scrollRestoreTrigger = resolveFilePreviewScrollRestoreTrigger({
 		loading,
 	});
+	const reloadTrigger = resolveFilePreviewReloadTrigger({
+		gitRevision,
+		treeRevision,
+	});
+	const openTab = useTabsStore((state) => state.openTab);
 
 	useEffect(() => {
-		void treeRevision;
+		void reloadTrigger;
 
 		let cancelled = false;
 		setLoading(true);
@@ -158,9 +212,18 @@ export function FileViewer({
 		return () => {
 			cancelled = true;
 		};
-	}, [agentId, path, treeRevision]);
+	}, [agentId, path, reloadTrigger]);
 
-	const breadcrumb = useMemo(() => path.split("/"), [path]);
+	const handleOpenGitPreview = useCallback(
+		(gitPath: string) => {
+			openTab({
+				type: "git-diff",
+				id: `git-diff:${gitPath}`,
+				path: gitPath,
+			});
+		},
+		[openTab],
+	);
 
 	useEffect(() => {
 		void scrollRestoreTrigger;
@@ -179,13 +242,11 @@ export function FileViewer({
 
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-dark-950">
-			<div className="h-8 shrink-0 border-b border-dark-800 px-6">
-				<div className="mx-auto flex h-full max-w-5xl items-center gap-4">
-					<div className="min-w-0 font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-						{breadcrumb.join(" / ")}
-					</div>
-				</div>
-			</div>
+			<FilePreviewHeader
+				gitChange={file?.gitChange}
+				onOpenGitPreview={handleOpenGitPreview}
+				path={path}
+			/>
 
 			<div
 				ref={containerRef}
