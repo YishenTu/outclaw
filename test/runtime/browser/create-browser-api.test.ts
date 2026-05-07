@@ -272,6 +272,53 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("includes git preview metadata when an agent file has working tree changes", async () => {
+		const root = createTempDir("outclaw-browser-file-git-change-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		runGit(root, ["init", "--initial-branch=main"]);
+		runGit(root, ["config", "user.email", "test@example.com"]);
+		runGit(root, ["config", "user.name", "Test User"]);
+		writeFileSync(join(agentHomeDir, "AGENTS.md"), "# Agent\n");
+		runGit(root, ["add", "agents/railly/AGENTS.md"]);
+		runGit(root, ["commit", "-m", "Initial commit"]);
+		writeFileSync(join(agentHomeDir, "AGENTS.md"), "# Agent\n\nUpdated\n");
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.readAgentFile("agent-railly", "AGENTS.md"),
+		).resolves.toMatchObject({
+			content: "# Agent\n\nUpdated\n",
+			gitChange: {
+				path: "agents/railly/AGENTS.md",
+				status: "modified",
+			},
+			path: "AGENTS.md",
+		});
+
+		store.close();
+	});
+
 	test("lists cron history for a job, newest first, with hasMore paging", async () => {
 		const root = createTempDir("outclaw-browser-cron-history-");
 		cleanupPaths.push(root);
@@ -2017,6 +2064,52 @@ describe("createBrowserApi", () => {
 			initialized: false,
 			root: childRoot,
 		});
+	});
+
+	test("ignores inherited git hook environment when reading git status", async () => {
+		const root = createTempDir("outclaw-browser-git-env-root-");
+		const inheritedGitDirRoot = createTempDir(
+			"outclaw-browser-git-env-source-",
+		);
+		cleanupPaths.push(root, inheritedGitDirRoot);
+
+		const previousGitDir = process.env.GIT_DIR;
+		const previousGitWorkTree = process.env.GIT_WORK_TREE;
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		runGit(inheritedGitDirRoot, ["init", "--initial-branch=main"]);
+		writeFileSync(join(inheritedGitDirRoot, "README.md"), "source\n");
+		runGit(inheritedGitDirRoot, ["add", "README.md"]);
+
+		process.env.GIT_DIR = join(inheritedGitDirRoot, ".git");
+		process.env.GIT_WORK_TREE = ".";
+
+		try {
+			const api = createBrowserApi({
+				agents: [
+					{
+						agentId: "agent-railly",
+						name: "railly",
+						homeDir: agentHomeDir,
+						providerId: "claude",
+						terminalRunCommand: "",
+					},
+				],
+				getRememberedAgentId: () => undefined,
+				gitRoot: root,
+				homeDir: root,
+				storesByAgent: new Map(),
+			});
+
+			await expect(api.readGitStatus()).resolves.toEqual({
+				initialized: false,
+				root,
+			});
+		} finally {
+			restoreProcessEnvValue("GIT_DIR", previousGitDir);
+			restoreProcessEnvValue("GIT_WORK_TREE", previousGitWorkTree);
+		}
 	});
 });
 
