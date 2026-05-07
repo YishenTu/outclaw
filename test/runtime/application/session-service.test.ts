@@ -316,6 +316,108 @@ describe("SessionService", () => {
 		store.close();
 	});
 
+	test("listSessions returns nextCursor when the requested page is full", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		for (const params of [
+			{ sdkSessionId: "sdk-a", title: "A", timestamp: 300 },
+			{ sdkSessionId: "sdk-b", title: "B", timestamp: 300 },
+			{ sdkSessionId: "sdk-c", title: "C", timestamp: 200 },
+		]) {
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: params.sdkSessionId,
+				title: params.title,
+				model: "sonnet",
+				timestamp: params.timestamp,
+			});
+		}
+
+		const firstPage = sessions.listSessions({ limit: 2 });
+		expect(firstPage.sessions.map((session) => session.sdkSessionId)).toEqual([
+			"sdk-a",
+			"sdk-b",
+		]);
+		expect(firstPage.nextCursor).toEqual({
+			lastActive: 300,
+			sdkSessionId: "sdk-b",
+		});
+
+		const secondPage = sessions.listSessions({
+			cursor: firstPage.nextCursor,
+			limit: 2,
+		});
+		expect(secondPage.sessions.map((session) => session.sdkSessionId)).toEqual([
+			"sdk-c",
+		]);
+		expect(secondPage.nextCursor).toBeUndefined();
+		store.close();
+	});
+
+	test("searchSessions matches titles across the agent provider scope", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		store.upsert({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "sdk-auth",
+			title: "Refactor auth middleware",
+			model: "sonnet",
+			timestamp: 300,
+		});
+		store.upsert({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "sdk-auth-only",
+			title: "Auth handlers",
+			model: "sonnet",
+			timestamp: 200,
+		});
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "sdk-other-provider",
+			title: "Refactor auth middleware",
+			model: "opus",
+			timestamp: 400,
+		});
+
+		expect(
+			sessions
+				.searchSessions({ query: "auth middle" })
+				.sessions.map((session) => session.sdkSessionId),
+		).toEqual(["sdk-auth"]);
+		expect(sessions.searchSessions({ query: "auth foo" })).toEqual({
+			sessions: [],
+		});
+		expect(sessions.searchSessions({ query: "   " })).toEqual({
+			sessions: [],
+		});
+		store.close();
+	});
+
+	test("searchSessions case-folds non-ASCII title tokens", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		store.upsert({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "sdk-munich",
+			title: "MÜNCHEN Überprüfung",
+			model: "sonnet",
+			timestamp: 300,
+		});
+
+		expect(
+			sessions
+				.searchSessions({ query: "münchen überprüfung" })
+				.sessions.map((session) => session.sdkSessionId),
+		).toEqual(["sdk-munich"]);
+		store.close();
+	});
+
 	test("renameSession persists the updated title", () => {
 		const store = createTestStore();
 		const state = new RuntimeState(PROVIDER_ID);

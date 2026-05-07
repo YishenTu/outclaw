@@ -186,6 +186,86 @@ describe("browser stores", () => {
 		).toBeNull();
 	});
 
+	test("sessions store does not rebuild unrelated search state during rename", () => {
+		useSessionsStore.getState().setSessions("agent-a", [SESSION_ALPHA]);
+		const searchState = {
+			query: "beta",
+			sessions: [{ ...SESSION_BETA, agentId: "agent-b" }],
+		};
+		useSessionsStore.setState({
+			searchByAgent: {
+				"agent-b": searchState,
+			},
+		});
+		const previousSearchByAgent = useSessionsStore.getState().searchByAgent;
+
+		useSessionsStore.getState().renameSession(
+			{
+				agentId: "agent-a",
+				providerId: "claude",
+				sdkSessionId: "sdk-alpha",
+			},
+			"Renamed",
+		);
+
+		expect(useSessionsStore.getState().searchByAgent).toBe(
+			previousSearchByAgent,
+		);
+		expect(useSessionsStore.getState().searchByAgent["agent-b"]).toBe(
+			searchState,
+		);
+	});
+
+	test("sessions store appends pages without duplicating and tracks search results", () => {
+		useSessionsStore.getState().setSessions("agent-a", [SESSION_ALPHA], {
+			lastActive: 100,
+			sdkSessionId: "sdk-alpha",
+		});
+		useSessionsStore
+			.getState()
+			.appendSessions("agent-a", [SESSION_ALPHA, SESSION_BETA], {
+				lastActive: 90,
+				sdkSessionId: "sdk-beta",
+			});
+
+		expect(useSessionsStore.getState().sessionsByAgent["agent-a"]).toEqual([
+			SESSION_ALPHA,
+			SESSION_BETA,
+		]);
+		expect(useSessionsStore.getState().nextCursorByAgent["agent-a"]).toEqual({
+			lastActive: 90,
+			sdkSessionId: "sdk-beta",
+		});
+
+		useSessionsStore
+			.getState()
+			.setSearchResults("agent-a", "alpha", [SESSION_ALPHA]);
+		useSessionsStore
+			.getState()
+			.appendSearchResults("agent-a", "alpha", [SESSION_ALPHA, SESSION_BETA], {
+				lastActive: 90,
+				sdkSessionId: "sdk-beta",
+			});
+		expect(useSessionsStore.getState().searchByAgent["agent-a"]).toEqual({
+			query: "alpha",
+			sessions: [SESSION_ALPHA, SESSION_BETA],
+			nextCursor: {
+				lastActive: 90,
+				sdkSessionId: "sdk-beta",
+			},
+		});
+		useSessionsStore
+			.getState()
+			.appendSearchResults("agent-a", "stale", [SESSION_ALPHA]);
+		expect(
+			useSessionsStore.getState().searchByAgent["agent-a"]?.sessions,
+		).toEqual([SESSION_ALPHA, SESSION_BETA]);
+		useSessionsStore.getState().clearSearch("agent-a");
+		expect(
+			useSessionsStore.getState().searchByAgent["agent-a"],
+		).toBeUndefined();
+	});
+
 	test("sessions store removes sessions across agents by sdk session id", () => {
 		const REMOTE_SESSION: SessionEntry = {
 			agentId: "agent-b",

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { SessionCursor } from "../../../common/protocol.ts";
 
 export interface SessionRef {
 	agentId: string;
@@ -15,9 +16,36 @@ export interface SessionEntry extends SessionRef {
 export interface SessionsState {
 	sessionsByAgent: Record<string, SessionEntry[]>;
 	activeSessionByAgent: Record<string, SessionRef | null>;
+	nextCursorByAgent: Record<string, SessionCursor | undefined>;
+	searchByAgent: Record<
+		string,
+		{ query: string; sessions: SessionEntry[]; nextCursor?: SessionCursor }
+	>;
 
-	setSessions: (agentId: string, sessions: SessionEntry[]) => void;
+	setSessions: (
+		agentId: string,
+		sessions: SessionEntry[],
+		nextCursor?: SessionCursor,
+	) => void;
+	appendSessions: (
+		agentId: string,
+		sessions: SessionEntry[],
+		nextCursor?: SessionCursor,
+	) => void;
 	setActiveSession: (agentId: string, session: SessionRef | null) => void;
+	setSearchResults: (
+		agentId: string,
+		query: string,
+		sessions: SessionEntry[],
+		nextCursor?: SessionCursor,
+	) => void;
+	appendSearchResults: (
+		agentId: string,
+		query: string,
+		sessions: SessionEntry[],
+		nextCursor?: SessionCursor,
+	) => void;
+	clearSearch: (agentId: string) => void;
 	renameSession: (session: SessionRef, title: string) => void;
 	deleteSession: (session: SessionRef) => void;
 	deleteSessionBySdkId: (sdkSessionId: string) => void;
@@ -34,11 +62,31 @@ function matchesSession(left: SessionRef, right: SessionRef): boolean {
 export const useSessionsStore = create<SessionsState>((set) => ({
 	sessionsByAgent: {},
 	activeSessionByAgent: {},
-	setSessions: (agentId, sessions) =>
+	nextCursorByAgent: {},
+	searchByAgent: {},
+	setSessions: (agentId, sessions, nextCursor) =>
 		set((state) => ({
+			nextCursorByAgent: {
+				...state.nextCursorByAgent,
+				[agentId]: nextCursor,
+			},
 			sessionsByAgent: {
 				...state.sessionsByAgent,
 				[agentId]: sessions,
+			},
+		})),
+	appendSessions: (agentId, sessions, nextCursor) =>
+		set((state) => ({
+			nextCursorByAgent: {
+				...state.nextCursorByAgent,
+				[agentId]: nextCursor,
+			},
+			sessionsByAgent: {
+				...state.sessionsByAgent,
+				[agentId]: mergeSessions(
+					state.sessionsByAgent[agentId] ?? [],
+					sessions,
+				),
 			},
 		})),
 	setActiveSession: (agentId, session) =>
@@ -48,24 +96,83 @@ export const useSessionsStore = create<SessionsState>((set) => ({
 				[agentId]: session,
 			},
 		})),
-	renameSession: (session, title) =>
+	setSearchResults: (agentId, query, sessions, nextCursor) =>
 		set((state) => ({
-			sessionsByAgent: {
-				...state.sessionsByAgent,
-				[session.agentId]:
-					state.sessionsByAgent[session.agentId]?.map((entry) =>
-						matchesSession(entry, session) ? { ...entry, title } : entry,
-					) ?? [],
+			searchByAgent: {
+				...state.searchByAgent,
+				[agentId]: {
+					query,
+					sessions,
+					nextCursor,
+				},
 			},
 		})),
+	appendSearchResults: (agentId, query, sessions, nextCursor) =>
+		set((state) => {
+			const current = state.searchByAgent[agentId];
+			if (!current || current.query !== query) {
+				return state;
+			}
+			return {
+				searchByAgent: {
+					...state.searchByAgent,
+					[agentId]: {
+						query,
+						sessions: mergeSessions(current.sessions, sessions),
+						nextCursor,
+					},
+				},
+			};
+		}),
+	clearSearch: (agentId) =>
+		set((state) => {
+			const { [agentId]: _removed, ...searchByAgent } = state.searchByAgent;
+			return { searchByAgent };
+		}),
+	renameSession: (session, title) =>
+		set((state) => {
+			const activeSearch = state.searchByAgent[session.agentId];
+			return {
+				searchByAgent: activeSearch
+					? {
+							...state.searchByAgent,
+							[session.agentId]: {
+								...activeSearch,
+								sessions: activeSearch.sessions.map((entry) =>
+									matchesSession(entry, session) ? { ...entry, title } : entry,
+								),
+							},
+						}
+					: state.searchByAgent,
+				sessionsByAgent: {
+					...state.sessionsByAgent,
+					[session.agentId]:
+						state.sessionsByAgent[session.agentId]?.map((entry) =>
+							matchesSession(entry, session) ? { ...entry, title } : entry,
+						) ?? [],
+				},
+			};
+		}),
 	deleteSession: (session) =>
 		set((state) => {
 			const nextSessions =
 				state.sessionsByAgent[session.agentId]?.filter(
 					(entry) => !matchesSession(entry, session),
 				) ?? [];
+			const nextSearch = state.searchByAgent[session.agentId];
 			const activeSession = state.activeSessionByAgent[session.agentId];
 			return {
+				searchByAgent: nextSearch
+					? {
+							...state.searchByAgent,
+							[session.agentId]: {
+								...nextSearch,
+								sessions: nextSearch.sessions.filter(
+									(entry) => !matchesSession(entry, session),
+								),
+							},
+						}
+					: state.searchByAgent,
 				sessionsByAgent: {
 					...state.sessionsByAgent,
 					[session.agentId]: nextSessions,
@@ -87,6 +194,15 @@ export const useSessionsStore = create<SessionsState>((set) => ({
 					(entry) => entry.sdkSessionId !== sdkSessionId,
 				);
 			}
+			const nextSearchByAgent: SessionsState["searchByAgent"] = {};
+			for (const [agentId, search] of Object.entries(state.searchByAgent)) {
+				nextSearchByAgent[agentId] = {
+					...search,
+					sessions: search.sessions.filter(
+						(entry) => entry.sdkSessionId !== sdkSessionId,
+					),
+				};
+			}
 			const nextActiveByAgent: Record<string, SessionRef | null> = {};
 			for (const [agentId, active] of Object.entries(
 				state.activeSessionByAgent,
@@ -95,8 +211,31 @@ export const useSessionsStore = create<SessionsState>((set) => ({
 					active && active.sdkSessionId === sdkSessionId ? null : active;
 			}
 			return {
+				searchByAgent: nextSearchByAgent,
 				sessionsByAgent: nextSessionsByAgent,
 				activeSessionByAgent: nextActiveByAgent,
 			};
 		}),
 }));
+
+function mergeSessions(
+	current: SessionEntry[],
+	incoming: SessionEntry[],
+): SessionEntry[] {
+	const merged = [...current];
+	const seen = new Set(
+		current.map(
+			(session) =>
+				`${session.agentId}\u0000${session.providerId}\u0000${session.sdkSessionId}`,
+		),
+	);
+	for (const session of incoming) {
+		const key = `${session.agentId}\u0000${session.providerId}\u0000${session.sdkSessionId}`;
+		if (seen.has(key)) {
+			continue;
+		}
+		merged.push(session);
+		seen.add(key);
+	}
+	return merged;
+}

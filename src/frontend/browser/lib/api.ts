@@ -14,8 +14,10 @@ import type {
 	BrowserInboxResponse,
 	BrowserInboxRestoreResponse,
 	BrowserLatencyResponse,
+	BrowserSessionPageResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
+	SessionCursor,
 	WorkspaceFileEntry,
 } from "../../../common/protocol.ts";
 
@@ -32,6 +34,29 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 
 export async function fetchSidebarSummary(): Promise<BrowserAgentsResponse> {
 	return parseJsonResponse(await fetch("/api/agents"));
+}
+
+export async function fetchAgentSessions(
+	agentId: string,
+	params: {
+		limit: number;
+		cursor?: SessionCursor;
+		query?: string;
+	},
+): Promise<BrowserSessionPageResponse> {
+	const url = new URL(
+		`/api/agents/${encodeURIComponent(agentId)}/sessions`,
+		window.location.origin,
+	);
+	url.searchParams.set("limit", String(params.limit));
+	if (params.cursor) {
+		url.searchParams.set("cursorLastActive", String(params.cursor.lastActive));
+		url.searchParams.set("cursorSdkSessionId", params.cursor.sdkSessionId);
+	}
+	if (params.query?.trim()) {
+		url.searchParams.set("query", params.query.trim());
+	}
+	return parseJsonResponse(await fetch(url));
 }
 
 export async function fetchRuntimeLatency(

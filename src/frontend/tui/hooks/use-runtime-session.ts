@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
 	ServerEvent,
+	SessionCursor,
 	SkillInfo,
 	WorkspaceFileEntry,
 } from "../../../common/protocol.ts";
@@ -87,6 +88,7 @@ export function useRuntimeSession(
 	const skillsRequestedRef = useRef(false);
 	const lastFilesRequestAtRef = useRef<number | null>(null);
 	const agentNameRef = useRef<string | undefined>(undefined);
+	const pendingSessionSearchQueryRef = useRef<string | null>(null);
 	const wsRef = useRef<WebSocket | null>(null);
 	const onTranscriptResetRef = useRef(options.onTranscriptReset);
 
@@ -162,8 +164,20 @@ export function useRuntimeSession(
 			}
 			if (event.type === "agent_switched") {
 				setAgentMenuData(null);
+				setMenuData(null);
+				pendingSessionSearchQueryRef.current = null;
 				agentNameRef.current = event.name;
 				setRuntimeInfo((previous) => projectRuntimeInfoEvent(previous, event));
+			}
+			if (
+				event.type === "session_search_result" &&
+				pendingSessionSearchQueryRef.current !== null &&
+				event.query !== pendingSessionSearchQueryRef.current
+			) {
+				return;
+			}
+			if (event.type === "session_list" || event.type === "session_menu") {
+				pendingSessionSearchQueryRef.current = null;
 			}
 
 			if (event.type === "runtime_status") {
@@ -278,16 +292,52 @@ export function useRuntimeSession(
 
 	const dismissSessionMenu = useCallback(() => {
 		setMenuData(null);
+		pendingSessionSearchQueryRef.current = null;
 	}, []);
 
 	const dismissAgentMenu = useCallback(() => {
 		setAgentMenuData(null);
 	}, []);
 
+	const loadMoreSessions = useCallback(
+		(cursor: SessionCursor, query?: string) => {
+			const trimmed = query?.trim();
+			if (trimmed) {
+				pendingSessionSearchQueryRef.current = trimmed;
+				return runCommand(
+					`/session search --limit 10 --cursor ${cursor.lastActive} ${cursor.sdkSessionId} -- ${trimmed}`,
+				);
+			}
+			return runCommand(
+				`/session list 10 ${cursor.lastActive} ${cursor.sdkSessionId}`,
+			);
+		},
+		[runCommand],
+	);
+
+	const searchSessions = useCallback(
+		(query: string) => {
+			const trimmed = query.trim();
+			if (!trimmed) {
+				return false;
+			}
+			pendingSessionSearchQueryRef.current = trimmed;
+			return runCommand(`/session search --limit 10 -- ${trimmed}`);
+		},
+		[runCommand],
+	);
+
+	const clearSessionSearch = useCallback(() => {
+		pendingSessionSearchQueryRef.current = null;
+		return runCommand("/session list 10");
+	}, [runCommand]);
+
 	return {
 		agentMenuData,
+		clearSessionSearch,
 		dismissAgentMenu,
 		dismissSessionMenu,
+		loadMoreSessions,
 		menuData,
 		requestFiles,
 		requestSkills,
@@ -296,6 +346,7 @@ export function useRuntimeSession(
 		runtimeInfo,
 		skills,
 		status,
+		searchSessions,
 		tuiState,
 		workspaceFiles,
 	};

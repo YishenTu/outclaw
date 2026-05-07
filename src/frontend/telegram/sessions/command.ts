@@ -6,7 +6,20 @@ interface TelegramSessionCommandEvent {
 export interface TelegramSessionCommandRequest {
 	command: string;
 	expectedTypes: ReadonlySet<string>;
+	renderMode?: "list" | "search";
+	searchQuery?: string;
 	showMenu: boolean;
+}
+
+export const TELEGRAM_SESSION_PAGE_SIZE = 5;
+export const TELEGRAM_SESSION_PREFETCH_PAGES = 2;
+
+export function sessionFetchLimitForPage(page: number): number {
+	// Telegram callback_data is too small to carry cursors and search text, so page callbacks refetch the prefix needed to render the requested page.
+	return (
+		(Math.max(page, 0) + TELEGRAM_SESSION_PREFETCH_PAGES) *
+		TELEGRAM_SESSION_PAGE_SIZE
+	);
 }
 
 function formatError(event: TelegramSessionCommandEvent): string | undefined {
@@ -23,19 +36,37 @@ export function buildSessionCommandRequest(
 		return {
 			command: "/session",
 			expectedTypes: new Set(["session_menu"]),
+			renderMode: "list",
 			showMenu: true,
 		};
 	}
 
 	const firstToken = trimmed.split(/\s+/, 1)[0];
+	if (firstToken === "list") {
+		return {
+			command: `/session list ${sessionFetchLimitForPage(0)}`,
+			expectedTypes: new Set(["session_list"]),
+			renderMode: "list",
+			showMenu: true,
+		};
+	}
+	if (firstToken === "search") {
+		const query = trimmed.slice("search".length).trim();
+		return {
+			command: `/session search --limit ${sessionFetchLimitForPage(0)} -- ${query}`,
+			expectedTypes: new Set(["session_search_result"]),
+			renderMode: "search",
+			searchQuery: query,
+			showMenu: true,
+		};
+	}
+
 	const expectedTypes =
-		firstToken === "list"
-			? new Set(["session_list"])
-			: firstToken === "delete"
-				? new Set(["session_deleted"])
-				: firstToken === "rename"
-					? new Set(["session_renamed"])
-					: new Set(["session_switched"]);
+		firstToken === "delete"
+			? new Set(["session_deleted"])
+			: firstToken === "rename"
+				? new Set(["session_renamed"])
+				: new Set(["session_switched"]);
 
 	return {
 		command: `/session ${trimmed}`,

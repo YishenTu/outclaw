@@ -1,4 +1,6 @@
 import { Database } from "bun:sqlite";
+import type { SessionCursor } from "../../common/protocol.ts";
+import { addSessionCursorCondition } from "./session-cursor.ts";
 import {
 	mapSessionRows,
 	type SessionDatabaseRow,
@@ -6,10 +8,16 @@ import {
 	type SessionTag,
 } from "./session-store/session-store-records.ts";
 import { ensureSessionStoreSchema } from "./session-store/session-store-schema.ts";
+import {
+	normalizeTitleSearchTokens,
+	titleMatchesSearchTokens,
+} from "./title-search.ts";
 
 interface SessionQueryListOptions {
 	agentId?: string;
+	cursor?: SessionCursor;
 	limit?: number;
+	providerId?: string;
 	tag: SessionTag;
 }
 
@@ -22,6 +30,15 @@ interface SessionQueryResolveOptions {
 interface SessionQuerySearchOptions {
 	agentId?: string;
 	limit?: number;
+	query: string;
+	tag: SessionTag;
+}
+
+interface SessionQuerySearchByTitleOptions {
+	agentId?: string;
+	cursor?: SessionCursor;
+	limit?: number;
+	providerId?: string;
 	query: string;
 	tag: SessionTag;
 }
@@ -72,6 +89,11 @@ export class SessionQuery {
 			conditions.push("agent_id = $agentId");
 			params.$agentId = options.agentId;
 		}
+		if (options.providerId) {
+			conditions.push("provider_id = $providerId");
+			params.$providerId = options.providerId;
+		}
+		addSessionCursorCondition(conditions, params, options.cursor);
 
 		return mapSessionRows(
 			this.db
@@ -88,11 +110,57 @@ export class SessionQuery {
 						last_active
 					FROM sessions
 					WHERE ${conditions.join(" AND ")}
-					ORDER BY last_active DESC
+					ORDER BY last_active DESC, sdk_session_id ASC
 					LIMIT $limit`,
 				)
 				.all(params) as Parameters<typeof mapSessionRows>[0],
 		);
+	}
+
+	searchByTitle(options: SessionQuerySearchByTitleOptions): SessionRow[] {
+		const tokens = normalizeTitleSearchTokens(options.query);
+		if (tokens.length === 0) {
+			return [];
+		}
+
+		const conditions = ["tag = $tag"];
+		const params: Record<string, string | number> = {
+			$tag: options.tag,
+		};
+
+		if (options.agentId) {
+			conditions.push("agent_id = $agentId");
+			params.$agentId = options.agentId;
+		}
+		if (options.providerId) {
+			conditions.push("provider_id = $providerId");
+			params.$providerId = options.providerId;
+		}
+		addSessionCursorCondition(conditions, params, options.cursor);
+
+		const matches = mapSessionRows(
+			this.db
+				.query(
+					`SELECT
+						agent_id,
+						provider_id,
+						sdk_session_id,
+						title,
+						model,
+						source,
+						tag,
+						created_at,
+						last_active
+						FROM sessions
+						WHERE ${conditions.join(" AND ")}
+						ORDER BY last_active DESC, sdk_session_id ASC`,
+				)
+				.all(params) as Parameters<typeof mapSessionRows>[0],
+		).filter((row) => titleMatchesSearchTokens(row.title, tokens));
+
+		return options.limit === undefined
+			? matches
+			: matches.slice(0, options.limit);
 	}
 
 	listFailedCronRuns(options: FailedCronRunListOptions): SessionRow[] {

@@ -14,7 +14,11 @@ describe("AgentItem", () => {
 				isDragging={false}
 				isExpanded={false}
 				onAttachRow={() => {}}
+				onClearSearch={() => {}}
+				onLoadMore={() => {}}
+				onLoadMoreSearch={() => {}}
 				onRowPointerDown={() => {}}
+				onSearch={() => {}}
 				onToggle={() => {}}
 				sessions={[]}
 			/>,
@@ -40,7 +44,11 @@ describe("AgentItem", () => {
 				isDragging={true}
 				isExpanded={true}
 				onAttachRow={() => {}}
+				onClearSearch={() => {}}
+				onLoadMore={() => {}}
+				onLoadMoreSearch={() => {}}
 				onRowPointerDown={() => {}}
+				onSearch={() => {}}
 				onToggle={() => {}}
 				sessions={[]}
 			/>,
@@ -66,7 +74,11 @@ describe("AgentItem", () => {
 				isDragging={false}
 				isExpanded={true}
 				onAttachRow={() => {}}
+				onClearSearch={() => {}}
+				onLoadMore={() => {}}
+				onLoadMoreSearch={() => {}}
 				onRowPointerDown={() => {}}
+				onSearch={() => {}}
 				onToggle={() => {}}
 				sessions={[
 					{
@@ -96,5 +108,44 @@ describe("AgentItem", () => {
 		expect(html).toContain("bg-brand");
 		expect(html).toContain("bg-dark-100");
 		expect(html).toContain("bottom-0");
+	});
+
+	test("renders active search results with a load-more affordance", () => {
+		const html = renderToStaticMarkup(
+			<AgentItem
+				activeSession={null}
+				agent={{ agentId: "agent-railly", name: "railly" }}
+				dropIndicator={null}
+				isActive={true}
+				isDragging={false}
+				isExpanded={true}
+				onAttachRow={() => {}}
+				onClearSearch={() => {}}
+				onLoadMore={() => {}}
+				onLoadMoreSearch={() => {}}
+				onRowPointerDown={() => {}}
+				onSearch={() => {}}
+				onToggle={() => {}}
+				searchState={{
+					query: "auth",
+					nextCursor: { lastActive: 1, sdkSessionId: "sdk-auth" },
+					sessions: [
+						{
+							agentId: "agent-railly",
+							providerId: "mock",
+							sdkSessionId: "sdk-auth",
+							title: "Auth work",
+							model: "mock-model",
+							lastActive: Date.now(),
+						},
+					],
+				}}
+				sessions={[]}
+			/>,
+		);
+
+		expect(html).toContain("Auth work");
+		expect(html).toContain("Load more results");
+		expect(html).not.toContain("No matching sessions.");
 	});
 });

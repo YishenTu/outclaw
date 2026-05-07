@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ServerEvent } from "../../../src/common/protocol.ts";
+import {
+	SESSION_SEARCH_QUERY_MAX_LENGTH,
+	sessionSearchQueryTooLongMessage,
+} from "../../../src/runtime/application/session-search-query.ts";
 import { SessionService } from "../../../src/runtime/application/session-service.ts";
 import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
 import { handleRuntimeCommand } from "../../../src/runtime/commands/handle-command.ts";
@@ -10,6 +14,7 @@ import {
 } from "../../../src/runtime/transport/client-hub.ts";
 
 const PROVIDER_ID = "mock";
+const OTHER_PROVIDER_ID = "claude";
 const stores: SessionStore[] = [];
 
 function mockWs(): WsClient & { events: () => ServerEvent[] } {
@@ -232,6 +237,116 @@ describe("handleRuntimeCommand", () => {
 			const event = ws.events().find((e) => e.type === "session_list");
 			expect(event).toBeDefined();
 			expect((event as { sessions: unknown[] }).sessions).toEqual([]);
+		});
+
+		test("/session list accepts a limit and cursor", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state, store);
+			hub.add(ws);
+
+			for (const params of [
+				{ sdkSessionId: "sdk-a", timestamp: 300 },
+				{ sdkSessionId: "sdk-b", timestamp: 300 },
+				{ sdkSessionId: "sdk-c", timestamp: 200 },
+			]) {
+				store.upsert({
+					providerId: PROVIDER_ID,
+					sdkSessionId: params.sdkSessionId,
+					title: params.sdkSessionId,
+					model: "sonnet",
+					timestamp: params.timestamp,
+				});
+			}
+
+			await handleRuntimeCommand({
+				command: "/session list 2 300 sdk-b",
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async () => {},
+				sessions,
+				state,
+				ws,
+			});
+
+			const event = ws.events().find((e) => e.type === "session_list");
+			expect(
+				(event as { sessions: Array<{ sdkSessionId: string }> }).sessions.map(
+					(session) => session.sdkSessionId,
+				),
+			).toEqual(["sdk-c"]);
+		});
+
+		test("/session search returns title search results", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state, store);
+			hub.add(ws);
+
+			store.upsert({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "sdk-auth",
+				title: "Refactor auth middleware",
+				model: "sonnet",
+				timestamp: 300,
+			});
+			store.upsert({
+				providerId: OTHER_PROVIDER_ID,
+				sdkSessionId: "sdk-other",
+				title: "Refactor auth middleware",
+				model: "opus",
+				timestamp: 400,
+			});
+
+			await handleRuntimeCommand({
+				command: "/session search auth middle",
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async () => {},
+				sessions,
+				state,
+				ws,
+			});
+
+			const event = ws.events().find((e) => e.type === "session_search_result");
+			expect(event).toMatchObject({
+				type: "session_search_result",
+				query: "auth middle",
+				sessions: [
+					{
+						sdkSessionId: "sdk-auth",
+						title: "Refactor auth middleware",
+					},
+				],
+			});
+		});
+
+		test("/session list and search reject malformed pagination arguments", async () => {
+			const { ws, run } = setup();
+			await run("/session list two");
+			await run("/session search --limit nope auth");
+			await run(
+				`/session search ${"a".repeat(SESSION_SEARCH_QUERY_MAX_LENGTH + 1)}`,
+			);
+
+			expect(
+				ws
+					.events()
+					.filter((event) => event.type === "error")
+					.map((event) => {
+						return (event as { message: string }).message;
+					}),
+			).toEqual([
+				"Usage: /session list [limit] [cursorLastActive cursorSdkId]",
+				"Usage: /session search [--limit n] [--cursor lastActive sdkSessionId] <query>",
+				sessionSearchQueryTooLongMessage(),
+			]);
 		});
 
 		test("/session delete sends session_deleted", async () => {

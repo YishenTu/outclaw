@@ -12,6 +12,7 @@ describe("Telegram session commands", () => {
 			expect(request).toEqual({
 				command: "/session",
 				expectedTypes: new Set(["session_menu"]),
+				renderMode: "list",
 				showMenu: true,
 			});
 		});
@@ -20,9 +21,22 @@ describe("Telegram session commands", () => {
 			const request = buildSessionCommandRequest(" list ");
 
 			expect(request).toEqual({
-				command: "/session list",
+				command: "/session list 10",
 				expectedTypes: new Set(["session_list"]),
-				showMenu: false,
+				renderMode: "list",
+				showMenu: true,
+			});
+		});
+
+		test("builds the search command with a bounded first-page fetch", () => {
+			const request = buildSessionCommandRequest(" search auth middle ");
+
+			expect(request).toEqual({
+				command: "/session search --limit 10 -- auth middle",
+				expectedTypes: new Set(["session_search_result"]),
+				renderMode: "search",
+				searchQuery: "auth middle",
+				showMenu: true,
 			});
 		});
 

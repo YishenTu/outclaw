@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
 	buildSessionButtons,
+	buildSessionPageView,
+	extractSearchQueryFromSessionPageText,
 	formatTimeCompact,
 	parseSessionCallback,
 } from "../../../../src/frontend/telegram/sessions/menu.ts";
@@ -57,11 +59,75 @@ describe("parseSessionCallback", () => {
 		});
 	});
 
+	test("parses page and noop callbacks", () => {
+		expect(parseSessionCallback("sl:2")).toEqual({
+			type: "page",
+			mode: "list",
+			page: 2,
+		});
+		expect(parseSessionCallback("sq:3")).toEqual({
+			type: "page",
+			mode: "search",
+			page: 3,
+		});
+		expect(parseSessionCallback("sn")).toEqual({ type: "noop" });
+	});
+
 	test("returns undefined for unknown prefix", () => {
 		expect(parseSessionCallback("xx:something")).toBeUndefined();
 	});
 
 	test("returns undefined for empty string", () => {
 		expect(parseSessionCallback("")).toBeUndefined();
+	});
+});
+
+describe("buildSessionPageView", () => {
+	test("renders five sessions per page with next navigation", () => {
+		const sessions = Array.from({ length: 6 }, (_value, index) => ({
+			sdkSessionId: `sdk-${index}`,
+			title: `Chat ${index}`,
+			lastActive: Date.now() - index,
+		}));
+
+		const view = buildSessionPageView({
+			activeSessionId: "sdk-0",
+			mode: "list",
+			nextCursor: { lastActive: 1, sdkSessionId: "sdk-5" },
+			page: 0,
+			sessions,
+		});
+
+		expect(view.text).toContain("Sessions:");
+		expect(view.text).toContain("Chat 0");
+		expect(view.text).not.toContain("Chat 5");
+		expect(view.rows.at(-1)).toEqual([
+			{ label: "1/2+", data: "sn" },
+			{ label: "Next", data: "sl:1" },
+		]);
+	});
+
+	test("renders search headers and extracts the query from message text", () => {
+		const view = buildSessionPageView({
+			mode: "search",
+			page: 1,
+			query: "auth   middle",
+			sessions: [
+				{
+					sdkSessionId: "sdk-0",
+					title: "Auth middleware",
+					lastActive: Date.now(),
+				},
+			],
+		});
+
+		expect(view.text).toStartWith("Session search: auth middle");
+		expect(extractSearchQueryFromSessionPageText(view.text)).toBe(
+			"auth middle",
+		);
+		expect(view.rows.at(-1)).toEqual([
+			{ label: "Prev", data: "sq:0" },
+			{ label: "2/2", data: "sn" },
+		]);
 	});
 });

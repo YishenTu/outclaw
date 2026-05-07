@@ -97,6 +97,145 @@ describe("TUI session state", () => {
 		});
 	});
 
+	test("appends paginated session_list events and replaces with search results", () => {
+		const appended = applySessionEventToMenuData(MENU_DATA, {
+			type: "session_list",
+			activeSessionId: "sdk-active",
+			nextCursor: { lastActive: 800, sdkSessionId: "sdk-third" },
+			sessions: [
+				{
+					sdkSessionId: "sdk-other",
+					title: "Other chat",
+					model: "sonnet",
+					lastActive: 900,
+				},
+				{
+					sdkSessionId: "sdk-third",
+					title: "Third chat",
+					model: "haiku",
+					lastActive: 800,
+				},
+			],
+		});
+
+		expect(appended).toMatchObject({
+			activeSessionId: "sdk-active",
+			nextCursor: { lastActive: 800, sdkSessionId: "sdk-third" },
+			sessions: [
+				MENU_DATA.sessions[0],
+				MENU_DATA.sessions[1],
+				{
+					sdkSessionId: "sdk-third",
+					title: "Third chat",
+					model: "haiku",
+					lastActive: 800,
+				},
+			],
+		});
+
+		expect(
+			applySessionEventToMenuData(appended, {
+				type: "session_search_result",
+				query: "third",
+				sessions: [
+					{
+						sdkSessionId: "sdk-third",
+						title: "Third chat",
+						model: "haiku",
+						lastActive: 800,
+					},
+				],
+			}),
+		).toEqual({
+			activeSessionId: "sdk-active",
+			nextCursor: undefined,
+			searchQuery: "third",
+			sessions: [
+				{
+					sdkSessionId: "sdk-third",
+					title: "Third chat",
+					model: "haiku",
+					lastActive: 800,
+				},
+			],
+		});
+
+		expect(
+			applySessionEventToMenuData(null, {
+				type: "session_search_result",
+				query: "third",
+				nextCursor: { lastActive: 700, sdkSessionId: "sdk-fourth" },
+				sessions: [
+					{
+						sdkSessionId: "sdk-third",
+						title: "Third chat",
+						model: "haiku",
+						lastActive: 800,
+					},
+				],
+			}),
+		).toEqual({
+			nextCursor: { lastActive: 700, sdkSessionId: "sdk-fourth" },
+			searchQuery: "third",
+			sessions: [
+				{
+					sdkSessionId: "sdk-third",
+					title: "Third chat",
+					model: "haiku",
+					lastActive: 800,
+				},
+			],
+		});
+
+		expect(
+			applySessionEventToMenuData(
+				{
+					activeSessionId: "sdk-active",
+					searchQuery: "third",
+					nextCursor: { lastActive: 700, sdkSessionId: "sdk-fourth" },
+					sessions: [
+						{
+							sdkSessionId: "sdk-third",
+							title: "Third chat",
+							model: "haiku",
+							lastActive: 800,
+						},
+					],
+				},
+				{
+					type: "session_search_result",
+					query: "third",
+					sessions: [
+						{
+							sdkSessionId: "sdk-fourth",
+							title: "Fourth chat",
+							model: "sonnet",
+							lastActive: 700,
+						},
+					],
+				},
+			),
+		).toEqual({
+			activeSessionId: "sdk-active",
+			nextCursor: undefined,
+			searchQuery: "third",
+			sessions: [
+				{
+					sdkSessionId: "sdk-third",
+					title: "Third chat",
+					model: "haiku",
+					lastActive: 800,
+				},
+				{
+					sdkSessionId: "sdk-fourth",
+					title: "Fourth chat",
+					model: "sonnet",
+					lastActive: 700,
+				},
+			],
+		});
+	});
+
 	test("disables the global stop shortcut while the menu is visible", () => {
 		expect(shouldEnableGlobalStopShortcut(true, false)).toBe(true);
 		expect(shouldEnableGlobalStopShortcut(true, true)).toBe(false);

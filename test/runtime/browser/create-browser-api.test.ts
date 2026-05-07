@@ -89,6 +89,78 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("lists and searches paginated agent sessions", async () => {
+		const root = createTempDir("outclaw-browser-sessions-api-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		for (const params of [
+			{
+				sdkSessionId: "sdk-a",
+				title: "Refactor auth middleware",
+				timestamp: 300,
+			},
+			{ sdkSessionId: "sdk-b", title: "Auth handlers", timestamp: 200 },
+			{ sdkSessionId: "sdk-c", title: "Billing work", timestamp: 100 },
+		]) {
+			store.upsert({
+				providerId: "claude",
+				sdkSessionId: params.sdkSessionId,
+				title: params.title,
+				model: "opus",
+				timestamp: params.timestamp,
+			});
+		}
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		const firstPage = await api.listAgentSessions("agent-railly", { limit: 2 });
+		expect(firstPage.sessions.map((session) => session.sdkSessionId)).toEqual([
+			"sdk-a",
+			"sdk-b",
+		]);
+		expect(firstPage.nextCursor).toEqual({
+			lastActive: 200,
+			sdkSessionId: "sdk-b",
+		});
+		expect(
+			(
+				await api.listAgentSessions("agent-railly", {
+					cursor: firstPage.nextCursor,
+					limit: 2,
+				})
+			).sessions.map((session) => session.sdkSessionId),
+		).toEqual(["sdk-c"]);
+		expect(
+			(
+				await api.listAgentSessions("agent-railly", {
+					limit: 10,
+					query: "auth middle",
+				})
+			).sessions.map((session) => session.sdkSessionId),
+		).toEqual(["sdk-a"]);
+
+		store.close();
+	});
+
 	test("sorts sidebar agents by name while preserving provider active sessions", () => {
 		const root = createTempDir("outclaw-browser-api-sort-");
 		cleanupPaths.push(root);

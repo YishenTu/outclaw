@@ -870,6 +870,80 @@ describe("TuiApp", () => {
 		}
 	});
 
+	test("session search pagination keeps using the search command", async () => {
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+		const { app, socket, stdin } = await renderApp();
+
+		try {
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_menu",
+					activeSessionId: "sdk-active",
+					sessions: [
+						{
+							sdkSessionId: "sdk-active",
+							title: "Active session",
+							model: "opus",
+							lastActive: 30,
+						},
+						{
+							sdkSessionId: "sdk-other",
+							title: "Other session",
+							model: "sonnet",
+							lastActive: 20,
+						},
+					],
+				}),
+			});
+			await flushUpdates();
+
+			await typeText(stdin, "/");
+			await typeText(stdin, "auth");
+			await new Promise((resolve) => setTimeout(resolve, 180));
+			await flushUpdates();
+
+			expect(socket.sent).toContain(
+				'{"type":"command","command":"/session search --limit 10 -- auth"}',
+			);
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_search_result",
+					query: "auth",
+					sessions: [
+						{
+							sdkSessionId: "sdk-auth-1",
+							title: "Auth first",
+							model: "opus",
+							lastActive: 30,
+						},
+						{
+							sdkSessionId: "sdk-auth-2",
+							title: "Auth second",
+							model: "sonnet",
+							lastActive: 20,
+						},
+					],
+					nextCursor: { lastActive: 20, sdkSessionId: "sdk-auth-2" },
+				}),
+			});
+			await flushUpdates();
+
+			await pressDown(stdin);
+
+			expect(socket.sent).toContain(
+				'{"type":"command","command":"/session search --limit 10 --cursor 20 sdk-auth-2 -- auth"}',
+			);
+			expect(socket.sent).not.toContain(
+				'{"type":"command","command":"/session list 10 20 sdk-auth-2"}',
+			);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
 	test("agent menu actions send agent switch commands through the runtime", async () => {
 		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 

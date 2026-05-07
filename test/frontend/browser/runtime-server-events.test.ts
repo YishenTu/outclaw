@@ -4,6 +4,7 @@ import {
 	applySidebarSummary,
 	formatSessionInfoSummary,
 	formatSessionListSummary,
+	formatSessionSearchSummary,
 	handleBrowserServerEvent,
 	inferImageMediaTypeFromPath,
 } from "../../../src/frontend/browser/events/runtime-server-events.ts";
@@ -143,6 +144,20 @@ describe("browser runtime server events", () => {
 			}),
 		).toBe("Sessions\nAlpha  opus");
 		expect(
+			formatSessionSearchSummary({
+				type: "session_search_result",
+				query: "alpha",
+				sessions: [
+					{
+						sdkSessionId: "sdk-a",
+						title: "Alpha",
+						model: "opus",
+						lastActive: 1,
+					},
+				],
+			}),
+		).toBe('Session search "alpha"\nAlpha  opus');
+		expect(
 			formatSessionInfoSummary({
 				type: "session_info",
 				sdkSessionId: "sdk-a",
@@ -271,6 +286,26 @@ describe("browser runtime server events", () => {
 		expect(useRuntimePopupStore.getState().popup).toEqual({
 			kind: "status",
 			text: "Sessions\nNext  sonnet",
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "session_search_result",
+				query: "next",
+				sessions: [
+					{
+						sdkSessionId: "sdk-next",
+						title: "Next",
+						model: "sonnet",
+						lastActive: 1,
+					},
+				],
+			},
+			options,
+		);
+		expect(useRuntimePopupStore.getState().popup).toEqual({
+			kind: "status",
+			text: 'Session search "next"\nNext  sonnet',
 		});
 		useSessionsStore.getState().setSessions("agent-mimi", [
 			{

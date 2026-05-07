@@ -14,11 +14,14 @@ import type {
 	BrowserInboxResponse,
 	BrowserInboxRestoreResponse,
 	BrowserLatencyResponse,
+	BrowserSessionPageResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 	ImageMediaType,
+	SessionCursor,
 	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
+import { validateSessionSearchQuery } from "../application/session-search-query.ts";
 
 export interface BrowserApi {
 	getAgentTerminalCwd(agentId: string): string | undefined;
@@ -41,6 +44,14 @@ export interface BrowserApi {
 		},
 	): Promise<BrowserCronHistoryResponse>;
 	listAgentInbox?(agentId: string): Promise<BrowserInboxResponse>;
+	listAgentSessions?(
+		agentId: string,
+		params: {
+			limit: number;
+			cursor?: SessionCursor;
+			query?: string;
+		},
+	): Promise<BrowserSessionPageResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
 	listAgentWorkspaceFiles?(agentId: string): Promise<WorkspaceFileEntry[]>;
 	listAgents(): BrowserAgentsResponse;
@@ -291,6 +302,58 @@ export async function handleBrowserApiRequest(
 					jobName,
 					limit,
 					before,
+				}),
+			);
+		}
+
+		const sessionsMatch = url.pathname.match(
+			/^\/api\/agents\/([^/]+)\/sessions$/,
+		);
+		if (sessionsMatch) {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.listAgentSessions) {
+				return jsonError("Session API is not configured", 404);
+			}
+			const agentId = decodeURIComponent(sessionsMatch[1] ?? "");
+			const limitParam = url.searchParams.get("limit");
+			const limit = limitParam ? Number.parseInt(limitParam, 10) : 10;
+			if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
+				return jsonError("Invalid limit", 400);
+			}
+			const queryParam = url.searchParams.get("query");
+			const searchQuery = queryParam
+				? validateSessionSearchQuery(queryParam)
+				: undefined;
+			if (searchQuery && !searchQuery.ok) {
+				return jsonError(searchQuery.message, 400);
+			}
+			const cursorLastActiveParam = url.searchParams.get("cursorLastActive");
+			const cursorSessionId = url.searchParams.get("cursorSdkSessionId");
+			let cursor: SessionCursor | undefined;
+			if (cursorLastActiveParam !== null || cursorSessionId !== null) {
+				const lastActive =
+					cursorLastActiveParam === null
+						? Number.NaN
+						: Number.parseInt(cursorLastActiveParam, 10);
+				if (
+					!Number.isInteger(lastActive) ||
+					lastActive < 0 ||
+					!cursorSessionId
+				) {
+					return jsonError("Invalid session cursor", 400);
+				}
+				cursor = {
+					lastActive,
+					sdkSessionId: cursorSessionId,
+				};
+			}
+			return Response.json(
+				await browserApi.listAgentSessions(agentId, {
+					cursor,
+					limit,
+					query: searchQuery?.ok ? searchQuery.query || undefined : undefined,
 				}),
 			);
 		}

@@ -2,10 +2,16 @@ import type { Database } from "bun:sqlite";
 import type {
 	BrowserCronHistoryCursor,
 	FrontendNotice,
+	SessionCursor,
 	TranscriptTurn,
 	UsageInfo,
 } from "../../../common/protocol.ts";
 import type { LastUserTarget } from "../last-user-target.ts";
+import { addSessionCursorCondition } from "../session-cursor.ts";
+import {
+	normalizeTitleSearchTokens,
+	titleMatchesSearchTokens,
+} from "../title-search.ts";
 import { SessionStateStore } from "./session-state-store.ts";
 import {
 	mapSessionRow,
@@ -24,6 +30,21 @@ import {
 interface SessionStoreOptions {
 	agentId?: string;
 	journalMode?: "WAL" | "DELETE";
+}
+
+interface SessionStoreListOptions {
+	cursor?: SessionCursor;
+	limit?: number;
+	providerId?: string;
+	tag?: SessionTag;
+}
+
+interface SessionStoreSearchByTitleOptions {
+	cursor?: SessionCursor;
+	limit?: number;
+	providerId?: string;
+	query: string;
+	tag?: SessionTag;
 }
 
 export type { SessionRow, SessionTag } from "./session-store-records.ts";
@@ -319,21 +340,22 @@ export class SessionStore {
 		});
 	}
 
-	list(limit = 20, tag?: SessionTag, providerId?: string): SessionRow[] {
+	list(options: SessionStoreListOptions = {}): SessionRow[] {
 		const conditions: string[] = ["agent_id = $agentId"];
 		const params: Record<string, string | number> = {
 			$agentId: this.agentId,
-			$limit: limit,
+			$limit: options.limit ?? 20,
 		};
 
-		if (providerId) {
+		if (options.providerId) {
 			conditions.push("provider_id = $providerId");
-			params.$providerId = providerId;
+			params.$providerId = options.providerId;
 		}
-		if (tag) {
+		if (options.tag) {
 			conditions.push("tag = $tag");
-			params.$tag = tag;
+			params.$tag = options.tag;
 		}
+		addSessionCursorCondition(conditions, params, options.cursor);
 
 		return this.withRecoveredConnection(() =>
 			mapSessionRows(
@@ -355,12 +377,63 @@ export class SessionStore {
 								auto_title_attempted
 						FROM sessions
 						WHERE ${conditions.join(" AND ")}
-						ORDER BY last_active DESC
+						ORDER BY last_active DESC, sdk_session_id ASC
 						LIMIT $limit`,
 					)
 					.all(params) as Parameters<typeof mapSessionRows>[0],
 			),
 		);
+	}
+
+	searchByTitle(options: SessionStoreSearchByTitleOptions): SessionRow[] {
+		const tokens = normalizeTitleSearchTokens(options.query);
+		if (tokens.length === 0) {
+			return [];
+		}
+
+		const conditions: string[] = ["agent_id = $agentId"];
+		const params: Record<string, string | number> = {
+			$agentId: this.agentId,
+		};
+
+		if (options.providerId) {
+			conditions.push("provider_id = $providerId");
+			params.$providerId = options.providerId;
+		}
+		if (options.tag) {
+			conditions.push("tag = $tag");
+			params.$tag = options.tag;
+		}
+		addSessionCursorCondition(conditions, params, options.cursor);
+
+		return this.withRecoveredConnection(() => {
+			const matches = mapSessionRows(
+				this.db
+					.query(
+						`SELECT
+							agent_id,
+							provider_id,
+							sdk_session_id,
+							oc_session_id,
+							title,
+							model,
+							source,
+							tag,
+							created_at,
+							last_active,
+							failed_at,
+							failure_message,
+							auto_title_attempted
+							FROM sessions
+							WHERE ${conditions.join(" AND ")}
+							ORDER BY last_active DESC, sdk_session_id ASC`,
+					)
+					.all(params) as Parameters<typeof mapSessionRows>[0],
+			).filter((row) => titleMatchesSearchTokens(row.title, tokens));
+			return options.limit === undefined
+				? matches
+				: matches.slice(0, options.limit);
+		});
 	}
 
 	delete(providerId: string, sdkSessionId: string) {
