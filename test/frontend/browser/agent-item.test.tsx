@@ -106,6 +106,8 @@ describe("AgentItem", () => {
 		expect(html).toContain('aria-label="Start new session for railly"');
 		expect(html).toContain('aria-label="Delete session Active work"');
 		expect(html).toContain("bg-brand");
+		expect(html).toContain("absolute inset-y-1 left-0 z-20");
+		expect(html).toContain("sticky top-0 z-10 bg-dark-950");
 		expect(html).toContain("bg-dark-100");
 		expect(html).toContain("bottom-0");
 	});
@@ -146,6 +148,8 @@ describe("AgentItem", () => {
 
 		expect(html).toContain("Auth work");
 		expect(html).toContain("Load more results");
+		expect(html).toContain('placeholder="Search sessions"');
+		expect(html).not.toContain("lucide-search shrink-0 text-dark-500");
 		expect(html).not.toContain("No matching sessions.");
 	});
 });

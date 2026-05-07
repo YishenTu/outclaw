@@ -156,7 +156,7 @@ export function AgentItem({
 			{isActive && (
 				<span
 					aria-hidden="true"
-					className="pointer-events-none absolute inset-y-1 left-0 w-px rounded-full bg-brand"
+					className="pointer-events-none absolute inset-y-1 left-0 z-20 w-px rounded-full bg-brand"
 				/>
 			)}
 			<div
@@ -221,7 +221,6 @@ export function AgentItem({
 							className="flex items-center gap-1 px-2 py-1"
 							data-agent-row-ignore-drag="true"
 						>
-							<Search size={13} className="shrink-0 text-dark-500" />
 							<input
 								value={draftSearch}
 								onChange={(event) => setDraftSearch(event.target.value)}
