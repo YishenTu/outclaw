@@ -316,7 +316,7 @@ describe("SessionStore", () => {
 			model: "sonnet",
 		});
 
-		const sessions = store.list(20, undefined, CLAUDE_PROVIDER);
+		const sessions = store.list({ limit: 20, providerId: CLAUDE_PROVIDER });
 		expect(sessions.length).toBe(2);
 		expect(sessions[0]?.sdkSessionId).toBe("new");
 
@@ -341,11 +341,15 @@ describe("SessionStore", () => {
 			tag: "cron",
 		});
 
-		const chatOnly = store.list(20, "chat", CLAUDE_PROVIDER);
+		const chatOnly = store.list({
+			limit: 20,
+			providerId: CLAUDE_PROVIDER,
+			tag: "chat",
+		});
 		expect(chatOnly.length).toBe(1);
 		expect(chatOnly[0]?.sdkSessionId).toBe("chat-1");
 
-		const all = store.list(20, undefined, CLAUDE_PROVIDER);
+		const all = store.list({ limit: 20, providerId: CLAUDE_PROVIDER });
 		expect(all.length).toBe(2);
 
 		store.close();
@@ -399,7 +403,7 @@ describe("SessionStore", () => {
 			};
 
 		try {
-			expect(store.list(20, undefined, CLAUDE_PROVIDER)).toEqual([
+			expect(store.list({ limit: 20, providerId: CLAUDE_PROVIDER })).toEqual([
 				expect.objectContaining({
 					providerId: CLAUDE_PROVIDER,
 					sdkSessionId: "sdk-123",
@@ -481,8 +485,12 @@ describe("SessionStore", () => {
 			model: "haiku",
 		});
 
-		expect(store.list(20, undefined, CLAUDE_PROVIDER)).toHaveLength(1);
-		expect(store.list(20, undefined, MOCK_PROVIDER)).toHaveLength(1);
+		expect(store.list({ limit: 20, providerId: CLAUDE_PROVIDER })).toHaveLength(
+			1,
+		);
+		expect(store.list({ limit: 20, providerId: MOCK_PROVIDER })).toHaveLength(
+			1,
+		);
 		expect(store.get(CLAUDE_PROVIDER, "shared-id")?.title).toBe("Claude chat");
 		expect(store.get(MOCK_PROVIDER, "shared-id")?.title).toBe("Mock chat");
 
@@ -502,7 +510,9 @@ describe("SessionStore", () => {
 
 		store.delete(CLAUDE_PROVIDER, "sdk-del");
 		expect(store.get(CLAUDE_PROVIDER, "sdk-del")).toBeUndefined();
-		expect(store.list(20, undefined, CLAUDE_PROVIDER).length).toBe(0);
+		expect(store.list({ limit: 20, providerId: CLAUDE_PROVIDER }).length).toBe(
+			0,
+		);
 
 		store.close();
 	});

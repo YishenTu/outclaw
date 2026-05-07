@@ -1,4 +1,8 @@
-import type { RuntimeStatusEvent } from "../../common/protocol.ts";
+import type {
+	RuntimeStatusEvent,
+	SessionCursor,
+} from "../../common/protocol.ts";
+import { validateSessionSearchQuery } from "../application/session-search-query.ts";
 import type { SessionService } from "../application/session-service.ts";
 import type { ClientHub, WsClient } from "../transport/client-hub.ts";
 
@@ -16,10 +20,12 @@ export async function handleSessionCommand(
 	options: HandleSessionCommandOptions,
 ) {
 	if (!options.arg) {
+		const result = options.sessions.listSessions({ limit: 10 });
 		options.hub.send(options.ws, {
 			type: "session_menu",
 			activeSessionId: options.sessions.activeSessionId,
-			sessions: options.sessions.listSessions(),
+			sessions: result.sessions,
+			nextCursor: result.nextCursor,
 		});
 		return;
 	}
@@ -58,10 +64,34 @@ export async function handleSessionCommand(
 		return;
 	}
 
-	if (options.arg === "list") {
+	if (options.arg === "list" || options.arg.startsWith("list ")) {
+		const parsed = parseSessionListArgs(options.arg);
+		if (typeof parsed === "string") {
+			options.sendError(parsed);
+			return;
+		}
+		const result = options.sessions.listSessions(parsed);
 		options.hub.send(options.ws, {
 			type: "session_list",
-			sessions: options.sessions.listSessions(),
+			activeSessionId: options.sessions.activeSessionId,
+			sessions: result.sessions,
+			nextCursor: result.nextCursor,
+		});
+		return;
+	}
+
+	if (options.arg === "search" || options.arg.startsWith("search ")) {
+		const parsed = parseSessionSearchArgs(options.arg);
+		if (typeof parsed === "string") {
+			options.sendError(parsed);
+			return;
+		}
+		const result = options.sessions.searchSessions(parsed);
+		options.hub.send(options.ws, {
+			type: "session_search_result",
+			query: parsed.query,
+			sessions: result.sessions,
+			nextCursor: result.nextCursor,
 		});
 		return;
 	}
@@ -79,4 +109,127 @@ export async function handleSessionCommand(
 	});
 	options.hub.broadcast(options.createStatusEvent());
 	await options.replayHistoryToAll(match.sdkSessionId);
+}
+
+const LIST_USAGE =
+	"Usage: /session list [limit] [cursorLastActive cursorSdkId]";
+const SEARCH_USAGE =
+	"Usage: /session search [--limit n] [--cursor lastActive sdkSessionId] <query>";
+
+function parseSessionListArgs(
+	arg: string,
+): { cursor?: SessionCursor; limit?: number } | string {
+	const parts = arg.split(/\s+/).slice(1);
+	if (parts.length === 0) {
+		return {};
+	}
+	if (parts.length !== 1 && parts.length !== 3) {
+		return LIST_USAGE;
+	}
+
+	const limit = parsePositiveInteger(parts[0] ?? "");
+	if (limit === undefined) {
+		return LIST_USAGE;
+	}
+	if (parts.length === 1) {
+		return { limit };
+	}
+
+	const lastActive = parseNonNegativeInteger(parts[1] ?? "");
+	const sdkSessionId = parts[2]?.trim();
+	if (lastActive === undefined || !sdkSessionId) {
+		return LIST_USAGE;
+	}
+
+	return {
+		cursor: { lastActive, sdkSessionId },
+		limit,
+	};
+}
+
+function parseSessionSearchArgs(
+	arg: string,
+): { cursor?: SessionCursor; limit?: number; query: string } | string {
+	let rest = arg.slice("search".length).trim();
+	let limit: number | undefined;
+	let cursor: SessionCursor | undefined;
+
+	while (rest.startsWith("--")) {
+		const shifted = shiftToken(rest);
+		if (!shifted) {
+			return SEARCH_USAGE;
+		}
+		const [flag, afterFlag] = shifted;
+		rest = afterFlag.trimStart();
+		if (flag === "--") {
+			break;
+		}
+		if (flag === "--limit") {
+			const limitToken = shiftToken(rest);
+			const parsedLimit = limitToken
+				? parsePositiveInteger(limitToken[0])
+				: undefined;
+			if (!limitToken || parsedLimit === undefined) {
+				return SEARCH_USAGE;
+			}
+			limit = parsedLimit;
+			rest = limitToken[1].trimStart();
+			continue;
+		}
+		if (flag === "--cursor") {
+			const lastActiveToken = shiftToken(rest);
+			const sdkSessionIdToken = lastActiveToken
+				? shiftToken(lastActiveToken[1].trimStart())
+				: undefined;
+			if (!lastActiveToken || !sdkSessionIdToken) {
+				return SEARCH_USAGE;
+			}
+			const lastActive = parseNonNegativeInteger(lastActiveToken[0]);
+			const sdkSessionId = sdkSessionIdToken[0].trim();
+			if (lastActive === undefined || !sdkSessionId) {
+				return SEARCH_USAGE;
+			}
+			cursor = { lastActive, sdkSessionId };
+			rest = sdkSessionIdToken[1].trimStart();
+			continue;
+		}
+
+		return SEARCH_USAGE;
+	}
+
+	const query = rest.trim();
+	if (!query) {
+		return "Usage: /session search <query>";
+	}
+	const validation = validateSessionSearchQuery(query);
+	if (!validation.ok) {
+		return validation.message;
+	}
+	return { cursor, limit, query: validation.query };
+}
+
+function shiftToken(input: string): [string, string] | undefined {
+	const trimmed = input.trimStart();
+	if (!trimmed) {
+		return undefined;
+	}
+	const match = trimmed.match(/^(\S+)(?:\s+([\s\S]*))?$/);
+	if (!match) {
+		return undefined;
+	}
+	return [match[1] ?? "", match[2] ?? ""];
+}
+
+function parsePositiveInteger(value: string): number | undefined {
+	const parsed = Number.parseInt(value, 10);
+	return Number.isInteger(parsed) && parsed > 0 && String(parsed) === value
+		? parsed
+		: undefined;
+}
+
+function parseNonNegativeInteger(value: string): number | undefined {
+	const parsed = Number.parseInt(value, 10);
+	return Number.isInteger(parsed) && parsed >= 0 && String(parsed) === value
+		? parsed
+		: undefined;
 }

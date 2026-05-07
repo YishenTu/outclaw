@@ -202,14 +202,21 @@ export interface SessionInfoEvent {
 	model: string;
 }
 
+export interface SessionCursor {
+	lastActive: number;
+	sdkSessionId: string;
+}
+
 export interface SessionListEvent {
 	type: "session_list";
+	activeSessionId?: string;
 	sessions: Array<{
 		sdkSessionId: string;
 		title: string;
 		model: string;
 		lastActive: number;
 	}>;
+	nextCursor?: SessionCursor;
 }
 
 export interface SessionMenuEvent {
@@ -221,6 +228,19 @@ export interface SessionMenuEvent {
 		model: string;
 		lastActive: number;
 	}>;
+	nextCursor?: SessionCursor;
+}
+
+export interface SessionSearchResultEvent {
+	type: "session_search_result";
+	query: string;
+	sessions: Array<{
+		sdkSessionId: string;
+		title: string;
+		model: string;
+		lastActive: number;
+	}>;
+	nextCursor?: SessionCursor;
 }
 
 export interface SessionRenamedEvent {
@@ -427,12 +447,19 @@ export interface BrowserAgentSummary {
 		providerId: string;
 		sdkSessionId: string;
 	};
+	nextSessionCursor?: SessionCursor;
 	sessions: BrowserSessionSummary[];
 }
 
 export interface BrowserAgentsResponse {
 	activeAgentId?: string;
 	agents: BrowserAgentSummary[];
+}
+
+export interface BrowserSessionPageResponse {
+	nextCursor?: SessionCursor;
+	query?: string;
+	sessions: BrowserSessionSummary[];
 }
 
 export interface BrowserLatencyResponse {
@@ -705,6 +732,7 @@ export type ServerEvent =
 	| SessionInfoEvent
 	| SessionListEvent
 	| SessionMenuEvent
+	| SessionSearchResultEvent
 	| SessionRenamedEvent
 	| SessionDeletedEvent
 	| SessionSwitchedEvent

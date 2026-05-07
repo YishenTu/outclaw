@@ -103,6 +103,49 @@ describe("SessionQuery", () => {
 		query.close();
 	});
 
+	test("lists the next page from a stable cursor", () => {
+		for (const params of [
+			{ sdkSessionId: "sdk-a", lastActive: 300 },
+			{ sdkSessionId: "sdk-b", lastActive: 300 },
+			{ sdkSessionId: "sdk-c", lastActive: 200 },
+			{ sdkSessionId: "sdk-d", lastActive: 100 },
+		]) {
+			seedSession({
+				agentId: "agent-railly",
+				providerId: "claude",
+				sdkSessionId: params.sdkSessionId,
+				title: params.sdkSessionId,
+				createdAt: params.lastActive,
+				lastActive: params.lastActive,
+			});
+		}
+
+		const query = new SessionQuery(TEST_DB);
+		const firstPage = query.list({
+			agentId: "agent-railly",
+			limit: 2,
+			tag: "chat",
+		});
+		expect(firstPage.map((row) => row.sdkSessionId)).toEqual([
+			"sdk-a",
+			"sdk-b",
+		]);
+		expect(
+			query
+				.list({
+					agentId: "agent-railly",
+					cursor: {
+						lastActive: firstPage[1]?.lastActive ?? 0,
+						sdkSessionId: firstPage[1]?.sdkSessionId ?? "",
+					},
+					limit: 2,
+					tag: "chat",
+				})
+				.map((row) => row.sdkSessionId),
+		).toEqual(["sdk-c", "sdk-d"]);
+		query.close();
+	});
+
 	test("prefers exact full-id matches before prefix matches", () => {
 		seedSession({
 			agentId: "agent-railly",
@@ -258,6 +301,122 @@ describe("SessionQuery", () => {
 				})
 				.map((match) => match.session.sdkSessionId),
 		).toEqual(["railly-session-1"]);
+		query.close();
+	});
+
+	test("searchByTitle matches lowercase AND tokens within one agent", () => {
+		seedSession({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "sdk-auth",
+			title: "Refactor auth middleware",
+			createdAt: 100,
+			lastActive: 300,
+		});
+		seedSession({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "sdk-auth-only",
+			title: "Auth handlers",
+			createdAt: 100,
+			lastActive: 200,
+		});
+		seedSession({
+			agentId: "agent-mimi",
+			providerId: "claude",
+			sdkSessionId: "sdk-other-agent",
+			title: "Refactor auth middleware",
+			createdAt: 100,
+			lastActive: 400,
+		});
+
+		const query = new SessionQuery(TEST_DB);
+		expect(
+			query
+				.searchByTitle({
+					agentId: "agent-railly",
+					query: "auth middle",
+					tag: "chat",
+				})
+				.map((row) => row.sdkSessionId),
+		).toEqual(["sdk-auth"]);
+		expect(
+			query
+				.searchByTitle({
+					agentId: "agent-railly",
+					query: "auth foo",
+					tag: "chat",
+				})
+				.map((row) => row.sdkSessionId),
+		).toEqual([]);
+		expect(query.searchByTitle({ query: "   ", tag: "chat" })).toEqual([]);
+		query.close();
+	});
+
+	test("searchByTitle case-folds non-ASCII title tokens", () => {
+		seedSession({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "sdk-munich",
+			title: "MÜNCHEN Überprüfung",
+			createdAt: 100,
+			lastActive: 200,
+		});
+
+		const query = new SessionQuery(TEST_DB);
+		expect(
+			query
+				.searchByTitle({
+					agentId: "agent-railly",
+					query: "münchen überprüfung",
+					tag: "chat",
+				})
+				.map((row) => row.sdkSessionId),
+		).toEqual(["sdk-munich"]);
+		query.close();
+	});
+
+	test("searchByTitle paginates title matches with the same cursor semantics", () => {
+		for (const params of [
+			{ sdkSessionId: "sdk-a", lastActive: 300 },
+			{ sdkSessionId: "sdk-b", lastActive: 300 },
+			{ sdkSessionId: "sdk-c", lastActive: 200 },
+		]) {
+			seedSession({
+				agentId: "agent-railly",
+				providerId: "claude",
+				sdkSessionId: params.sdkSessionId,
+				title: `Auth ${params.sdkSessionId}`,
+				createdAt: params.lastActive,
+				lastActive: params.lastActive,
+			});
+		}
+
+		const query = new SessionQuery(TEST_DB);
+		const firstPage = query.searchByTitle({
+			agentId: "agent-railly",
+			limit: 2,
+			query: "auth",
+			tag: "chat",
+		});
+		expect(firstPage.map((row) => row.sdkSessionId)).toEqual([
+			"sdk-a",
+			"sdk-b",
+		]);
+		expect(
+			query
+				.searchByTitle({
+					agentId: "agent-railly",
+					cursor: {
+						lastActive: firstPage[1]?.lastActive ?? 0,
+						sdkSessionId: firstPage[1]?.sdkSessionId ?? "",
+					},
+					limit: 2,
+					query: "auth",
+					tag: "chat",
+				})
+				.map((row) => row.sdkSessionId),
+		).toEqual(["sdk-c"]);
 		query.close();
 	});
 

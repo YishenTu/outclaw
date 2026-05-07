@@ -500,6 +500,27 @@ describe("useRuntimeSession", () => {
 
 			latest?.dismissSessionMenu();
 			await waitFor(() => latest?.menuData === null, "dismissed menu");
+
+			socket.dispatch("message", {
+				data: JSON.stringify({
+					type: "session_search_result",
+					query: "renamed",
+					sessions: [
+						{
+							sdkSessionId: "sdk-other",
+							title: "Renamed other",
+							model: "sonnet",
+							lastActive: 5,
+						},
+					],
+				}),
+			});
+			await waitFor(
+				() =>
+					latest?.menuData?.searchQuery === "renamed" &&
+					latest.menuData.sessions[0]?.sdkSessionId === "sdk-other",
+				"direct session search menu data",
+			);
 		} finally {
 			app.unmount();
 			app.cleanup();

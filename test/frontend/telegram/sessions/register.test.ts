@@ -54,7 +54,7 @@ describe("Telegram session handler registration", () => {
 			expect.any(Set),
 		);
 		expect(reply).toHaveBeenCalledTimes(1);
-		expect(reply.mock.calls[0]?.[0]).toBe("Sessions:");
+		expect(reply.mock.calls[0]?.[0]).toBe("Sessions:\n• Alpha\n• Beta");
 		expect(
 			(
 				reply.mock.calls[0]?.[1] as {
@@ -64,7 +64,7 @@ describe("Telegram session handler registration", () => {
 		).toEqual([
 			[{ text: "Alpha ●", callback_data: "ss:sdk-1" }],
 			[{ text: "Beta", callback_data: "ss:sdk-2" }],
-			[],
+			[{ text: "1/1", callback_data: "sn" }],
 		]);
 	});
 
@@ -148,5 +148,185 @@ describe("Telegram session handler registration", () => {
 		);
 		expect(answerCallbackQuery).toHaveBeenCalledWith("Switched to: Beta");
 		expect(editMessageText).toHaveBeenCalledWith("Switched to: Beta");
+	});
+
+	test("the page callback fetches and edits the requested list page", async () => {
+		let callbackHandler:
+			| ((ctx: {
+					callbackQuery: { data: string; message?: { text?: string } };
+					answerCallbackQuery(text: string): Promise<unknown>;
+					editMessageText(
+						text: string,
+						options?: { reply_markup?: { inline_keyboard?: unknown[] } },
+					): Promise<unknown>;
+			  }) => Promise<void>)
+			| undefined;
+
+		const registrar = {
+			command: () => {},
+			callbackQuery: (
+				_pattern: RegExp,
+				handler: (ctx: {
+					callbackQuery: { data: string; message?: { text?: string } };
+					answerCallbackQuery(text: string): Promise<unknown>;
+					editMessageText(
+						text: string,
+						options?: { reply_markup?: { inline_keyboard?: unknown[] } },
+					): Promise<unknown>;
+				}) => Promise<void>,
+			) => {
+				callbackHandler = handler;
+			},
+		};
+		const bridge = {
+			sendCommandAndWait: mock(async () => ({
+				type: "session_list",
+				activeSessionId: "sdk-6",
+				sessions: Array.from({ length: 7 }, (_value, index) => ({
+					sdkSessionId: `sdk-${index}`,
+					title: `Chat ${index}`,
+					lastActive: index,
+				})),
+			})),
+		};
+
+		registerTelegramSessionHandlers(registrar, () => bridge);
+
+		const answerCallbackQuery = mock(async (_text: string) => undefined);
+		const editMessageText = mock(
+			async (
+				_text: string,
+				_options?: { reply_markup?: { inline_keyboard?: unknown[] } },
+			) => undefined,
+		);
+		await callbackHandler?.({
+			callbackQuery: { data: "sl:1" },
+			answerCallbackQuery,
+			editMessageText,
+		});
+
+		expect(bridge.sendCommandAndWait).toHaveBeenCalledWith(
+			"/session list 15",
+			expect.any(Set),
+		);
+		expect(editMessageText.mock.calls[0]?.[0]).toContain("Chat 5");
+		expect(answerCallbackQuery).toHaveBeenCalledWith("Page 2");
+	});
+
+	test("the noop page marker answers silently", async () => {
+		let callbackHandler:
+			| ((ctx: {
+					callbackQuery: { data: string; message?: { text?: string } };
+					answerCallbackQuery(text?: string): Promise<unknown>;
+					editMessageText(
+						text: string,
+						options?: { reply_markup?: { inline_keyboard?: unknown[] } },
+					): Promise<unknown>;
+			  }) => Promise<void>)
+			| undefined;
+
+		const registrar = {
+			command: () => {},
+			callbackQuery: (
+				_pattern: RegExp,
+				handler: (ctx: {
+					callbackQuery: { data: string; message?: { text?: string } };
+					answerCallbackQuery(text?: string): Promise<unknown>;
+					editMessageText(
+						text: string,
+						options?: { reply_markup?: { inline_keyboard?: unknown[] } },
+					): Promise<unknown>;
+				}) => Promise<void>,
+			) => {
+				callbackHandler = handler;
+			},
+		};
+		const bridge = {
+			sendCommandAndWait: mock(async () => ({
+				type: "session_list",
+				sessions: [],
+			})),
+		};
+
+		registerTelegramSessionHandlers(registrar, () => bridge);
+
+		const answerCallbackQuery = mock(async (_text?: string) => undefined);
+		await callbackHandler?.({
+			callbackQuery: { data: "sn" },
+			answerCallbackQuery,
+			editMessageText: mock(async () => undefined),
+		});
+
+		expect(answerCallbackQuery).toHaveBeenCalledWith();
+		expect(bridge.sendCommandAndWait).not.toHaveBeenCalled();
+	});
+
+	test("the search page callback keeps the query out of callback_data", async () => {
+		let callbackHandler:
+			| ((ctx: {
+					callbackQuery: { data: string; message?: { text?: string } };
+					answerCallbackQuery(text: string): Promise<unknown>;
+					editMessageText(
+						text: string,
+						options?: { reply_markup?: { inline_keyboard?: unknown[] } },
+					): Promise<unknown>;
+			  }) => Promise<void>)
+			| undefined;
+
+		const registrar = {
+			command: () => {},
+			callbackQuery: (
+				_pattern: RegExp,
+				handler: (ctx: {
+					callbackQuery: { data: string; message?: { text?: string } };
+					answerCallbackQuery(text: string): Promise<unknown>;
+					editMessageText(
+						text: string,
+						options?: { reply_markup?: { inline_keyboard?: unknown[] } },
+					): Promise<unknown>;
+				}) => Promise<void>,
+			) => {
+				callbackHandler = handler;
+			},
+		};
+		const bridge = {
+			sendCommandAndWait: mock(async () => ({
+				type: "session_search_result",
+				query: "auth middleware",
+				sessions: [
+					{
+						sdkSessionId: "sdk-auth",
+						title: "Auth middleware",
+						lastActive: 1,
+					},
+				],
+			})),
+		};
+
+		registerTelegramSessionHandlers(registrar, () => bridge);
+
+		const answerCallbackQuery = mock(async (_text: string) => undefined);
+		const editMessageText = mock(
+			async (
+				_text: string,
+				_options?: { reply_markup?: { inline_keyboard?: unknown[] } },
+			) => undefined,
+		);
+		await callbackHandler?.({
+			callbackQuery: {
+				data: "sq:1",
+				message: { text: "Session search: auth middleware\n• first" },
+			},
+			answerCallbackQuery,
+			editMessageText,
+		});
+
+		expect(bridge.sendCommandAndWait).toHaveBeenCalledWith(
+			"/session search --limit 15 -- auth middleware",
+			expect.any(Set),
+		);
+		expect(editMessageText.mock.calls[0]?.[0]).toStartWith(
+			"Session search: auth middleware",
+		);
 	});
 });

@@ -1,10 +1,19 @@
 import { PanelLeftOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+	BrowserSessionSummary,
+	SessionCursor,
+} from "../../../../common/protocol.ts";
 import { requestConfigRestart } from "../../commands/config-save-restart.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
-import { fetchConfigFile, updateConfigFile } from "../../lib/api.ts";
+import {
+	fetchAgentSessions,
+	fetchConfigFile,
+	updateConfigFile,
+} from "../../lib/api.ts";
 import type { AgentReorderPosition } from "../../stores/agents.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
+import type { SessionEntry } from "../../stores/sessions.ts";
 import { useSessionsStore } from "../../stores/sessions.ts";
 import { AgentItem } from "./agent-item.tsx";
 import {
@@ -63,9 +72,22 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
 	const reorderAgents = useAgentsStore((state) => state.reorderAgents);
 	const sessionsByAgent = useSessionsStore((state) => state.sessionsByAgent);
+	const nextCursorByAgent = useSessionsStore(
+		(state) => state.nextCursorByAgent,
+	);
+	const searchByAgent = useSessionsStore((state) => state.searchByAgent);
 	const activeSessionByAgent = useSessionsStore(
 		(state) => state.activeSessionByAgent,
 	);
+	const appendSessions = useSessionsStore((state) => state.appendSessions);
+	const setSearchResults = useSessionsStore((state) => state.setSearchResults);
+	const appendSearchResults = useSessionsStore(
+		(state) => state.appendSearchResults,
+	);
+	const clearSearch = useSessionsStore((state) => state.clearSearch);
+	const loadingMoreAgentsRef = useRef(new Set<string>());
+	const loadingMoreSearchRef = useRef(new Set<string>());
+	const pendingSearchByAgentRef = useRef<Record<string, string>>({});
 
 	useEffect(() => {
 		if (!activeAgentId) {
@@ -121,6 +143,81 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 			setDropIndicator(nextIndicator);
 		},
 		[agents],
+	);
+
+	const loadMoreSessions = useCallback(
+		async (agentId: string) => {
+			const cursor = nextCursorByAgent[agentId];
+			if (!cursor || loadingMoreAgentsRef.current.has(agentId)) {
+				return;
+			}
+			loadingMoreAgentsRef.current.add(agentId);
+			try {
+				const page = await fetchAgentSessions(agentId, {
+					cursor,
+					limit: 10,
+				});
+				appendSessions(
+					agentId,
+					page.sessions.map((session) => toSessionEntry(agentId, session)),
+					page.nextCursor,
+				);
+			} catch (error) {
+				console.error(error);
+			} finally {
+				loadingMoreAgentsRef.current.delete(agentId);
+			}
+		},
+		[appendSessions, nextCursorByAgent],
+	);
+
+	const searchSessions = useCallback(
+		async (agentId: string, query: string, cursor?: SessionCursor) => {
+			const trimmed = query.trim();
+			if (!trimmed) {
+				clearSearch(agentId);
+				return;
+			}
+			const loadingKey = `${agentId}\u0000${trimmed}`;
+			if (cursor && loadingMoreSearchRef.current.has(loadingKey)) {
+				return;
+			}
+			if (cursor) {
+				loadingMoreSearchRef.current.add(loadingKey);
+			}
+			pendingSearchByAgentRef.current[agentId] = trimmed;
+			try {
+				const page = await fetchAgentSessions(agentId, {
+					cursor,
+					limit: 10,
+					query: trimmed,
+				});
+				if (pendingSearchByAgentRef.current[agentId] !== trimmed) {
+					return;
+				}
+				const sessions = page.sessions.map((session) =>
+					toSessionEntry(agentId, session),
+				);
+				const resolvedQuery = page.query ?? trimmed;
+				if (cursor) {
+					appendSearchResults(
+						agentId,
+						resolvedQuery,
+						sessions,
+						page.nextCursor,
+					);
+				} else {
+					setSearchResults(agentId, resolvedQuery, sessions, page.nextCursor);
+				}
+			} catch (error) {
+				console.error(error);
+			} finally {
+				if (cursor) {
+					loadingMoreSearchRef.current.delete(loadingKey);
+				}
+			}
+		},
+		[appendSearchResults, clearSearch, setSearchResults],
 	);
 
 	useEffect(() => {
@@ -385,7 +482,21 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 							}
 							onAttachRow={(element) => attachRow(agent.agentId, element)}
 							activeSession={activeSessionByAgent[agent.agentId] ?? null}
+							nextCursor={nextCursorByAgent[agent.agentId]}
+							searchState={searchByAgent[agent.agentId]}
 							sessions={sessionsByAgent[agent.agentId] ?? []}
+							onClearSearch={() => {
+								delete pendingSearchByAgentRef.current[agent.agentId];
+								clearSearch(agent.agentId);
+							}}
+							onLoadMore={() => loadMoreSessions(agent.agentId)}
+							onLoadMoreSearch={(query) =>
+								searchSessions(
+									agent.agentId,
+									query,
+									searchByAgent[agent.agentId]?.nextCursor,
+								)
+							}
 							onRowPointerDown={(event) => {
 								if (event.button !== 0) {
 									return;
@@ -422,6 +533,7 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 									};
 								})
 							}
+							onSearch={(query) => searchSessions(agent.agentId, query)}
 						/>
 					))
 				)}
@@ -435,4 +547,18 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 			/>
 		</div>
 	);
+}
+
+function toSessionEntry(
+	agentId: string,
+	session: BrowserSessionSummary,
+): SessionEntry {
+	return {
+		agentId,
+		providerId: session.providerId,
+		sdkSessionId: session.sdkSessionId,
+		title: session.title,
+		model: session.model,
+		lastActive: session.lastActive,
+	};
 }

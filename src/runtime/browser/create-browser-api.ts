@@ -14,10 +14,12 @@ import type {
 	BrowserInboxCreateNoteResponse,
 	BrowserInboxResponse,
 	BrowserInboxRestoreResponse,
+	BrowserSessionPageResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 	ImageMediaType,
 	ImageRef,
+	SessionCursor,
 	TranscriptTurn,
 	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
@@ -26,10 +28,12 @@ import {
 	writeStoredAgentConfig,
 } from "../config/index.ts";
 import { saveManagedImage } from "../files/managed-image-store.ts";
+import { nextSessionCursor } from "../persistence/session-cursor.ts";
 import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import {
 	type BrowserApiAgent,
 	listBrowserAgents,
+	toBrowserSessionSummary,
 } from "./agent-sidebar/read-model.ts";
 import { BROWSER_CONFIG_SCHEMA } from "./config/schema.ts";
 import { listCronRunsForJob } from "./cron/history.ts";
@@ -92,6 +96,14 @@ export interface BrowserApi {
 		},
 	): Promise<BrowserCronHistoryResponse>;
 	listAgentInbox(agentId: string): Promise<BrowserInboxResponse>;
+	listAgentSessions(
+		agentId: string,
+		params: {
+			limit: number;
+			cursor?: SessionCursor;
+			query?: string;
+		},
+	): Promise<BrowserSessionPageResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
 	listAgentWorkspaceFiles(agentId: string): Promise<WorkspaceFileEntry[]>;
 	readConfigFile(): Promise<BrowserConfigResponse>;
@@ -167,6 +179,28 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		async listAgentInbox(agentId) {
 			const agent = requireAgent(agentsById, agentId);
 			return await listInboxEntries(agent.homeDir);
+		},
+		async listAgentSessions(agentId, params) {
+			const agent = requireAgent(agentsById, agentId);
+			const store = options.storesByAgent.get(agentId);
+			if (!store) {
+				return { sessions: [] };
+			}
+			const query = params.query?.trim();
+			const listOptions = {
+				cursor: params.cursor,
+				limit: params.limit,
+				providerId: agent.providerId,
+				tag: "chat" as const,
+			};
+			const rows = query
+				? store.searchByTitle({ ...listOptions, query })
+				: store.list(listOptions);
+			return {
+				query: query || undefined,
+				sessions: rows.map(toBrowserSessionSummary),
+				nextCursor: nextSessionCursor(rows, params.limit),
+			};
 		},
 		async archiveAgentInboxItem(agentId, relativePath) {
 			const agent = requireAgent(agentsById, agentId);

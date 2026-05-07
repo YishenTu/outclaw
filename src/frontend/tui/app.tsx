@@ -48,14 +48,17 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 	}, [write]);
 	const {
 		agentMenuData,
+		clearSessionSearch,
 		dismissAgentMenu,
 		dismissSessionMenu,
+		loadMoreSessions,
 		menuData,
 		requestFiles,
 		requestSkills,
 		runCommand,
 		runPrompt,
 		runtimeInfo,
+		searchSessions,
 		skills,
 		status,
 		tuiState,
@@ -235,8 +238,12 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		),
 	);
 
-	const choices = menuData
-		? sessionMenuChoices(menuData.sessions, menuData.activeSessionId)
+	const sessionMenuData = menuData;
+	const choices = sessionMenuData
+		? sessionMenuChoices(
+				sessionMenuData.sessions,
+				sessionMenuData.activeSessionId,
+			)
 		: null;
 	const divider = "─".repeat(columns);
 
@@ -266,14 +273,19 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 						onSelect={handleAgentSelect}
 					/>
 				</Box>
-			) : choices ? (
+			) : sessionMenuData && choices ? (
 				<Box paddingX={1}>
 					<SessionMenu
 						choices={choices}
+						nextCursor={sessionMenuData.nextCursor}
+						searchQuery={sessionMenuData.searchQuery}
 						onSelect={handleMenuSelect}
 						onDelete={handleMenuDelete}
 						onRename={handleMenuRename}
 						onDismiss={dismissSessionMenu}
+						onLoadMore={loadMoreSessions}
+						onSearch={searchSessions}
+						onClearSearch={clearSessionSearch}
 					/>
 				</Box>
 			) : (

@@ -57,6 +57,7 @@ export function applySidebarSummary(summary: BrowserAgentsResponse) {
 					lastActive: session.lastActive,
 				}),
 			),
+			agent.nextSessionCursor,
 		);
 		const currentActiveSession =
 			useSessionsStore.getState().activeSessionByAgent[agent.agentId];
@@ -105,11 +106,26 @@ function resolveSidebarActiveSession(params: {
 export function formatSessionListSummary(
 	event: Extract<ServerEvent, { type: "session_list" }>,
 ): string {
-	if (event.sessions.length === 0) {
-		return "Sessions\nnone";
-	}
+	return formatSessionSummary("Sessions", event.sessions);
+}
 
-	return `Sessions\n${event.sessions
+export function formatSessionSearchSummary(
+	event: Extract<ServerEvent, { type: "session_search_result" }>,
+): string {
+	return formatSessionSummary(
+		`Session search "${event.query}"`,
+		event.sessions,
+	);
+}
+
+function formatSessionSummary(
+	header: string,
+	sessions: ReadonlyArray<{ title: string; model: string }>,
+): string {
+	if (sessions.length === 0) {
+		return `${header}\nnone`;
+	}
+	return `${header}\n${sessions
 		.map((session) => `${session.title}  ${session.model}`)
 		.join("\n")}`;
 }
@@ -208,6 +224,11 @@ export function handleBrowserServerEvent(
 			useRuntimePopupStore
 				.getState()
 				.openStatus(formatSessionListSummary(event));
+			return;
+		case "session_search_result":
+			useRuntimePopupStore
+				.getState()
+				.openStatus(formatSessionSearchSummary(event));
 			return;
 		case "session_switched": {
 			useRuntimePopupStore.getState().closePopup();

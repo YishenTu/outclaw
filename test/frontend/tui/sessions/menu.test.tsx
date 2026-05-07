@@ -278,4 +278,195 @@ describe("SessionMenu", () => {
 			app.cleanup();
 		}
 	});
+
+	test("requests more sessions when arrow navigation reaches the bottom", async () => {
+		const requested: unknown[] = [];
+		const { app, stdin } = renderMenu({
+			onSelect: () => undefined,
+		});
+		app.rerender(
+			<SessionMenu
+				choices={CHOICES}
+				nextCursor={{ lastActive: 1, sdkSessionId: "sdk-gamma" }}
+				onSelect={() => undefined}
+				onDelete={() => undefined}
+				onRename={() => undefined}
+				onDismiss={() => undefined}
+				onLoadMore={(cursor) => requested.push(cursor)}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			await sendInput(stdin, "\u001B[B");
+			await sendInput(stdin, "\u001B[B");
+
+			expect(requested).toEqual([{ lastActive: 1, sdkSessionId: "sdk-gamma" }]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("enters filter mode with slash and debounces search", async () => {
+		const searches: string[] = [];
+		const { app, stdin } = renderMenu({
+			onSelect: () => undefined,
+		});
+		app.rerender(
+			<SessionMenu
+				choices={CHOICES}
+				onSelect={() => undefined}
+				onDelete={() => undefined}
+				onRename={() => undefined}
+				onDismiss={() => undefined}
+				onSearch={(query) => searches.push(query)}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			await sendInput(stdin, "/");
+			await sendInput(stdin, "auth");
+			await new Promise((resolve) => setTimeout(resolve, 180));
+
+			expect(searches).toEqual(["auth"]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("selects the highlighted session while filter mode is active", async () => {
+		const selected: string[] = [];
+		const { app, stdin } = renderMenu({
+			onSelect: (choice) => {
+				selected.push(choice.sdkSessionId);
+			},
+		});
+		app.rerender(
+			<SessionMenu
+				choices={CHOICES}
+				onSelect={(choice) => {
+					selected.push(choice.sdkSessionId);
+				}}
+				onDelete={() => undefined}
+				onRename={() => undefined}
+				onDismiss={() => undefined}
+				onSearch={() => undefined}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			await sendInput(stdin, "/");
+			await sendInput(stdin, "auth");
+			await sendInput(stdin, "\r");
+
+			expect(selected).toEqual(["sdk-alpha"]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("requests more search results with the active filter query", async () => {
+		const requested: Array<{ cursor: unknown; query?: string }> = [];
+		const { app, stdin } = renderMenu({
+			onSelect: () => undefined,
+		});
+		app.rerender(
+			<SessionMenu
+				choices={CHOICES}
+				nextCursor={{ lastActive: 1, sdkSessionId: "sdk-gamma" }}
+				searchQuery="auth"
+				onSelect={() => undefined}
+				onDelete={() => undefined}
+				onRename={() => undefined}
+				onDismiss={() => undefined}
+				onLoadMore={(cursor, query) => requested.push({ cursor, query })}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			await sendInput(stdin, "\u001B[B");
+			await sendInput(stdin, "\u001B[B");
+
+			expect(requested).toEqual([
+				{
+					cursor: { lastActive: 1, sdkSessionId: "sdk-gamma" },
+					query: "auth",
+				},
+			]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("paginates displayed search results with their result query", async () => {
+		const requested: Array<{ cursor: unknown; query?: string }> = [];
+		const { app, stdin } = renderMenu({
+			onSelect: () => undefined,
+		});
+		app.rerender(
+			<SessionMenu
+				choices={CHOICES}
+				nextCursor={{ lastActive: 1, sdkSessionId: "sdk-gamma" }}
+				searchQuery="auth"
+				onSelect={() => undefined}
+				onDelete={() => undefined}
+				onRename={() => undefined}
+				onDismiss={() => undefined}
+				onLoadMore={(cursor, query) => requested.push({ cursor, query })}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			await sendInput(stdin, "z");
+			await sendInput(stdin, "\u001B[B");
+			await sendInput(stdin, "\u001B[B");
+
+			expect(requested).toEqual([
+				{
+					cursor: { lastActive: 1, sdkSessionId: "sdk-gamma" },
+					query: "auth",
+				},
+			]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
+
+	test("preserves active filter edits after rendering the previous search query", async () => {
+		const searches: string[] = [];
+		const { app, stdin } = renderMenu({
+			onSelect: () => undefined,
+		});
+		app.rerender(
+			<SessionMenu
+				choices={CHOICES}
+				searchQuery="auth"
+				onSelect={() => undefined}
+				onDelete={() => undefined}
+				onRename={() => undefined}
+				onDismiss={() => undefined}
+				onSearch={(query) => searches.push(query)}
+			/>,
+		);
+
+		try {
+			await flushUpdates();
+			await sendInput(stdin, "z");
+			await new Promise((resolve) => setTimeout(resolve, 180));
+
+			expect(searches).toEqual(["authz"]);
+		} finally {
+			app.unmount();
+			app.cleanup();
+		}
+	});
 });

@@ -1,10 +1,12 @@
 import type {
 	DoneEvent,
 	RolloverNotice,
+	SessionCursor,
 	SessionRenamedEvent,
 	TranscriptTurn,
 } from "../../common/protocol.ts";
 import type { LastUserTarget } from "../persistence/last-user-target.ts";
+import { nextSessionCursor } from "../persistence/session-cursor.ts";
 import type {
 	SessionRow,
 	SessionStore,
@@ -20,6 +22,11 @@ export interface SessionListEntry {
 	title: string;
 	model: string;
 	lastActive: number;
+}
+
+export interface SessionListResult {
+	sessions: SessionListEntry[];
+	nextCursor?: SessionCursor;
 }
 
 interface SessionServiceCallbacks {
@@ -53,15 +60,42 @@ export class SessionService {
 		return this.state.getLastUserTarget();
 	}
 
-	listSessions(limit = 20, tag: SessionTag = "chat"): SessionListEntry[] {
-		return (this.store?.list(limit, tag, this.state.providerId) ?? []).map(
-			(session) => ({
-				sdkSessionId: session.sdkSessionId,
-				title: session.title,
-				model: session.model,
-				lastActive: session.lastActive,
-			}),
-		);
+	listSessions(
+		options: { cursor?: SessionCursor; limit?: number; tag?: SessionTag } = {},
+	): SessionListResult {
+		const limit = options.limit ?? 20;
+		const sessions =
+			this.store?.list({
+				cursor: options.cursor,
+				limit,
+				providerId: this.state.providerId,
+				tag: options.tag ?? "chat",
+			}) ?? [];
+		return {
+			sessions: sessions.map(toSessionListEntry),
+			nextCursor: nextSessionCursor(sessions, limit),
+		};
+	}
+
+	searchSessions(options: {
+		cursor?: SessionCursor;
+		limit?: number;
+		query: string;
+		tag?: SessionTag;
+	}): SessionListResult {
+		const limit = options.limit ?? 20;
+		const sessions =
+			this.store?.searchByTitle({
+				cursor: options.cursor,
+				limit,
+				providerId: this.state.providerId,
+				query: options.query,
+				tag: options.tag ?? "chat",
+			}) ?? [];
+		return {
+			sessions: sessions.map(toSessionListEntry),
+			nextCursor: nextSessionCursor(sessions, limit),
+		};
 	}
 
 	findSession(
@@ -452,6 +486,15 @@ export class SessionService {
 			active,
 		});
 	}
+}
+
+function toSessionListEntry(session: SessionRow): SessionListEntry {
+	return {
+		sdkSessionId: session.sdkSessionId,
+		title: session.title,
+		model: session.model,
+		lastActive: session.lastActive,
+	};
 }
 
 export function formatRolloverStartedNotice(idleMinutes: number): string {
