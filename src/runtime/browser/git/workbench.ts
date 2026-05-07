@@ -190,6 +190,7 @@ export function runGit(
 function isGitRepo(cwd: string): boolean {
 	const result = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
 		cwd,
+		env: gitProcessEnv(),
 		stderr: "pipe",
 		stdout: "pipe",
 	});
@@ -210,11 +211,22 @@ function canonicalizePath(path: string): string {
 	}
 }
 
+function gitProcessEnv(): Record<string, string> {
+	const result: Record<string, string> = {};
+	for (const [key, value] of Object.entries(process.env)) {
+		if (value !== undefined && !key.startsWith("GIT_")) {
+			result[key] = value;
+		}
+	}
+	return result;
+}
+
 function hasGitHeadCommit(root: string): boolean {
 	const result = Bun.spawnSync(
 		["git", "rev-parse", "--verify", "HEAD^{commit}"],
 		{
 			cwd: root,
+			env: gitProcessEnv(),
 			stderr: "pipe",
 			stdout: "pipe",
 		},
@@ -229,6 +241,7 @@ function runProcess(
 ): string {
 	const result = Bun.spawnSync(cmd, {
 		cwd,
+		env: gitProcessEnv(),
 		stderr: "pipe",
 		stdout: "pipe",
 	});
@@ -492,6 +505,7 @@ function readGitGraphCommits(root: string): BrowserGitGraphCommit[] {
 		],
 		{
 			cwd: root,
+			env: gitProcessEnv(),
 			stderr: "pipe",
 			stdout: "pipe",
 		},
@@ -552,6 +566,7 @@ function readGitGraphBranchHeads(root: string): BrowserGitGraphBranchHead[] {
 		],
 		{
 			cwd: root,
+			env: gitProcessEnv(),
 			stderr: "pipe",
 			stdout: "pipe",
 		},
