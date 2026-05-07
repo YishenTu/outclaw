@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
 	CodePreview,
+	FilePreviewHeader,
 	FileViewer,
 	MarkdownPreview,
+	resolveFilePreviewReloadTrigger,
 	resolveFilePreviewScrollRestoreTrigger,
 } from "../../../src/frontend/browser/components/file-viewer/file-viewer.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
@@ -107,10 +109,52 @@ describe("MarkdownPreview", () => {
 });
 
 describe("FileViewer", () => {
+	test("reloads file preview data when only git metadata changes", () => {
+		expect(
+			resolveFilePreviewReloadTrigger({
+				gitRevision: 0,
+				treeRevision: 1,
+			}),
+		).not.toBe(
+			resolveFilePreviewReloadTrigger({
+				gitRevision: 1,
+				treeRevision: 1,
+			}),
+		);
+	});
+
 	test("changes the scroll restore trigger when a file reload settles", () => {
 		expect(resolveFilePreviewScrollRestoreTrigger({ loading: true })).not.toBe(
 			resolveFilePreviewScrollRestoreTrigger({ loading: false }),
 		);
+	});
+
+	test("renders a git preview switch in the subheader for changed files", () => {
+		const html = renderToStaticMarkup(
+			<FilePreviewHeader
+				path="AGENTS.md"
+				gitChange={{
+					path: "agents/railly/AGENTS.md",
+					status: "modified",
+				}}
+				onOpenGitPreview={() => {}}
+			/>,
+		);
+
+		expect(html).toContain("AGENTS.md");
+		expect(html).toContain(">Git preview<");
+		expect(html).toContain('aria-label="Open git preview for AGENTS.md"');
+		expect(html).toContain("lucide-git-compare");
+	});
+
+	test("omits the git preview switch when the file has no git changes", () => {
+		const html = renderToStaticMarkup(
+			<FilePreviewHeader path="AGENTS.md" onOpenGitPreview={() => {}} />,
+		);
+
+		expect(html).toContain("AGENTS.md");
+		expect(html).not.toContain(">Git preview<");
+		expect(html).not.toContain("lucide-git-compare");
 	});
 
 	test("does not render a manual refresh button in the preview header", () => {

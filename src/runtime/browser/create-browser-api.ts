@@ -44,6 +44,7 @@ import { listTreeEntries } from "./files/tree-workbench.ts";
 import {
 	initGitRepo as initGitRepoWorkbench,
 	normalizeGitPaths,
+	readAgentFileGitChange,
 	readAgentTreeGitStatuses,
 	readGitCommit as readGitCommitWorkbench,
 	readGitDiff as readGitDiffWorkbench,
@@ -279,7 +280,17 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				agent.homeDir,
 				relativePath,
 			);
-			return await readBrowserFile(agent.homeDir, absolutePath);
+			const file = await readBrowserFile(agent.homeDir, absolutePath);
+			const gitChange = readAgentFileGitChange(
+				options.gitRoot,
+				agent.homeDir,
+				file.path,
+				ignoredGitPaths,
+			);
+			return {
+				...file,
+				...(gitChange ? { gitChange } : {}),
+			};
 		},
 		async readGitStatus() {
 			return readGitStatusWorkbench(options.gitRoot, ignoredGitPaths);

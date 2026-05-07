@@ -1,6 +1,9 @@
 import type { Facade } from "../../common/protocol.ts";
 import type { SessionService } from "./session-service.ts";
-import type { RuntimePromptContext } from "./state/runtime-state.ts";
+import {
+	type RuntimePromptContext,
+	resolveSessionTitleForPersistence,
+} from "./state/runtime-state.ts";
 
 export const AUTO_TITLE_SYSTEM_PROMPT =
 	"Generate a 3-6 word title summarizing the user's request. Reply with the title only - no quotes, punctuation, prefixes, or explanations. Match the language of the user's message.";
@@ -46,8 +49,12 @@ export class AutoTitleCoordinator {
 
 		const attempt = new AutoTitleAttempt({
 			cwd: this.options.cwd,
-			expectedTitle: params.context.sessionTitle ?? "Untitled",
+			expectedTitle: resolveSessionTitleForPersistence(params.context),
 			facade: this.options.facade,
+			fallbackTitle:
+				params.context.fallbackSessionTitle ??
+				params.context.sessionTitle ??
+				"Untitled",
 			model: this.options.model,
 			prompt: params.prompt,
 			sessions: this.options.sessions,
@@ -119,6 +126,7 @@ interface AutoTitleAttemptOptions {
 	cwd?: string;
 	expectedTitle: string;
 	facade: Facade;
+	fallbackTitle: string;
 	model: string;
 	prompt: string;
 	sessions: SessionService;
@@ -150,7 +158,11 @@ class AutoTitleAttempt {
 		}
 
 		if (!title) {
-			this.options.sessions.markAutoTitleAttempted(sdkSessionId);
+			this.options.sessions.applyAutoTitle({
+				expectedTitle: this.options.expectedTitle,
+				sessionId: sdkSessionId,
+				title: this.options.fallbackTitle,
+			});
 			return;
 		}
 

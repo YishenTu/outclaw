@@ -157,9 +157,11 @@ describe("RuntimeExecutionCoordinator", () => {
 					expect(state.sessionId).toBeUndefined();
 					expect(store.getActiveSessionId("mock")).toBeUndefined();
 					expect(store.getLastHandledRolloverInteractiveAt()).toBe(123);
-					expect(store.getRolloverNotice()).toBe(
-						"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
-					);
+					expect(store.getRolloverNotice()).toEqual({
+						kind: "rollover",
+						message:
+							"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
+					});
 					await release.promise;
 					task.onEvent?.({
 						type: "done",
@@ -182,9 +184,11 @@ describe("RuntimeExecutionCoordinator", () => {
 		expect(state.sessionId).toBeUndefined();
 		expect(store.getActiveSessionId("mock")).toBeUndefined();
 		expect(store.getLastHandledRolloverInteractiveAt()).toBe(123);
-		expect(store.getRolloverNotice()).toBe(
-			"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
-		);
+		expect(store.getRolloverNotice()).toEqual({
+			kind: "rollover",
+			message:
+				"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
+		});
 
 		store.close();
 	});

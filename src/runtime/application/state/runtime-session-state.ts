@@ -13,6 +13,7 @@ export class RuntimeSessionState {
 	private activeOcSessionId: string | undefined;
 	private activeSessionSource: "tui" | "telegram" | "agent" = "tui";
 	private currentTitle: string | undefined;
+	private deferredFallbackTitle: string | undefined;
 	private lastUserTarget: LastUserTarget | undefined;
 	private lastUsage: UsageInfo | undefined;
 	private currentGeneration = 0;
@@ -35,6 +36,10 @@ export class RuntimeSessionState {
 
 	get sessionTitle(): string | undefined {
 		return this.currentTitle;
+	}
+
+	get sessionTitleFallback(): string | undefined {
+		return this.deferredFallbackTitle;
 	}
 
 	get usage(): UsageInfo | undefined {
@@ -70,14 +75,26 @@ export class RuntimeSessionState {
 		return this.createLastUserDeliveryTarget();
 	}
 
-	preparePrompt(prompt: string, images?: ImageRef[]) {
+	preparePrompt(
+		prompt: string,
+		images?: ImageRef[],
+		options: { deferTitle?: boolean } = {},
+	) {
 		if (!this.activeOcSessionId) {
 			this.activeOcSessionId = randomUUID();
 		}
-		if (!this.activeSessionId && !this.currentTitle) {
+		if (
+			!this.activeSessionId &&
+			!this.currentTitle &&
+			!this.deferredFallbackTitle
+		) {
 			const title = deriveSessionTitle(prompt, images);
 			if (title) {
-				this.currentTitle = title;
+				if (options.deferTitle) {
+					this.deferredFallbackTitle = title;
+				} else {
+					this.currentTitle = title;
+				}
 			}
 		}
 	}
@@ -95,6 +112,7 @@ export class RuntimeSessionState {
 		this.activeOcSessionId = undefined;
 		this.activeSessionSource = "tui";
 		this.currentTitle = undefined;
+		this.deferredFallbackTitle = undefined;
 		this.lastUsage = undefined;
 	}
 
@@ -115,6 +133,7 @@ export class RuntimeSessionState {
 		// and transcript lookup converge.
 		this.activeOcSessionId = params.session.sdkSessionId;
 		this.currentTitle = params.session.title;
+		this.deferredFallbackTitle = undefined;
 		this.activeSessionSource =
 			params.session.source === "telegram"
 				? "telegram"
@@ -127,6 +146,7 @@ export class RuntimeSessionState {
 	renameSession(sessionId: string, title: string) {
 		if (this.activeSessionId === sessionId) {
 			this.currentTitle = title;
+			this.deferredFallbackTitle = undefined;
 		}
 	}
 
@@ -135,6 +155,7 @@ export class RuntimeSessionState {
 		this.activeSessionId = session.sdkSessionId;
 		this.activeOcSessionId = session.sdkSessionId;
 		this.currentTitle = session.title;
+		this.deferredFallbackTitle = undefined;
 		this.activeSessionSource =
 			session.source === "telegram"
 				? "telegram"

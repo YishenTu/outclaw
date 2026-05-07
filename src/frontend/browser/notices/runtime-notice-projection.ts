@@ -15,7 +15,7 @@ export function createRuntimeNoticeKey(
 	}
 
 	if (notice.kind === "rollover") {
-		return `rollover:${notice.message}`;
+		return `rollover:${notice.finalCheck ?? "ok"}:${notice.message}`;
 	}
 
 	return notice.kind;

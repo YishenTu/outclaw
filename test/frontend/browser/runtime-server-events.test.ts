@@ -8,7 +8,10 @@ import {
 	handleBrowserServerEvent,
 	inferImageMediaTypeFromPath,
 } from "../../../src/frontend/browser/events/runtime-server-events.ts";
-import { createBrowserSessionRef } from "../../../src/frontend/browser/sessions/session.ts";
+import {
+	createBrowserSessionRef,
+	resolveComposerSessionKey,
+} from "../../../src/frontend/browser/sessions/session.ts";
 import { useAgentFilesStore } from "../../../src/frontend/browser/stores/agent-files.ts";
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
 import { useChatStore } from "../../../src/frontend/browser/stores/chat.ts";
@@ -187,6 +190,162 @@ describe("browser runtime server events", () => {
 		expect(
 			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
 		).toBeNull();
+	});
+
+	test("does not let sidebar refresh bind a pending live run to an empty persisted session", () => {
+		setSystemTime(new Date("2026-04-27T00:00:00.000Z"));
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+		});
+		const pendingSessionKey = "agent-railly:mock:__pending__";
+		useChatStore.getState().pushMessage(pendingSessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "new task",
+			timestamp: Date.parse("2026-04-27T00:00:00.000Z"),
+		});
+		useChatStore.getState().startAssistantTurn(pendingSessionKey);
+
+		applySidebarSummary({
+			activeAgentId: "agent-railly",
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					terminalRunCommand: "bun test",
+					activeSession: {
+						providerId: "mock",
+						sdkSessionId: "sdk-auto-main",
+					},
+					sessions: [
+						{
+							providerId: "mock",
+							sdkSessionId: "sdk-auto-main",
+							title: "Generated title",
+							model: "opus",
+							lastActive: 1,
+						},
+					],
+				},
+			],
+		});
+
+		const activeSession =
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"] ?? null;
+		const sessionKey = resolveComposerSessionKey({
+			agentId: "agent-railly",
+			activeSession,
+			providerId: useRuntimeStore.getState().providerId,
+			runtimeSessionId: useRuntimeStore.getState().sessionId,
+		});
+
+		expect(sessionKey).toBe(pendingSessionKey);
+		expect(useChatStore.getState().getSession(pendingSessionKey)).toMatchObject(
+			{
+				messages: [
+					{
+						kind: "chat",
+						role: "user",
+						content: "new task",
+						timestamp: Date.parse("2026-04-27T00:00:00.000Z"),
+					},
+				],
+				isStreaming: true,
+				isThinking: true,
+			},
+		);
+		expect(
+			useChatStore.getState().getSession("agent-railly:mock:sdk-auto-main"),
+		).toBeUndefined();
+		expect(useSessionsStore.getState().sessionsByAgent["agent-railly"]).toEqual(
+			[
+				{
+					agentId: "agent-railly",
+					providerId: "mock",
+					sdkSessionId: "sdk-auto-main",
+					title: "Generated title",
+					model: "opus",
+					lastActive: 1,
+				},
+			],
+		);
+	});
+
+	test("keeps each agent active session when another selected agent is running", () => {
+		useAgentsStore.getState().setAgents([
+			{ agentId: "agent-railly", name: "railly" },
+			{ agentId: "agent-mimi", name: "mimi" },
+		]);
+		useAgentsStore.getState().setActiveAgent("agent-mimi");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+			sessionId: "sdk-railly",
+		});
+
+		applySidebarSummary({
+			activeAgentId: "agent-railly",
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					terminalRunCommand: "bun test",
+					activeSession: {
+						providerId: "mock",
+						sdkSessionId: "sdk-stale-railly",
+					},
+					sessions: [
+						{
+							providerId: "mock",
+							sdkSessionId: "sdk-stale-railly",
+							title: "Stale railly active",
+							model: "opus",
+							lastActive: 2,
+						},
+					],
+				},
+				{
+					agentId: "agent-mimi",
+					name: "mimi",
+					terminalRunCommand: "bun test",
+					activeSession: {
+						providerId: "mock",
+						sdkSessionId: "sdk-mimi",
+					},
+					sessions: [
+						{
+							providerId: "mock",
+							sdkSessionId: "sdk-mimi",
+							title: "Mimi active",
+							model: "opus",
+							lastActive: 1,
+						},
+					],
+				},
+			],
+		});
+
+		expect(useSessionsStore.getState().activeSessionByAgent).toEqual({
+			"agent-mimi": createBrowserSessionRef("agent-mimi", "mock", "sdk-mimi"),
+			"agent-railly": createBrowserSessionRef(
+				"agent-railly",
+				"mock",
+				"sdk-railly",
+			),
+		});
 	});
 
 	test("updates runtime, session, usage, and popup state from status events", () => {

@@ -4,6 +4,7 @@ import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { TranscriptTurn } from "../../../src/common/protocol.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
+import { rolloverNoticeKey } from "../../../src/runtime/persistence/state-keys.ts";
 
 const TEST_DB = join(import.meta.dir, ".tmp-test.sqlite");
 const CLAUDE_PROVIDER = "claude";
@@ -200,15 +201,47 @@ describe("SessionStore", () => {
 
 	test("persists agent-scoped rollover notice independently of global frontend notice", () => {
 		let store = createTestStore({ agentId: RAILLY_AGENT_ID });
-		store.setRolloverNotice("auto-finalized after 8h idle");
+		store.setRolloverNotice({
+			kind: "rollover",
+			message: "auto-finalized after 8h idle",
+			finalCheck: "failed",
+		});
 		store.setFrontendNotice({ kind: "restart_required" });
 		store.close();
 
 		store = createTestStore({ agentId: RAILLY_AGENT_ID });
-		expect(store.getRolloverNotice()).toBe("auto-finalized after 8h idle");
+		expect(store.getRolloverNotice()).toEqual({
+			kind: "rollover",
+			message: "auto-finalized after 8h idle",
+			finalCheck: "failed",
+		});
 		expect(store.getFrontendNotice()).toEqual({ kind: "restart_required" });
 		store.setRolloverNotice(undefined);
 		expect(store.getRolloverNotice()).toBeUndefined();
+
+		store.close();
+	});
+
+	test("reads legacy raw rollover notices as structured notices", () => {
+		let store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		store.close();
+		const db = new Database(TEST_DB);
+		db.query(
+			"INSERT OR REPLACE INTO state (key, value) VALUES ($key, $value)",
+		).run({
+			$key: rolloverNoticeKey(RAILLY_AGENT_ID),
+			$value:
+				"Previous session auto-finalized after 8h idle. Final check failed. A new session will begin with your next message. Use /session to resume.",
+		});
+		db.close();
+
+		store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		expect(store.getRolloverNotice()).toEqual({
+			kind: "rollover",
+			message:
+				"Previous session auto-finalized after 8h idle. Final check failed. A new session will begin with your next message. Use /session to resume.",
+			finalCheck: "failed",
+		});
 
 		store.close();
 	});

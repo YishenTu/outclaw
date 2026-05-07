@@ -42,6 +42,8 @@ export function applySidebarSummary(summary: BrowserAgentsResponse) {
 		useAgentsStore.getState().setActiveAgent(summary.activeAgentId);
 	}
 
+	const runtime = useRuntimeStore.getState();
+
 	for (const agent of summary.agents) {
 		useSessionsStore.getState().setSessions(
 			agent.agentId,
@@ -57,17 +59,48 @@ export function applySidebarSummary(summary: BrowserAgentsResponse) {
 			),
 			agent.nextSessionCursor,
 		);
+		const currentActiveSession =
+			useSessionsStore.getState().activeSessionByAgent[agent.agentId];
 		useSessionsStore.getState().setActiveSession(
 			agent.agentId,
-			agent.activeSession
-				? {
-						agentId: agent.agentId,
-						providerId: agent.activeSession.providerId,
-						sdkSessionId: agent.activeSession.sdkSessionId,
-					}
-				: null,
+			resolveSidebarActiveSession({
+				agent,
+				currentActiveSession,
+				runtime,
+			}),
 		);
 	}
+}
+
+function resolveSidebarActiveSession(params: {
+	agent: BrowserAgentsResponse["agents"][number];
+	currentActiveSession:
+		| ReturnType<typeof createBrowserSessionRef>
+		| null
+		| undefined;
+	runtime: ReturnType<typeof useRuntimeStore.getState>;
+}) {
+	if (
+		params.agent.name === params.runtime.agentName &&
+		params.runtime.running
+	) {
+		if (params.runtime.providerId && params.runtime.sessionId) {
+			return createBrowserSessionRef(
+				params.agent.agentId,
+				params.runtime.providerId,
+				params.runtime.sessionId,
+			);
+		}
+		return params.currentActiveSession ?? null;
+	}
+
+	return params.agent.activeSession
+		? createBrowserSessionRef(
+				params.agent.agentId,
+				params.agent.activeSession.providerId,
+				params.agent.activeSession.sdkSessionId,
+			)
+		: null;
 }
 
 export function formatSessionListSummary(

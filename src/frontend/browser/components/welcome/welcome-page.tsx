@@ -4,7 +4,7 @@ import type { ModelAlias } from "../../../../common/models.ts";
 import { randomTagline } from "../../../../common/taglines.ts";
 import type { ComposerImageAttachment } from "../../attachments/composer-images.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
-import { resolveComposerSessionKey } from "../../sessions/session.ts";
+import { resolveDisplayedAgentSessionKey } from "../../sessions/session.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import { useRuntimeStore } from "../../stores/runtime.ts";
 import { useSessionsStore } from "../../stores/sessions.ts";
@@ -84,10 +84,11 @@ export function WelcomePage() {
 	const sessionKey =
 		selectedAgent === null
 			? null
-			: resolveComposerSessionKey({
+			: resolveDisplayedAgentSessionKey({
 					agentId: selectedAgent.agentId,
+					agentName: selectedAgent.name,
 					activeSession: selectedSession,
-					preferRuntimeSession: selectedAgent.name === runtimeAgentName,
+					runtimeAgentName,
 					providerId,
 					runtimeSessionId,
 				});

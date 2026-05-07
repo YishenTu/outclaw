@@ -1,7 +1,9 @@
+import { PENDING_SESSION_TITLE } from "../../../common/session-title.ts";
 import type { SessionRef } from "../stores/sessions.ts";
 
 export const PENDING_SESSION_ID = "__pending__";
 export const PENDING_PROVIDER_ID = "runtime";
+export { PENDING_SESSION_TITLE };
 
 export function createBrowserSessionRef(
 	agentId: string,
@@ -76,4 +78,58 @@ export function resolveComposerSessionKey(params: {
 		return resolveBrowserSessionKey(params);
 	}
 	return resolveCurrentBrowserSessionKey(params);
+}
+
+export function resolveDisplayedAgentSessionKey(params: {
+	agentId: string;
+	agentName: string;
+	activeSession: SessionRef | null;
+	providerId?: string | null;
+	runtimeAgentName?: string | null;
+	runtimeSessionId?: string | null;
+}): string {
+	return resolveComposerSessionKey({
+		agentId: params.agentId,
+		activeSession: params.activeSession,
+		preferRuntimeSession: params.agentName === params.runtimeAgentName,
+		providerId: params.providerId,
+		runtimeSessionId: params.runtimeSessionId,
+	});
+}
+
+export function resolveDisplayedSessionTitle(params: {
+	activeSession: SessionRef | null;
+	activeSessionTitle?: string | null;
+	agentName: string;
+	providerId?: string | null;
+	runtimeAgentName?: string | null;
+	runtimeSessionId?: string | null;
+	sessionTitleFromRuntime?: string | null;
+}): string {
+	const runtimeOwnsDisplayedAgent =
+		params.agentName === params.runtimeAgentName;
+	if (
+		runtimeOwnsDisplayedAgent &&
+		params.sessionTitleFromRuntime !== undefined &&
+		params.sessionTitleFromRuntime !== null
+	) {
+		return params.sessionTitleFromRuntime;
+	}
+	if (
+		params.activeSessionTitle !== undefined &&
+		params.activeSessionTitle !== null
+	) {
+		return params.activeSessionTitle;
+	}
+	if (!params.activeSession) {
+		return PENDING_SESSION_TITLE;
+	}
+	if (
+		runtimeOwnsDisplayedAgent &&
+		params.providerId === params.activeSession.providerId &&
+		params.runtimeSessionId === params.activeSession.sdkSessionId
+	) {
+		return PENDING_SESSION_TITLE;
+	}
+	return params.activeSession.sdkSessionId;
 }

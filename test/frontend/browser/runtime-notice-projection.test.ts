@@ -17,7 +17,7 @@ describe("runtime notice projection", () => {
 		);
 	});
 
-	test("projects rollover notices as dismissible browser notices keyed by message", () => {
+	test("projects rollover notices as dismissible browser notices keyed by status and message", () => {
 		const notice = {
 			kind: "rollover" as const,
 			message: "Session rolled over after idle timeout.",
@@ -30,7 +30,7 @@ describe("runtime notice projection", () => {
 			dismissible: true,
 		});
 		expect(createRuntimeNoticeKey(notice)).toBe(
-			"rollover:Session rolled over after idle timeout.",
+			"rollover:ok:Session rolled over after idle timeout.",
 		);
 	});
 });

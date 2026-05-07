@@ -106,10 +106,7 @@ function startMultiAgentDaemon(
 					.get(agent.agentId)
 					?.getRolloverNotice();
 				if (rolloverNotice) {
-					return {
-						kind: "rollover",
-						message: rolloverNotice,
-					} as const;
+					return rolloverNotice;
 				}
 				return stateStore.getFrontendNotice();
 			},

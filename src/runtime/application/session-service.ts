@@ -1,5 +1,6 @@
 import type {
 	DoneEvent,
+	RolloverNotice,
 	SessionCursor,
 	SessionRenamedEvent,
 	TranscriptTurn,
@@ -11,7 +12,10 @@ import type {
 	SessionStore,
 	SessionTag,
 } from "../persistence/session-store/session-store.ts";
-import type { RuntimeState } from "./state/runtime-state.ts";
+import {
+	type RuntimeState,
+	resolveSessionTitleForPersistence,
+} from "./state/runtime-state.ts";
 
 export interface SessionListEntry {
 	sdkSessionId: string;
@@ -223,7 +227,7 @@ export class SessionService {
 		return this.store?.getLastHandledRolloverInteractiveAt();
 	}
 
-	getRolloverNotice(): string | undefined {
+	getRolloverNotice(): RolloverNotice | undefined {
 		return this.store?.getRolloverNotice();
 	}
 
@@ -300,7 +304,7 @@ export class SessionService {
 		}
 
 		this.clearActiveSession();
-		const notice = formatRolloverStartedNotice(idleMinutes);
+		const notice = createRolloverNotice(idleMinutes);
 		this.store?.setRolloverNotice(notice);
 		return notice;
 	}
@@ -310,16 +314,21 @@ export class SessionService {
 			return;
 		}
 
-		const expectedStartedMessage = formatRolloverStartedNotice(
-			params.idleMinutes,
-		);
-		if (this.store?.getRolloverNotice() !== expectedStartedMessage) {
+		const expectedStartedNotice = createRolloverNotice(params.idleMinutes);
+		const currentNotice = this.store?.getRolloverNotice();
+		if (
+			currentNotice?.kind !== "rollover" ||
+			currentNotice.message !== expectedStartedNotice.message ||
+			currentNotice.finalCheck === "failed"
+		) {
 			return;
 		}
 
-		this.store?.setRolloverNotice(
-			formatRolloverFailedNotice(params.idleMinutes),
-		);
+		this.store?.setRolloverNotice({
+			...expectedStartedNotice,
+			message: formatRolloverFailedNotice(params.idleMinutes),
+			finalCheck: "failed",
+		});
 	}
 
 	recordCronRun(params: {
@@ -371,11 +380,16 @@ export class SessionService {
 			return;
 		}
 
+		const existing = this.store?.get(this.state.providerId, sessionId);
 		this.store?.setActiveSessionId(this.state.providerId, sessionId);
 		this.persistSession({
 			sessionId,
 			ocSessionId: this.state.ocSessionId,
-			title: this.state.sessionTitle ?? "Untitled",
+			title: resolveSessionTitleForPersistence({
+				existingTitle: existing?.title,
+				fallbackSessionTitle: this.state.sessionTitleFallback,
+				sessionTitle: this.state.sessionTitle,
+			}),
 			model: this.state.model,
 			source: this.state.sessionSource,
 			usage: this.state.usage,
@@ -487,6 +501,13 @@ export function formatRolloverStartedNotice(idleMinutes: number): string {
 	return `Previous session auto-finalized after ${formatIdleWindow(
 		idleMinutes,
 	)} idle. A new session will begin with your next message. Use /session to resume.`;
+}
+
+function createRolloverNotice(idleMinutes: number): RolloverNotice {
+	return {
+		kind: "rollover",
+		message: formatRolloverStartedNotice(idleMinutes),
+	};
 }
 
 function formatRolloverFailedNotice(idleMinutes: number): string {

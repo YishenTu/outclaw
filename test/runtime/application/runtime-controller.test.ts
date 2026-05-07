@@ -960,6 +960,45 @@ describe("RuntimeController", () => {
 			cleanupStore(TEST_DB);
 		});
 
+		test("keeps New conversation visible while auto-title is pending", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new AutoTitleFacade(true);
+			facade.titleText = "Generated title";
+			const { controller } = createController({
+				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				facade,
+				store,
+			});
+			const ws = mockWs("browser");
+			controller.handleOpen(ws);
+
+			controller.handleMessage(ws, prompt("Summarize the config panel bug"));
+			await waitForDone(ws);
+			await waitForCondition(() => facade.titleCalls.length === 1);
+
+			expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
+				title: "New conversation",
+				autoTitleAttempted: false,
+			});
+			const pendingStatus = ws
+				.events()
+				.filter((event) => event.type === "runtime_status")
+				.at(-1) as { sessionTitle?: string } | undefined;
+			expect(pendingStatus?.sessionTitle).toBeUndefined();
+
+			facade.releaseTitle();
+			const renamed = await waitForServerEvent(ws, "session_renamed");
+			expect(renamed).toMatchObject({
+				sdkSessionId: "sdk-auto-main",
+				title: "Generated title",
+				active: true,
+			});
+
+			store.close();
+			cleanupStore(TEST_DB);
+		});
+
 		test("auto-title skips image-only first prompts", async () => {
 			cleanupStore(TEST_DB);
 			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
@@ -1050,7 +1089,13 @@ describe("RuntimeController", () => {
 			});
 			expect(
 				ws.events().find((event) => event.type === "session_renamed"),
-			).toBeUndefined();
+			).toMatchObject({
+				type: "session_renamed",
+				sdkSessionId: "sdk-auto-main",
+				title: "Write release notes for the sidebar",
+				providerId: PROVIDER_ID,
+				active: true,
+			});
 
 			store.close();
 			cleanupStore(TEST_DB);
@@ -1204,18 +1249,19 @@ describe("RuntimeController", () => {
 			await waitForServerEvent(ws, "session_cleared");
 			await waitForCondition(() => facade.titleCalls.length === 1);
 			facade.releaseTitle();
-			await waitForCondition(
-				() =>
-					store.get(PROVIDER_ID, "sdk-auto-main")?.autoTitleAttempted === true,
-			);
+			const renamed = await waitForServerEvent(ws, "session_renamed");
 
+			expect(renamed).toEqual({
+				type: "session_renamed",
+				sdkSessionId: "sdk-auto-main",
+				title: "Write release notes for the sidebar",
+				providerId: PROVIDER_ID,
+				active: false,
+			});
 			expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
 				title: "Write release notes for the sidebar",
 				autoTitleAttempted: true,
 			});
-			expect(
-				ws.events().find((event) => event.type === "session_renamed"),
-			).toBeUndefined();
 
 			store.close();
 			cleanupStore(TEST_DB);
@@ -2578,7 +2624,7 @@ describe("RuntimeController", () => {
 				expect(titleCall?.abortController?.signal.aborted).toBe(true);
 				expect(facade.titleAbortObserved).toBe(true);
 				expect(store.get(PROVIDER_ID, "sdk-auto-main")).toMatchObject({
-					title: "Summarize shutdown behavior",
+					title: "New conversation",
 					autoTitleAttempted: false,
 				});
 			} finally {

@@ -1,6 +1,7 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type {
+	BrowserFileGitChange,
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitFileStatus,
@@ -156,6 +157,34 @@ export function readAgentTreeGitStatuses(
 	agentHomeDir: string,
 	ignoredGitPaths: readonly string[],
 ): Map<string, BrowserTreeEntryGitStatus> {
+	return new Map(
+		[...readAgentTreeGitChanges(gitRoot, agentHomeDir, ignoredGitPaths)].map(
+			([path, change]) => [path, change.status],
+		),
+	);
+}
+
+export function readAgentFileGitChange(
+	gitRoot: string,
+	agentHomeDir: string,
+	relativePath: string,
+	ignoredGitPaths: readonly string[],
+): BrowserFileGitChange | undefined {
+	const normalizedPath = normalizeBrowserPath(relativePath);
+	if (normalizedPath === "") {
+		return undefined;
+	}
+
+	return readAgentTreeGitChanges(gitRoot, agentHomeDir, ignoredGitPaths).get(
+		normalizedPath,
+	);
+}
+
+function readAgentTreeGitChanges(
+	gitRoot: string,
+	agentHomeDir: string,
+	ignoredGitPaths: readonly string[],
+): Map<string, BrowserFileGitChange> {
 	const relativeAgentRoot = toRelativeDescendantPath(gitRoot, agentHomeDir);
 	if (relativeAgentRoot === undefined) {
 		return new Map();
@@ -173,7 +202,7 @@ export function readAgentTreeGitStatuses(
 			],
 			false,
 		);
-		return toAgentTreeGitStatuses(output, relativeAgentRoot, ignoredGitPaths);
+		return toAgentTreeGitChanges(output, relativeAgentRoot, ignoredGitPaths);
 	} catch {
 		return new Map();
 	}
@@ -185,6 +214,16 @@ export function runGit(
 	allowExitCodeOne = false,
 ): string {
 	return runProcess(["git", ...args], cwd, allowExitCodeOne);
+}
+
+function gitProcessEnv(): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const [key, value] of Object.entries(process.env)) {
+		if (value !== undefined && !key.startsWith("GIT_")) {
+			env[key] = value;
+		}
+	}
+	return env;
 }
 
 function isGitRepo(cwd: string): boolean {
@@ -209,16 +248,6 @@ function canonicalizePath(path: string): string {
 	} catch {
 		return resolve(path);
 	}
-}
-
-function gitProcessEnv(): Record<string, string> {
-	const result: Record<string, string> = {};
-	for (const [key, value] of Object.entries(process.env)) {
-		if (value !== undefined && !key.startsWith("GIT_")) {
-			result[key] = value;
-		}
-	}
-	return result;
 }
 
 function hasGitHeadCommit(root: string): boolean {
@@ -597,12 +626,12 @@ function readGitGraphBranchHeads(root: string): BrowserGitGraphBranchHead[] {
 		);
 }
 
-function toAgentTreeGitStatuses(
+function toAgentTreeGitChanges(
 	output: string,
 	relativeAgentRoot: string,
 	ignoredGitPaths: readonly string[],
-): Map<string, BrowserTreeEntryGitStatus> {
-	const statuses = new Map<string, BrowserTreeEntryGitStatus>();
+): Map<string, BrowserFileGitChange> {
+	const changes = new Map<string, BrowserFileGitChange>();
 	const fileLines = output
 		.split(/\r?\n/)
 		.map((line) => line.trimEnd())
@@ -624,10 +653,16 @@ function toAgentTreeGitStatuses(
 		if (!path) {
 			continue;
 		}
-		statuses.set(path, mergeTreeEntryGitStatus(statuses.get(path), gitStatus));
+		changes.set(
+			path,
+			mergeTreeEntryGitChange(changes.get(path), {
+				path: fileStatus.path,
+				status: gitStatus,
+			}),
+		);
 	}
 
-	return statuses;
+	return changes;
 }
 
 function toAgentTreeRelativePath(
@@ -673,4 +708,17 @@ function mergeTreeEntryGitStatus(
 		return "new";
 	}
 	return incoming;
+}
+
+function mergeTreeEntryGitChange(
+	current: BrowserFileGitChange | undefined,
+	incoming: BrowserFileGitChange,
+): BrowserFileGitChange {
+	if (!current) {
+		return incoming;
+	}
+	return {
+		path: incoming.path,
+		status: mergeTreeEntryGitStatus(current.status, incoming.status),
+	};
 }

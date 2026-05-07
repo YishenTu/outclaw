@@ -313,6 +313,7 @@ export interface RestartRequiredNotice {
 export interface RolloverNotice {
 	kind: "rollover";
 	message: string;
+	finalCheck?: "failed";
 }
 
 export type FrontendNotice = RestartRequiredNotice | RolloverNotice;
@@ -550,10 +551,16 @@ export interface BrowserInboxRestoreResponse {
 	restoredPath: string;
 }
 
+export interface BrowserFileGitChange {
+	path: string;
+	status: BrowserTreeEntryGitStatus;
+}
+
 export interface BrowserFileResponse {
 	path: string;
 	kind: "text" | "binary";
 	content?: string;
+	gitChange?: BrowserFileGitChange;
 	language?: string;
 	truncated: boolean;
 }

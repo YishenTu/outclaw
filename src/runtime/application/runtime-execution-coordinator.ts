@@ -35,6 +35,7 @@ interface RuntimeExecutionCoordinatorOptions {
 	sessions: Pick<
 		SessionService,
 		| "beginRolloverAttempt"
+		| "canPersistSessions"
 		| "finishRolloverAttempt"
 		| "recordAcceptedPromptTarget"
 	>;
@@ -152,7 +153,9 @@ export class RuntimeExecutionCoordinator {
 		if (this.shuttingDown) {
 			return;
 		}
-		this.options.state.preparePrompt(task.prompt, task.images);
+		this.options.state.preparePrompt(task.prompt, task.images, {
+			deferTitle: this.shouldDeferTitleForAutoTitle(task),
+		});
 		const context = this.options.state.capturePromptContext();
 		const lane = this.getOrCreateLane(context);
 		this.options.autoTitle?.start({
@@ -312,7 +315,7 @@ export class RuntimeExecutionCoordinator {
 				task.idleMinutes,
 			);
 			started = true;
-			void this.deliverRolloverStartedNotice(deliveryTarget, notice);
+			void this.deliverRolloverStartedNotice(deliveryTarget, notice.message);
 			await this.runPromptInLane(
 				lane,
 				{
@@ -360,6 +363,18 @@ export class RuntimeExecutionCoordinator {
 				`Failed to deliver rollover notice to Telegram: ${extractError(err)}`,
 			);
 		}
+	}
+
+	private shouldDeferTitleForAutoTitle(task: PromptExecution): boolean {
+		return (
+			this.options.autoTitle !== undefined &&
+			this.options.sessions.canPersistSessions &&
+			this.options.state.sessionId === undefined &&
+			(task.source === "browser" ||
+				task.source === "telegram" ||
+				task.source === "tui") &&
+			task.prompt.trim() !== ""
+		);
 	}
 
 	private getOrCreateLane(context: RuntimePromptContext): ExecutionLane {
