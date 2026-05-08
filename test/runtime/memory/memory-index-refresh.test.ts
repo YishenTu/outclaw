@@ -155,7 +155,7 @@ Do not remove this outro.
 		expect(content).toContain("# Custom Schema Index");
 		expect(content).toContain("Do not remove this intro.");
 		expect(content).toContain("Do not remove this outro.");
-		expect(content).toContain("- schema_hot.md — hot schema");
+		expect(content).toContain("- [[schema_hot]] — hot schema");
 		expect(content).not.toContain("stale hot");
 		expect(content).not.toContain("stale warm");
 		expect(content).not.toContain("stale cold");
@@ -181,7 +181,7 @@ Do not remove this outro.
 
 		const content = readFileSync(schemaIndexPath(tempHome), "utf-8");
 		expect(content).toContain(
-			"<!-- hot-schemas:begin -->\n- schema_project_outclaw.md — Mini OpenClaw — autonomous AI agent harness.\n<!-- hot-schemas:end -->",
+			"<!-- hot-schemas:begin -->\n- [[schema_project_outclaw]] — Mini OpenClaw — autonomous AI agent harness.\n<!-- hot-schemas:end -->",
 		);
 		expect(content).not.toContain("This body text should not be indexed.");
 	});
@@ -205,7 +205,7 @@ Do not remove this outro.
 
 		const content = readFileSync(schemaIndexPath(tempHome), "utf-8");
 		expect(content).toContain(
-			"- schema_yaml_dates.md — YAML date syntax stays valid.",
+			"- [[schema_yaml_dates]] — YAML date syntax stays valid.",
 		);
 	});
 
@@ -230,8 +230,8 @@ Do not remove this outro.
 		refreshMemoryIndex({ memoryRoot: tempHome, now: today });
 
 		const content = readFileSync(schemaIndexPath(tempHome), "utf-8");
-		const bIndex = content.indexOf("schema_b.md");
-		const aIndex = content.indexOf("schema_a.md");
+		const bIndex = content.indexOf("[[schema_b]]");
+		const aIndex = content.indexOf("[[schema_a]]");
 		expect(bIndex).toBeGreaterThan(0);
 		expect(aIndex).toBeGreaterThan(0);
 		expect(bIndex).toBeLessThan(aIndex);
@@ -266,13 +266,13 @@ Do not remove this outro.
 
 		const content = readFileSync(schemaIndexPath(tempHome), "utf-8");
 		expect(content).toContain(
-			"<!-- hot-schemas:begin -->\n- schema_hot.md — hot schema\n<!-- hot-schemas:end -->",
+			"<!-- hot-schemas:begin -->\n- [[schema_hot]] — hot schema\n<!-- hot-schemas:end -->",
 		);
 		expect(content).toContain(
-			"<!-- warm-schemas:begin -->\n- schema_warm.md — warm schema\n<!-- warm-schemas:end -->",
+			"<!-- warm-schemas:begin -->\n- [[schema_warm]] — warm schema\n<!-- warm-schemas:end -->",
 		);
 		expect(content).toContain(
-			"<!-- cold-schemas:begin -->\n- schema_cold.md — cold schema\n<!-- cold-schemas:end -->",
+			"<!-- cold-schemas:begin -->\n- [[schema_cold]] — cold schema\n<!-- cold-schemas:end -->",
 		);
 	});
 
@@ -291,7 +291,7 @@ Do not remove this outro.
 		refreshMemoryIndex({ memoryRoot: tempHome, now: today });
 
 		const content = readFileSync(schemaIndexPath(tempHome), "utf-8");
-		expect(content).not.toContain("_template.md");
+		expect(content).not.toContain("[[_template]]");
 	});
 
 	test("creates schemas/index.md from the default template when missing", () => {
@@ -337,8 +337,8 @@ Do not remove this outro.
 		).not.toThrow();
 
 		const content = readFileSync(schemaIndexPath(tempHome), "utf-8");
-		expect(content).toContain("schema_good.md");
-		expect(content).not.toContain("schema_bad.md");
+		expect(content).toContain("[[schema_good]]");
+		expect(content).not.toContain("[[schema_bad]]");
 	});
 
 	test("preserves MEMORY.md unchanged", () => {
@@ -396,7 +396,7 @@ Do not remove this outro.
 		refreshMemoryIndex({ memoryRoot: tempHome, now: today });
 
 		const content = readFileSync(schemaIndexPath(tempHome), "utf-8");
-		expect(content).toContain("- schema_project_outclaw.md — project_outclaw");
+		expect(content).toContain("- [[schema_project_outclaw]] — project_outclaw");
 		expect(content).not.toContain("This body text should not be indexed.");
 	});
 

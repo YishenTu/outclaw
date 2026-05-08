@@ -150,8 +150,12 @@ function renderTierEntries(entries: SchemaEntry[]): string {
 	}
 
 	return entries
-		.map((entry) => `- ${entry.filename} — ${entry.description}`)
+		.map((entry) => `- [[${stripMdExtension(entry.filename)}]] — ${entry.description}`)
 		.join("\n");
+}
+
+function stripMdExtension(filename: string): string {
+	return filename.replace(/\.md$/, "");
 }
 
 function parseSchemaEntry(
