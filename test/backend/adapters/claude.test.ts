@@ -394,6 +394,64 @@ describe("ClaudeAdapter", () => {
 		}
 	});
 
+	test("readReplay hydrates raw Claude history timestamps without SDK fallback", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "outclaw-claude-replay-"));
+		const projectsDir = join(tmp, "projects");
+		const projectDir = join(projectsDir, "sample-project");
+		const sessionId = "sdk-replay-history";
+
+		try {
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(
+				join(projectDir, `${sessionId}.jsonl`),
+				[
+					JSON.stringify({
+						type: "user",
+						timestamp: "2025-01-15T14:30:00.000Z",
+						message: {
+							content: [{ type: "text", text: "past question" }],
+						},
+					}),
+					JSON.stringify({
+						type: "assistant",
+						timestamp: "2025-01-15T14:31:04.000Z",
+						message: {
+							content: [{ type: "text", text: "past answer" }],
+						},
+					}),
+				].join("\n"),
+			);
+			const getSessionMessages = mock(async () => [
+				{
+					type: "user",
+					message: { content: "sdk fallback should not be used" },
+				},
+			]);
+			const { adapter } = createAdapter({
+				claudeProjectsDir: projectsDir,
+				getSessionMessages,
+			});
+
+			await expect(adapter.readReplay(sessionId)).resolves.toEqual([
+				{
+					kind: "chat",
+					role: "user",
+					content: "past question",
+					timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "past answer",
+					timestamp: Date.parse("2025-01-15T14:31:04.000Z"),
+				},
+			]);
+			expect(getSessionMessages).not.toHaveBeenCalled();
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
 	test("encodes reply context only at the provider boundary", async () => {
 		const query = mock((_params: unknown) =>
 			(async function* () {
