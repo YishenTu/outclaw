@@ -811,6 +811,7 @@ export interface Facade {
 	prepareWorkspace?(promptHomeDir: string): void;
 	run(params: RunParams): AsyncIterable<FacadeEvent>;
 	readHistory?(sessionId: string): Promise<DisplayMessage[]>;
+	readReplay?(sessionId: string): Promise<DisplayMessage[]>;
 	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;
 	getSkills?(cwd?: string): Promise<SkillInfo[]>;
 }

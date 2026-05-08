@@ -277,12 +277,6 @@ export function FileViewer({
 							language={file?.language}
 						/>
 					)}
-
-					{file?.truncated && (
-						<div className="font-mono-ui mt-4 text-[11px] uppercase tracking-[0.14em] text-dark-500">
-							Preview truncated to 512 KB.
-						</div>
-					)}
 				</div>
 			</div>
 		</div>

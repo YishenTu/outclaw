@@ -2,7 +2,7 @@ import type {
 	DisplayChatMessage,
 	DisplayMessage,
 	TranscriptTurn,
-} from "../../common/protocol.ts";
+} from "./protocol.ts";
 
 export function annotateHistoryWithTranscript(
 	messages: DisplayMessage[],

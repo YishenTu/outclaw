@@ -9,6 +9,7 @@ import {
 import {
 	type LoadClaudeHistory,
 	readClaudeHistory,
+	readClaudeReplay,
 	readClaudeTranscript,
 } from "./claude-history/index.ts";
 import {
@@ -78,6 +79,15 @@ export class ClaudeAdapter implements Facade {
 	async readHistory(sessionId: string) {
 		const sdk = await this.loadSdk();
 		return readClaudeHistory({
+			sessionId,
+			loadHistory: sdk.getSessionMessages,
+			claudeProjectsDir: this.claudeProjectsDir,
+		});
+	}
+
+	async readReplay(sessionId: string) {
+		const sdk = await this.loadSdk();
+		return readClaudeReplay({
 			sessionId,
 			loadHistory: sdk.getSessionMessages,
 			claudeProjectsDir: this.claudeProjectsDir,

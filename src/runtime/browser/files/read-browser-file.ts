@@ -3,8 +3,6 @@ import { relative } from "node:path";
 import type { BrowserFileResponse } from "../../../common/protocol.ts";
 import { detectFileLanguage } from "./detect-file-language.ts";
 
-const MAX_FILE_PREVIEW_BYTES = 512 * 1024;
-
 export async function readBrowserFile(
 	rootDir: string,
 	absolutePath: string,
@@ -15,26 +13,22 @@ export async function readBrowserFile(
 	}
 
 	const fileBuffer = await readFile(absolutePath);
-	const truncated = fileBuffer.byteLength > MAX_FILE_PREVIEW_BYTES;
-	const previewBuffer = truncated
-		? fileBuffer.subarray(0, MAX_FILE_PREVIEW_BYTES)
-		: fileBuffer;
 	const path = toRelativePath(rootDir, absolutePath);
-	if (looksBinary(previewBuffer)) {
+	if (looksBinary(fileBuffer)) {
 		return {
 			path,
 			kind: "binary",
 			language: detectFileLanguage(path),
-			truncated,
+			truncated: false,
 		};
 	}
 
 	return {
 		path,
 		kind: "text",
-		content: new TextDecoder().decode(previewBuffer),
+		content: new TextDecoder().decode(fileBuffer),
 		language: detectFileLanguage(path),
-		truncated,
+		truncated: false,
 	};
 }
 

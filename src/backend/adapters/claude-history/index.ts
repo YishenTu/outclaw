@@ -11,6 +11,7 @@ import type {
 	ImageMediaType,
 	TranscriptTurn,
 } from "../../../common/protocol.ts";
+import { annotateHistoryWithTranscript } from "../../../common/replay-history.ts";
 import { parsePromptWithReplyContext } from "../../../common/reply-context.ts";
 import {
 	isOperationalRolloverPrompt,
@@ -64,6 +65,21 @@ export async function readClaudeHistory(
 	return normalizeClaudeHistory(messages);
 }
 
+export async function readClaudeReplay(
+	options: ReadClaudeHistoryOptions,
+): Promise<DisplayMessage[]> {
+	const messages = await loadClaudeHistoryMessages(options);
+	const history = normalizeClaudeHistory(messages);
+	try {
+		return annotateHistoryWithTranscript(
+			history,
+			normalizeClaudeTranscript(messages),
+		);
+	} catch {
+		return history;
+	}
+}
+
 export async function readClaudeTranscript(options: {
 	sessionId: string;
 	loadHistory?: LoadClaudeHistory;
@@ -87,6 +103,22 @@ export async function readClaudeTranscript(options: {
 	}
 
 	return normalizeClaudeTranscript(rawHistory);
+}
+
+async function loadClaudeHistoryMessages(
+	options: ReadClaudeHistoryOptions,
+): Promise<ClaudeHistoryMessage[]> {
+	const rawHistory = await loadClaudeRawHistory(
+		options.sessionId,
+		options.claudeProjectsDir,
+	);
+	if (rawHistory !== undefined) {
+		return rawHistory;
+	}
+
+	return await options.loadHistory(options.sessionId, {
+		includeSystemMessages: true,
+	});
 }
 
 export function normalizeClaudeHistory(

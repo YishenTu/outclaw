@@ -21,6 +21,7 @@ import {
 } from "../paths/path-safety.ts";
 
 const MAX_GIT_GRAPH_COMMITS = 30;
+const MAX_GIT_NUMSTAT_PATHS_PER_BATCH = 200;
 
 export function normalizeGitPaths(paths: readonly string[]): string[] {
 	return paths
@@ -314,11 +315,8 @@ function parseGitStatus(
 	const files = fileLines
 		.map((line) => parseGitFileStatusLine(line))
 		.filter((file): file is BrowserGitFileStatus => file !== undefined)
-		.filter((file) => !isIgnoredGitPath(file.path, ignoredGitPaths))
-		.map((file) => ({
-			...file,
-			...readGitFileLineCounts(root, file, hasHeadCommit),
-		}));
+		.filter((file) => !isIgnoredGitPath(file.path, ignoredGitPaths));
+	const lineCounts = readGitLineCounts(root, files, hasHeadCommit);
 
 	return {
 		initialized: true,
@@ -328,7 +326,10 @@ function parseGitStatus(
 		behind,
 		clean: files.length === 0,
 		graph,
-		files,
+		files: files.map((file) => ({
+			...file,
+			...(lineCounts.get(file.path) ?? { additions: 0, deletions: 0 }),
+		})),
 	};
 }
 
@@ -388,54 +389,134 @@ function parseGitFileStatusLine(
 	};
 }
 
-function readGitFileLineCounts(
+function readGitLineCounts(
 	root: string,
-	file: BrowserGitFileStatus,
+	files: BrowserGitFileStatus[],
 	hasHeadCommit: boolean,
-): { additions: number; deletions: number } {
+): Map<string, { additions: number; deletions: number }> {
+	const counts = new Map<string, { additions: number; deletions: number }>();
+	if (files.length === 0) {
+		return counts;
+	}
+
+	const { trackedFiles, untrackedFiles } = partitionGitFiles(files);
 	if (!hasHeadCommit) {
-		if (file.indexStatus === "?" || file.worktreeStatus === "?") {
-			return readUntrackedFileLineCounts(root, file.path);
+		const stagedCounts = readBatchedGitNumstat(
+			root,
+			["diff", "--cached", "--numstat", "-M", "--"],
+			trackedFiles,
+		);
+		const worktreeCounts = readBatchedGitNumstat(
+			root,
+			["diff", "--numstat", "-M", "--"],
+			trackedFiles,
+		);
+		for (const file of trackedFiles) {
+			counts.set(
+				file.path,
+				sumGitNumstatCounts(
+					getGitNumstatCount(stagedCounts, file),
+					getGitNumstatCount(worktreeCounts, file),
+				),
+			);
 		}
 
-		const paths = file.renamedFrom
-			? [file.renamedFrom, file.path]
-			: [file.path];
-		const stagedCounts = parseGitNumstatOutput(
-			runGit(
-				root,
-				["diff", "--cached", "--numstat", "-M", "--", ...paths],
-				false,
-			),
-		);
-		const worktreeCounts = parseGitNumstatOutput(
-			runGit(root, ["diff", "--numstat", "-M", "--", ...paths], false),
-		);
-		return sumGitNumstatCounts(stagedCounts, worktreeCounts);
+		for (const file of untrackedFiles) {
+			counts.set(file.path, readUntrackedFileLineCounts(root, file.path));
+		}
+		return counts;
 	}
 
-	const trackedOutput = runGit(
+	const trackedCounts = readBatchedGitNumstat(
 		root,
-		[
-			"diff",
-			"--numstat",
-			"-M",
-			"HEAD",
-			"--",
-			...(file.renamedFrom ? [file.renamedFrom, file.path] : [file.path]),
-		],
-		false,
+		["diff", "--numstat", "-M", "HEAD", "--"],
+		trackedFiles,
 	);
-	const trackedCounts = parseGitNumstatOutput(trackedOutput);
-	if (trackedCounts) {
-		return trackedCounts;
+	for (const file of files) {
+		if (isUntrackedGitFile(file)) {
+			counts.set(file.path, readUntrackedFileLineCounts(root, file.path));
+			continue;
+		}
+
+		counts.set(
+			file.path,
+			getGitNumstatCount(trackedCounts, file) ?? { additions: 0, deletions: 0 },
+		);
 	}
 
-	if (file.indexStatus === "?" || file.worktreeStatus === "?") {
-		return readUntrackedFileLineCounts(root, file.path);
+	return counts;
+}
+
+function partitionGitFiles(files: BrowserGitFileStatus[]): {
+	trackedFiles: BrowserGitFileStatus[];
+	untrackedFiles: BrowserGitFileStatus[];
+} {
+	const trackedFiles: BrowserGitFileStatus[] = [];
+	const untrackedFiles: BrowserGitFileStatus[] = [];
+	for (const file of files) {
+		if (isUntrackedGitFile(file)) {
+			untrackedFiles.push(file);
+			continue;
+		}
+		trackedFiles.push(file);
+	}
+	return { trackedFiles, untrackedFiles };
+}
+
+function readBatchedGitNumstat(
+	root: string,
+	args: string[],
+	files: BrowserGitFileStatus[],
+): Map<string, { additions: number; deletions: number }> {
+	const paths = uniqueGitDiffPaths(files);
+	if (paths.length === 0) {
+		return new Map();
 	}
 
-	return { additions: 0, deletions: 0 };
+	const result = new Map<string, { additions: number; deletions: number }>();
+	for (
+		let index = 0;
+		index < paths.length;
+		index += MAX_GIT_NUMSTAT_PATHS_PER_BATCH
+	) {
+		const pathBatch = paths.slice(
+			index,
+			index + MAX_GIT_NUMSTAT_PATHS_PER_BATCH,
+		);
+		for (const [path, count] of parseGitNumstatMap(
+			runGit(root, [...args, ...pathBatch], false),
+		)) {
+			result.set(path, count);
+		}
+	}
+	return result;
+}
+
+function uniqueGitDiffPaths(files: BrowserGitFileStatus[]): string[] {
+	const paths = new Set<string>();
+	for (const file of files) {
+		if (file.renamedFrom) {
+			paths.add(file.renamedFrom);
+		}
+		paths.add(file.path);
+	}
+	return [...paths];
+}
+
+function isUntrackedGitFile(file: BrowserGitFileStatus): boolean {
+	return file.indexStatus === "?" || file.worktreeStatus === "?";
+}
+
+function getGitNumstatCount(
+	counts: ReadonlyMap<string, { additions: number; deletions: number }>,
+	file: BrowserGitFileStatus,
+): { additions: number; deletions: number } | undefined {
+	const pathCount = counts.get(file.path);
+	if (!file.renamedFrom || file.renamedFrom === file.path) {
+		return pathCount;
+	}
+
+	return sumGitNumstatCounts(pathCount, counts.get(file.renamedFrom));
 }
 
 function readUntrackedFileLineCounts(
@@ -473,22 +554,51 @@ function sumGitNumstatCounts(
 function parseGitNumstatOutput(
 	output: string,
 ): { additions: number; deletions: number } | undefined {
-	const lines = output
-		.split(/\r?\n/)
-		.map((line) => line.trimEnd())
-		.filter((line) => line !== "");
-	if (lines.length === 0) {
+	const counts = [...parseGitNumstatMap(output).values()];
+	if (counts.length === 0) {
 		return undefined;
 	}
 
-	let additions = 0;
-	let deletions = 0;
-	for (const line of lines) {
-		const [rawAdditions, rawDeletions] = line.split("\t");
-		additions += parseGitNumstatCount(rawAdditions);
-		deletions += parseGitNumstatCount(rawDeletions);
+	return counts.reduce(sumGitNumstatCounts, { additions: 0, deletions: 0 });
+}
+
+function parseGitNumstatMap(
+	output: string,
+): Map<string, { additions: number; deletions: number }> {
+	const result = new Map<string, { additions: number; deletions: number }>();
+	for (const line of output
+		.split(/\r?\n/)
+		.map((line) => line.trimEnd())
+		.filter((line) => line !== "")) {
+		const [rawAdditions, rawDeletions, ...pathParts] = line.split("\t");
+		const rawPath = pathParts.join("\t");
+		if (!rawPath) {
+			continue;
+		}
+		result.set(resolveGitNumstatPath(rawPath), {
+			additions: parseGitNumstatCount(rawAdditions),
+			deletions: parseGitNumstatCount(rawDeletions),
+		});
 	}
-	return { additions, deletions };
+	return result;
+}
+
+function resolveGitNumstatPath(rawPath: string): string {
+	const arrowIndex = rawPath.indexOf(" => ");
+	if (arrowIndex === -1) {
+		return rawPath;
+	}
+
+	const braceStart = rawPath.lastIndexOf("{", arrowIndex);
+	const braceEnd = rawPath.indexOf("}", arrowIndex);
+	if (braceStart !== -1 && braceEnd !== -1) {
+		return `${rawPath.slice(0, braceStart)}${rawPath.slice(
+			arrowIndex + 4,
+			braceEnd,
+		)}${rawPath.slice(braceEnd + 1)}`;
+	}
+
+	return rawPath.slice(arrowIndex + 4);
 }
 
 function parseGitNumstatCount(value: string | undefined): number {

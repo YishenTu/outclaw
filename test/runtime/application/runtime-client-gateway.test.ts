@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type {
 	Facade,
 	RuntimeStatusEvent,
@@ -242,6 +242,50 @@ describe("RuntimeClientGateway", () => {
 					role: "assistant",
 					content: "past answer",
 					timestamp: turns[1]?.timestamp,
+				},
+			],
+		});
+	});
+
+	test("handleOpen prefers a prehydrated replay reader when available", async () => {
+		const readReplay = mock(async () => [
+			{
+				kind: "chat" as const,
+				role: "user" as const,
+				content: "past question",
+				timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+			},
+		]);
+		const readHistory = mock(async () => []);
+		const readTranscript = mock(async () => []);
+		const gateway = new RuntimeClientGateway({
+			facade: createFacade({
+				readHistory,
+				readReplay,
+				readTranscript,
+			}),
+			getStatusEvent: () => ({
+				...createStatusEvent(),
+				sessionId: "sdk-123",
+			}),
+		});
+		const ws = mockWs();
+
+		gateway.handleOpen(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(readReplay).toHaveBeenCalledWith("sdk-123");
+		expect(readHistory).not.toHaveBeenCalled();
+		expect(readTranscript).not.toHaveBeenCalled();
+		expect(ws.events()).toContainEqual({
+			type: "history_replay",
+			sdkSessionId: "sdk-123",
+			messages: [
+				{
+					kind: "chat",
+					role: "user",
+					content: "past question",
+					timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
 				},
 			],
 		});

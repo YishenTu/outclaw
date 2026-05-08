@@ -1589,6 +1589,112 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("reads git status line counts across batched tracked file diffs", async () => {
+		const root = createTempDir("outclaw-browser-git-batched-counts-");
+		cleanupPaths.push(root);
+
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		runGit(root, ["init", "--initial-branch=main"]);
+		runGit(root, ["config", "user.email", "test@example.com"]);
+		runGit(root, ["config", "user.name", "Test User"]);
+		for (let index = 0; index < 205; index += 1) {
+			const fileName = `file-${String(index).padStart(3, "0")}.txt`;
+			writeFileSync(join(root, fileName), "original\n");
+		}
+		runGit(root, ["add", "."]);
+		runGit(root, ["commit", "-m", "Initial commit"]);
+		for (let index = 0; index < 205; index += 1) {
+			const fileName = `file-${String(index).padStart(3, "0")}.txt`;
+			writeFileSync(join(root, fileName), "original\nupdated\n");
+		}
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const status = await api.readGitStatus();
+		if (!status.initialized) {
+			throw new Error("expected initialized git status");
+		}
+		expect(status.files).toHaveLength(205);
+		expect(status.files).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					path: "file-000.txt",
+					additions: 1,
+					deletions: 0,
+				}),
+				expect.objectContaining({
+					path: "file-204.txt",
+					additions: 1,
+					deletions: 0,
+				}),
+			]),
+		);
+	});
+
+	test("sums old and new path counts for renamed files with unstaged edits", async () => {
+		const root = createTempDir("outclaw-browser-git-rename-counts-");
+		cleanupPaths.push(root);
+
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		runGit(root, ["init", "--initial-branch=main"]);
+		runGit(root, ["config", "user.email", "test@example.com"]);
+		runGit(root, ["config", "user.name", "Test User"]);
+		writeFileSync(join(root, "old.txt"), "one\ntwo\n");
+		runGit(root, ["add", "."]);
+		runGit(root, ["commit", "-m", "Initial commit"]);
+		runGit(root, ["mv", "old.txt", "new.txt"]);
+		writeFileSync(join(root, "new.txt"), "one\nthree\n");
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const status = await api.readGitStatus();
+		if (!status.initialized) {
+			throw new Error("expected initialized git status");
+		}
+		expect(status.files).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					path: "new.txt",
+					renamedFrom: "old.txt",
+					additions: 2,
+					deletions: 2,
+				}),
+			]),
+		);
+	});
+
 	test("reads untracked files instead of collapsing them into directories", async () => {
 		const root = createTempDir("outclaw-browser-git-untracked-");
 		cleanupPaths.push(root);

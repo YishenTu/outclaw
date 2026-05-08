@@ -1,4 +1,5 @@
 import type {
+	DisplayMessage,
 	Facade,
 	RuntimeStatusEvent,
 	StreamingSyncEvent,
@@ -6,8 +7,8 @@ import type {
 	WorkspaceFileEntry,
 } from "../../../common/protocol.ts";
 import { extractError } from "../../../common/protocol.ts";
+import { annotateHistoryWithTranscript } from "../../../common/replay-history.ts";
 import { ClientHub, type WsClient } from "../../transport/client-hub.ts";
-import { annotateHistoryWithTranscript } from "../annotate-history-with-transcript.ts";
 
 interface RuntimeClientGatewayOptions {
 	canSendToClient?: (ws: WsClient) => boolean;
@@ -58,29 +59,24 @@ export class RuntimeClientGateway {
 		sessionId = this.options.getStatusEvent().sessionId,
 	) {
 		const targetList = [...targets];
-		if (!sessionId || !this.options.facade.readHistory) {
+		if (
+			!sessionId ||
+			(!this.options.facade.readHistory && !this.options.facade.readReplay)
+		) {
 			return Promise.resolve();
 		}
 
 		return safeInvoke(async () => {
-			const messages = await this.options.facade.readHistory?.(sessionId);
-			const transcript = await readReplayTranscript(
-				this.options.facade,
-				sessionId,
-			);
-			return {
-				messages,
-				transcript,
-			};
+			return await readReplayMessages(this.options.facade, sessionId);
 		})
-			.then(({ messages, transcript }) => {
+			.then((messages) => {
 				if (!messages) {
 					return;
 				}
 				this.hub.sendMany(targetList, {
 					type: "history_replay",
 					sdkSessionId: sessionId,
-					messages: annotateHistoryWithTranscript(messages, transcript),
+					messages,
 				});
 				const streamingSync = this.options.getStreamingSyncEvent?.(sessionId);
 				if (streamingSync) {
@@ -152,6 +148,23 @@ export class RuntimeClientGateway {
 	broadcast(event: Parameters<ClientHub["broadcast"]>[0], exclude?: WsClient) {
 		this.hub.broadcast(event, exclude);
 	}
+}
+
+async function readReplayMessages(
+	facade: Facade,
+	sessionId: string,
+): Promise<DisplayMessage[] | undefined> {
+	if (facade.readReplay) {
+		return await facade.readReplay(sessionId);
+	}
+
+	const messages = await facade.readHistory?.(sessionId);
+	if (!messages) {
+		return undefined;
+	}
+
+	const transcript = await readReplayTranscript(facade, sessionId);
+	return annotateHistoryWithTranscript(messages, transcript);
 }
 
 function safeInvoke<T>(invoke: () => Promise<T> | T): Promise<T> {
