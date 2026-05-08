@@ -60,7 +60,6 @@ function createController<TFacade extends Facade = MockFacade>(
 		}) => Promise<void> | void;
 		autoTitle?: {
 			model: string;
-			timeoutMs?: number;
 		};
 		promptHomeDir?: string;
 		store?: SessionStore;
@@ -898,7 +897,7 @@ describe("RuntimeController", () => {
 			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
 			const facade = new AutoTitleFacade();
 			const { controller } = createController({
-				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				autoTitle: { model: "haiku" },
 				facade,
 				store,
 			});
@@ -966,7 +965,7 @@ describe("RuntimeController", () => {
 			const facade = new AutoTitleFacade(true);
 			facade.titleText = "Generated title";
 			const { controller } = createController({
-				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				autoTitle: { model: "haiku" },
 				facade,
 				store,
 			});
@@ -1004,7 +1003,7 @@ describe("RuntimeController", () => {
 			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
 			const facade = new AutoTitleFacade();
 			const { controller } = createController({
-				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				autoTitle: { model: "haiku" },
 				facade,
 				store,
 			});
@@ -1034,7 +1033,7 @@ describe("RuntimeController", () => {
 			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
 			const facade = new AutoTitleFacade();
 			const { controller } = createController({
-				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				autoTitle: { model: "haiku" },
 				facade,
 				store,
 			});
@@ -1066,7 +1065,7 @@ describe("RuntimeController", () => {
 			const facade = new AutoTitleFacade();
 			facade.titleError = "title failed";
 			const { controller } = createController({
-				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				autoTitle: { model: "haiku" },
 				facade,
 				store,
 			});
@@ -1107,7 +1106,7 @@ describe("RuntimeController", () => {
 			const facade = new AutoTitleFacade(true);
 			facade.titleText = "Generated title";
 			const { controller } = createController({
-				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				autoTitle: { model: "haiku" },
 				facade,
 				store,
 			});
@@ -1154,7 +1153,7 @@ describe("RuntimeController", () => {
 			const facade = new AutoTitleFacade(true);
 			facade.titleText = "Generated title";
 			const { controller } = createController({
-				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				autoTitle: { model: "haiku" },
 				facade,
 				store,
 			});
@@ -1198,7 +1197,7 @@ describe("RuntimeController", () => {
 			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
 			const facade = new EarlySessionAutoTitleFacade();
 			const { controller } = createController({
-				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				autoTitle: { model: "haiku" },
 				facade,
 				store,
 			});
@@ -1233,7 +1232,7 @@ describe("RuntimeController", () => {
 			const facade = new AutoTitleFacade(true);
 			facade.titleError = "title failed";
 			const { controller } = createController({
-				autoTitle: { model: "haiku", timeoutMs: 1_000 },
+				autoTitle: { model: "haiku" },
 				facade,
 				store,
 			});
@@ -2605,7 +2604,7 @@ describe("RuntimeController", () => {
 			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
 			const facade = new ShutdownAutoTitleFacade();
 			const { controller } = createController({
-				autoTitle: { model: "haiku", timeoutMs: 60_000 },
+				autoTitle: { model: "haiku" },
 				facade,
 				store,
 			});

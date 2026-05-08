@@ -149,6 +149,9 @@ describe("AgentItem", () => {
 		expect(html).toContain("Auth work");
 		expect(html).toContain("Load more results");
 		expect(html).toContain('placeholder="Search sessions"');
+		expect(html).toContain('aria-label="Close session search for railly"');
+		expect(html).not.toContain('aria-label="Clear session search"');
+		expect(html).not.toContain("lucide-x");
 		expect(html).not.toContain("lucide-search shrink-0 text-dark-500");
 		expect(html).not.toContain("No matching sessions.");
 	});

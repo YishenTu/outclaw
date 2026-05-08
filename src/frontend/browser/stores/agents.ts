@@ -77,6 +77,28 @@ function applyAgentOrder(
 	return [...orderedAgents, ...remainingAgents.values()];
 }
 
+function agentEntriesEqual(left: AgentEntry[], right: AgentEntry[]): boolean {
+	return (
+		left.length === right.length &&
+		left.every((agent, index) => {
+			const other = right[index];
+			return (
+				other !== undefined &&
+				agent.agentId === other.agentId &&
+				agent.name === other.name &&
+				agent.terminalRunCommand === other.terminalRunCommand
+			);
+		})
+	);
+}
+
+function stringArraysEqual(left: string[], right: string[]): boolean {
+	return (
+		left.length === right.length &&
+		left.every((value, index) => value === right[index])
+	);
+}
+
 export const useAgentsStore = create<AgentsState>((set) => ({
 	agents: [],
 	activeAgentId: null,
@@ -85,6 +107,12 @@ export const useAgentsStore = create<AgentsState>((set) => ({
 		set((state) => {
 			const orderedAgents = applyAgentOrder(agents, state.agentOrder);
 			const agentOrder = orderedAgents.map((agent) => agent.agentId);
+			if (
+				agentEntriesEqual(orderedAgents, state.agents) &&
+				stringArraysEqual(agentOrder, state.agentOrder)
+			) {
+				return state;
+			}
 			writeStoredAgentOrder(agentOrder);
 			return {
 				agents: orderedAgents,

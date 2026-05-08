@@ -22,7 +22,6 @@ interface CreateRuntimeControllerOptions {
 	agentId?: string;
 	autoTitle?: {
 		model: string;
-		timeoutMs?: number;
 	};
 	canSendToClient?: (ws: WsClient) => boolean;
 	cwd?: string;
@@ -100,7 +99,6 @@ export function createRuntimeController(
 				facade: options.facade,
 				model: options.autoTitle.model,
 				sessions: options.sessions,
-				timeoutMs: options.autoTitle.timeoutMs,
 			})
 		: undefined;
 	const promptDispatcher = new PromptDispatcher({

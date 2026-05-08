@@ -59,22 +59,73 @@ function matchesSession(left: SessionRef, right: SessionRef): boolean {
 	);
 }
 
+function sessionRefsEqual(
+	left: SessionRef | null | undefined,
+	right: SessionRef | null | undefined,
+): boolean {
+	if (!left || !right) {
+		return left === right;
+	}
+	return matchesSession(left, right);
+}
+
+function sessionEntriesEqual(
+	left: SessionEntry[] | undefined,
+	right: SessionEntry[],
+): boolean {
+	return (
+		left !== undefined &&
+		left.length === right.length &&
+		left.every((session, index) => {
+			const other = right[index];
+			return (
+				other !== undefined &&
+				matchesSession(session, other) &&
+				session.title === other.title &&
+				session.model === other.model &&
+				session.lastActive === other.lastActive
+			);
+		})
+	);
+}
+
+function cursorsEqual(
+	left: SessionCursor | undefined,
+	right: SessionCursor | undefined,
+): boolean {
+	if (!left || !right) {
+		return left === right;
+	}
+	return (
+		left.lastActive === right.lastActive &&
+		left.sdkSessionId === right.sdkSessionId
+	);
+}
+
 export const useSessionsStore = create<SessionsState>((set) => ({
 	sessionsByAgent: {},
 	activeSessionByAgent: {},
 	nextCursorByAgent: {},
 	searchByAgent: {},
 	setSessions: (agentId, sessions, nextCursor) =>
-		set((state) => ({
-			nextCursorByAgent: {
-				...state.nextCursorByAgent,
-				[agentId]: nextCursor,
-			},
-			sessionsByAgent: {
-				...state.sessionsByAgent,
-				[agentId]: sessions,
-			},
-		})),
+		set((state) => {
+			if (
+				sessionEntriesEqual(state.sessionsByAgent[agentId], sessions) &&
+				cursorsEqual(state.nextCursorByAgent[agentId], nextCursor)
+			) {
+				return state;
+			}
+			return {
+				nextCursorByAgent: {
+					...state.nextCursorByAgent,
+					[agentId]: nextCursor,
+				},
+				sessionsByAgent: {
+					...state.sessionsByAgent,
+					[agentId]: sessions,
+				},
+			};
+		}),
 	appendSessions: (agentId, sessions, nextCursor) =>
 		set((state) => ({
 			nextCursorByAgent: {
@@ -90,12 +141,17 @@ export const useSessionsStore = create<SessionsState>((set) => ({
 			},
 		})),
 	setActiveSession: (agentId, session) =>
-		set((state) => ({
-			activeSessionByAgent: {
-				...state.activeSessionByAgent,
-				[agentId]: session,
-			},
-		})),
+		set((state) => {
+			if (sessionRefsEqual(state.activeSessionByAgent[agentId], session)) {
+				return state;
+			}
+			return {
+				activeSessionByAgent: {
+					...state.activeSessionByAgent,
+					[agentId]: session,
+				},
+			};
+		}),
 	setSearchResults: (agentId, query, sessions, nextCursor) =>
 		set((state) => ({
 			searchByAgent: {

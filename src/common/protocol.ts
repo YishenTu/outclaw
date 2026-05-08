@@ -426,6 +426,11 @@ export interface BrowserSidebarInvalidatedEvent {
 	sections: Array<"tree" | "cron" | "git" | "inbox">;
 }
 
+export interface BrowserAgentsInvalidatedEvent {
+	type: "browser_agents_invalidated";
+	agentId?: string;
+}
+
 export interface SkillInfo {
 	name: string;
 	description: string;
@@ -747,6 +752,7 @@ export type ServerEvent =
 	| StreamingSyncEvent
 	| CronResultEvent
 	| BrowserSidebarInvalidatedEvent
+	| BrowserAgentsInvalidatedEvent
 	| SkillsUpdateEvent
 	| WorkspaceFilesUpdateEvent
 	| AskResponseEvent

@@ -19,7 +19,6 @@ export function buildAutoTitlePrompt(prompt: string): string {
 	].join("\n");
 }
 
-const DEFAULT_TIMEOUT_MS = 15_000;
 const AUTO_TITLE_SOURCES = new Set(["tui", "browser", "telegram"]);
 
 interface AutoTitleCoordinatorOptions {
@@ -27,7 +26,6 @@ interface AutoTitleCoordinatorOptions {
 	facade: Facade;
 	model: string;
 	sessions: SessionService;
-	timeoutMs?: number;
 }
 
 interface AutoTitleStartParams {
@@ -58,7 +56,6 @@ export class AutoTitleCoordinator {
 			model: this.options.model,
 			prompt: params.prompt,
 			sessions: this.options.sessions,
-			timeoutMs: this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
 		});
 		const run: AutoTitleRun = {
 			attempt,
@@ -130,7 +127,6 @@ interface AutoTitleAttemptOptions {
 	model: string;
 	prompt: string;
 	sessions: SessionService;
-	timeoutMs: number;
 }
 
 class AutoTitleAttempt {
@@ -176,9 +172,6 @@ class AutoTitleAttempt {
 	private async generateTitle(): Promise<string | undefined> {
 		let text = "";
 		let failed = false;
-		const timeout = setTimeout(() => {
-			this.abortController.abort();
-		}, this.options.timeoutMs);
 
 		try {
 			for await (const event of this.options.facade.run({
@@ -206,8 +199,6 @@ class AutoTitleAttempt {
 			}
 		} catch {
 			failed = true;
-		} finally {
-			clearTimeout(timeout);
 		}
 
 		if (failed || this.abortController.signal.aborted) {

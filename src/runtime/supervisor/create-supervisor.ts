@@ -76,6 +76,14 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		registry,
 		telegramRouting: options.telegramRouting,
 	});
+	for (const runtime of options.agents) {
+		runtime.setSessionCatalogChangedHandler(({ agentId }) =>
+			controller.broadcastBrowserAgentsInvalidated({
+				type: "browser_agents_invalidated",
+				agentId,
+			}),
+		);
+	}
 	const browserSidebarWatcher = options.browserWatch
 		? (options.browserWatch.createWatcher ?? createBrowserSidebarWatcher)({
 				agents: options.browserWatch.agents,

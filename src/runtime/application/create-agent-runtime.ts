@@ -101,6 +101,9 @@ export interface AgentRuntime {
 			  ) => Promise<void> | void)
 			| undefined,
 	): void;
+	setSessionCatalogChangedHandler(
+		handler: ((event: { agentId: string }) => void) | undefined,
+	): void;
 	setRolloverNoticeHandler(
 		handler:
 			| ((params: {
@@ -116,6 +119,7 @@ export function createAgentRuntime(
 	options: CreateAgentRuntimeOptions,
 ): AgentRuntime {
 	const facade = options.facade;
+	let sessionCatalogChanged: ((event: { agentId: string }) => void) | undefined;
 	const state = new RuntimeState(
 		facade.providerId,
 		options.statusAgentName ?? options.name,
@@ -124,6 +128,8 @@ export function createAgentRuntime(
 	let noteRolloverStateChange = () => {};
 	const sessions = new SessionService(state, options.store, {
 		onAcceptedInteractivePrompt: () => noteRolloverStateChange(),
+		onSessionCatalogChanged: () =>
+			sessionCatalogChanged?.({ agentId: options.agentId }),
 		onSessionStateChange: () => noteRolloverStateChange(),
 	});
 	const workspaceCwd = options.cwd;
@@ -247,6 +253,9 @@ export function createAgentRuntime(
 		},
 		setHeartbeatResultHandler(handler) {
 			controller.setHeartbeatResultHandler(handler);
+		},
+		setSessionCatalogChangedHandler(handler) {
+			sessionCatalogChanged = handler;
 		},
 		setRolloverNoticeHandler(handler) {
 			controller.setRolloverNoticeHandler(handler);

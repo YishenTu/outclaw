@@ -326,6 +326,9 @@ export function handleBrowserServerEvent(
 				useAgentFilesStore.getState().invalidate(event.agentId);
 			}
 			return;
+		case "browser_agents_invalidated":
+			options.refreshSidebar();
+			return;
 		case "cron_result":
 			return;
 		case "session_info":
