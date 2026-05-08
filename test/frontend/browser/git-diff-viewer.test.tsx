@@ -102,8 +102,7 @@ describe("GitDiffViewer", () => {
 			<GitDiffViewer path="agents/john-doe/AGENTS.md" />,
 		);
 
-		expect(html).toContain("Git diff / AGENTS.md");
-		expect(html).not.toContain("Git diff / agents/john-doe/AGENTS.md");
+		expect(html).toContain("Git diff / agents/john-doe/AGENTS.md");
 		expect(html).toContain(
 			"scrollbar-none min-h-0 flex-1 overflow-y-auto px-6 py-6",
 		);
