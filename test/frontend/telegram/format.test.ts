@@ -127,6 +127,28 @@ describe("markdownToTelegramHtml", () => {
 		);
 	});
 
+	test("preserves Telegram-safe HTML in pipe-delimited list lines", () => {
+		const md =
+			"\u2022 <b>Song of the Samurai</b> | HBO/Max | Period Drama | — | Max is pitching this as their <i>Shōgun</i> successor.";
+		expect(markdownToTelegramHtml(md)).toBe(
+			"\u2022 <b>Song of the Samurai</b> | HBO/Max | Period Drama | — | Max is pitching this as their <i>Shōgun</i> successor.",
+		);
+	});
+
+	test("escapes unsupported raw HTML", () => {
+		expect(markdownToTelegramHtml("<script>alert(1)</script>")).toBe(
+			"&lt;script&gt;alert(1)&lt;/script&gt;",
+		);
+	});
+
+	test("balances unclosed Telegram-safe raw HTML", () => {
+		expect(markdownToTelegramHtml("<b>unfinished")).toBe("<b>unfinished</b>");
+	});
+
+	test("escapes unmatched Telegram-safe closing tags", () => {
+		expect(markdownToTelegramHtml("</b>stray")).toBe("&lt;/b&gt;stray");
+	});
+
 	test("renders tables as labeled rows", () => {
 		const md = "| Name | Age |\n|------|-----|\n| Alice | 30 |\n| Bob | 25 |";
 		expect(markdownToTelegramHtml(md)).toBe(

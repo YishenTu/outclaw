@@ -7,6 +7,7 @@ import type {
 	BrowserFileResponse,
 } from "../../../../common/protocol.ts";
 import { fetchAgentFile } from "../../lib/api.ts";
+import { fileNameFromPath } from "../../lib/path-display.ts";
 import {
 	selectAgentTreeRevision,
 	selectGitRevision,
@@ -130,14 +131,14 @@ export function FilePreviewHeader({
 	onOpenGitPreview?: (path: string) => void;
 	path: string;
 }) {
-	const breadcrumb = useMemo(() => path.split("/"), [path]);
+	const fileName = useMemo(() => fileNameFromPath(path), [path]);
 	const showGitPreview = Boolean(gitChange && onOpenGitPreview);
 
 	return (
 		<div className="h-8 shrink-0 border-b border-dark-800 px-6">
 			<div className="mx-auto flex h-full max-w-5xl items-center gap-4">
 				<div className="min-w-0 flex-1 truncate font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-					{breadcrumb.join(" / ")}
+					{fileName}
 				</div>
 				{showGitPreview && gitChange ? (
 					<button
@@ -179,6 +180,7 @@ export function FileViewer({
 		treeRevision,
 	});
 	const openTab = useTabsStore((state) => state.openTab);
+	const fileName = fileNameFromPath(path);
 
 	useEffect(() => {
 		void reloadTrigger;
@@ -267,7 +269,7 @@ export function FileViewer({
 						</div>
 					) : file?.kind === "binary" ? (
 						<div className="border border-dark-800 bg-dark-900/40 px-5 py-4 text-sm text-dark-300">
-							Binary file preview is not supported for `{path}`.
+							Binary file preview is not supported for `{fileName}`.
 						</div>
 					) : isMarkdownFile(path) ? (
 						<MarkdownPreview content={file?.content ?? ""} />

@@ -7,6 +7,7 @@ import {
 	PanelRightClose,
 	X,
 } from "lucide-react";
+import { fileNameFromPath } from "../../lib/path-display.ts";
 import { type Tab, useTabsStore } from "../../stores/tabs.ts";
 
 interface TabBarProps {
@@ -167,7 +168,7 @@ function CenterTabContent({ tab }: { tab: Tab }) {
 		return (
 			<span className="inline-flex min-w-0 items-center gap-2 leading-none">
 				<GitBranch size={14} className="shrink-0" />
-				<span className="min-w-0 truncate">{tab.path}</span>
+				<span className="min-w-0 truncate">{fileNameFromPath(tab.path)}</span>
 			</span>
 		);
 	}
@@ -175,7 +176,7 @@ function CenterTabContent({ tab }: { tab: Tab }) {
 	return (
 		<span className="inline-flex min-w-0 items-center gap-2 leading-none">
 			<FileText size={14} className="shrink-0" />
-			<span className="min-w-0 truncate">{tab.path}</span>
+			<span className="min-w-0 truncate">{fileNameFromPath(tab.path)}</span>
 		</span>
 	);
 }

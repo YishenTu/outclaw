@@ -2,6 +2,7 @@ import { AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { BrowserGitDiffResponse } from "../../../../common/protocol.ts";
 import { fetchGitDiff } from "../../lib/api.ts";
+import { fileNameFromPath } from "../../lib/path-display.ts";
 import {
 	selectGitRevision,
 	useRightPanelRefreshStore,
@@ -17,6 +18,7 @@ export function GitDiffViewer({ path }: GitDiffViewerProps) {
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const gitRevision = useRightPanelRefreshStore(selectGitRevision);
+	const fileName = fileNameFromPath(path);
 
 	useEffect(() => {
 		void gitRevision;
@@ -57,7 +59,7 @@ export function GitDiffViewer({ path }: GitDiffViewerProps) {
 			<div className="h-8 shrink-0 border-b border-dark-800 px-6">
 				<div className="mx-auto flex h-full max-w-5xl items-center gap-4">
 					<div className="min-w-0 font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-						Git diff / {path}
+						Git diff / {fileName}
 					</div>
 				</div>
 			</div>
