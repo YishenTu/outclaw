@@ -1,4 +1,5 @@
 import type { BrowserGitDiffResponse } from "../../../../common/protocol.ts";
+import { fileNameFromPath } from "../../lib/path-display.ts";
 import { CodePreview } from "../file-viewer/file-viewer.tsx";
 import {
 	type GitDiffFileStatus,
@@ -95,11 +96,12 @@ export function GitDiffContent({ diff }: GitDiffContentProps) {
 								{statusLabel(file.status)}
 							</div>
 							<div className="truncate text-sm text-dark-100">
-								{file.displayPath}
+								{fileNameFromPath(file.displayPath)}
 							</div>
 							{file.status === "renamed" && (
 								<div className="mt-1 text-[11px] text-dark-500">
-									{file.oldPath} -&gt; {file.newPath}
+									{fileNameFromPath(file.oldPath)} -&gt;{" "}
+									{fileNameFromPath(file.newPath)}
 								</div>
 							)}
 						</div>

@@ -55,9 +55,33 @@ describe("browser tab strip active indicator", () => {
 		);
 
 		expect(html).toContain("invisible");
+		expect(html).toContain(">very-long-file-name.md</span>");
+		expect(html).not.toContain(">notes/very-long-file-name.md</span>");
 		expect(html).toContain("absolute right-1");
 		expect(html).toContain("group-hover:pr-6");
 		expect(html).toContain('aria-label="Close notes/very-long-file-name.md"');
+	});
+
+	test("center git diff tabs display file names instead of relative paths", () => {
+		const html = renderToStaticMarkup(
+			<TabBarView
+				activeTabId="git-diff:agents/john-doe/AGENTS.md"
+				closeTab={() => {}}
+				setActiveTab={() => {}}
+				tabs={[
+					{ type: "chat", id: "chat" },
+					{
+						type: "git-diff",
+						id: "git-diff:agents/john-doe/AGENTS.md",
+						path: "agents/john-doe/AGENTS.md",
+					},
+				]}
+			/>,
+		);
+
+		expect(html).toContain(">AGENTS.md</span>");
+		expect(html).not.toContain(">agents/john-doe/AGENTS.md</span>");
+		expect(html).toContain('aria-label="Close agents/john-doe/AGENTS.md"');
 	});
 
 	test("terminal tabs keep the existing underline thickness", () => {

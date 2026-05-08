@@ -24,7 +24,8 @@ index cefe630..1111111 100644
 			/>,
 		);
 
-		expect(html).toContain("agents/john-doe/AGENTS.md");
+		expect(html).toContain("AGENTS.md");
+		expect(html).not.toContain("agents/john-doe/AGENTS.md");
 		expect(html).toContain("Modified");
 		expect(html).not.toContain("@@ -1,3 +1,2 @@");
 		expect(html).toContain("bg-success/10");
@@ -97,9 +98,12 @@ index cefe630..0000000
 
 describe("GitDiffViewer", () => {
 	test("uses the shared hidden-scrollbar preview container without a manual refresh button", () => {
-		const html = renderToStaticMarkup(<GitDiffViewer path="AGENTS.md" />);
+		const html = renderToStaticMarkup(
+			<GitDiffViewer path="agents/john-doe/AGENTS.md" />,
+		);
 
 		expect(html).toContain("Git diff / AGENTS.md");
+		expect(html).not.toContain("Git diff / agents/john-doe/AGENTS.md");
 		expect(html).toContain(
 			"scrollbar-none min-h-0 flex-1 overflow-y-auto px-6 py-6",
 		);

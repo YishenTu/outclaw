@@ -132,7 +132,7 @@ describe("FileViewer", () => {
 	test("renders a git preview switch in the subheader for changed files", () => {
 		const html = renderToStaticMarkup(
 			<FilePreviewHeader
-				path="AGENTS.md"
+				path="agents/john-doe/AGENTS.md"
 				gitChange={{
 					path: "agents/railly/AGENTS.md",
 					status: "modified",
@@ -142,8 +142,11 @@ describe("FileViewer", () => {
 		);
 
 		expect(html).toContain("AGENTS.md");
+		expect(html).not.toContain("agents / john-doe");
 		expect(html).toContain(">Git preview<");
-		expect(html).toContain('aria-label="Open git preview for AGENTS.md"');
+		expect(html).toContain(
+			'aria-label="Open git preview for agents/john-doe/AGENTS.md"',
+		);
 		expect(html).toContain("lucide-git-compare");
 	});
 

@@ -11,6 +11,61 @@ function escapeHtmlAttr(text: string): string {
 	return escapeHtml(text).replace(/"/g, "&quot;");
 }
 
+const RAW_HTML_TAG_RE =
+	/<\/?[a-zA-Z][a-zA-Z0-9-]*(?:\s+(?:"[^"]*"|'[^']*'|[^'"<>])*)?\s*\/?>/g;
+const RAW_HTML_TAG_PARTS_RE =
+	/^<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9-]*)(?:\s+[^<>]*)?\s*\/?>$/;
+
+const TELEGRAM_RAW_HTML_TAGS = new Map([
+	["b", "b"],
+	["strong", "b"],
+	["i", "i"],
+	["em", "i"],
+	["u", "u"],
+	["ins", "u"],
+	["s", "s"],
+	["strike", "s"],
+	["del", "s"],
+	["code", "code"],
+	["pre", "pre"],
+	["blockquote", "blockquote"],
+	["tg-spoiler", "tg-spoiler"],
+]);
+
+function sanitizeRawTelegramHtmlTag(rawTag: string): string {
+	const match = RAW_HTML_TAG_PARTS_RE.exec(rawTag);
+	if (!match) return escapeHtml(rawTag);
+
+	const isClosing = match[1] === "/";
+	const tagName = (match[2] ?? "").toLowerCase();
+	const isSelfClosing = /\/\s*>$/.test(rawTag);
+
+	if (!isClosing && tagName === "br") {
+		return "\n";
+	}
+
+	const normalizedTag = TELEGRAM_RAW_HTML_TAGS.get(tagName);
+	if (!normalizedTag || isSelfClosing) {
+		return escapeHtml(rawTag);
+	}
+
+	return isClosing ? `</${normalizedTag}>` : `<${normalizedTag}>`;
+}
+
+function sanitizeRawTelegramHtml(html: string): string {
+	let sanitized = "";
+	let cursor = 0;
+	RAW_HTML_TAG_RE.lastIndex = 0;
+	let match = RAW_HTML_TAG_RE.exec(html);
+	while (match !== null) {
+		sanitized += escapeHtml(html.slice(cursor, match.index));
+		sanitized += sanitizeRawTelegramHtmlTag(match[0]);
+		cursor = match.index + match[0].length;
+		match = RAW_HTML_TAG_RE.exec(html);
+	}
+	return sanitized + escapeHtml(html.slice(cursor));
+}
+
 let listDepth = 0;
 
 /**
@@ -143,7 +198,7 @@ const marked = new Marked({
 			return escapeHtml(altText || title || href);
 		},
 		html({ text }) {
-			return escapeHtml(text);
+			return sanitizeRawTelegramHtml(text);
 		},
 		text(token) {
 			if ("tokens" in token && token.tokens) {
@@ -220,6 +275,40 @@ function buildCloseString(tags: OpenTag[]): string {
 
 function buildOpenString(tags: OpenTag[]): string {
 	return tags.map((t) => t.full).join("");
+}
+
+function balanceTelegramHtml(html: string): string {
+	const openTags: OpenTag[] = [];
+	let balanced = "";
+	let cursor = 0;
+
+	TAG_RE.lastIndex = 0;
+	let match = TAG_RE.exec(html);
+	while (match !== null) {
+		balanced += html.slice(cursor, match.index);
+
+		const full = match[0];
+		const isClosing = match[1] === "</";
+		const tagName = (match[2] as string).toLowerCase();
+		const activeTag = openTags.at(-1);
+
+		if (isClosing) {
+			if (activeTag?.name === tagName) {
+				openTags.pop();
+				balanced += `</${tagName}>`;
+			} else {
+				balanced += escapeHtml(full);
+			}
+		} else {
+			openTags.push({ name: tagName, full });
+			balanced += full;
+		}
+
+		cursor = match.index + full.length;
+		match = TAG_RE.exec(html);
+	}
+
+	return `${balanced}${html.slice(cursor)}${buildCloseString(openTags)}`;
 }
 
 export function splitTelegramHtml(html: string, limit: number): string[] {
@@ -307,5 +396,5 @@ export function markdownToTelegramHtml(markdown: string): string {
 	if (!markdown) return "";
 	const html = marked.parse(markdown);
 	if (typeof html !== "string") return "";
-	return html.replace(/\n+$/, "");
+	return balanceTelegramHtml(html.replace(/\n+$/, ""));
 }
