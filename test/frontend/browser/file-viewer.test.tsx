@@ -141,8 +141,7 @@ describe("FileViewer", () => {
 			/>,
 		);
 
-		expect(html).toContain("AGENTS.md");
-		expect(html).not.toContain("agents / john-doe");
+		expect(html).toContain(">agents/john-doe/AGENTS.md</div>");
 		expect(html).toContain(">Git preview<");
 		expect(html).toContain(
 			'aria-label="Open git preview for agents/john-doe/AGENTS.md"',
@@ -152,10 +151,13 @@ describe("FileViewer", () => {
 
 	test("omits the git preview switch when the file has no git changes", () => {
 		const html = renderToStaticMarkup(
-			<FilePreviewHeader path="AGENTS.md" onOpenGitPreview={() => {}} />,
+			<FilePreviewHeader
+				path="agents/john-doe/AGENTS.md"
+				onOpenGitPreview={() => {}}
+			/>,
 		);
 
-		expect(html).toContain("AGENTS.md");
+		expect(html).toContain(">agents/john-doe/AGENTS.md</div>");
 		expect(html).not.toContain(">Git preview<");
 		expect(html).not.toContain("lucide-git-compare");
 	});
