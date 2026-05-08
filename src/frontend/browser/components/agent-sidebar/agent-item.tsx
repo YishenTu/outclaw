@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import {
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
@@ -73,6 +73,20 @@ export function AgentItem({
 		searchActive && searchState?.query === effectiveSearchQuery
 			? searchState.sessions
 			: [];
+
+	function closeSearch() {
+		setDraftSearch("");
+		setSearchOpen(false);
+		onClearSearch();
+	}
+
+	function toggleSearch() {
+		if (searchOpen) {
+			closeSearch();
+			return;
+		}
+		setSearchOpen(true);
+	}
 
 	useEffect(() => {
 		if (!searchOpen && searchState?.query) {
@@ -189,8 +203,12 @@ export function AgentItem({
 					<button
 						type="button"
 						data-agent-row-ignore-drag="true"
-						aria-label={`Search sessions for ${agent.name}`}
-						onClick={() => setSearchOpen((current) => !current)}
+						aria-label={
+							searchOpen
+								? `Close session search for ${agent.name}`
+								: `Search sessions for ${agent.name}`
+						}
+						onClick={toggleSearch}
 						className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
 					>
 						<Search size={14} />
@@ -227,18 +245,6 @@ export function AgentItem({
 								placeholder="Search sessions"
 								className="min-w-0 flex-1 rounded border border-dark-800 bg-dark-950 px-2 py-1 text-sm text-dark-100 outline-none transition-colors placeholder:text-dark-600 focus:border-dark-500"
 							/>
-							<button
-								type="button"
-								aria-label="Clear session search"
-								onClick={() => {
-									setDraftSearch("");
-									setSearchOpen(false);
-									onClearSearch();
-								}}
-								className="text-dark-500 transition-colors hover:text-dark-100"
-							>
-								<X size={14} />
-							</button>
 						</div>
 					)}
 					{searchActive ? (

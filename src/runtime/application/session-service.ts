@@ -31,6 +31,7 @@ export interface SessionListResult {
 
 interface SessionServiceCallbacks {
 	onAcceptedInteractivePrompt?: () => void;
+	onSessionCatalogChanged?: () => void;
 	onSessionRenamed?: (event: SessionRenamedEvent) => void;
 	onSessionStateChange?: () => void;
 }
@@ -112,20 +113,25 @@ export class SessionService {
 		this.state.clearSession();
 		this.store?.setActiveSessionId(this.state.providerId, undefined);
 		this.callbacks.onSessionStateChange?.();
+		this.notifySessionCatalogChanged();
 	}
 
 	deleteSession(sessionId: string): { clearedActiveSession: boolean } {
 		const clearedActiveSession = this.state.sessionId === sessionId;
 		this.store?.delete(this.state.providerId, sessionId);
 		if (clearedActiveSession) {
-			this.clearActiveSession();
+			this.state.clearSession();
+			this.store?.setActiveSessionId(this.state.providerId, undefined);
+			this.callbacks.onSessionStateChange?.();
 		}
+		this.notifySessionCatalogChanged();
 		return { clearedActiveSession };
 	}
 
 	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
 		this.state.completeRun(event, source, telegramChatId);
 		this.persistActiveSession();
+		this.notifySessionCatalogChanged();
 	}
 
 	recordBackgroundCompletion(params: {
@@ -147,6 +153,7 @@ export class SessionService {
 			source: params.source,
 			usage: params.event.usage,
 		});
+		this.notifySessionCatalogChanged();
 	}
 
 	recordSessionInitialized(params: {
@@ -165,6 +172,7 @@ export class SessionService {
 		if (params.active) {
 			this.callbacks.onSessionStateChange?.();
 		}
+		this.notifySessionCatalogChanged();
 	}
 
 	recordInterruptedRun(params: {
@@ -192,6 +200,7 @@ export class SessionService {
 			undefined,
 		);
 		this.callbacks.onSessionStateChange?.();
+		this.notifySessionCatalogChanged();
 	}
 
 	recordAcceptedPromptTarget(
@@ -236,12 +245,16 @@ export class SessionService {
 		this.state.renameSession(sessionId, title);
 		this.store?.rename(this.state.providerId, sessionId, title);
 		this.notifySessionRenamed(sessionId, title, isActiveSession);
+		this.notifySessionCatalogChanged();
 	}
 
 	configureCallbacks(callbacks: SessionServiceCallbacks) {
 		this.callbacks.onAcceptedInteractivePrompt =
 			callbacks.onAcceptedInteractivePrompt ??
 			this.callbacks.onAcceptedInteractivePrompt;
+		this.callbacks.onSessionCatalogChanged =
+			callbacks.onSessionCatalogChanged ??
+			this.callbacks.onSessionCatalogChanged;
 		this.callbacks.onSessionRenamed =
 			callbacks.onSessionRenamed ?? this.callbacks.onSessionRenamed;
 		this.callbacks.onSessionStateChange =
@@ -275,6 +288,7 @@ export class SessionService {
 		if (isActiveSession) {
 			this.callbacks.onSessionStateChange?.();
 		}
+		this.notifySessionCatalogChanged();
 		return true;
 	}
 
@@ -294,6 +308,7 @@ export class SessionService {
 		);
 		this.store?.setActiveSessionId(this.state.providerId, session.sdkSessionId);
 		this.callbacks.onSessionStateChange?.();
+		this.notifySessionCatalogChanged();
 		return session;
 	}
 
@@ -485,6 +500,13 @@ export class SessionService {
 			providerId: this.state.providerId,
 			active,
 		});
+	}
+
+	private notifySessionCatalogChanged() {
+		if (!this.store) {
+			return;
+		}
+		this.callbacks.onSessionCatalogChanged?.();
 	}
 }
 

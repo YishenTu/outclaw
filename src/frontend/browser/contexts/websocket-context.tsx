@@ -371,20 +371,6 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 		return () => lifecycle.stop();
 	}, [handleServerEvent, refreshSidebar]);
 
-	useEffect(() => {
-		if (typeof document === "undefined") {
-			return;
-		}
-
-		const interval = setInterval(() => {
-			if (document.visibilityState === "visible") {
-				refreshSidebar();
-			}
-		}, 15_000);
-
-		return () => clearInterval(interval);
-	}, [refreshSidebar]);
-
 	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
 
 	const contextValue = useMemo<WebSocketContextValue>(

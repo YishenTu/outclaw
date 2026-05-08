@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+	type BrowserAgentsInvalidatedEvent,
 	type BrowserSidebarInvalidatedEvent,
 	extractError,
 	parseMessage,
@@ -41,6 +42,14 @@ export class SupervisorController {
 	constructor(private readonly options: SupervisorControllerOptions) {}
 
 	broadcastBrowserSidebarInvalidated(event: BrowserSidebarInvalidatedEvent) {
+		for (const client of this.options.bindings.listBoundClientsByTypes([
+			"browser",
+		])) {
+			client.send(serialize(event));
+		}
+	}
+
+	broadcastBrowserAgentsInvalidated(event: BrowserAgentsInvalidatedEvent) {
 		for (const client of this.options.bindings.listBoundClientsByTypes([
 			"browser",
 		])) {

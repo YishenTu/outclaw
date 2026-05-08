@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FacadeEvent, RunParams } from "../../../src/common/protocol.ts";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
+import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 import { createSupervisor } from "../../../src/runtime/supervisor/create-supervisor.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
 
@@ -285,6 +286,58 @@ describe("createSupervisor", () => {
 		expect(raillyFacade.lastParams?.prompt).toBe("hello from browser");
 
 		ws.close();
+	});
+
+	test("notifies browser clients when another agent changes persisted session data", async () => {
+		const dbDir = mkdtempSync(join(tmpdir(), "outclaw-supervisor-sessions-"));
+		const dbPath = join(dbDir, "sessions.sqlite");
+		const raillyStore = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const mimiStore = new SessionStore(dbPath, { agentId: "agent-mimi" });
+		const raillyFacade = new MockFacade();
+		const mimiFacade = new MockFacade();
+		mimiFacade.textChunks = ["mimi response"];
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: raillyFacade,
+					store: raillyStore,
+				}),
+				createAgentRuntime({
+					agentId: "agent-mimi",
+					name: "mimi",
+					facade: mimiFacade,
+					store: mimiStore,
+				}),
+			],
+		});
+		cleanup = async () => {
+			await supervisor.stop();
+			raillyStore.close();
+			mimiStore.close();
+			rmSync(dbDir, { recursive: true, force: true });
+		};
+
+		const browser = await connectBrowserRuntimeWs(supervisor.port, "railly");
+		await waitForEvent(browser, (event) => event.type === "runtime_status");
+		const tui = await connectWs(supervisor.port, "mimi");
+		await waitForEvent(tui, (event) => event.type === "runtime_status");
+
+		const invalidated = waitForEvent(
+			browser,
+			(event) => event.type === "browser_agents_invalidated",
+		);
+		tui.send(JSON.stringify({ type: "prompt", prompt: "hello from mimi" }));
+
+		expect(await invalidated).toEqual({
+			type: "browser_agents_invalidated",
+			agentId: "agent-mimi",
+		});
+
+		browser.close();
+		tui.close();
 	});
 
 	test("does not leak events between clients bound to different agents", async () => {

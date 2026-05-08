@@ -175,6 +175,64 @@ describe("browser runtime server events", () => {
 		expect(inferImageMediaTypeFromPath("plot.svg")).toBeUndefined();
 	});
 
+	test("keeps sidebar store identity when a summary is unchanged", () => {
+		const summary = {
+			activeAgentId: "agent-railly",
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					terminalRunCommand: "bun test",
+					activeSession: {
+						providerId: "mock",
+						sdkSessionId: "sdk-active",
+					},
+					sessions: [
+						{
+							providerId: "mock",
+							sdkSessionId: "sdk-active",
+							title: "Active",
+							model: "mock-model",
+							lastActive: 100,
+						},
+					],
+				},
+			],
+		};
+
+		applySidebarSummary(summary);
+		const agents = useAgentsStore.getState().agents;
+		const sessionsByAgent = useSessionsStore.getState().sessionsByAgent;
+		const sessions = sessionsByAgent["agent-railly"];
+		const activeSession =
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"];
+
+		applySidebarSummary(summary);
+
+		expect(useAgentsStore.getState().agents).toBe(agents);
+		expect(useSessionsStore.getState().sessionsByAgent).toBe(sessionsByAgent);
+		expect(useSessionsStore.getState().sessionsByAgent["agent-railly"]).toBe(
+			sessions,
+		);
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
+		).toBe(activeSession);
+	});
+
+	test("refreshes sidebar agent data when the global agents summary is invalidated", () => {
+		const { calls, options } = createHandlerOptions();
+
+		handleBrowserServerEvent(
+			{
+				type: "browser_agents_invalidated",
+				agentId: "agent-mimi",
+			},
+			options,
+		);
+
+		expect(calls).toEqual(["sidebar:refresh"]);
+	});
+
 	test("clears active sessions from sidebar summaries when no session is active", () => {
 		applySidebarSummary({
 			activeAgentId: "agent-railly",
