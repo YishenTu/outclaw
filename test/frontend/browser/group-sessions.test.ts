@@ -5,7 +5,14 @@ import {
 } from "../../../src/frontend/browser/components/agent-sidebar/group-sessions.ts";
 import type { SessionEntry } from "../../../src/frontend/browser/stores/sessions.ts";
 
-const NOW = 1_000_000_000;
+function localTime(
+	year: number,
+	month: number,
+	day: number,
+	hour = 12,
+): number {
+	return new Date(year, month - 1, day, hour, 0).getTime();
+}
 
 function session(id: string, lastActive: number): SessionEntry {
 	return {
@@ -20,24 +27,37 @@ function session(id: string, lastActive: number): SessionEntry {
 
 describe("groupSessionsByAge", () => {
 	test("classifies sessions into today, week, month, and older buckets", () => {
-		expect(classifySessionAge(NOW - 1_000, NOW)).toBe("today");
-		expect(classifySessionAge(NOW - 2 * 24 * 60 * 60 * 1000, NOW)).toBe("week");
-		expect(classifySessionAge(NOW - 10 * 24 * 60 * 60 * 1000, NOW)).toBe(
+		const now = localTime(2026, 5, 9, 8);
+
+		expect(classifySessionAge(localTime(2026, 5, 9, 0), now)).toBe("today");
+		expect(classifySessionAge(localTime(2026, 5, 8, 21), now)).toBe("week");
+		expect(classifySessionAge(localTime(2026, 5, 2, 21), now)).toBe("month");
+		expect(classifySessionAge(localTime(2026, 3, 28, 21), now)).toBe("older");
+	});
+
+	test("uses calendar ranges instead of rolling elapsed durations", () => {
+		const now = localTime(2026, 5, 2, 8);
+		const laterSameMonth = localTime(2026, 5, 9, 8);
+		const lastNight = localTime(2026, 5, 1, 21);
+		const lastMonthInSameWeek = localTime(2026, 4, 30, 21);
+		const sameMonthBeforeThisWeek = localTime(2026, 5, 2, 21);
+
+		expect(classifySessionAge(lastNight, now)).toBe("week");
+		expect(classifySessionAge(lastMonthInSameWeek, now)).toBe("week");
+		expect(classifySessionAge(sameMonthBeforeThisWeek, laterSameMonth)).toBe(
 			"month",
-		);
-		expect(classifySessionAge(NOW - 40 * 24 * 60 * 60 * 1000, NOW)).toBe(
-			"older",
 		);
 	});
 
 	test("preserves session order within each bucket", () => {
+		const now = localTime(2026, 5, 9, 8);
 		const grouped = groupSessionsByAge(
 			[
-				session("today-a", NOW - 1),
-				session("week-a", NOW - 2 * 24 * 60 * 60 * 1000),
-				session("today-b", NOW - 2),
+				session("today-a", localTime(2026, 5, 9, 7)),
+				session("week-a", localTime(2026, 5, 8, 21)),
+				session("today-b", localTime(2026, 5, 9, 6)),
 			],
-			NOW,
+			now,
 		);
 
 		expect(grouped.today.map((entry) => entry.sdkSessionId)).toEqual([
