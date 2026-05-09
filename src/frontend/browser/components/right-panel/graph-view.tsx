@@ -10,7 +10,6 @@ import {
 } from "d3-force";
 import { Maximize2, Sliders, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BrowserGraphResponse } from "../../../../common/protocol.ts";
 import { fetchAgentGraph } from "../../lib/api.ts";
 import { ForcesPanel } from "./graph/forces-panel.tsx";
 import { computeNodeRadius, fitTransform } from "./graph/graph-fit.ts";
@@ -36,6 +35,11 @@ import {
 	COLOR_NODE_RESOLVED_IDLE,
 	COLOR_NODE_UNRESOLVED,
 } from "./graph/graph-palette.ts";
+import {
+	graphForAgent,
+	type LoadedAgentGraph,
+	resolveGraphFocusedIds,
+} from "./graph/graph-state.ts";
 
 interface GraphViewProps {
 	agentId: string;
@@ -105,6 +109,7 @@ export function GraphView({
 	const simulationAgentRef = useRef<string | null>(null);
 	const nodesRef = useRef<SimNode[]>([]);
 	const linksRef = useRef<SimLink[]>([]);
+	const nodeIdsRef = useRef<ReadonlySet<string>>(new Set());
 	const transformRef = useRef({ scale: 1, translateX: 0, translateY: 0 });
 	const hoveredIdRef = useRef<string | null>(null);
 	const pointerStateRef = useRef<PointerState | null>(null);
@@ -118,7 +123,7 @@ export function GraphView({
 	// build, then perform it the moment the canvas becomes visible.
 	const didFitRef = useRef(false);
 
-	const [graph, setGraph] = useState<BrowserGraphResponse | null>(null);
+	const [graphState, setGraphState] = useState<LoadedAgentGraph | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -130,6 +135,7 @@ export function GraphView({
 	forcesRef.current = forces;
 	const activeFilePathRef = useRef<string | null>(activeFilePath);
 	activeFilePathRef.current = activeFilePath;
+	const graph = graphForAgent(graphState, agentId);
 
 	// Fetcher: initial load + on every treeRevision bump (debounced).
 	useEffect(() => {
@@ -141,6 +147,9 @@ export function GraphView({
 		if (isInitial) {
 			setLoading(true);
 			setError(null);
+			setLayoutReady(false);
+			hoveredIdRef.current = null;
+			setHoveredId(null);
 		}
 
 		const timeout = window.setTimeout(
@@ -150,7 +159,7 @@ export function GraphView({
 						if (cancelled) {
 							return;
 						}
-						setGraph(next);
+						setGraphState({ agentId, graph: next });
 						if (isInitial) {
 							setError(null);
 						}
@@ -320,15 +329,11 @@ export function GraphView({
 			// Focused = hovered (transient) ∪ active file tab (sticky). Both
 			// receive the same hover-style treatment per design choice. Neighbor
 			// expansion is the union over every focused node.
-			const hoveredNodeId = hoveredIdRef.current;
-			const activePath = activeFilePathRef.current;
-			const focusedIds = new Set<string>();
-			if (hoveredNodeId) {
-				focusedIds.add(hoveredNodeId);
-			}
-			if (activePath) {
-				focusedIds.add(activePath);
-			}
+			const focusedIds = resolveGraphFocusedIds({
+				activeFilePath: activeFilePathRef.current,
+				hoveredId: hoveredIdRef.current,
+				nodeIds: nodeIdsRef.current,
+			});
 			const hasFocus = focusedIds.size > 0;
 			const neighborIds = new Set<string>();
 			if (hasFocus) {
@@ -599,14 +604,19 @@ export function GraphView({
 
 	// Effect B: simulation lifecycle. Builds on first data, merges thereafter.
 	useEffect(() => {
-		if (!simData) {
-			return;
-		}
-
 		const isAgentSwitch = simulationAgentRef.current !== agentId;
 		if (isAgentSwitch && simulationRef.current) {
 			simulationRef.current.stop();
 			simulationRef.current = null;
+			nodesRef.current = [];
+			linksRef.current = [];
+			nodeIdsRef.current = new Set();
+			pointerStateRef.current = null;
+			didFitRef.current = false;
+			setLayoutReady(false);
+		}
+		if (!simData) {
+			return;
 		}
 
 		// First build for this agent — full pretick + fit + reveal.
@@ -615,6 +625,7 @@ export function GraphView({
 			const f = forcesRef.current;
 			nodesRef.current = simData.nodes;
 			linksRef.current = simData.links;
+			nodeIdsRef.current = new Set(simData.nodes.map((node) => node.id));
 			didFitRef.current = false;
 			setLayoutReady(false);
 
@@ -687,6 +698,7 @@ export function GraphView({
 			// resolved). Re-run the link force to refresh per-link distance.
 			nodesRef.current = merged.nodes;
 			linksRef.current = merged.links;
+			nodeIdsRef.current = new Set(merged.nodes.map((node) => node.id));
 			const linkForce =
 				sim.force<ReturnType<typeof forceLink<SimNode, SimLink>>>("link");
 			if (linkForce) {
@@ -710,6 +722,7 @@ export function GraphView({
 
 		nodesRef.current = merged.nodes;
 		linksRef.current = merged.links;
+		nodeIdsRef.current = new Set(merged.nodes.map((node) => node.id));
 
 		// d3-force initialization is fragile across structural changes: setting
 		// links first throws when a link references a not-yet-added node, and

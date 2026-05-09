@@ -3,6 +3,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
+	statSync,
 	utimesSync,
 	writeFileSync,
 } from "node:fs";
@@ -190,7 +191,9 @@ describe("buildAgentGraph", () => {
 	test("reuses cached parse when mtime is unchanged", async () => {
 		const { root, cleanup } = makeTempRoot("outclaw-graph-cache-");
 		try {
+			const fixedTime = new Date("2026-01-01T00:00:00.000Z");
 			writeFileSync(join(root, "src.md"), "[[ghost]]");
+			utimesSync(join(root, "src.md"), fixedTime, fixedTime);
 			const first = await buildAgentGraph(root);
 			expect(
 				first.nodes.find((node) => node.id === "unresolved:ghost"),
@@ -198,7 +201,7 @@ describe("buildAgentGraph", () => {
 
 			// Replace the file content, but reset mtime to the original. Cache
 			// must trust mtime over content here — that is the contract.
-			const originalStat = require("node:fs").statSync(join(root, "src.md"));
+			const originalStat = statSync(join(root, "src.md"));
 			writeFileSync(join(root, "src.md"), "[[different-target]]");
 			utimesSync(join(root, "src.md"), originalStat.atime, originalStat.mtime);
 

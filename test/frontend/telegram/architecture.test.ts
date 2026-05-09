@@ -39,6 +39,6 @@ describe("Telegram architecture", () => {
 				[{ sdkSessionId: "sdk-1", title: "Chat A", lastActive: 1_000 }],
 				"sdk-1",
 			),
-		).toEqual([{ label: "Chat A ●", switchData: "ss:sdk-1" }]);
+		).toEqual([{ label: "● Chat A", switchData: "ss:sdk-1" }]);
 	});
 });
