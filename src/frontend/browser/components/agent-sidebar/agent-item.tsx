@@ -66,6 +66,7 @@ export function AgentItem({
 		() => (searchState?.query.trim() ?? "") !== "",
 	);
 	const [draftSearch, setDraftSearch] = useState(searchState?.query ?? "");
+	const [olderSessionsExpanded, setOlderSessionsExpanded] = useState(false);
 	const loadMoreRef = useRef<HTMLDivElement | null>(null);
 	const effectiveSearchQuery = draftSearch.trim();
 	const searchActive = searchOpen && effectiveSearchQuery !== "";
@@ -270,7 +271,13 @@ export function AgentItem({
 						</div>
 					) : (
 						<>
-							{renderGroupedSessions(sessions, renderSession)}
+							{renderGroupedSessions({
+								olderExpanded: olderSessionsExpanded,
+								onToggleOlder: () =>
+									setOlderSessionsExpanded((current) => !current),
+								renderSession,
+								sessions,
+							})}
 							{nextCursor && (
 								<LoadMoreButton
 									containerRef={loadMoreRef}
@@ -316,31 +323,85 @@ function LoadMoreButton({
 
 const GROUP_LABELS: Record<SessionGroupKey, string> = {
 	today: "Today",
-	week: "This week",
-	month: "This month",
+	lastSevenDays: "Last 7 days",
+	lastThirtyDays: "Last 30 days",
 	older: "Older",
 };
 
-const GROUP_ORDER: SessionGroupKey[] = ["today", "week", "month", "older"];
+const GROUP_ORDER: SessionGroupKey[] = [
+	"today",
+	"lastSevenDays",
+	"lastThirtyDays",
+	"older",
+];
 
-function renderGroupedSessions(
-	sessions: SessionEntry[],
-	renderSession: (session: SessionEntry) => ReactNode,
-) {
+function renderGroupedSessions({
+	olderExpanded,
+	onToggleOlder,
+	renderSession,
+	sessions,
+}: {
+	olderExpanded: boolean;
+	onToggleOlder: () => void;
+	renderSession: (session: SessionEntry) => ReactNode;
+	sessions: SessionEntry[];
+}) {
 	const grouped = groupSessionsByAge(sessions);
 	return GROUP_ORDER.flatMap((group) => {
 		const entries = grouped[group];
 		if (entries.length === 0) {
 			return [];
 		}
-		return [
-			<div
-				key={`${group}-header`}
-				className="sticky top-0 z-10 bg-dark-950 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-dark-500"
-			>
-				{GROUP_LABELS[group]}
-			</div>,
-			...entries.map(renderSession),
-		];
+		const header =
+			group === "older" ? (
+				<CollapsibleGroupHeader
+					key={`${group}-header`}
+					expanded={olderExpanded}
+					label={GROUP_LABELS[group]}
+					onToggle={onToggleOlder}
+				/>
+			) : (
+				<GroupHeader key={`${group}-header`} label={GROUP_LABELS[group]} />
+			);
+		if (group === "older" && !olderExpanded) {
+			return [header];
+		}
+		return [header, ...entries.map(renderSession)];
 	});
+}
+
+function GroupHeader({ label }: { label: string }) {
+	return (
+		<div className="sticky top-0 z-10 bg-dark-950 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-dark-500">
+			{label}
+		</div>
+	);
+}
+
+function CollapsibleGroupHeader({
+	expanded,
+	label,
+	onToggle,
+}: {
+	expanded: boolean;
+	label: string;
+	onToggle: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			data-agent-row-ignore-drag="true"
+			aria-expanded={expanded}
+			aria-label={`${expanded ? "Collapse" : "Expand"} ${label.toLowerCase()} sessions`}
+			onClick={onToggle}
+			className="sticky top-0 z-10 flex w-full items-center gap-1 bg-dark-950 px-3 py-1 text-left text-[11px] uppercase tracking-[0.16em] text-dark-500 transition-colors hover:text-dark-300"
+		>
+			{expanded ? (
+				<ChevronDown size={12} className="shrink-0" />
+			) : (
+				<ChevronRight size={12} className="shrink-0" />
+			)}
+			<span>{label}</span>
+		</button>
+	);
 }

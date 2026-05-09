@@ -26,26 +26,34 @@ function session(id: string, lastActive: number): SessionEntry {
 }
 
 describe("groupSessionsByAge", () => {
-	test("classifies sessions into today, week, month, and older buckets", () => {
+	test("classifies sessions into today, last-seven-days, last-thirty-days, and older buckets", () => {
 		const now = localTime(2026, 5, 9, 8);
 
-		expect(classifySessionAge(localTime(2026, 5, 9, 0), now)).toBe("today");
-		expect(classifySessionAge(localTime(2026, 5, 8, 21), now)).toBe("week");
-		expect(classifySessionAge(localTime(2026, 5, 2, 21), now)).toBe("month");
-		expect(classifySessionAge(localTime(2026, 3, 28, 21), now)).toBe("older");
+		expect(classifySessionAge(localTime(2026, 5, 9, 7), now)).toBe("today");
+		expect(classifySessionAge(localTime(2026, 5, 8, 21), now)).toBe(
+			"lastSevenDays",
+		);
+		expect(classifySessionAge(localTime(2026, 5, 1, 21), now)).toBe(
+			"lastThirtyDays",
+		);
+		expect(classifySessionAge(localTime(2026, 4, 26, 21), now)).toBe(
+			"lastThirtyDays",
+		);
+		expect(classifySessionAge(localTime(2026, 4, 8, 21), now)).toBe("older");
 	});
 
-	test("uses calendar ranges instead of rolling elapsed durations", () => {
-		const now = localTime(2026, 5, 2, 8);
-		const laterSameMonth = localTime(2026, 5, 9, 8);
-		const lastNight = localTime(2026, 5, 1, 21);
-		const lastMonthInSameWeek = localTime(2026, 4, 30, 21);
-		const sameMonthBeforeThisWeek = localTime(2026, 5, 2, 21);
+	test("uses rolling elapsed age instead of calendar boundaries", () => {
+		const now = localTime(2026, 5, 9, 8);
+		const lastNight = localTime(2026, 5, 8, 21);
+		const lastMonthWithinThirtyDays = localTime(2026, 4, 26, 21);
+		const sameMonthOutsideSevenDays = localTime(2026, 5, 1, 21);
 
-		expect(classifySessionAge(lastNight, now)).toBe("week");
-		expect(classifySessionAge(lastMonthInSameWeek, now)).toBe("week");
-		expect(classifySessionAge(sameMonthBeforeThisWeek, laterSameMonth)).toBe(
-			"month",
+		expect(classifySessionAge(lastNight, now)).toBe("lastSevenDays");
+		expect(classifySessionAge(lastMonthWithinThirtyDays, now)).toBe(
+			"lastThirtyDays",
+		);
+		expect(classifySessionAge(sameMonthOutsideSevenDays, now)).toBe(
+			"lastThirtyDays",
 		);
 	});
 
@@ -64,6 +72,8 @@ describe("groupSessionsByAge", () => {
 			"today-a",
 			"today-b",
 		]);
-		expect(grouped.week.map((entry) => entry.sdkSessionId)).toEqual(["week-a"]);
+		expect(grouped.lastSevenDays.map((entry) => entry.sdkSessionId)).toEqual([
+			"week-a",
+		]);
 	});
 });
