@@ -112,6 +112,52 @@ describe("AgentItem", () => {
 		expect(html).toContain("bottom-0");
 	});
 
+	test("collapses older session rows behind an expandable group header", () => {
+		const dayMs = 24 * 60 * 60 * 1000;
+		const now = Date.now();
+		const html = renderToStaticMarkup(
+			<AgentItem
+				activeSession={null}
+				agent={{ agentId: "agent-railly", name: "railly" }}
+				dropIndicator={null}
+				isActive={true}
+				isDragging={false}
+				isExpanded={true}
+				onAttachRow={() => {}}
+				onClearSearch={() => {}}
+				onLoadMore={() => {}}
+				onLoadMoreSearch={() => {}}
+				onRowPointerDown={() => {}}
+				onSearch={() => {}}
+				onToggle={() => {}}
+				sessions={[
+					{
+						agentId: "agent-railly",
+						providerId: "mock",
+						sdkSessionId: "sdk-recent",
+						title: "Recent work",
+						model: "mock-model",
+						lastActive: now - 8 * dayMs,
+					},
+					{
+						agentId: "agent-railly",
+						providerId: "mock",
+						sdkSessionId: "sdk-older",
+						title: "Ancient work",
+						model: "mock-model",
+						lastActive: now - 31 * dayMs,
+					},
+				]}
+			/>,
+		);
+
+		expect(html).toContain("Recent work");
+		expect(html).toContain(">Older<");
+		expect(html).toContain('aria-expanded="false"');
+		expect(html).toContain('aria-label="Expand older sessions"');
+		expect(html).not.toContain("Ancient work");
+	});
+
 	test("renders active search results with a load-more affordance", () => {
 		const html = renderToStaticMarkup(
 			<AgentItem
