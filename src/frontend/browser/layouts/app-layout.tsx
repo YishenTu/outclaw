@@ -169,8 +169,18 @@ export function AppLayout() {
 	]);
 
 	if (isMobile) {
+		// `pt/pb-[env(safe-area-inset-*)]` reserves space for the iPhone notch
+		// and home indicator when launched as a pinned home-screen app
+		// (`apple-mobile-web-app-capable`). On regular Safari the insets are
+		// zero, so this is a no-op outside standalone mode.
 		return (
-			<div className="flex h-dvh max-h-dvh overflow-hidden bg-dark-950">
+			<div
+				className="flex h-dvh max-h-dvh overflow-hidden bg-dark-950"
+				style={{
+					paddingTop: "env(safe-area-inset-top)",
+					paddingBottom: "env(safe-area-inset-bottom)",
+				}}
+			>
 				<MobileLayoutView />
 			</div>
 		);
