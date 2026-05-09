@@ -8,6 +8,7 @@ import type {
 } from "../../../../common/protocol.ts";
 import { fetchAgentFile } from "../../lib/api.ts";
 import { fileNameFromPath } from "../../lib/path-display.ts";
+import { useOpenDoc } from "../../lib/use-open-doc.ts";
 import {
 	selectAgentTreeRevision,
 	selectGitRevision,
@@ -180,7 +181,7 @@ export function FileViewer({
 		gitRevision,
 		treeRevision,
 	});
-	const openTab = useTabsStore((state) => state.openTab);
+	const openDoc = useOpenDoc();
 	const fileName = fileNameFromPath(path);
 
 	useEffect(() => {
@@ -219,13 +220,13 @@ export function FileViewer({
 
 	const handleOpenGitPreview = useCallback(
 		(gitPath: string) => {
-			openTab({
+			openDoc({
 				type: "git-diff",
 				id: `git-diff:${gitPath}`,
 				path: gitPath,
 			});
 		},
-		[openTab],
+		[openDoc],
 	);
 
 	useEffect(() => {

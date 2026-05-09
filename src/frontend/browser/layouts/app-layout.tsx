@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useIsMobile } from "../lib/use-is-mobile.ts";
 import { useRolloverNoticeAutoDismiss } from "../notices/use-rollover-notice-auto-dismiss.ts";
 import { useLayoutStore } from "../stores/layout.ts";
 import { useWorkspaceViewStore } from "../stores/workspace-view.ts";
@@ -9,9 +10,11 @@ import {
 	resolveInspectorFit,
 } from "./app-layout-policy.ts";
 import { AppLayoutView, type ResizeSide } from "./app-layout-view.tsx";
+import { MobileLayoutView } from "./mobile-layout-view.tsx";
 
 export function AppLayout() {
 	useRolloverNoticeAutoDismiss();
+	const isMobile = useIsMobile();
 
 	const sidebarWidth = useLayoutStore((state) => state.sidebarWidth);
 	const inspectorWidth = useLayoutStore((state) => state.inspectorWidth);
@@ -164,6 +167,14 @@ export function AppLayout() {
 		setRightCollapsed,
 		showWelcomePage,
 	]);
+
+	if (isMobile) {
+		return (
+			<div className="flex h-dvh max-h-dvh overflow-hidden bg-dark-950">
+				<MobileLayoutView />
+			</div>
+		);
+	}
 
 	return (
 		<div ref={containerRef} className="flex h-screen bg-dark-950">

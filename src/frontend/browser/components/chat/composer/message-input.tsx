@@ -305,7 +305,7 @@ export function MessageInput({
 	}
 
 	return (
-		<div className="p-4">
+		<div className="px-2 pt-2 pb-1 md:p-4">
 			<div className="mx-auto max-w-4xl">
 				<section
 					aria-label="Message input"
@@ -367,7 +367,9 @@ export function MessageInput({
 							))}
 						</div>
 					)}
-					<div className={`relative ${compact ? "h-[64px]" : "h-[115px]"}`}>
+					<div
+						className={`relative ${compact ? "h-[36px] md:h-[64px]" : "h-[115px]"}`}
+					>
 						<textarea
 							ref={textareaRef}
 							value={value}

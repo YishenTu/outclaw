@@ -1,6 +1,7 @@
 import type { EffortLevel } from "../../../../common/commands.ts";
 import type { ModelAlias } from "../../../../common/models.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
+import { useIsMobile } from "../../lib/use-is-mobile.ts";
 import {
 	resolveDisplayedAgentSessionKey,
 	resolveDisplayedSessionTitle,
@@ -31,6 +32,7 @@ interface ChatPanelProps {
 
 export function ChatPanel({ active = true }: ChatPanelProps) {
 	const { sendBrowserPrompt, sendCommand } = useWs();
+	const isMobile = useIsMobile();
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
 	const agents = useAgentsStore((state) => state.agents);
 	const sessionsByAgent = useSessionsStore((state) => state.sessionsByAgent);
@@ -107,6 +109,7 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 					disabled
 					interruptible={false}
 					active={active}
+					compact={isMobile}
 					model={model}
 					effort={effort}
 					onModelChange={handleModelChange}
@@ -160,6 +163,7 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 				}
 				sessionKey={sessionKey}
 				disabled={connectionStatus !== "connected"}
+				compact={isMobile}
 				model={model}
 				effort={effort}
 				onModelChange={handleModelChange}

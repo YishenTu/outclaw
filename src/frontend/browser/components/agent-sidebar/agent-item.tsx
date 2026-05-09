@@ -10,6 +10,7 @@ import {
 import type { SessionCursor } from "../../../../common/protocol.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import type { AgentEntry, AgentReorderPosition } from "../../stores/agents.ts";
+import { useMobileNavStore } from "../../stores/mobile-nav.ts";
 import type { SessionEntry, SessionRef } from "../../stores/sessions.ts";
 import { useWorkspaceViewStore } from "../../stores/workspace-view.ts";
 import { groupSessionsByAge, type SessionGroupKey } from "./group-sessions.ts";
@@ -62,6 +63,7 @@ export function AgentItem({
 }: AgentItemProps) {
 	const { sendCommand, switchSession } = useWs();
 	const openWorkspace = useWorkspaceViewStore((state) => state.openWorkspace);
+	const setMobilePanel = useMobileNavStore((state) => state.setMobilePanel);
 	const [searchOpen, setSearchOpen] = useState(
 		() => (searchState?.query.trim() ?? "") !== "",
 	);
@@ -153,6 +155,7 @@ export function AgentItem({
 				onSelect={() => {
 					if (switchSession(agent.name, session)) {
 						openWorkspace();
+						setMobilePanel("chat");
 					}
 				}}
 				onRename={(title) =>
@@ -224,6 +227,7 @@ export function AgentItem({
 							}
 							if (sendCommand("/new")) {
 								openWorkspace();
+								setMobilePanel("chat");
 							}
 						}}
 						className="font-mono-ui flex items-center justify-end text-[18px] leading-none text-dark-500 transition-colors hover:text-dark-100"

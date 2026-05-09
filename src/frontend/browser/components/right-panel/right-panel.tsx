@@ -21,6 +21,7 @@ import {
 	initGitRepo,
 	restoreAgentInboxItem,
 } from "../../lib/api.ts";
+import { useOpenDoc } from "../../lib/use-open-doc.ts";
 import { sendGitCommitPrompt } from "../../prompts/send-git-commit-prompt.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
 import { useLayoutStore } from "../../stores/layout.ts";
@@ -162,7 +163,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 			null,
 	);
 	const activeAgentName = activeAgent?.name ?? null;
-	const openTab = useTabsStore((state) => state.openTab);
+	const openDoc = useOpenDoc();
 	const activeFilePathForGraph = useTabsStore((state) => {
 		if (!activeAgentId) {
 			return null;
@@ -303,37 +304,37 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 
 	const handleOpenFile = useCallback(
 		(params: { agentId: string; path: string }) => {
-			openTab({
+			openDoc({
 				type: "file",
 				id: `${params.agentId}:${params.path}`,
 				agentId: params.agentId,
 				path: params.path,
 			});
 		},
-		[openTab],
+		[openDoc],
 	);
 
 	const handleOpenDiff = useCallback(
 		(path: string) => {
-			openTab({
+			openDoc({
 				type: "git-diff",
 				id: `git-diff:${path}`,
 				path,
 			});
 		},
-		[openTab],
+		[openDoc],
 	);
 
 	const handleOpenCommit = useCallback(
 		(commit: BrowserGitGraphCommit) => {
-			openTab({
+			openDoc({
 				type: "git-commit",
 				id: `git-commit:${commit.sha}`,
 				sha: commit.sha,
 				title: commit.commit.message,
 			});
 		},
-		[openTab],
+		[openDoc],
 	);
 
 	const handleCommit = useCallback(

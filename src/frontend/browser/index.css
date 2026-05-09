@@ -14,6 +14,34 @@
 /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS directive */
 @tailwind utilities;
 
+/*
+ * iOS Safari auto-zooms the viewport when a form control with font-size < 16px
+ * is focused, and frequently fails to zoom back out on blur. Force all form
+ * controls to ≥16px on mobile so focus never crosses the zoom threshold.
+ * Desktop is unaffected.
+ */
+@media (max-width: 767px) {
+	input,
+	textarea,
+	select {
+		/* !important is required: Tailwind utility classes like `text-sm`
+		   have higher specificity than a bare element selector and would
+		   otherwise win, leaving us back below iOS's 16px zoom threshold. */
+		/* biome-ignore lint/complexity/noImportantStyles: see comment above */
+		font-size: 16px !important;
+	}
+
+	/*
+	 * Disable rubber-band overscroll on the document. Without this, iOS
+	 * Safari lets the user drag the whole page past its natural top/bottom
+	 * edges, briefly revealing empty space.
+	 */
+	html,
+	body {
+		overscroll-behavior: none;
+	}
+}
+
 :root {
 	/* Surface ramp — warm leather. Bright at the top, scorched at the bottom. */
 	--dark-50: #ebe7df;
