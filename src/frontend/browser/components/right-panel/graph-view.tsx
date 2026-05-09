@@ -49,6 +49,13 @@ interface GraphViewProps {
 	 * for callers that always show the graph.
 	 */
 	isVisible?: boolean;
+	/**
+	 * Path of the file currently active in the chat-side tab strip, if any.
+	 * Matched against node ids; the matching node receives the same visual
+	 * focus treatment as a hovered node so the user can spot their context
+	 * without searching.
+	 */
+	activeFilePath?: string | null;
 	onOpenFile: (params: { agentId: string; path: string }) => void;
 }
 
@@ -89,6 +96,7 @@ export function GraphView({
 	agentId,
 	treeRevision,
 	isVisible = true,
+	activeFilePath = null,
 	onOpenFile,
 }: GraphViewProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -120,6 +128,8 @@ export function GraphView({
 	const [layoutReady, setLayoutReady] = useState(false);
 	const forcesRef = useRef<GraphForces>(forces);
 	forcesRef.current = forces;
+	const activeFilePathRef = useRef<string | null>(activeFilePath);
+	activeFilePathRef.current = activeFilePath;
 
 	// Fetcher: initial load + on every treeRevision bump (debounced).
 	useEffect(() => {
@@ -288,17 +298,31 @@ export function GraphView({
 			ctx.translate(translateX, translateY);
 			ctx.scale(scale, scale);
 
+			// Focused = hovered (transient) ∪ active file tab (sticky). Both
+			// receive the same hover-style treatment per design choice. Neighbor
+			// expansion is the union over every focused node.
 			const hoveredNodeId = hoveredIdRef.current;
-			const neighborIds = new Set<string>();
+			const activePath = activeFilePathRef.current;
+			const focusedIds = new Set<string>();
 			if (hoveredNodeId) {
-				neighborIds.add(hoveredNodeId);
+				focusedIds.add(hoveredNodeId);
+			}
+			if (activePath) {
+				focusedIds.add(activePath);
+			}
+			const hasFocus = focusedIds.size > 0;
+			const neighborIds = new Set<string>();
+			if (hasFocus) {
+				for (const id of focusedIds) {
+					neighborIds.add(id);
+				}
 				for (const link of linksRef.current) {
 					const sourceId = nodeId(link.source);
 					const targetId = nodeId(link.target);
-					if (sourceId === hoveredNodeId) {
+					if (focusedIds.has(sourceId)) {
 						neighborIds.add(targetId);
 					}
-					if (targetId === hoveredNodeId) {
+					if (focusedIds.has(targetId)) {
 						neighborIds.add(sourceId);
 					}
 				}
@@ -317,10 +341,9 @@ export function GraphView({
 					continue;
 				}
 				const isHighlighted =
-					hoveredNodeId !== null &&
-					(nodeId(source) === hoveredNodeId ||
-						nodeId(target) === hoveredNodeId);
-				const isFaded = hoveredNodeId !== null && !isHighlighted;
+					hasFocus &&
+					(focusedIds.has(nodeId(source)) || focusedIds.has(nodeId(target)));
+				const isFaded = hasFocus && !isHighlighted;
 				ctx.strokeStyle = isHighlighted
 					? COLOR_EDGE_HIGHLIGHT
 					: isFaded
@@ -338,9 +361,9 @@ export function GraphView({
 					continue;
 				}
 				const radius = computeNodeRadius(node.degree);
-				const isHovered = hoveredNodeId === node.id;
-				const isNeighbor = hoveredNodeId !== null && neighborIds.has(node.id);
-				const isFaded = hoveredNodeId !== null && !isNeighbor;
+				const isHovered = focusedIds.has(node.id);
+				const isNeighbor = hasFocus && neighborIds.has(node.id);
+				const isFaded = hasFocus && !isNeighbor;
 				const baseColor = node.resolved
 					? isHovered
 						? COLOR_NODE_RESOLVED_HOVER
@@ -798,6 +821,15 @@ export function GraphView({
 			}
 		};
 	}, [isVisible]);
+
+	// Effect E: when the active file tab changes, repaint once. The simulation
+	// may be at rest (alpha ~ 0) so no tick would otherwise refresh the focus
+	// styling on the now-active node.
+	useEffect(() => {
+		// activeFilePath is read inside renderRef.current() via activeFilePathRef.
+		void activeFilePath;
+		renderRef.current();
+	}, [activeFilePath]);
 
 	const updateForce = useCallback(
 		<K extends keyof GraphForces>(key: K, value: GraphForces[K]) => {

@@ -163,6 +163,16 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	);
 	const activeAgentName = activeAgent?.name ?? null;
 	const openTab = useTabsStore((state) => state.openTab);
+	const activeFilePathForGraph = useTabsStore((state) => {
+		if (!activeAgentId) {
+			return null;
+		}
+		const active = state.tabs.find((tab) => tab.id === state.activeTabId);
+		if (!active || active.type !== "file" || active.agentId !== activeAgentId) {
+			return null;
+		}
+		return active.path;
+	});
 	const activeUpperTab = useLayoutStore((state) => state.rightPanelUpperTab);
 	const setRightPanelUpperTab = useLayoutStore(
 		(state) => state.setRightPanelUpperTab,
@@ -597,6 +607,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 								agentId={activeAgentId}
 								treeRevision={treeRevision}
 								isVisible={isGraph}
+								activeFilePath={activeFilePathForGraph}
 								onOpenFile={handleOpenFile}
 							/>
 						) : (
