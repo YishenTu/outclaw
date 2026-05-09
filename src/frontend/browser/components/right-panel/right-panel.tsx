@@ -40,9 +40,10 @@ import {
 } from "../../stores/terminal.ts";
 import { ActiveTabUnderline } from "../active-tab-underline.tsx";
 import { CronPanel } from "./cron-panel.tsx";
-import { FileTree, FileTreeHeader } from "./file-tree.tsx";
+import { type FilesViewMode, FileTree, FileTreeHeader } from "./file-tree.tsx";
 import { GitPanel } from "./git/git-panel.tsx";
 import { shouldClearSelectedGitCommit } from "./git/git-selection-state.ts";
+import { GraphView } from "./graph-view.tsx";
 import { InboxPanel, type InboxUndoArchive } from "./inbox-panel.tsx";
 import {
 	useAgentTreeLoader,
@@ -212,6 +213,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		requestRestartAfterConfigSave,
 	);
 	const [isResizing, setIsResizing] = useState(false);
+	const [filesViewMode, setFilesViewMode] = useState<FilesViewMode>("tree");
 	const [selectedGitCommitSha, setSelectedGitCommitSha] = useState<
 		string | null
 	>(null);
@@ -571,10 +573,43 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		}
 
 		if (tab === "files") {
+			const isGraph = filesViewMode === "graph";
+			// Both panes stay mounted and toggle via CSS so the graph keeps its
+			// simulation, pan/zoom, and forces state when the user flips back to
+			// the file tree. Conditional rendering would unmount GraphView and
+			// force a fresh layout fit on every toggle.
 			return (
 				<div className="flex h-full min-h-0 flex-col">
-					<FileTreeHeader agentName={activeAgentName} />
-					<div className="scrollbar-none min-h-0 flex-1 overflow-y-auto">
+					<FileTreeHeader
+						agentName={activeAgentName}
+						viewMode={filesViewMode}
+						onToggleViewMode={() =>
+							setFilesViewMode(isGraph ? "tree" : "graph")
+						}
+					/>
+					<div
+						className={`min-h-0 flex-1 overflow-hidden ${
+							isGraph ? "" : "hidden"
+						}`}
+					>
+						{activeAgentId ? (
+							<GraphView
+								agentId={activeAgentId}
+								treeRevision={treeRevision}
+								isVisible={isGraph}
+								onOpenFile={handleOpenFile}
+							/>
+						) : (
+							<div className="px-4 py-4 text-sm text-dark-500">
+								No active agent.
+							</div>
+						)}
+					</div>
+					<div
+						className={`scrollbar-none min-h-0 flex-1 overflow-y-auto ${
+							isGraph ? "hidden" : ""
+						}`}
+					>
 						{treeLoading ? (
 							<div className="px-4 py-4 text-sm text-dark-500">
 								Loading files…

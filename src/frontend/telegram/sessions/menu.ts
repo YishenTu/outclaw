@@ -43,9 +43,9 @@ export function buildSessionButtons(
 	activeSessionId?: string,
 ): SessionButtonRow[] {
 	return sessions.map((session) => {
-		const marker = session.sdkSessionId === activeSessionId ? " ●" : "";
+		const marker = session.sdkSessionId === activeSessionId ? "● " : "";
 		return {
-			label: `${session.title}${marker}`,
+			label: `${marker}${session.title}`,
 			switchData: `ss:${session.sdkSessionId}`,
 		};
 	});
@@ -103,17 +103,12 @@ export function buildSessionPageView(params: {
 	const query = params.query?.trim();
 	const header =
 		params.mode === "search" && query
-			? `Session search: ${normalizeSearchHeaderQuery(query)}`
-			: "Sessions:";
+			? `<b>Session search: ${escapeHtml(normalizeSearchHeaderQuery(query))}</b>`
+			: "<b>Sessions:</b>";
 	const emptyText = params.mode === "search" ? "No matches" : "No sessions";
 	return {
 		rows,
-		text:
-			pageSessions.length === 0
-				? `${header}\n${emptyText}`
-				: `${header}\n${pageSessions
-						.map((session) => `• ${session.title}`)
-						.join("\n")}`,
+		text: pageSessions.length === 0 ? `${header}\n${emptyText}` : header,
 	};
 }
 
@@ -166,4 +161,11 @@ function parsePage(raw: string): number | undefined {
 
 function normalizeSearchHeaderQuery(query: string): string {
 	return query.replace(/\s+/g, " ");
+}
+
+function escapeHtml(text: string): string {
+	return text
+		.replace(/&(?!(?:[a-zA-Z]+|#\d+|#x[\da-fA-F]+);)/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
 }

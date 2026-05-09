@@ -7,6 +7,8 @@ import {
 	FileJson2,
 	FileText,
 	Folder,
+	FolderTree,
+	Network,
 } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import type { BrowserTreeEntry } from "../../../../common/protocol.ts";
@@ -82,16 +84,43 @@ function FileIcon({ path }: { path: string }) {
 	}
 }
 
-export function FileTreeHeader({ agentName }: { agentName?: string | null }) {
+export type FilesViewMode = "tree" | "graph";
+
+export function FileTreeHeader({
+	agentName,
+	viewMode,
+	onToggleViewMode,
+}: {
+	agentName?: string | null;
+	viewMode?: FilesViewMode;
+	onToggleViewMode?: () => void;
+}) {
 	const path = agentName
 		? `~/.outclaw/agents/${agentName}`
 		: "~/.outclaw/agents/";
+	const showToggle = Boolean(viewMode && onToggleViewMode);
+	const nextLabel = viewMode === "graph" ? "Show file tree" : "Show graph view";
 	return (
 		<div className="h-8 shrink-0 border-b border-dark-800 px-3">
-			<div className="flex h-full items-center px-1">
-				<div className="font-mono-ui truncate text-[11px] uppercase tracking-[0.16em] text-dark-500">
+			<div className="flex h-full items-center gap-2 px-1">
+				<div className="font-mono-ui min-w-0 flex-1 truncate text-[11px] uppercase tracking-[0.16em] text-dark-500">
 					{path}
 				</div>
+				{showToggle ? (
+					<button
+						type="button"
+						onClick={onToggleViewMode}
+						aria-label={nextLabel}
+						title={nextLabel}
+						className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
+					>
+						{viewMode === "graph" ? (
+							<FolderTree size={13} />
+						) : (
+							<Network size={13} />
+						)}
+					</button>
+				) : null}
 			</div>
 		</div>
 	);

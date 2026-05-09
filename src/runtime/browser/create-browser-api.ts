@@ -9,6 +9,7 @@ import type {
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
+	BrowserGraphResponse,
 	BrowserInboxArchiveResponse,
 	BrowserInboxCreateNoteInput,
 	BrowserInboxCreateNoteResponse,
@@ -38,6 +39,7 @@ import {
 import { BROWSER_CONFIG_SCHEMA } from "./config/schema.ts";
 import { listCronRunsForJob } from "./cron/history.ts";
 import { listCronEntries, setCronEnabled } from "./cron/workbench.ts";
+import { buildAgentGraph } from "./files/build-graph.ts";
 import { listWorkspaceFiles } from "./files/list-workspace-files.ts";
 import { readBrowserFile } from "./files/read-browser-file.ts";
 import { listTreeEntries } from "./files/tree-workbench.ts";
@@ -105,6 +107,7 @@ export interface BrowserApi {
 		},
 	): Promise<BrowserSessionPageResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
+	listAgentGraph(agentId: string): Promise<BrowserGraphResponse>;
 	listAgentWorkspaceFiles(agentId: string): Promise<WorkspaceFileEntry[]>;
 	readConfigFile(): Promise<BrowserConfigResponse>;
 	writeConfigFile(
@@ -230,6 +233,10 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		async listAgentWorkspaceFiles(agentId) {
 			const agent = requireAgent(agentsById, agentId);
 			return await listWorkspaceFiles(agent.homeDir);
+		},
+		async listAgentGraph(agentId) {
+			const agent = requireAgent(agentsById, agentId);
+			return await buildAgentGraph(agent.homeDir);
 		},
 		async readConfigFile() {
 			const absolutePath = resolveExistingPathWithinRoot(

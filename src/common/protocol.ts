@@ -486,6 +486,23 @@ export interface BrowserTreeEntry {
 	children?: BrowserTreeEntry[];
 }
 
+export interface BrowserGraphNode {
+	id: string;
+	name: string;
+	path: string | null;
+	resolved: boolean;
+}
+
+export interface BrowserGraphLink {
+	source: string;
+	target: string;
+}
+
+export interface BrowserGraphResponse {
+	nodes: BrowserGraphNode[];
+	links: BrowserGraphLink[];
+}
+
 export interface BrowserCronHistoryCursor {
 	ranAt: number;
 	providerId: string;

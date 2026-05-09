@@ -54,7 +54,7 @@ describe("Telegram session handler registration", () => {
 			expect.any(Set),
 		);
 		expect(reply).toHaveBeenCalledTimes(1);
-		expect(reply.mock.calls[0]?.[0]).toBe("Sessions:\n• Alpha\n• Beta");
+		expect(reply.mock.calls[0]?.[0]).toBe("<b>Sessions:</b>");
 		expect(
 			(
 				reply.mock.calls[0]?.[1] as {
@@ -62,7 +62,7 @@ describe("Telegram session handler registration", () => {
 				}
 			).reply_markup?.inline_keyboard,
 		).toEqual([
-			[{ text: "Alpha ●", callback_data: "ss:sdk-1" }],
+			[{ text: "● Alpha", callback_data: "ss:sdk-1" }],
 			[{ text: "Beta", callback_data: "ss:sdk-2" }],
 			[{ text: "1/1", callback_data: "sn" }],
 		]);
@@ -209,7 +209,7 @@ describe("Telegram session handler registration", () => {
 			"/session list 15",
 			expect.any(Set),
 		);
-		expect(editMessageText.mock.calls[0]?.[0]).toContain("Chat 5");
+		expect(editMessageText.mock.calls[0]?.[0]).toBe("<b>Sessions:</b>");
 		expect(answerCallbackQuery).toHaveBeenCalledWith("Page 2");
 	});
 
@@ -326,7 +326,7 @@ describe("Telegram session handler registration", () => {
 			expect.any(Set),
 		);
 		expect(editMessageText.mock.calls[0]?.[0]).toStartWith(
-			"Session search: auth middleware",
+			"<b>Session search: auth middleware</b>",
 		);
 	});
 });

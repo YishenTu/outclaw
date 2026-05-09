@@ -8,6 +8,7 @@ import type {
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
+	BrowserGraphResponse,
 	BrowserImageUploadResponse,
 	BrowserInboxArchiveResponse,
 	BrowserInboxCreateNoteResponse,
@@ -95,6 +96,14 @@ export async function fetchAgentTree(
 ): Promise<BrowserTreeEntry[]> {
 	return parseJsonResponse(
 		await fetch(`/api/agents/${encodeURIComponent(agentId)}/tree`),
+	);
+}
+
+export async function fetchAgentGraph(
+	agentId: string,
+): Promise<BrowserGraphResponse> {
+	return parseJsonResponse(
+		await fetch(`/api/agents/${encodeURIComponent(agentId)}/graph`),
 	);
 }
 

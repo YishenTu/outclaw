@@ -30,7 +30,7 @@ describe("buildSessionButtons", () => {
 
 	test("label has title with active marker", () => {
 		const rows = buildSessionButtons(SESSIONS, "sdk-aaa");
-		expect(rows[0]?.label).toBe("Chat A ●");
+		expect(rows[0]?.label).toBe("● Chat A");
 		expect(rows[1]?.label).toBe("Chat B");
 	});
 
@@ -98,8 +98,8 @@ describe("buildSessionPageView", () => {
 			sessions,
 		});
 
-		expect(view.text).toContain("Sessions:");
-		expect(view.text).toContain("Chat 0");
+		expect(view.text).toBe("<b>Sessions:</b>");
+		expect(view.text).not.toContain("Chat 0");
 		expect(view.text).not.toContain("Chat 5");
 		expect(view.rows.at(-1)).toEqual([
 			{ label: "1/2+", data: "sn" },
@@ -121,10 +121,12 @@ describe("buildSessionPageView", () => {
 			],
 		});
 
-		expect(view.text).toStartWith("Session search: auth middle");
-		expect(extractSearchQueryFromSessionPageText(view.text)).toBe(
-			"auth middle",
-		);
+		expect(view.text).toStartWith("<b>Session search: auth middle</b>");
+		// Telegram strips HTML tags when surfacing message.text in callback queries,
+		// so the extractor sees the rendered plain text rather than the HTML source.
+		expect(
+			extractSearchQueryFromSessionPageText("Session search: auth middle"),
+		).toBe("auth middle");
 		expect(view.rows.at(-1)).toEqual([
 			{ label: "Prev", data: "sq:0" },
 			{ label: "2/2", data: "sn" },

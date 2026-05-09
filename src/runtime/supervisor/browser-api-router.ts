@@ -8,6 +8,7 @@ import type {
 	BrowserGitCommitResponse,
 	BrowserGitDiffResponse,
 	BrowserGitStatusResponse,
+	BrowserGraphResponse,
 	BrowserInboxArchiveResponse,
 	BrowserInboxCreateNoteInput,
 	BrowserInboxCreateNoteResponse,
@@ -53,6 +54,7 @@ export interface BrowserApi {
 		},
 	): Promise<BrowserSessionPageResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
+	listAgentGraph?(agentId: string): Promise<BrowserGraphResponse>;
 	listAgentWorkspaceFiles?(agentId: string): Promise<WorkspaceFileEntry[]>;
 	listAgents(): BrowserAgentsResponse;
 	readAgentFile(
@@ -359,7 +361,7 @@ export async function handleBrowserApiRequest(
 		}
 
 		const agentMatch = url.pathname.match(
-			/^\/api\/agents\/([^/]+)\/(tree|workspace-files|files|cron|terminal-run-command)$/,
+			/^\/api\/agents\/([^/]+)\/(tree|graph|workspace-files|files|cron|terminal-run-command)$/,
 		);
 		if (!agentMatch) {
 			return jsonError("Not found", 404);
@@ -404,6 +406,12 @@ export async function handleBrowserApiRequest(
 
 		if (resource === "tree") {
 			return Response.json(await browserApi.listAgentTree(agentId));
+		}
+		if (resource === "graph") {
+			if (!browserApi.listAgentGraph) {
+				return jsonError("Graph API is not configured", 404);
+			}
+			return Response.json(await browserApi.listAgentGraph(agentId));
 		}
 		if (resource === "workspace-files") {
 			if (!browserApi.listAgentWorkspaceFiles) {

@@ -25,7 +25,7 @@ interface TelegramSessionRegistrar {
 			match?: string;
 			reply(
 				text: string,
-				options?: { reply_markup?: InlineKeyboard },
+				options?: { parse_mode?: "HTML"; reply_markup?: InlineKeyboard },
 			): Promise<unknown>;
 		}) => Promise<void>,
 	): unknown;
@@ -37,7 +37,7 @@ interface TelegramSessionRegistrar {
 			answerCallbackQuery(text?: string): Promise<unknown>;
 			editMessageText(
 				text: string,
-				options?: { reply_markup?: InlineKeyboard },
+				options?: { parse_mode?: "HTML"; reply_markup?: InlineKeyboard },
 			): Promise<unknown>;
 		}) => Promise<void>,
 	): unknown;
@@ -100,6 +100,7 @@ export function registerTelegramSessionHandlers(
 			}>,
 		});
 		await ctx.reply(view.text, {
+			parse_mode: "HTML",
 			reply_markup: buildInlineKeyboard(view.rows),
 		});
 	});
@@ -164,6 +165,7 @@ export function registerTelegramSessionHandlers(
 				}>,
 			});
 			await ctx.editMessageText(view.text, {
+				parse_mode: "HTML",
 				reply_markup: buildInlineKeyboard(view.rows),
 			});
 			await ctx.answerCallbackQuery(`Page ${page + 1}`);

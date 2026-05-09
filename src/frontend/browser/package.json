@@ -13,6 +13,7 @@
 		"@xterm/xterm": "^6.0.0",
 		"clsx": "^2.1.1",
 		"commit-graph": "^2.4.0",
+		"d3-force": "^3.0.0",
 		"diff": "^8.0.3",
 		"figlet": "^1.11.0",
 		"highlight.js": "^11.11.1",
@@ -30,6 +31,7 @@
 	},
 	"devDependencies": {
 		"@tailwindcss/typography": "^0.5.15",
+		"@types/d3-force": "^3.0.10",
 		"@types/diff": "^8.0.0",
 		"@types/figlet": "^1.7.0",
 		"@types/mdast": "^4.0.4",
