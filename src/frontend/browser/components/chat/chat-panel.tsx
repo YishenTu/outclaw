@@ -20,7 +20,8 @@ function hasRenderableTranscript(session: ChatSession | undefined): boolean {
 		session.messages.length > 0 ||
 		session.queuedPrompts.length > 0 ||
 		session.streamingText !== "" ||
-		session.streamingThinking !== ""
+		session.streamingThinking !== "" ||
+		session.isCompacting
 	);
 }
 

@@ -48,6 +48,7 @@ export const MessageList = memo(function MessageList({
 			streamingText,
 			streamingThinking,
 			isStreaming,
+			isCompacting,
 		});
 
 		if (lastSessionKeyRef.current !== sessionKey) {
@@ -68,6 +69,7 @@ export const MessageList = memo(function MessageList({
 		container.scrollTop = container.scrollHeight;
 	}, [
 		isStreaming,
+		isCompacting,
 		messages,
 		queuedPrompts,
 		sessionKey,
@@ -102,7 +104,7 @@ export const MessageList = memo(function MessageList({
 					/>
 				))}
 
-				{(hasAssistantOutput || isStreaming) && (
+				{(hasAssistantOutput || isStreaming || isCompacting) && (
 					<div className="w-full text-dark-100">
 						{streamingThinking !== "" && (
 							<ThinkingBlock content={streamingThinking} />
@@ -113,7 +115,7 @@ export const MessageList = memo(function MessageList({
 									<MarkdownContent content={streamingText} />
 								</div>
 							)}
-							{isStreaming && (
+							{(isStreaming || isCompacting) && (
 								<ThinkingIndicator
 									startedAt={thinkingStartedAt}
 									isCompacting={isCompacting}

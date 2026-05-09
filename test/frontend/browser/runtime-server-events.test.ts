@@ -637,6 +637,13 @@ describe("browser runtime server events", () => {
 						role: "user",
 						content: "saved prompt",
 					},
+					{
+						kind: "system",
+						event: "compact_boundary",
+						text: "context compacted",
+						trigger: "auto",
+						preTokens: 100_000,
+					},
 				],
 			},
 			options,
@@ -666,6 +673,13 @@ describe("browser runtime server events", () => {
 				kind: "chat",
 				role: "user",
 				content: "saved prompt",
+			},
+			{
+				kind: "system",
+				event: "compact_boundary",
+				text: "context compacted",
+				trigger: "auto",
+				preTokens: 100_000,
 			},
 		]);
 		expect(session).toMatchObject({
@@ -1153,6 +1167,11 @@ describe("browser runtime server events", () => {
 				timestamp: Date.parse("2026-04-27T00:00:00.000Z"),
 			},
 			{
+				kind: "system",
+				event: "compact_boundary",
+				text: "context compacted",
+			},
+			{
 				kind: "chat",
 				role: "assistant",
 				content: "answer",
@@ -1179,6 +1198,44 @@ describe("browser runtime server events", () => {
 		expect(calls).toEqual([
 			"live:complete:agent-railly:mock:sdk-active",
 			"sidebar:refresh",
+		]);
+	});
+
+	test("adds a compact boundary when live compaction finishes", () => {
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+			sessionId: "sdk-active",
+		});
+		const { options } = createHandlerOptions();
+
+		handleBrowserServerEvent(
+			{ type: "compacting_started", sessionId: "sdk-active" },
+			options,
+		);
+		handleBrowserServerEvent(
+			{ type: "compacting_finished", sessionId: "sdk-active" },
+			options,
+		);
+
+		const session = useChatStore
+			.getState()
+			.getSession("agent-railly:mock:sdk-active");
+		expect(session?.isCompacting).toBe(false);
+		expect(session?.messages).toEqual([
+			{
+				kind: "system",
+				event: "compact_boundary",
+				text: "context compacted",
+			},
 		]);
 	});
 

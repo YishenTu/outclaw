@@ -210,6 +210,46 @@ describe("browser message list", () => {
 		expect(html).not.toContain("Working...");
 	});
 
+	test("shows compacting when compaction is active without assistant output", () => {
+		const html = renderToStaticMarkup(
+			<MessageList
+				messages={[]}
+				streamingText=""
+				streamingThinking=""
+				isStreaming={false}
+				isCompacting={true}
+				thinkingStartedAt={null}
+			/>,
+		);
+
+		expect(html).toContain("Compacting...");
+		expect(html).not.toContain("Thinking...");
+		expect(html).not.toContain("Working...");
+	});
+
+	test("renders compact boundaries from replayed history as compacted indicators", () => {
+		const html = renderToStaticMarkup(
+			<MessageList
+				messages={[
+					{
+						kind: "system",
+						event: "compact_boundary",
+						text: "context compacted",
+						trigger: "auto",
+						preTokens: 100_000,
+					},
+				]}
+				streamingText=""
+				streamingThinking=""
+				isStreaming={false}
+				isCompacting={false}
+				thinkingStartedAt={null}
+			/>,
+		);
+
+		expect(html).toContain("~ context compacted ~");
+	});
+
 	test("renders queued prompts with a pending indicator", () => {
 		const html = renderToStaticMarkup(
 			<MessageList

@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import { memo } from "react";
+import { formatCompactBoundaryIndicator } from "../../../common/compact-boundary.ts";
 import { theme } from "../chrome/theme.ts";
 import { wrapBubble } from "./bubble.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -79,7 +80,7 @@ export const MessageItem = memo(function MessageItem({
 			if (message.variant === "compact_boundary") {
 				return (
 					<Box marginTop={1} paddingLeft={3} paddingRight={1}>
-						<Text dimColor>{`~ ${message.text} ~`}</Text>
+						<Text dimColor>{formatCompactBoundaryIndicator(message.text)}</Text>
 					</Box>
 				);
 			}

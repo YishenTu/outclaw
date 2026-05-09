@@ -1,3 +1,4 @@
+import { createDisplayCompactBoundaryMessage } from "../../../common/compact-boundary.ts";
 import {
 	HEARTBEAT_DISPLAY_LABEL,
 	isHeartbeatNoopResult,
@@ -439,20 +440,7 @@ function extractCompactBoundary(
 	}
 
 	const metadata = getCompactMetadata(message);
-	return createCompactBoundaryMessage(metadata);
-}
-
-function createCompactBoundaryMessage(metadata: {
-	trigger?: string;
-	preTokens?: number;
-}): DisplaySystemMessage {
-	return {
-		kind: "system",
-		event: "compact_boundary",
-		text: "context compacted",
-		trigger: metadata.trigger === "manual" ? "manual" : "auto",
-		preTokens: metadata.preTokens ?? 0,
-	};
+	return createDisplayCompactBoundaryMessage(metadata);
 }
 
 function createHeartbeatMessage(): DisplaySystemMessage {
@@ -597,7 +585,7 @@ function pushCompactBoundary(result: DisplayMessage[]): void {
 		return;
 	}
 
-	result.push(createCompactBoundaryMessage({}));
+	result.push(createDisplayCompactBoundaryMessage({}));
 }
 
 function getCompactBoundarySubtype(

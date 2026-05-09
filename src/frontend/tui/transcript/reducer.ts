@@ -1,3 +1,4 @@
+import { COMPACT_BOUNDARY_TEXT } from "../../../common/compact-boundary.ts";
 import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
 import type { SessionMenuData } from "../sessions/types.ts";
 import type { TuiMessage, TuiMessageRole, TuiState } from "./state.ts";
@@ -259,7 +260,7 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 					{
 						id: state.nextId,
 						role: "info" as const,
-						text: "context compacted",
+						text: COMPACT_BOUNDARY_TEXT,
 						variant: "compact_boundary" as const,
 					},
 				],

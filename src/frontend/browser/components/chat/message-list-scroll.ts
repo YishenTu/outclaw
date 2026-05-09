@@ -12,6 +12,7 @@ interface TranscriptAutoScrollTokenParams {
 	streamingText: string;
 	streamingThinking: string;
 	isStreaming: boolean;
+	isCompacting?: boolean;
 }
 
 interface TranscriptScrollMetrics {
@@ -30,6 +31,7 @@ export function createTranscriptAutoScrollToken(
 		params.streamingThinking,
 		params.streamingText,
 		params.isStreaming ? "streaming" : "idle",
+		params.isCompacting ? "compacting" : "not-compacting",
 	].join("\u0002");
 }
 
