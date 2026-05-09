@@ -106,6 +106,26 @@ describe("MarkdownPreview", () => {
 		expect(html).toContain("[&amp;_code::before]:content-none");
 		expect(html).toContain("[&amp;_code::after]:content-none");
 	});
+
+	test("styles wikilinks in markdown body text", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownPreview content={"See [[project-outclaw]] for context."} />,
+		);
+
+		expect(html).toContain(
+			'<strong class="md-wikilink text-brand font-bold">[[project-outclaw]]</strong>',
+		);
+	});
+
+	test("leaves inline code wikilinks as plain code text", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownPreview content={"Keep `[[project-outclaw]]` literal."} />,
+		);
+
+		expect(html).toContain("<code>[[project-outclaw]]</code>");
+		expect(html).not.toContain("md-wikilink");
+		expect(html).not.toContain("text-brand");
+	});
 });
 
 describe("FileViewer", () => {
