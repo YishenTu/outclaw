@@ -180,9 +180,8 @@ export function applyBrowserChatEvent(
 			}
 			useChatStore
 				.getState()
-				.setCompacting(
+				.finishCompacting(
 					options.routeObservedSessionKey(agentId, event.sessionId),
-					false,
 				);
 			return true;
 		}

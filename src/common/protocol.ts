@@ -357,8 +357,8 @@ export interface DisplayCompactBoundaryMessage {
 	kind: "system";
 	event: "compact_boundary";
 	text: string;
-	trigger: "manual" | "auto";
-	preTokens: number;
+	trigger?: "manual" | "auto";
+	preTokens?: number;
 }
 
 export interface DisplayHeartbeatMessage {

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { createDisplayCompactBoundaryMessage } from "../../../common/compact-boundary.ts";
 import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
 import type {
 	AssistantTurnMetadata,
@@ -63,6 +64,7 @@ export interface ChatState {
 	setStreaming: (sessionKey: string, streaming: boolean) => void;
 	setThinking: (sessionKey: string, thinking: boolean) => void;
 	setCompacting: (sessionKey: string, compacting: boolean) => void;
+	finishCompacting: (sessionKey: string) => void;
 	setError: (sessionKey: string, error: string | null) => void;
 	finalizeMessage: (
 		sessionKey: string,
@@ -357,6 +359,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
 					[sessionKey]: {
 						...session,
 						isCompacting: compacting,
+					},
+				},
+			};
+		}),
+	finishCompacting: (sessionKey) =>
+		set((state) => {
+			const session = getOrCreateSession(state.sessions, sessionKey);
+			return {
+				sessions: {
+					...state.sessions,
+					[sessionKey]: {
+						...session,
+						messages: [
+							...session.messages,
+							createDisplayCompactBoundaryMessage(),
+						],
+						isCompacting: false,
+						pendingPromptStart: false,
+						error: null,
 					},
 				},
 			};

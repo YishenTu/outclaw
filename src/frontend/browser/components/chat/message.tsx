@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { Heart } from "lucide-react";
+import { formatCompactBoundaryIndicator } from "../../../../common/compact-boundary.ts";
 import type { DisplayMessage } from "../../../../common/protocol.ts";
 import { QUEUED_PROMPT_LABEL } from "../../../../common/queued-prompt.ts";
 import { AssistantTurnUtilityBar } from "./assistant-turn-utility-bar.tsx";
@@ -56,6 +57,14 @@ export function Message({
 	showUtilityBar = false,
 }: MessageProps) {
 	if (message.kind === "system") {
+		if (message.event === "compact_boundary") {
+			return (
+				<div className="font-mono-ui flex justify-center px-3 py-1 text-[12px] text-dark-500">
+					<span>{formatCompactBoundaryIndicator(message.text)}</span>
+				</div>
+			);
+		}
+
 		if (message.event === "heartbeat") {
 			return (
 				<div className="font-mono-ui flex items-center gap-2 px-3 py-1 text-[12px] uppercase tracking-[0.12em] text-dark-500">
