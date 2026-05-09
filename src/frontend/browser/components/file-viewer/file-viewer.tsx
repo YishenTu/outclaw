@@ -20,6 +20,7 @@ import {
 } from "../markdown/markdown-pipeline.ts";
 import { splitMarkdownFrontmatter } from "./markdown-frontmatter.ts";
 import { remarkHtmlComments } from "./remark-html-comments.ts";
+import { remarkWikilinks } from "./remark-wikilinks.ts";
 
 interface FileViewerProps {
 	active?: boolean;
@@ -84,6 +85,7 @@ export function MarkdownPreview({ content }: { content: string }) {
 						remarkPlugins={[
 							...BROWSER_MARKDOWN_REMARK_PLUGINS,
 							remarkHtmlComments,
+							remarkWikilinks,
 						]}
 						rehypePlugins={BROWSER_MARKDOWN_REHYPE_PLUGINS}
 					>
