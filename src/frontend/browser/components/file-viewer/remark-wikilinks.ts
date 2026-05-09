@@ -2,7 +2,7 @@ import type { PhrasingContent, Root, Text } from "mdast";
 import type { Plugin } from "unified";
 import { SKIP, visit } from "unist-util-visit";
 
-const WIKILINK_RE = /\[\[[^\]\n]+\]\]/g;
+const WIKILINK_RE = /\[\[([^\]\n]+)\]\]/g;
 const WIKILINK_CLASS_NAME = "md-wikilink text-brand font-bold";
 
 export const remarkWikilinks: Plugin<[], Root> = () => (tree) => {
@@ -27,7 +27,7 @@ export const remarkWikilinks: Plugin<[], Root> = () => (tree) => {
 						className: WIKILINK_CLASS_NAME,
 					},
 				},
-				children: [{ type: "text", value: match[0] }],
+				children: [{ type: "text", value: match[1] ?? "" }],
 			});
 			cursor = match.index + match[0].length;
 			match = WIKILINK_RE.exec(value);

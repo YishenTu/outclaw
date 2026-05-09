@@ -113,8 +113,9 @@ describe("MarkdownPreview", () => {
 		);
 
 		expect(html).toContain(
-			'<strong class="md-wikilink text-brand font-bold">[[project-outclaw]]</strong>',
+			'<strong class="md-wikilink text-brand font-bold">project-outclaw</strong>',
 		);
+		expect(html).not.toContain(">[[project-outclaw]]</strong>");
 	});
 
 	test("leaves inline code wikilinks as plain code text", () => {
