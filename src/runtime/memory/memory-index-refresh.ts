@@ -150,7 +150,10 @@ function renderTierEntries(entries: SchemaEntry[]): string {
 	}
 
 	return entries
-		.map((entry) => `- [[${stripMdExtension(entry.filename)}]] — ${entry.description}`)
+		.map(
+			(entry) =>
+				`- [[${stripMdExtension(entry.filename)}]] — ${entry.description}`,
+		)
 		.join("\n");
 }
 
