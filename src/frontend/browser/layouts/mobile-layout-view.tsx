@@ -1,8 +1,8 @@
-import { type ReactNode, useCallback, useMemo } from "react";
+import { type ReactNode, useCallback, useMemo, useRef } from "react";
 import { AgentSidebar } from "../components/agent-sidebar/agent-sidebar";
 import { CenterPanel } from "../components/center/center-panel.tsx";
 import { RightPanel } from "../components/right-panel/right-panel";
-import { useEdgeSwipe } from "../lib/use-edge-swipe.ts";
+import { type EdgeSwipeHandlers, useEdgeSwipe } from "../lib/use-edge-swipe.ts";
 import { useMobileKeyboardScrollReset } from "../lib/use-mobile-keyboard-scroll-reset.ts";
 import { type MobilePanel, useMobileNavStore } from "../stores/mobile-nav.ts";
 import { MobileOverlay } from "./mobile-overlay.tsx";
@@ -15,6 +15,13 @@ function neighbor(current: MobilePanel, direction: -1 | 1): MobilePanel | null {
 	const next = PANEL_ORDER[index + direction];
 	return next ?? null;
 }
+
+interface SwipeStartContext {
+	overlayOpen: boolean;
+	panel: MobilePanel;
+}
+
+type EdgeSwipeHandlersForLayout = EdgeSwipeHandlers<SwipeStartContext>;
 
 interface MobilePanelShellProps {
 	visible: boolean;
@@ -53,32 +60,47 @@ export function MobileLayoutView() {
 		[setMobilePanel],
 	);
 
-	// Edge swipes: when an overlay is open, both directions of a left-edge
-	// swipe close it (back gesture). Otherwise swipes step through the panel
-	// order — left edge → previous, right edge → next.
-	const swipeHandlers = useMemo(
+	// Edge swipes: when an overlay is open, a left-edge right-swipe closes it
+	// (back gesture). Otherwise swipes step through the panel order — left
+	// edge → previous, right edge → next.
+	//
+	// We snapshot {overlayOpen, panel} at touchstart rather than read live
+	// state at touchend. iOS Safari's own native left-edge back-swipe fires
+	// `popstate` mid-gesture, which our `MobileOverlay` listens to and uses
+	// to close the overlay. Without a touchstart snapshot, our touchend
+	// handler would see `overlayDoc === null` (already closed by iOS) and
+	// fall through to "step left in panel order", silently sending the user
+	// from Inspector to Chat instead of just closing the overlay.
+	const stateRef = useRef<SwipeStartContext>({
+		overlayOpen: !!overlayDoc,
+		panel: mobilePanel,
+	});
+	stateRef.current = { overlayOpen: !!overlayDoc, panel: mobilePanel };
+
+	const swipeHandlers = useMemo<EdgeSwipeHandlersForLayout>(
 		() => ({
-			onSwipeRightFromLeftEdge: () => {
-				if (overlayDoc) {
+			getStartContext: () => stateRef.current,
+			onSwipeRightFromLeftEdge: (ctx) => {
+				if (ctx.overlayOpen) {
 					closeOverlay();
 					return;
 				}
-				const target = neighbor(mobilePanel, -1);
+				const target = neighbor(ctx.panel, -1);
 				if (target) {
 					setMobilePanel(target);
 				}
 			},
-			onSwipeLeftFromRightEdge: () => {
-				if (overlayDoc) {
+			onSwipeLeftFromRightEdge: (ctx) => {
+				if (ctx.overlayOpen) {
 					return;
 				}
-				const target = neighbor(mobilePanel, 1);
+				const target = neighbor(ctx.panel, 1);
 				if (target) {
 					setMobilePanel(target);
 				}
 			},
 		}),
-		[mobilePanel, overlayDoc, setMobilePanel, closeOverlay],
+		[setMobilePanel, closeOverlay],
 	);
 	useEdgeSwipe(swipeHandlers, true);
 

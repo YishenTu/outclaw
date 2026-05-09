@@ -4,18 +4,28 @@ const EDGE_THRESHOLD_PX = 24;
 const HORIZONTAL_THRESHOLD_PX = 60;
 const MAX_VERTICAL_RATIO = 0.5;
 
-export interface EdgeSwipeHandlers {
+export interface EdgeSwipeHandlers<Ctx = void> {
+	/**
+	 * Captures gesture-intent context at touchstart. The result is passed to
+	 * `onSwipeXxx` at touchend. This matters because external state (e.g.
+	 * iOS Safari's own back-swipe firing `popstate`) can mutate app state
+	 * between touchstart and touchend; using a snapshot from gesture start
+	 * ensures the handler decides based on what the user saw, not on state
+	 * iOS has since changed under us.
+	 */
+	getStartContext?: () => Ctx;
 	/** Fired on a horizontal swipe from the left edge toward the right. */
-	onSwipeRightFromLeftEdge?: () => void;
+	onSwipeRightFromLeftEdge?: (context: Ctx) => void;
 	/** Fired on a horizontal swipe from the right edge toward the left. */
-	onSwipeLeftFromRightEdge?: () => void;
+	onSwipeLeftFromRightEdge?: (context: Ctx) => void;
 }
 
-interface SwipeState {
+interface SwipeState<Ctx> {
 	startX: number;
 	startY: number;
 	fromLeftEdge: boolean;
 	fromRightEdge: boolean;
+	context: Ctx;
 }
 
 /**
@@ -29,8 +39,8 @@ interface SwipeState {
  *
  * Mobile-only by convention: pass `enabled={false}` on desktop.
  */
-export function useEdgeSwipe(
-	handlers: EdgeSwipeHandlers,
+export function useEdgeSwipe<Ctx = void>(
+	handlers: EdgeSwipeHandlers<Ctx>,
 	enabled: boolean,
 ): void {
 	useEffect(() => {
@@ -41,7 +51,7 @@ export function useEdgeSwipe(
 			return;
 		}
 
-		let state: SwipeState | null = null;
+		let state: SwipeState<Ctx> | null = null;
 
 		const handleTouchStart = (event: TouchEvent) => {
 			if (event.touches.length !== 1) {
@@ -64,6 +74,7 @@ export function useEdgeSwipe(
 				startY: touch.clientY,
 				fromLeftEdge: fromLeft,
 				fromRightEdge: fromRight,
+				context: (handlers.getStartContext?.() ?? (undefined as Ctx)) as Ctx,
 			};
 		};
 
@@ -88,11 +99,11 @@ export function useEdgeSwipe(
 				return;
 			}
 			if (start.fromLeftEdge && dx > 0) {
-				handlers.onSwipeRightFromLeftEdge?.();
+				handlers.onSwipeRightFromLeftEdge?.(start.context);
 				return;
 			}
 			if (start.fromRightEdge && dx < 0) {
-				handlers.onSwipeLeftFromRightEdge?.();
+				handlers.onSwipeLeftFromRightEdge?.(start.context);
 			}
 		};
 
@@ -114,6 +125,7 @@ export function useEdgeSwipe(
 		};
 	}, [
 		enabled,
+		handlers.getStartContext,
 		handlers.onSwipeRightFromLeftEdge,
 		handlers.onSwipeLeftFromRightEdge,
 	]);
