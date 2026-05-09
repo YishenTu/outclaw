@@ -188,6 +188,40 @@ export function GraphView({
 		[graph],
 	);
 
+	/**
+	 * Synchronously settle the simulation around its current force centers,
+	 * fit the camera to the resulting layout, then resume at low energy.
+	 * Shared by ResizeObserver "real resize", Effect D's deferred-fit on
+	 * visibility, and the manual fit button. Each caller is responsible for
+	 * updating any forces (e.g., new center) BEFORE calling this — the helper
+	 * only handles the settle/fit/restart cadence.
+	 *
+	 * No-op if the simulation isn't built yet.
+	 */
+	const resettleAndFit = useCallback(() => {
+		const sim = simulationRef.current;
+		if (!sim) {
+			return;
+		}
+		sim.stop();
+		for (let i = 0; i < PRETICK_MAX_ITERATIONS; i += 1) {
+			sim.tick();
+			if (sim.alpha() < FIT_ALPHA_THRESHOLD) {
+				break;
+			}
+		}
+		fitTransform({
+			transformRef,
+			sizeRef,
+			nodes: nodesRef.current,
+			padding: FIT_PADDING_PX,
+		});
+		didFitRef.current = true;
+		setLayoutReady(true);
+		sim.alpha(POSTPRETICK_ALPHA).alphaTarget(0).restart();
+		renderRef.current();
+	}, []);
+
 	// Effect A: agent-scoped canvas + listeners. Reads simulationRef at event
 	// time, so it does not need to re-run when the simulation is rebuilt.
 	useEffect(() => {
@@ -256,24 +290,9 @@ export function GraphView({
 					(prevWidth !== width || prevHeight !== height)
 				) {
 					// Real resize while visible (split-bar drag, terminal
-					// collapse/expand, window resize). Re-settle nodes around
-					// the new center synchronously *before* fitting — fitting
-					// on stale positions and then restarting the sim would
-					// leave the centroid mid-flight and the view off-center.
-					sim.stop();
-					for (let i = 0; i < PRETICK_MAX_ITERATIONS; i += 1) {
-						sim.tick();
-						if (sim.alpha() < FIT_ALPHA_THRESHOLD) {
-							break;
-						}
-					}
-					fitTransform({
-						transformRef,
-						sizeRef,
-						nodes: nodesRef.current,
-						padding: FIT_PADDING_PX,
-					});
-					sim.alpha(POSTPRETICK_ALPHA).alphaTarget(0).restart();
+					// collapse/expand, window resize). Center forces above are
+					// already updated; re-settle around them and refit.
+					resettleAndFit();
 				}
 			}
 			// Canvas size changes wipe the bitmap; repaint once so the freshly
@@ -576,7 +595,7 @@ export function GraphView({
 			ctxRef.current = null;
 			pointerStateRef.current = null;
 		};
-	}, [agentId, onOpenFile]);
+	}, [agentId, onOpenFile, resettleAndFit]);
 
 	// Effect B: simulation lifecycle. Builds on first data, merges thereafter.
 	useEffect(() => {
@@ -786,22 +805,8 @@ export function GraphView({
 					// center synchronously before fitting — otherwise nodes
 					// drift toward the new center after fit and the view
 					// silently goes off-screen.
-					sim.stop();
-					for (let i = 0; i < PRETICK_MAX_ITERATIONS; i += 1) {
-						sim.tick();
-						if (sim.alpha() < FIT_ALPHA_THRESHOLD) {
-							break;
-						}
-					}
-					fitTransform({
-						transformRef,
-						sizeRef,
-						nodes: nodesRef.current,
-						padding: FIT_PADDING_PX,
-					});
-					didFitRef.current = true;
-					setLayoutReady(true);
-					sim.alpha(POSTPRETICK_ALPHA).alphaTarget(0).restart();
+					resettleAndFit();
+					return;
 				}
 			} else if (!didFitRef.current && attempts < MAX_ATTEMPTS) {
 				// Simulation hasn't been built yet (e.g., fetch still in
@@ -820,7 +825,7 @@ export function GraphView({
 				cancelAnimationFrame(raf);
 			}
 		};
-	}, [isVisible]);
+	}, [isVisible, resettleAndFit]);
 
 	// Effect E: when the active file tab changes, repaint once. The simulation
 	// may be at rest (alpha ~ 0) so no tick would otherwise refresh the focus
@@ -842,19 +847,12 @@ export function GraphView({
 		setForces(DEFAULT_FORCES);
 	}, []);
 
-	const fitToView = useCallback(() => {
-		if (nodesRef.current.length === 0) {
-			return;
-		}
-		fitTransform({
-			transformRef,
-			sizeRef,
-			nodes: nodesRef.current,
-			padding: FIT_PADDING_PX,
-		});
-		didFitRef.current = true;
-		renderRef.current();
-	}, []);
+	// Manual fit button: re-settle and re-center, same cadence as resize. The
+	// button is "show me the whole graph" — not "rebuild from scratch". When
+	// the sim is already at rest the pretick is a near no-op, so this is
+	// effectively a recenter; when the sim is still active (e.g., right after
+	// dragging a node) the settle is meaningful.
+	const fitToView = resettleAndFit;
 
 	const hoveredNode = hoveredId
 		? (graph?.nodes.find((node) => node.id === hoveredId) ?? null)
