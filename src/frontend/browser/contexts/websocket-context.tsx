@@ -342,6 +342,17 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 				},
 				pinObservedSessionKey: liveRunBridgeRef.current.pinObservedSessionKey,
 				refreshSidebar,
+				requestSkills: () => {
+					const socket = wsRef.current;
+					if (!isRuntimeSocketOpen(socket)) {
+						return;
+					}
+					try {
+						sendRequestSkills(socket);
+					} catch (error) {
+						useRuntimeStore.getState().setError(extractError(error));
+					}
+				},
 				routeObservedSessionKey:
 					liveRunBridgeRef.current.routeObservedSessionKey,
 			});

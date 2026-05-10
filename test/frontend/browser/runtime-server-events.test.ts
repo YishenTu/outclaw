@@ -72,6 +72,7 @@ function createHandlerOptions(overrides: Record<string, unknown> = {}) {
 			pinObservedSessionKey: (agentId: string, observedSessionId?: string) =>
 				`${agentId}:mock:${observedSessionId ?? "observed"}`,
 			refreshSidebar: () => calls.push("sidebar:refresh"),
+			requestSkills: () => calls.push("skills:request"),
 			routeObservedSessionKey: (agentId: string, observedSessionId?: string) =>
 				`${agentId}:mock:${observedSessionId ?? "observed"}`,
 			...overrides,
@@ -484,7 +485,10 @@ describe("browser runtime server events", () => {
 			running: false,
 			sessionId: null,
 		});
-		expect(calls).toContain("sidebar:refresh");
+		// agent_switched triggers a targeted skills refresh, NOT a full sidebar
+		// refresh — see the load-more flicker fix in runtime-server-events.ts.
+		expect(calls).toContain("skills:request");
+		expect(calls).not.toContain("sidebar:refresh");
 
 		handleBrowserServerEvent(
 			{
@@ -558,7 +562,10 @@ describe("browser runtime server events", () => {
 			},
 		]);
 		expect(useRuntimePopupStore.getState().popup).toBeNull();
-		expect(calls.filter((call) => call === "sidebar:refresh").length).toBe(2);
+		// session_switched is the only event in this sequence that triggers a
+		// sidebar refresh; agent_switched switched to skills-only.
+		expect(calls.filter((call) => call === "sidebar:refresh").length).toBe(1);
+		expect(calls.filter((call) => call === "skills:request").length).toBe(1);
 	});
 
 	test("clears browser session state after a session clear event", () => {
