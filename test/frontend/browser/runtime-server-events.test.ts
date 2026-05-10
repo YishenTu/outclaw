@@ -562,9 +562,11 @@ describe("browser runtime server events", () => {
 			},
 		]);
 		expect(useRuntimePopupStore.getState().popup).toBeNull();
-		// session_switched is the only event in this sequence that triggers a
-		// sidebar refresh; agent_switched switched to skills-only.
-		expect(calls.filter((call) => call === "sidebar:refresh").length).toBe(1);
+		// Neither agent_switched nor session_switched calls refreshSidebar anymore
+		// — both were redundant and caused load-more flicker. agent_switched
+		// triggers a targeted skills:request; session_switched does nothing beyond
+		// the active-session indicator update.
+		expect(calls.filter((call) => call === "sidebar:refresh").length).toBe(0);
 		expect(calls.filter((call) => call === "skills:request").length).toBe(1);
 	});
 

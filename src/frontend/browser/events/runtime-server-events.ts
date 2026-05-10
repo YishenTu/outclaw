@@ -260,7 +260,10 @@ export function handleBrowserServerEvent(
 						? createBrowserSessionRef(agentId, providerId, event.sdkSessionId)
 						: null,
 				);
-			options.refreshSidebar();
+			// session_switched is a pure active-session indicator change; the agent's
+			// session list itself is unchanged. setActiveSession above is sufficient.
+			// Do NOT refreshSidebar here — it would replace-write first-page data
+			// over any existing pagination, flickering the load-more button.
 			return;
 		}
 		case "session_renamed": {
