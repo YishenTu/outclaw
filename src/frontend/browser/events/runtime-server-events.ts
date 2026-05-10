@@ -143,6 +143,13 @@ interface BrowserServerEventHandlerOptions
 		currentSessionKey: string,
 	) => ReturnType<BrowserChatEventHandlerOptions["completeLiveRunSession"]>;
 	invalidateSidebarRefresh: () => void;
+	/**
+	 * Targeted refresh of slash commands / skills for the agent this client is
+	 * currently bound to. Used on agent_switched to update the command palette
+	 * without re-fetching every agent's session list (which would otherwise
+	 * trample any "Load more" pagination state — see the load-more flicker fix).
+	 */
+	requestSkills: () => void;
 }
 
 export function handleBrowserServerEvent(
@@ -162,7 +169,15 @@ export function handleBrowserServerEvent(
 			useAgentsStore.getState().setActiveAgent(event.agentId);
 			useRuntimeStore.getState().setAgentName(event.name);
 			useRuntimeStore.getState().clearSession();
-			options.refreshSidebar();
+			// The sidebar's per-agent session lists do not change as a function of
+			// which agent THIS client is bound to — they're fetched globally and
+			// kept fresh by browser_agents_invalidated pushes from the server. A
+			// full refreshSidebar() here would replace each agent's session list
+			// with a fresh first-page-only response, trampling any "Load more"
+			// pagination state and causing the load-more button to briefly flicker
+			// back into view (then disappear once auto-pagination re-fetches the
+			// next page). Skills, however, ARE per-agent and need a targeted refresh.
+			options.requestSkills();
 			return;
 		}
 		case "runtime_status": {
