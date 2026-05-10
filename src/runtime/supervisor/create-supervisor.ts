@@ -98,6 +98,19 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		telegramRouting: options.telegramRouting,
 	});
 	for (const runtime of options.agents) {
+		runtime.setActiveSessionChangedHandler(
+			({ activeSessionId, agentId, providerId }) =>
+				controller.broadcastBrowserAgentActiveSessionChanged({
+					type: "browser_agent_active_session_changed",
+					agentId,
+					activeSession: activeSessionId
+						? {
+								providerId,
+								sdkSessionId: activeSessionId,
+							}
+						: undefined,
+				}),
+		);
 		runtime.setSessionCatalogChangedHandler(({ agentId }) =>
 			controller.broadcastBrowserAgentsInvalidated({
 				type: "browser_agents_invalidated",
@@ -139,7 +152,9 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 
 			if (url.pathname.startsWith("/api/")) {
 				return attachSetCookie(
-					await handleBrowserApiRequest(req, url, options.browserApi),
+					await handleBrowserApiRequest(req, url, options.browserApi, {
+						browserClientId: cookieClientId,
+					}),
 					newCookieHeader,
 				);
 			}

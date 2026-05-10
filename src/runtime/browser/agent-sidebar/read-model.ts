@@ -29,12 +29,12 @@ export function toBrowserSessionSummary(
 }
 
 export function listBrowserAgents(params: {
+	activeAgentId?: string;
 	agents: Iterable<BrowserApiAgent>;
-	getRememberedAgentId: () => string | undefined;
 	storesByAgent: Map<string, SessionStore | undefined>;
 }): BrowserAgentsResponse {
 	return {
-		activeAgentId: params.getRememberedAgentId(),
+		activeAgentId: params.activeAgentId,
 		agents: [...params.agents]
 			.sort((left, right) => left.name.localeCompare(right.name))
 			.map((agent) => {

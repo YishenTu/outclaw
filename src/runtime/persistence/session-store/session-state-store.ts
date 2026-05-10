@@ -161,10 +161,13 @@ export class SessionStateStore {
 			.query(
 				`DELETE FROM state
 				 WHERE key LIKE $activeSessionPrefix
-				    OR key = $lastUserTargetKey`,
+				    OR key = $lastUserTargetKey
+				    OR (key LIKE $browserClientAgentPrefix AND value = $agentId)`,
 			)
 			.run({
+				$agentId: agentId,
 				$activeSessionPrefix: `${activeSessionKey(agentId, "")}%`,
+				$browserClientAgentPrefix: `${browserClientAgentKey("")}%`,
 				$lastUserTargetKey: lastUserTargetKey(agentId),
 			});
 		this.deleteStateValue(lastInteractiveAtKey(agentId));

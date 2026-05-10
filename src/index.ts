@@ -146,6 +146,8 @@ function startMultiAgentDaemon(
 				};
 			}),
 			filesRoot: layout.filesRoot,
+			getBrowserClientAgentId: (clientId) =>
+				stateStore.getBrowserClientAgentId(clientId),
 			getRememberedAgentId: () => stateStore.getLastInteractiveAgentId(),
 			gitRoot: layout.homeDir,
 			homeDir: layout.homeDir,

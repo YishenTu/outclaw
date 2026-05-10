@@ -234,6 +234,39 @@ describe("browser runtime server events", () => {
 		expect(calls).toEqual(["sidebar:refresh"]);
 	});
 
+	test("applies browser active-session updates without refreshing sidebar data", () => {
+		const { calls, options } = createHandlerOptions();
+
+		handleBrowserServerEvent(
+			{
+				type: "browser_agent_active_session_changed",
+				agentId: "agent-railly",
+				activeSession: {
+					providerId: "mock",
+					sdkSessionId: "sdk-next",
+				},
+			},
+			options,
+		);
+
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
+		).toEqual(createBrowserSessionRef("agent-railly", "mock", "sdk-next"));
+
+		handleBrowserServerEvent(
+			{
+				type: "browser_agent_active_session_changed",
+				agentId: "agent-railly",
+			},
+			options,
+		);
+
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
+		).toBeNull();
+		expect(calls).toEqual([]);
+	});
+
 	test("clears active sessions from sidebar summaries when no session is active", () => {
 		applySidebarSummary({
 			activeAgentId: "agent-railly",

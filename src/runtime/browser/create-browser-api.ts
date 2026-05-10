@@ -66,6 +66,7 @@ import {
 interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
 	filesRoot?: string;
+	getBrowserClientAgentId?: (clientId: string) => string | undefined;
 	getRememberedAgentId: () => string | undefined;
 	gitRoot: string;
 	homeDir: string;
@@ -79,7 +80,7 @@ interface CreateBrowserApiOptions {
 
 export interface BrowserApi {
 	getAgentTerminalCwd(agentId: string): string | undefined;
-	listAgents(): BrowserAgentsResponse;
+	listAgents(params?: { browserClientId?: string }): BrowserAgentsResponse;
 	archiveAgentInboxItem(
 		agentId: string,
 		relativePath: string,
@@ -150,10 +151,15 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		getAgentTerminalCwd(agentId) {
 			return agentsById.get(agentId)?.homeDir;
 		},
-		listAgents() {
+		listAgents(params) {
 			return listBrowserAgents({
+				activeAgentId: resolveBrowserActiveAgentId({
+					agentsById,
+					browserClientId: params?.browserClientId,
+					getBrowserClientAgentId: options.getBrowserClientAgentId,
+					getRememberedAgentId: options.getRememberedAgentId,
+				}),
 				agents: agentsById.values(),
-				getRememberedAgentId: options.getRememberedAgentId,
 				storesByAgent: options.storesByAgent,
 			});
 		},
@@ -346,6 +352,26 @@ function requireAgent(
 		throw new Error(`Unknown agent: ${agentId}`);
 	}
 	return agent;
+}
+
+function resolveBrowserActiveAgentId(params: {
+	agentsById: Map<string, BrowserApiAgent>;
+	browserClientId?: string;
+	getBrowserClientAgentId?: (clientId: string) => string | undefined;
+	getRememberedAgentId: () => string | undefined;
+}): string | undefined {
+	if (params.getBrowserClientAgentId) {
+		const cookieAgentId = params.browserClientId
+			? params.getBrowserClientAgentId(params.browserClientId)
+			: undefined;
+		if (cookieAgentId && params.agentsById.has(cookieAgentId)) {
+			return cookieAgentId;
+		}
+
+		return params.agentsById.keys().next().value;
+	}
+
+	return params.getRememberedAgentId();
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

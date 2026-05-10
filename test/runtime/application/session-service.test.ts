@@ -303,6 +303,43 @@ describe("SessionService", () => {
 		store.close();
 	});
 
+	test("switchToSession does not report a catalog change for active-session-only switches", () => {
+		const store = createTestStore();
+		store.upsert({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "sdk-old",
+			title: "Old chat",
+			model: "sonnet",
+			source: "tui",
+		});
+
+		let activeSessionId: string | undefined;
+		let catalogChanges = 0;
+		let stateChanges = 0;
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store, {
+			onActiveSessionChanged: (event) => {
+				activeSessionId = event.activeSessionId;
+			},
+			onSessionCatalogChanged: () => {
+				catalogChanges += 1;
+			},
+			onSessionStateChange: () => {
+				stateChanges += 1;
+			},
+		});
+
+		const match = sessions.switchToSession("sdk-old");
+
+		expect(match?.sdkSessionId).toBe("sdk-old");
+		expect(state.sessionId).toBe("sdk-old");
+		expect(activeSessionId).toBe("sdk-old");
+		expect(stateChanges).toBe(1);
+		expect(catalogChanges).toBe(0);
+
+		store.close();
+	});
+
 	test("switchToSession ignores cron sessions", () => {
 		const store = createTestStore();
 		store.upsert({

@@ -89,6 +89,41 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("uses browser cookie binding for the sidebar active agent", () => {
+		const root = createTempDir("outclaw-browser-api-");
+		cleanupPaths.push(root);
+
+		const cookieAgents = new Map([["browser-1", "agent-mimi"]]);
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: join(root, "agents", "railly"),
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+				{
+					agentId: "agent-mimi",
+					name: "mimi",
+					homeDir: join(root, "agents", "mimi"),
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getBrowserClientAgentId: (clientId: string) => cookieAgents.get(clientId),
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		expect(api.listAgents({ browserClientId: "browser-1" }).activeAgentId).toBe(
+			"agent-mimi",
+		);
+		expect(api.listAgents().activeAgentId).toBe("agent-railly");
+	});
+
 	test("lists and searches paginated agent sessions", async () => {
 		const root = createTempDir("outclaw-browser-sessions-api-");
 		cleanupPaths.push(root);

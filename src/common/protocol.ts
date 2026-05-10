@@ -431,6 +431,15 @@ export interface BrowserAgentsInvalidatedEvent {
 	agentId?: string;
 }
 
+export interface BrowserAgentActiveSessionChangedEvent {
+	type: "browser_agent_active_session_changed";
+	agentId: string;
+	activeSession?: {
+		providerId: string;
+		sdkSessionId: string;
+	};
+}
+
 export interface SkillInfo {
 	name: string;
 	description: string;
@@ -770,6 +779,7 @@ export type ServerEvent =
 	| CronResultEvent
 	| BrowserSidebarInvalidatedEvent
 	| BrowserAgentsInvalidatedEvent
+	| BrowserAgentActiveSessionChangedEvent
 	| SkillsUpdateEvent
 	| WorkspaceFilesUpdateEvent
 	| AskResponseEvent

@@ -751,6 +751,8 @@ describe("agent management", () => {
 					chatId: 202,
 				});
 				globalStore.setLastInteractiveAgentId("agent-mimi");
+				globalStore.setBrowserClientAgentId("browser-mimi", "agent-mimi");
+				globalStore.setBrowserClientAgentId("browser-railly", "agent-railly");
 				routeStore.setAgentId("bot-a", 101, "agent-mimi");
 				routeStore.setAgentId("bot-a", 202, "agent-railly");
 
@@ -760,6 +762,12 @@ describe("agent management", () => {
 				expect(mimiStore.getActiveSessionId("claude")).toBeUndefined();
 				expect(mimiStore.getLastUserTarget()).toBeUndefined();
 				expect(globalStore.getLastInteractiveAgentId()).toBeUndefined();
+				expect(
+					globalStore.getBrowserClientAgentId("browser-mimi"),
+				).toBeUndefined();
+				expect(globalStore.getBrowserClientAgentId("browser-railly")).toBe(
+					"agent-railly",
+				);
 				expect(routeStore.getAgentId("bot-a", 101)).toBeUndefined();
 				expect(raillyStore.get("claude", "sdk-railly")).toBeDefined();
 				expect(routeStore.getAgentId("bot-a", 202)).toBe("agent-railly");

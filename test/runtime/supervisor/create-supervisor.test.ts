@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FacadeEvent, RunParams } from "../../../src/common/protocol.ts";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
+import { createBrowserApi } from "../../../src/runtime/browser/create-browser-api.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 import { createSupervisor } from "../../../src/runtime/supervisor/create-supervisor.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
@@ -354,6 +355,62 @@ describe("createSupervisor", () => {
 
 		browser.close();
 		tui.close();
+	});
+
+	test("session switches update browser active-session markers without invalidating agent lists", async () => {
+		const dbDir = mkdtempSync(join(tmpdir(), "outclaw-supervisor-switch-"));
+		const dbPath = join(dbDir, "sessions.sqlite");
+		const raillyStore = new SessionStore(dbPath, { agentId: "agent-railly" });
+		raillyStore.upsert({
+			providerId: "mock",
+			sdkSessionId: "sdk-target-abc",
+			title: "Target session",
+			model: "haiku",
+		});
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+					store: raillyStore,
+				}),
+			],
+		});
+		cleanup = async () => {
+			await supervisor.stop();
+			raillyStore.close();
+			rmSync(dbDir, { recursive: true, force: true });
+		};
+
+		const browser = await connectBrowserRuntimeWs(supervisor.port, "railly");
+		await waitForEvent(browser, (event) => event.type === "runtime_status");
+
+		const events = collectFor(browser, 150);
+		browser.send(
+			JSON.stringify({ type: "command", command: "/session sdk-target" }),
+		);
+
+		const observed = await events;
+		expect(observed).toContainEqual({
+			type: "browser_agent_active_session_changed",
+			agentId: "agent-railly",
+			activeSession: {
+				providerId: "mock",
+				sdkSessionId: "sdk-target-abc",
+			},
+		});
+		expect(observed).toContainEqual({
+			type: "session_switched",
+			sdkSessionId: "sdk-target-abc",
+			title: "Target session",
+		});
+		expect(
+			observed.filter((event) => event.type === "browser_agents_invalidated"),
+		).toEqual([]);
+
+		browser.close();
 	});
 
 	test("does not leak events between clients bound to different agents", async () => {
@@ -776,6 +833,85 @@ describe("createSupervisor", () => {
 			await waitForEvent(second, (event) => event.type === "agent_switched"),
 		).toMatchObject({ name: "zeta" });
 		second.close();
+	});
+
+	test("/api/agents reports the active agent for the requesting browser cookie", async () => {
+		const root = mkdtempSync(join(tmpdir(), "outclaw-supervisor-api-"));
+		const cookieStore = new Map<string, string>();
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-alpha",
+					name: "alpha",
+					facade: new MockFacade(),
+				}),
+				createAgentRuntime({
+					agentId: "agent-zeta",
+					name: "zeta",
+					facade: new MockFacade(),
+				}),
+			],
+			browserApi: createBrowserApi({
+				agents: [
+					{
+						agentId: "agent-alpha",
+						name: "alpha",
+						homeDir: join(root, "agents", "alpha"),
+						providerId: "mock",
+						terminalRunCommand: "",
+					},
+					{
+						agentId: "agent-zeta",
+						name: "zeta",
+						homeDir: join(root, "agents", "zeta"),
+						providerId: "mock",
+						terminalRunCommand: "",
+					},
+				],
+				getBrowserClientAgentId: (clientId) => cookieStore.get(clientId),
+				getRememberedAgentId: () => "agent-alpha",
+				gitRoot: root,
+				homeDir: root,
+				storesByAgent: new Map(),
+			}),
+			getBrowserClientAgentId: (clientId) => cookieStore.get(clientId),
+			rememberBrowserClientAgentId: (clientId, agentId) => {
+				cookieStore.set(clientId, agentId);
+			},
+		});
+		cleanup = async () => {
+			await supervisor.stop();
+			rmSync(root, { force: true, recursive: true });
+		};
+
+		const probeResponse = await fetch(`http://localhost:${supervisor.port}/`, {
+			headers: { accept: "text/html" },
+		});
+		const setCookie = probeResponse.headers.get("set-cookie") ?? "";
+		const cookieMatch = setCookie.match(/oc_client_id=([^;]+)/);
+		expect(cookieMatch).not.toBeNull();
+		const cookieValue = `oc_client_id=${cookieMatch?.[1]}`;
+		await probeResponse.body?.cancel();
+
+		const ws = await connectBrowserWsWithCookie(supervisor.port, cookieValue);
+		await waitForEvent(ws, (event) => event.type === "agent_switched");
+		ws.send(JSON.stringify({ type: "command", command: "/agent zeta" }));
+		await waitForEvent(
+			ws,
+			(event) => event.type === "agent_switched" && event.name === "zeta",
+		);
+
+		const response = await fetch(
+			`http://localhost:${supervisor.port}/api/agents`,
+			{
+				headers: { cookie: cookieValue },
+			},
+		);
+		const body = (await response.json()) as { activeAgentId?: string };
+
+		expect(body.activeAgentId).toBe("agent-zeta");
+		ws.close();
 	});
 
 	test("binds telegram clients to their routed agent and only lists accessible agents", async () => {

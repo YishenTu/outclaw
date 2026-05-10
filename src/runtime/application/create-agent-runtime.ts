@@ -83,6 +83,15 @@ export interface AgentRuntime {
 				status: "unavailable";
 				jobName: string;
 		  };
+	setActiveSessionChangedHandler(
+		handler:
+			| ((event: {
+					activeSessionId?: string;
+					agentId: string;
+					providerId: string;
+			  }) => void)
+			| undefined,
+	): void;
 	setCronResultHandler(
 		handler:
 			| ((params: {
@@ -119,6 +128,13 @@ export function createAgentRuntime(
 	options: CreateAgentRuntimeOptions,
 ): AgentRuntime {
 	const facade = options.facade;
+	let activeSessionChanged:
+		| ((event: {
+				activeSessionId?: string;
+				agentId: string;
+				providerId: string;
+		  }) => void)
+		| undefined;
 	let sessionCatalogChanged: ((event: { agentId: string }) => void) | undefined;
 	const state = new RuntimeState(
 		facade.providerId,
@@ -128,6 +144,11 @@ export function createAgentRuntime(
 	let noteRolloverStateChange = () => {};
 	const sessions = new SessionService(state, options.store, {
 		onAcceptedInteractivePrompt: () => noteRolloverStateChange(),
+		onActiveSessionChanged: (event) =>
+			activeSessionChanged?.({
+				...event,
+				agentId: options.agentId,
+			}),
 		onSessionCatalogChanged: () =>
 			sessionCatalogChanged?.({ agentId: options.agentId }),
 		onSessionStateChange: () => noteRolloverStateChange(),
@@ -247,6 +268,9 @@ export function createAgentRuntime(
 				};
 			}
 			return cronScheduler.startJob(params.jobName);
+		},
+		setActiveSessionChangedHandler(handler) {
+			activeSessionChanged = handler;
 		},
 		setCronResultHandler(handler) {
 			controller.setCronResultHandler(handler);

@@ -56,7 +56,7 @@ export interface BrowserApi {
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
 	listAgentGraph?(agentId: string): Promise<BrowserGraphResponse>;
 	listAgentWorkspaceFiles?(agentId: string): Promise<WorkspaceFileEntry[]>;
-	listAgents(): BrowserAgentsResponse;
+	listAgents(params?: { browserClientId?: string }): BrowserAgentsResponse;
 	readAgentFile(
 		agentId: string,
 		relativePath: string,
@@ -91,6 +91,7 @@ export async function handleBrowserApiRequest(
 	req: Request,
 	url: URL,
 	browserApi: BrowserApi | undefined,
+	context: { browserClientId?: string } = {},
 ): Promise<Response> {
 	if (url.pathname === "/api/latency") {
 		if (req.method !== "GET") {
@@ -115,7 +116,9 @@ export async function handleBrowserApiRequest(
 
 	try {
 		if (url.pathname === "/api/agents") {
-			return Response.json(browserApi.listAgents());
+			return Response.json(
+				browserApi.listAgents({ browserClientId: context.browserClientId }),
+			);
 		}
 
 		if (url.pathname === "/api/config") {

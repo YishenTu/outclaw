@@ -31,6 +31,10 @@ export interface SessionListResult {
 
 interface SessionServiceCallbacks {
 	onAcceptedInteractivePrompt?: () => void;
+	onActiveSessionChanged?: (event: {
+		activeSessionId?: string;
+		providerId: string;
+	}) => void;
 	onSessionCatalogChanged?: () => void;
 	onSessionRenamed?: (event: SessionRenamedEvent) => void;
 	onSessionStateChange?: () => void;
@@ -113,7 +117,7 @@ export class SessionService {
 		this.state.clearSession();
 		this.store?.setActiveSessionId(this.state.providerId, undefined);
 		this.callbacks.onSessionStateChange?.();
-		this.notifySessionCatalogChanged();
+		this.notifyActiveSessionChanged(undefined);
 	}
 
 	deleteSession(sessionId: string): { clearedActiveSession: boolean } {
@@ -252,6 +256,8 @@ export class SessionService {
 		this.callbacks.onAcceptedInteractivePrompt =
 			callbacks.onAcceptedInteractivePrompt ??
 			this.callbacks.onAcceptedInteractivePrompt;
+		this.callbacks.onActiveSessionChanged =
+			callbacks.onActiveSessionChanged ?? this.callbacks.onActiveSessionChanged;
 		this.callbacks.onSessionCatalogChanged =
 			callbacks.onSessionCatalogChanged ??
 			this.callbacks.onSessionCatalogChanged;
@@ -308,7 +314,7 @@ export class SessionService {
 		);
 		this.store?.setActiveSessionId(this.state.providerId, session.sdkSessionId);
 		this.callbacks.onSessionStateChange?.();
-		this.notifySessionCatalogChanged();
+		this.notifyActiveSessionChanged(session.sdkSessionId);
 		return session;
 	}
 
@@ -499,6 +505,16 @@ export class SessionService {
 			title,
 			providerId: this.state.providerId,
 			active,
+		});
+	}
+
+	private notifyActiveSessionChanged(activeSessionId: string | undefined) {
+		if (!this.store) {
+			return;
+		}
+		this.callbacks.onActiveSessionChanged?.({
+			activeSessionId,
+			providerId: this.state.providerId,
 		});
 	}
 

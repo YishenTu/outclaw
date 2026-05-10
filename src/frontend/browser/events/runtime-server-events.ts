@@ -347,6 +347,20 @@ export function handleBrowserServerEvent(
 		case "browser_agents_invalidated":
 			options.refreshSidebar();
 			return;
+		case "browser_agent_active_session_changed":
+			useSessionsStore
+				.getState()
+				.setActiveSession(
+					event.agentId,
+					event.activeSession
+						? createBrowserSessionRef(
+								event.agentId,
+								event.activeSession.providerId,
+								event.activeSession.sdkSessionId,
+							)
+						: null,
+				);
+			return;
 		case "cron_result":
 			return;
 		case "session_info":
