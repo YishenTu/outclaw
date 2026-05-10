@@ -14,6 +14,9 @@ export class ClientAgentBinding {
 		private readonly registry: AgentRuntimeRegistry,
 		private readonly getDefaultAgentId?: () => string | undefined,
 		private readonly telegramRouting?: TelegramRouting,
+		private readonly getBrowserClientAgentId?: (
+			clientId: string,
+		) => string | undefined,
 	) {}
 
 	bindInitial(ws: WsClient) {
@@ -125,10 +128,25 @@ export class ClientAgentBinding {
 			return available[0];
 		}
 
-		if (
-			(ws.data.clientType === "tui" || ws.data.clientType === "browser") &&
-			this.getDefaultAgentId
-		) {
+		if (ws.data.clientType === "browser") {
+			const cookieClientId = ws.data.cookieClientId;
+			if (cookieClientId && this.getBrowserClientAgentId) {
+				const cookieAgentId = this.getBrowserClientAgentId(cookieClientId);
+				if (cookieAgentId) {
+					const cookieRuntime = this.registry.getById(cookieAgentId);
+					if (cookieRuntime) {
+						return cookieRuntime;
+					}
+				}
+			}
+			// Fresh browser (or stale cookie pointing at a removed agent) → first agent
+			// in config order. We deliberately do NOT fall back to the global
+			// last-interactive-agent here: that's TUI-scoped and would otherwise leak
+			// across surfaces.
+			return this.registry.getDefault();
+		}
+
+		if (ws.data.clientType === "tui" && this.getDefaultAgentId) {
 			const rememberedAgentId = this.getDefaultAgentId();
 			if (rememberedAgentId) {
 				return (

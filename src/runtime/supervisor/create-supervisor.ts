@@ -9,6 +9,11 @@ import {
 } from "./browser-api-router.ts";
 import { type BrowserApp, serveBrowserApp } from "./browser-app.ts";
 import { ClientAgentBinding } from "./client-agent-binding.ts";
+import {
+	buildClientIdCookieHeader,
+	generateClientId,
+	parseClientIdCookie,
+} from "./cookies.ts";
 import { SupervisorController } from "./supervisor-controller.ts";
 import { handleTerminalGatewayRequest } from "./terminal-gateway.ts";
 import {
@@ -20,6 +25,7 @@ import {
 
 interface SupervisorSocketData {
 	clientType: RuntimeClientType;
+	cookieClientId?: string;
 	socketType: "runtime" | "terminal";
 	requestedAgentName?: string;
 	terminalCwd?: string;
@@ -55,9 +61,22 @@ interface CreateSupervisorOptions {
 		gitRoot: string;
 	};
 	emitAgentEvents?: boolean;
+	/**
+	 * Reads the agent id remembered for a given browser cookie client_id.
+	 * When absent (no cookie / unknown client), the supervisor falls back to the
+	 * first agent in config order. Decoupled from getDefaultAgentId, which is
+	 * the TUI-only global slot.
+	 */
+	getBrowserClientAgentId?: (clientId: string) => string | undefined;
 	getDefaultAgentId?: () => string | undefined;
 	hostname?: string;
 	port: number;
+	/**
+	 * Persists "this browser cookie client_id last picked agent X". Called only
+	 * on explicit agent switches, never on initial bind, so a fresh visitor that
+	 * never switches doesn't accumulate stale mappings.
+	 */
+	rememberBrowserClientAgentId?: (clientId: string, agentId: string) => void;
 	rememberInteractiveAgentId?: (agentId: string) => void;
 	telegramRouting?: TelegramRoutingOptions;
 }
@@ -68,10 +87,12 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		registry,
 		options.getDefaultAgentId,
 		options.telegramRouting,
+		options.getBrowserClientAgentId,
 	);
 	const controller = new SupervisorController({
 		bindings,
 		emitAgentEvents: options.emitAgentEvents,
+		rememberBrowserClientAgentId: options.rememberBrowserClientAgentId,
 		rememberInteractiveAgentId: options.rememberInteractiveAgentId,
 		registry,
 		telegramRouting: options.telegramRouting,
@@ -99,8 +120,28 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		port: options.port,
 		async fetch(req, server) {
 			const url = new URL(req.url);
+			const clientType = resolveRuntimeClientType(url);
+			// Browser clients get a stable cookie so the daemon can remember which
+			// agent each browser last picked across reconnects/restarts. Mint on
+			// first sight and attach Set-Cookie to whatever response we return for
+			// this request — the cookie travels back the same way it arrived
+			// (HTML response, WS upgrade response, or plain 200).
+			const existingCookieClientId = parseClientIdCookie(req);
+			const isBrowserRequest =
+				clientType === "browser" || isLikelyBrowserHttpRequest(req, url);
+			const cookieClientId =
+				existingCookieClientId ??
+				(isBrowserRequest ? generateClientId() : undefined);
+			const newCookieHeader =
+				existingCookieClientId === undefined && cookieClientId !== undefined
+					? buildClientIdCookieHeader(cookieClientId)
+					: undefined;
+
 			if (url.pathname.startsWith("/api/")) {
-				return await handleBrowserApiRequest(req, url, options.browserApi);
+				return attachSetCookie(
+					await handleBrowserApiRequest(req, url, options.browserApi),
+					newCookieHeader,
+				);
 			}
 
 			if (url.pathname === "/terminal") {
@@ -121,10 +162,13 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 							options.browserApp,
 						);
 						if (browserAppResponse) {
-							return browserAppResponse;
+							return attachSetCookie(browserAppResponse, newCookieHeader);
 						}
 					}
-					return new Response("outclaw runtime", { status: 200 });
+					return attachSetCookie(
+						new Response("outclaw runtime", { status: 200 }),
+						newCookieHeader,
+					);
 				}
 			} else {
 				const browserAppResponse = serveBrowserApp(
@@ -133,26 +177,31 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 					options.browserApp,
 				);
 				if (browserAppResponse) {
-					return browserAppResponse;
+					return attachSetCookie(browserAppResponse, newCookieHeader);
 				}
-				return new Response("outclaw runtime", { status: 200 });
+				return attachSetCookie(
+					new Response("outclaw runtime", { status: 200 }),
+					newCookieHeader,
+				);
 			}
 
-			const clientType = resolveRuntimeClientType(url);
 			const requestedAgentName = url.searchParams.get("agent") ?? undefined;
 			const telegramBotId = url.searchParams.get("telegramBotId") ?? undefined;
 			const telegramUserId = resolveTelegramUserId(url);
-			if (
-				server.upgrade(req, {
-					data: {
-						clientType,
-						socketType: "runtime",
-						requestedAgentName,
-						telegramBotId,
-						telegramUserId,
-					},
-				})
-			) {
+			const upgradeOptions: Parameters<typeof server.upgrade>[1] = {
+				data: {
+					clientType,
+					cookieClientId,
+					socketType: "runtime",
+					requestedAgentName,
+					telegramBotId,
+					telegramUserId,
+				},
+			};
+			if (newCookieHeader) {
+				upgradeOptions.headers = { "Set-Cookie": newCookieHeader };
+			}
+			if (server.upgrade(req, upgradeOptions)) {
 				return;
 			}
 			return new Response("WebSocket upgrade failed", { status: 400 });
@@ -198,6 +247,50 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 			return stopPromise;
 		},
 	};
+}
+
+function attachSetCookie(
+	response: Response,
+	setCookieHeader: string | undefined,
+): Response {
+	if (!setCookieHeader) {
+		return response;
+	}
+
+	const headers = new Headers(response.headers);
+	headers.append("Set-Cookie", setCookieHeader);
+	return new Response(response.body, {
+		headers,
+		status: response.status,
+		statusText: response.statusText,
+	});
+}
+
+/**
+ * Heuristic: does this look like a browser HTTP request that should mint a
+ * cookie? We don't want to mint cookies for, e.g., curl probes or other
+ * non-browser HTTP clients (they'd just be ignored anyway, but minting still
+ * costs a UUID + Set-Cookie header round-trip and pollutes the state table if
+ * the client ever reaches a switch path). Practical signal: presence of an
+ * Accept header that looks HTML-y, or a User-Agent that looks like a browser.
+ * Conservative; falls back to "skip mint" when uncertain. WebSocket upgrades
+ * are handled separately based on clientType=browser.
+ */
+function isLikelyBrowserHttpRequest(req: Request, url: URL): boolean {
+	if (isWebSocketUpgradeRequest(req)) {
+		return false;
+	}
+	if (url.pathname.startsWith("/api/") || url.pathname === "/terminal") {
+		// API and terminal endpoints are reached by an already-loaded browser page,
+		// which already has its cookie set. No need to mint here.
+		return false;
+	}
+	const accept = req.headers.get("accept") ?? "";
+	if (accept.includes("text/html")) {
+		return true;
+	}
+	const ua = req.headers.get("user-agent") ?? "";
+	return /Mozilla|Chrome|Safari|Firefox|Edge/.test(ua);
 }
 
 function createSupervisorServer(options: SupervisorServeOptions) {

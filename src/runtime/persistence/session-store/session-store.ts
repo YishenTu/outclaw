@@ -580,6 +580,14 @@ export class SessionStore {
 		this.stateStore.setLastInteractiveAgentId(agentId);
 	}
 
+	getBrowserClientAgentId(clientId: string): string | undefined {
+		return this.stateStore.getBrowserClientAgentId(clientId);
+	}
+
+	setBrowserClientAgentId(clientId: string, agentId: string | undefined) {
+		this.stateStore.setBrowserClientAgentId(clientId, agentId);
+	}
+
 	getFrontendNotice(): FrontendNotice | undefined {
 		return this.stateStore.getFrontendNotice();
 	}

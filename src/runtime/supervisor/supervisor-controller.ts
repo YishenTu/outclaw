@@ -15,6 +15,7 @@ import type { ClientAgentBinding } from "./client-agent-binding.ts";
 interface SupervisorControllerOptions {
 	bindings: ClientAgentBinding;
 	emitAgentEvents?: boolean;
+	rememberBrowserClientAgentId?: (clientId: string, agentId: string) => void;
 	rememberInteractiveAgentId?: (agentId: string) => void;
 	registry: AgentRuntimeRegistry;
 	telegramRouting?: {
@@ -317,7 +318,11 @@ export class SupervisorController {
 		}
 		this.rememberAgentSelection(ws, switched.next.agentId);
 		switched.next.handleOpen(ws);
-		this.syncInteractiveClients(ws, switched.next);
+		// Each connection is independent: switching one TUI/browser client does not
+		// drag others to the same agent. Multi-browser, multi-user setups depend on
+		// this. (Multiple clients can still co-view the same agent if they
+		// independently bind there — that's "one session per agent, multiple agents
+		// in parallel".)
 		return true;
 	}
 
@@ -467,7 +472,20 @@ export class SupervisorController {
 	}
 
 	private rememberAgentSelection(ws: WsClient, agentId: string) {
-		if (ws.data.clientType === "tui" || ws.data.clientType === "browser") {
+		if (ws.data.clientType === "browser") {
+			if (
+				typeof ws.data.cookieClientId === "string" &&
+				this.options.rememberBrowserClientAgentId
+			) {
+				this.options.rememberBrowserClientAgentId(
+					ws.data.cookieClientId,
+					agentId,
+				);
+			}
+			return;
+		}
+
+		if (ws.data.clientType === "tui") {
 			this.options.rememberInteractiveAgentId?.(agentId);
 			return;
 		}
@@ -487,28 +505,12 @@ export class SupervisorController {
 	}
 
 	private rememberInteractiveAgentId(ws: WsClient, agentId: string) {
-		if (ws.data.clientType !== "tui" && ws.data.clientType !== "browser") {
+		// Only TUI uses the global last-interactive-agent slot. Browser persistence
+		// is per-cookie and goes through rememberAgentSelection on explicit switch.
+		if (ws.data.clientType !== "tui") {
 			return;
 		}
 		this.options.rememberInteractiveAgentId?.(agentId);
-	}
-
-	private syncInteractiveClients(ws: WsClient, runtime: AgentRuntime) {
-		for (const client of this.options.bindings.listBoundClientsByTypes(
-			["tui", "browser"],
-			ws,
-		)) {
-			const switched = this.options.bindings.switchToName(client, runtime.name);
-			if (!switched || switched.previous?.agentId === switched.next.agentId) {
-				continue;
-			}
-
-			switched.previous?.handleClose(client);
-			if (this.options.emitAgentEvents !== false) {
-				this.sendAgentSwitched(client, switched.next);
-			}
-			switched.next.handleOpen(client);
-		}
 	}
 
 	private tryParseMessage(

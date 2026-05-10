@@ -21,3 +21,7 @@ export function lastHandledRolloverInteractiveAtKey(agentId: string): string {
 export function rolloverNoticeKey(agentId: string): string {
 	return `rollover_notice:${agentId}`;
 }
+
+export function browserClientAgentKey(clientId: string): string {
+	return `browser_client_agent:${clientId}`;
+}

@@ -6,6 +6,7 @@ import {
 
 export interface RuntimeClientData {
 	clientType: RuntimeClientType;
+	cookieClientId?: string;
 	requestedAgentName?: string;
 	telegramBotId?: string;
 	telegramUserId?: number;

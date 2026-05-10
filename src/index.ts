@@ -164,9 +164,13 @@ function startMultiAgentDaemon(
 			})),
 			gitRoot: layout.homeDir,
 		},
+		getBrowserClientAgentId: (clientId) =>
+			stateStore.getBrowserClientAgentId(clientId),
 		getDefaultAgentId: () => stateStore.getLastInteractiveAgentId(),
 		hostname: config.host,
 		port: config.port,
+		rememberBrowserClientAgentId: (clientId, agentId) =>
+			stateStore.setBrowserClientAgentId(clientId, agentId),
 		rememberInteractiveAgentId: (agentId) =>
 			stateStore.setLastInteractiveAgentId(agentId),
 		telegramRouting: {
