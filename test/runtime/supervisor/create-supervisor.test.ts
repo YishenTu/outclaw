@@ -28,6 +28,22 @@ function connectBrowserWs(port: number, agent?: string): Promise<WebSocket> {
 	});
 }
 
+function connectBrowserWsWithCookie(
+	port: number,
+	cookieHeader: string,
+): Promise<WebSocket> {
+	return new Promise((resolve) => {
+		const url = new URL(`ws://localhost:${port}`);
+		url.searchParams.set("client", "browser");
+		// Bun's WebSocket constructor honours the headers option; this is how the
+		// real browser sends the cookie back on reconnect.
+		const ws = new WebSocket(url, {
+			headers: { cookie: cookieHeader },
+		} as unknown as undefined);
+		ws.onopen = () => resolve(ws);
+	});
+}
+
 function connectBrowserRuntimeWs(
 	port: number,
 	agent?: string,
@@ -422,7 +438,9 @@ describe("createSupervisor", () => {
 		ws.close();
 	});
 
-	test("switching the active interactive agent also rebinds browser clients", async () => {
+	test("each interactive client binds to its own agent independently", async () => {
+		// Multi-browser support: two browsers can hold different agents at the same
+		// time, and a TUI switching agents must not drag any browser along.
 		const alphaFacade = new MockFacade();
 		alphaFacade.textChunks = ["from alpha"];
 		const zetaFacade = new MockFacade();
@@ -441,47 +459,82 @@ describe("createSupervisor", () => {
 					facade: zetaFacade,
 				}),
 			],
-			getDefaultAgentId: () => "agent-alpha",
 		});
 		cleanup = () => supervisor.stop();
 
-		const browser = await connectBrowserWs(supervisor.port);
-		await waitForEvent(browser, (event) => event.type === "runtime_status");
-		const tui = await connectWs(supervisor.port);
+		const browserAlpha = await connectBrowserWs(supervisor.port, "alpha");
+		expect(
+			await waitForEvent(
+				browserAlpha,
+				(event) => event.type === "agent_switched",
+			),
+		).toEqual({
+			type: "agent_switched",
+			agentId: "agent-alpha",
+			name: "alpha",
+		});
+		await waitForEvent(
+			browserAlpha,
+			(event) => event.type === "runtime_status",
+		);
+
+		const browserZeta = await connectBrowserWs(supervisor.port, "zeta");
+		expect(
+			await waitForEvent(
+				browserZeta,
+				(event) => event.type === "agent_switched",
+			),
+		).toEqual({
+			type: "agent_switched",
+			agentId: "agent-zeta",
+			name: "zeta",
+		});
+		await waitForEvent(browserZeta, (event) => event.type === "runtime_status");
+
+		const tui = await connectWs(supervisor.port, "alpha");
 		await waitForEvent(tui, (event) => event.type === "runtime_status");
 
-		const browserSwitched = waitForEvent(
-			browser,
+		// TUI switches to zeta. Neither browser should observe an agent_switched
+		// event — they're independent connections, each free to stay on their own
+		// agent.
+		const tuiSwitched = waitForEvent(
+			tui,
 			(event) =>
-				event.type === "agent_switched" &&
-				event.agentId === "agent-zeta" &&
-				event.name === "zeta",
+				event.type === "agent_switched" && event.agentId === "agent-zeta",
 		);
+		const browserAlphaUnexpected = collectFor(browserAlpha, 200);
+		const browserZetaUnexpected = collectFor(browserZeta, 200);
 		tui.send(JSON.stringify({ type: "command", command: "/agent zeta" }));
-		await browserSwitched;
-		await waitForEvent(
-			browser,
-			(event) => event.type === "runtime_status" && event.agentName === "zeta",
-		);
+		await tuiSwitched;
 
-		const browserEvents = collectUntilDone(browser);
-		const tuiEvents = collectUntilDone(tui);
-		tui.send(JSON.stringify({ type: "prompt", prompt: "hello after switch" }));
+		expect(
+			(await browserAlphaUnexpected).filter(
+				(event) => event.type === "agent_switched",
+			),
+		).toEqual([]);
+		expect(
+			(await browserZetaUnexpected).filter(
+				(event) => event.type === "agent_switched",
+			),
+		).toEqual([]);
 
-		expect((await tuiEvents).find((event) => event.type === "text")?.text).toBe(
-			"from zeta",
+		// Browsers remain on their original agents and continue to receive only
+		// their own agent's events.
+		const alphaEvents = collectUntilDone(browserAlpha);
+		const zetaSilence = collectFor(browserZeta, 200);
+		browserAlpha.send(
+			JSON.stringify({ type: "prompt", prompt: "hello from alpha browser" }),
 		);
-		const mirrored = await browserEvents;
-		expect(mirrored).toContainEqual({
-			type: "user_prompt",
-			prompt: "hello after switch",
-			source: "tui",
-		});
-		expect(mirrored.find((event) => event.type === "text")?.text).toBe(
-			"from zeta",
-		);
+		expect(
+			(await alphaEvents).find((event) => event.type === "text")?.text,
+		).toBe("from alpha");
+		// Zeta's browser stayed on zeta — alpha's prompt should not bleed over.
+		expect(
+			(await zetaSilence).find((event) => event.type === "text"),
+		).toBeUndefined();
 
-		browser.close();
+		browserAlpha.close();
+		browserZeta.close();
 		tui.close();
 	});
 
@@ -622,7 +675,50 @@ describe("createSupervisor", () => {
 		ws.close();
 	});
 
-	test("uses the persisted interactive agent id for browser clients when no explicit agent is requested", async () => {
+	test("browser clients fall back to the first agent in config order when no cookie or explicit agent is provided", async () => {
+		// Browsers no longer share the TUI's global last-interactive-agent slot —
+		// that would leak across surfaces in a multi-user setup. Without a cookie
+		// mapping, fresh browsers land on the first agent in config order
+		// (insertion order, not alphabetical), which lets `getDefaultAgentId` keep
+		// working as a TUI-only hint without coupling the browser path.
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				// Insertion order: zeta first. Alphabetical order would put alpha
+				// first; the test guards against that regression.
+				createAgentRuntime({
+					agentId: "agent-zeta",
+					name: "zeta",
+					facade: new MockFacade(),
+				}),
+				createAgentRuntime({
+					agentId: "agent-alpha",
+					name: "alpha",
+					facade: new MockFacade(),
+				}),
+			],
+			// Pinned to alpha for TUI; browser must still land on zeta (config first).
+			getDefaultAgentId: () => "agent-alpha",
+		});
+		cleanup = () => supervisor.stop();
+
+		const ws = await connectBrowserWs(supervisor.port);
+		expect(
+			await waitForEvent(ws, (event) => event.type === "agent_switched"),
+		).toEqual({
+			type: "agent_switched",
+			agentId: "agent-zeta",
+			name: "zeta",
+		});
+
+		ws.close();
+	});
+
+	test("browser clients with a cookie-bound agent re-bind to it on reconnect", async () => {
+		// End-to-end cookie persistence: a browser that picked an agent via /agent
+		// command must rebind to that agent on its next connection without
+		// passing ?agent=, even when first-in-config differs.
+		const cookieStore = new Map<string, string>();
 		const supervisor = createSupervisor({
 			port: 0,
 			agents: [
@@ -637,20 +733,49 @@ describe("createSupervisor", () => {
 					facade: new MockFacade(),
 				}),
 			],
-			getDefaultAgentId: () => "agent-zeta",
+			getBrowserClientAgentId: (clientId) => cookieStore.get(clientId),
+			rememberBrowserClientAgentId: (clientId, agentId) => {
+				cookieStore.set(clientId, agentId);
+			},
 		});
 		cleanup = () => supervisor.stop();
 
-		const ws = await connectBrowserWs(supervisor.port);
-		expect(
-			await waitForEvent(ws, (event) => event.type === "agent_switched"),
-		).toEqual({
-			type: "agent_switched",
-			agentId: "agent-zeta",
-			name: "zeta",
+		// First connection: lands on alpha (config first), then switches to zeta.
+		// The Set-Cookie header is observed via a one-shot HTTP probe to capture
+		// the cookie value; subsequent ws connections re-send that cookie.
+		const probeResponse = await fetch(`http://localhost:${supervisor.port}/`, {
+			headers: { accept: "text/html" },
 		});
+		const setCookie = probeResponse.headers.get("set-cookie") ?? "";
+		const cookieMatch = setCookie.match(/oc_client_id=([^;]+)/);
+		expect(cookieMatch).not.toBeNull();
+		const cookieValue = `oc_client_id=${cookieMatch?.[1]}`;
+		await probeResponse.body?.cancel();
 
-		ws.close();
+		const first = await connectBrowserWsWithCookie(
+			supervisor.port,
+			cookieValue,
+		);
+		expect(
+			await waitForEvent(first, (event) => event.type === "agent_switched"),
+		).toMatchObject({ name: "alpha" });
+		first.send(JSON.stringify({ type: "command", command: "/agent zeta" }));
+		await waitForEvent(
+			first,
+			(event) => event.type === "agent_switched" && event.name === "zeta",
+		);
+		first.close();
+
+		// Reconnect with the same cookie → server reads the persisted mapping and
+		// binds straight to zeta, no /agent command needed.
+		const second = await connectBrowserWsWithCookie(
+			supervisor.port,
+			cookieValue,
+		);
+		expect(
+			await waitForEvent(second, (event) => event.type === "agent_switched"),
+		).toMatchObject({ name: "zeta" });
+		second.close();
 	});
 
 	test("binds telegram clients to their routed agent and only lists accessible agents", async () => {

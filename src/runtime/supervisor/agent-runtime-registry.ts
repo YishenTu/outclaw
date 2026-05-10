@@ -31,7 +31,15 @@ export class AgentRuntimeRegistry {
 	}
 
 	getDefault(): AgentRuntime {
-		return this.list()[0] as AgentRuntime;
+		// First runtime in config insertion order — keeps the codebase portable
+		// (a fresh clone defaults to whatever its config lists first, with no
+		// hardcoded agent name). list() is alphabetical for UI, intentionally
+		// distinct.
+		const first = this.runtimesById.values().next().value;
+		if (!first) {
+			throw new Error("Supervisor has no agent runtimes registered");
+		}
+		return first;
 	}
 
 	list(): AgentRuntime[] {

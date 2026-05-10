@@ -15,6 +15,7 @@ import {
 } from "../last-user-target.ts";
 import {
 	activeSessionKey,
+	browserClientAgentKey,
 	FRONTEND_NOTICE_KEY,
 	LAST_INTERACTIVE_AGENT_KEY,
 	LEGACY_LAST_TUI_AGENT_KEY,
@@ -126,6 +127,20 @@ export class SessionStateStore {
 
 		this.setStateValue(LAST_INTERACTIVE_AGENT_KEY, agentId);
 		this.deleteStateValue(LEGACY_LAST_TUI_AGENT_KEY);
+	}
+
+	getBrowserClientAgentId(clientId: string): string | undefined {
+		return this.getStateValue(browserClientAgentKey(clientId));
+	}
+
+	setBrowserClientAgentId(clientId: string, agentId: string | undefined) {
+		const key = browserClientAgentKey(clientId);
+		if (!agentId) {
+			this.deleteStateValue(key);
+			return;
+		}
+
+		this.setStateValue(key, agentId);
 	}
 
 	getFrontendNotice(): FrontendNotice | undefined {
