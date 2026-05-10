@@ -18,6 +18,7 @@ import {
 	isOperationalRolloverPrompt,
 	ROLLOVER_DISPLAY_LABEL,
 } from "../../../common/rollover-prompt.ts";
+import { restoreClaudeCommandPrompt } from "./command-envelope.ts";
 import { loadClaudeRawHistory } from "./raw-transcript.ts";
 import type { ClaudeHistoryMessage, LoadClaudeHistory } from "./types.ts";
 
@@ -183,7 +184,7 @@ export function normalizeClaudeHistory(
 		}
 
 		if (msg.type === "user" && typeof content === "string") {
-			const strippedContent = stripTaskNotifications(content);
+			const strippedContent = normalizeUserPromptText(content);
 			const parsed = parsePromptWithReplyContext(strippedContent);
 			if (isOperationalHeartbeatTurn(parsed.prompt, parsed.replyContext)) {
 				pendingSystemPrompt = "heartbeat";
@@ -205,7 +206,7 @@ export function normalizeClaudeHistory(
 		}
 
 		if (msg.type === "user" && Array.isArray(content)) {
-			const strippedText = stripTaskNotifications(extractText(content));
+			const strippedText = normalizeUserPromptText(extractText(content));
 			const parsed = parsePromptWithReplyContext(strippedText);
 			const images = extractImages(content);
 			if (
@@ -328,7 +329,7 @@ export function normalizeClaudeTranscript(
 			const timestamp = parseTranscriptTimestamp(msg);
 			if (typeof content === "string") {
 				const parsed = parsePromptWithReplyContext(
-					stripTaskNotifications(content),
+					normalizeUserPromptText(content),
 				);
 				if (parsed.prompt || parsed.replyContext) {
 					result.push({
@@ -346,7 +347,7 @@ export function normalizeClaudeTranscript(
 			}
 
 			const parsed = parsePromptWithReplyContext(
-				stripTaskNotifications(extractText(content)),
+				normalizeUserPromptText(extractText(content)),
 			);
 			const images = extractImages(content, "transcript");
 			if (parsed.prompt || parsed.replyContext || images.length > 0) {
@@ -790,6 +791,10 @@ function stripTaskNotifications(text: string): string {
 		.replace(TASK_NOTIFICATION_PATTERN, "\n")
 		.replace(/\n{3,}/g, "\n\n")
 		.trim();
+}
+
+function normalizeUserPromptText(text: string): string {
+	return restoreClaudeCommandPrompt(stripTaskNotifications(text));
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

@@ -542,6 +542,59 @@ describe("readClaudeHistory", () => {
 		]);
 	});
 
+	test("reconstructs slash-command prompts from raw command envelopes", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "outclaw-claude-command-"));
+		const projectsDir = join(tmp, "projects");
+		const projectDir = join(projectsDir, "sample-project");
+		const sessionId = "sdk-command";
+
+		try {
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(
+				join(projectDir, `${sessionId}.jsonl`),
+				JSON.stringify({
+					type: "user",
+					timestamp: "2026-05-10T08:00:00.000Z",
+					message: {
+						content: [
+							"<command-message>codex-coding</command-message>",
+							"<command-name>/codex-coding</command-name>",
+							"<command-args>i mean this tool</command-args>",
+						].join("\n"),
+					},
+				}),
+			);
+
+			const history = await readClaudeHistory({
+				sessionId,
+				loadHistory: mock(async () => []),
+				claudeProjectsDir: projectsDir,
+			});
+			const transcript = await readClaudeTranscript({
+				sessionId,
+				claudeProjectsDir: projectsDir,
+			});
+
+			expect(history).toEqual([
+				{
+					kind: "chat",
+					role: "user",
+					content: "/codex-coding i mean this tool",
+					timestamp: Date.parse("2026-05-10T08:00:00.000Z"),
+				},
+			]);
+			expect(transcript).toEqual([
+				{
+					role: "user",
+					content: "/codex-coding i mean this tool",
+					timestamp: Date.parse("2026-05-10T08:00:00.000Z"),
+				},
+			]);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
 	test("hides assistant task notifications from replayed history", async () => {
 		const { result } = readSdkHistory([
 			{

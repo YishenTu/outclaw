@@ -19,9 +19,9 @@ import {
 	BROWSER_MARKDOWN_REHYPE_PLUGINS,
 	BROWSER_MARKDOWN_REMARK_PLUGINS,
 } from "../markdown/markdown-pipeline.ts";
+import { remarkWikilinks } from "../markdown/remark-wikilinks.ts";
 import { splitMarkdownFrontmatter } from "./markdown-frontmatter.ts";
 import { remarkHtmlComments } from "./remark-html-comments.ts";
-import { remarkWikilinks } from "./remark-wikilinks.ts";
 
 interface FileViewerProps {
 	active?: boolean;

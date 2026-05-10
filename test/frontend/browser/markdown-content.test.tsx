@@ -81,6 +81,27 @@ describe("MarkdownContent", () => {
 		expect(html).not.toContain("$$");
 	});
 
+	test("styles wikilinks in chat markdown text", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownContent content={"Check [[project-outclaw]] next."} />,
+		);
+
+		expect(html).toContain(
+			'<strong class="md-wikilink text-brand font-bold">project-outclaw</strong>',
+		);
+		expect(html).not.toContain(">[[project-outclaw]]</strong>");
+	});
+
+	test("leaves chat inline code wikilinks as plain code text", () => {
+		const html = renderToStaticMarkup(
+			<MarkdownContent content={"Keep `[[project-outclaw]]` literal."} />,
+		);
+
+		expect(html).toContain("<code>[[project-outclaw]]</code>");
+		expect(html).not.toContain("md-wikilink");
+		expect(html).not.toContain("text-brand");
+	});
+
 	describe("intra-word bold adjacent to punctuation", () => {
 		test("renders bold when ** sits between word and quoted punctuation", () => {
 			const html = renderToStaticMarkup(
