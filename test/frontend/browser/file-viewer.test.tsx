@@ -266,6 +266,34 @@ describe("EditableSourceView", () => {
 		expectButtonDisabled(dirtyHtml, "Revert", false);
 	});
 
+	test("keeps reload as the only enabled conflict resolution", () => {
+		const toolbarHtml = renderToStaticMarkup(
+			<EditableSourceToolbar
+				conflictNotice={true}
+				dirty={true}
+				onRevert={() => {}}
+				onSave={() => {}}
+				saving={false}
+			/>,
+		);
+		const conflictHtml = renderToStaticMarkup(
+			<EditableSourceView
+				content="current"
+				editorComponent={editorComponent}
+				conflictNotice={true}
+				onAcceptReload={() => {}}
+				onDiscard={() => {}}
+				onSave={async () => {}}
+				saveError={null}
+				saving={false}
+			/>,
+		);
+
+		expectButtonDisabled(toolbarHtml, "Save", true);
+		expectButtonDisabled(toolbarHtml, "Revert", true);
+		expect(conflictHtml).toContain(">Reload<");
+	});
+
 	test("renders the conflict banner with reload-only resolution", () => {
 		const html = renderToStaticMarkup(
 			<EditableSourceView
@@ -391,13 +419,13 @@ describe("FileViewer", () => {
 	});
 
 	test("selects a preview tab from the tab strip", () => {
-		let selectedMode: FilePreviewMode | null = null;
+		const selectedModes: FilePreviewMode[] = [];
 		const header = FilePreviewHeader({
 			path: "agents/john-doe/AGENTS.md",
 			mode: "rendered",
 			availableModes: ["rendered", "source"],
 			onSelectMode: (nextMode) => {
-				selectedMode = nextMode;
+				selectedModes.push(nextMode);
 			},
 		});
 		const sourceButton = findButtonByLabel(header, "Edit");
@@ -405,7 +433,7 @@ describe("FileViewer", () => {
 		expect(sourceButton).not.toBeNull();
 		sourceButton?.onClick?.();
 
-		expect(selectedMode).toBe("source");
+		expect(selectedModes).toEqual(["source"]);
 	});
 
 	test("defaults markdown to rendered and non-markdown to source", () => {

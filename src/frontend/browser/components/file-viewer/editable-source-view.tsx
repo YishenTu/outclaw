@@ -78,14 +78,14 @@ export function EditableSourceView({
 	}, [dirty, onDirtyChange]);
 
 	const handleSave = () => {
-		if (!dirty || saving) {
+		if (!dirty || saving || conflictNotice) {
 			return;
 		}
 		void onSave(currentContent);
 	};
 
 	const handleRevert = () => {
-		if (!dirty) {
+		if (!dirty || conflictNotice) {
 			return;
 		}
 		if (dirty && !window.confirm("Discard unsaved changes?")) {
@@ -110,6 +110,7 @@ export function EditableSourceView({
 				</div>
 			) : null}
 			<EditableSourceToolbar
+				conflictNotice={conflictNotice}
 				dirty={dirty}
 				onRevert={handleRevert}
 				onSave={handleSave}
@@ -133,16 +134,20 @@ export function EditableSourceView({
 }
 
 export function EditableSourceToolbar({
+	conflictNotice = false,
 	dirty,
 	onRevert,
 	onSave,
 	saving,
 }: {
+	conflictNotice?: boolean;
 	dirty: boolean;
 	onRevert: () => void;
 	onSave: () => void;
 	saving: boolean;
 }) {
+	const actionDisabled = conflictNotice || !dirty;
+
 	return (
 		<div className="flex min-h-8 items-center gap-3 px-3 py-1.5">
 			<div
@@ -161,7 +166,7 @@ export function EditableSourceToolbar({
 			<button
 				type="button"
 				onClick={onSave}
-				disabled={!dirty || saving}
+				disabled={actionDisabled || saving}
 				className="inline-flex h-6 shrink-0 items-center rounded border border-dark-700 px-2 font-mono-ui text-[11px] uppercase tracking-[0.12em] text-dark-200 transition-colors hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:border-dark-800 disabled:text-dark-600"
 			>
 				{saving ? "Saving" : "Save"}
@@ -169,7 +174,7 @@ export function EditableSourceToolbar({
 			<button
 				type="button"
 				onClick={onRevert}
-				disabled={!dirty}
+				disabled={actionDisabled}
 				className="inline-flex h-6 shrink-0 items-center rounded border border-dark-800 px-2 font-mono-ui text-[11px] uppercase tracking-[0.12em] text-dark-400 transition-colors hover:border-dark-600 hover:text-dark-100 disabled:cursor-not-allowed disabled:border-dark-800 disabled:text-dark-600"
 			>
 				Revert
@@ -325,4 +330,3 @@ function countLines(value: string): number {
 	const lines = normalized.split("\n");
 	return lines.at(-1) === "" ? lines.length - 1 : lines.length;
 }
-
