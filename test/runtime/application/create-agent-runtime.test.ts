@@ -9,6 +9,7 @@ import type {
 } from "../../../src/common/protocol.ts";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
 import {
+	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
 	CodingSessionStore,
 } from "../../../src/runtime/coding/index.ts";
@@ -430,8 +431,11 @@ describe("createAgentRuntime", () => {
 			agentId: "agent-railly",
 			journalMode: "DELETE",
 		});
+		const codingSharedStore = new SessionStore(TEST_DB, {
+			agentId: CODING_STORAGE_OWNER_ID,
+			journalMode: "DELETE",
+		});
 		const codingStore = new CodingSessionStore(TEST_DB, {
-			agentId: "agent-railly",
 			journalMode: "DELETE",
 		});
 		const codingRepositories = new CodingRepositoryStore(TEST_DB, {
@@ -443,6 +447,7 @@ describe("createAgentRuntime", () => {
 			facade: chatFacade,
 			codingFacade,
 			codingRepositories,
+			codingStore: codingSharedStore,
 			store,
 			codingSessions: codingStore,
 		});
@@ -460,14 +465,18 @@ describe("createAgentRuntime", () => {
 			sessionId: "claude-chat-123",
 		});
 
-		const codeResult = runtime.coding.runPrompt({
+		const codeResult = await runtime.coding.startPrompt({
 			cwd: "/repo",
 			prompt: "fix the tests",
 		});
 
-		expect(codeResult.status).toBe("accepted");
+		expect(codeResult).toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-code-456",
+		});
 		await waitForCondition(
-			() => codingStore.get("codex", "codex-code-456")?.status === "completed",
+			() => codingStore.get("codex", "codex-code-456")?.runStatus === "idle",
 		);
 
 		expect(chatFacade.seenParams.map((params) => params.prompt)).toEqual([
@@ -480,7 +489,7 @@ describe("createAgentRuntime", () => {
 			cwd: "/repo",
 		});
 		expect(codingFacade.seenParams[0]?.systemPrompt).toBeUndefined();
-		expect(store.get("codex", "codex-code-456")).toMatchObject({
+		expect(codingSharedStore.get("codex", "codex-code-456")).toMatchObject({
 			providerId: "codex",
 			sdkSessionId: "codex-code-456",
 			source: "code",
@@ -488,7 +497,6 @@ describe("createAgentRuntime", () => {
 		});
 		const repository = codingRepositories.list()[0];
 		expect(repository).toMatchObject({
-			defaultAgentId: "agent-railly",
 			rootCwd: "/repo",
 			status: "active",
 		});
@@ -497,13 +505,33 @@ describe("createAgentRuntime", () => {
 			providerId: "codex",
 			sdkSessionId: "codex-code-456",
 			cwd: "/repo",
-			linkedChat: {
-				agentId: "agent-railly",
-				providerId: "claude",
-				sessionId: "claude-chat-123",
-			},
-			status: "completed",
+			linkedChatSessionId: "claude-chat-123",
+			lifecycleStatus: "open",
+			runStatus: "idle",
 		});
+
+		await expect(
+			runtime.coding.resumePrompt({
+				providerId: "codex",
+				sdkSessionId: "codex-code-456",
+				prompt: "continue the fix",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-code-456",
+		});
+		await waitForCondition(
+			() => codingFacade.seenParams[1]?.prompt === "continue the fix",
+		);
+		expect(codingFacade.seenParams[1]).toMatchObject({
+			cwd: "/repo",
+			resume: "codex-code-456",
+		});
+		await waitForCondition(
+			() => codingStore.get("codex", "codex-code-456")?.runStatus === "idle",
+		);
+
 		expect(runtime.getStatusEvent()).toMatchObject({
 			providerId: "claude",
 			sessionId: "claude-chat-123",
@@ -511,6 +539,7 @@ describe("createAgentRuntime", () => {
 
 		await runtime.stop();
 		store.close();
+		codingSharedStore.close();
 		codingStore.close();
 		codingRepositories.close();
 	});

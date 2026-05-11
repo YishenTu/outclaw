@@ -136,14 +136,16 @@ export class RuntimeState {
 	captureDetachedPromptContext(
 		prompt: string,
 		images?: ImageRef[],
+		options: { resumeSessionId?: string } = {},
 	): RuntimePromptContext {
 		const detached = this.sessions.createDetachedPromptContext(prompt, images);
 		return {
 			effort: this.settings.effort,
 			generation: this.sessions.generation,
 			model: this.settings.model,
-			ocSessionId: detached.ocSessionId,
+			ocSessionId: options.resumeSessionId ?? detached.ocSessionId,
 			resolvedModel: this.settings.resolvedModel,
+			sessionId: options.resumeSessionId,
 			sessionSource: "agent",
 			sessionTitle: detached.sessionTitle,
 		};

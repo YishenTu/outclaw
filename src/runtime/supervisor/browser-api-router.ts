@@ -61,45 +61,33 @@ export interface BrowserApi {
 			query?: string;
 		},
 	): Promise<BrowserSessionPageResponse>;
-	listAgentCodingSessions?(
-		agentId: string,
-		params: {
-			limit: number;
-			cursor?: SessionCursor;
-			linkedChat?: {
-				agentId: string;
-				providerId: string;
-				sessionId: string;
-			};
-			providerId?: string;
-			repositoryId?: string;
-		},
-	): Promise<BrowserCodingSessionPageResponse>;
+	listCodingSessions?(params: {
+		limit: number;
+		cursor?: SessionCursor;
+		linkedChatSessionId?: string;
+		providerId?: string;
+		repositoryId?: string;
+	}): Promise<BrowserCodingSessionPageResponse>;
 	listCodingRepositories?(params?: {
 		includeArchived?: boolean;
 	}): Promise<BrowserCodingRepositoryListResponse>;
 	getCodingRepository?(
 		repositoryId: string,
 	): Promise<BrowserCodingRepositoryDetail>;
-	registerAgentCodingRepository?(
-		agentId: string,
-		params: {
-			displayName?: string;
-			remoteUrl?: string;
-			rootCwd: string;
-			source?: Extract<BrowserCodingRepositorySource, "manual" | "clone">;
-		},
-	): Promise<BrowserCodingRepositoryDetail>;
+	registerCodingRepository?(params: {
+		displayName?: string;
+		remoteUrl?: string;
+		rootCwd: string;
+		source?: Extract<BrowserCodingRepositorySource, "manual" | "clone">;
+	}): Promise<BrowserCodingRepositoryDetail>;
 	archiveCodingRepository?(
 		repositoryId: string,
 	): Promise<BrowserCodingRepositoryArchiveResponse>;
-	getAgentCodingSession?(
-		agentId: string,
+	getCodingSession?(
 		providerId: string,
 		sdkSessionId: string,
 	): Promise<BrowserCodingSessionDetail>;
-	deleteAgentCodingSession?(
-		agentId: string,
+	deleteCodingSession?(
 		providerId: string,
 		sdkSessionId: string,
 	): Promise<BrowserCodingSessionDeleteResponse>;
@@ -373,17 +361,52 @@ export async function handleBrowserApiRequest(
 		if (codingRepositoriesMatch) {
 			const [, encodedRepositoryId, action] = codingRepositoriesMatch;
 			if (!encodedRepositoryId) {
-				if (req.method !== "GET") {
-					return jsonError("Method not allowed", 405);
+				if (req.method === "GET") {
+					if (!browserApi.listCodingRepositories) {
+						return jsonError("Coding repository API is not configured", 404);
+					}
+					return Response.json(
+						await browserApi.listCodingRepositories({
+							includeArchived:
+								url.searchParams.get("includeArchived") === "true",
+						}),
+					);
 				}
-				if (!browserApi.listCodingRepositories) {
-					return jsonError("Coding repository API is not configured", 404);
+				if (req.method === "POST") {
+					if (!browserApi.registerCodingRepository) {
+						return jsonError("Coding repository API is not configured", 404);
+					}
+					const body = (await req.json().catch(() => undefined)) as
+						| {
+								displayName?: unknown;
+								remoteUrl?: unknown;
+								rootCwd?: unknown;
+								source?: unknown;
+						  }
+						| undefined;
+					if (
+						typeof body?.rootCwd !== "string" ||
+						body.rootCwd.trim() === "" ||
+						(body.displayName !== undefined &&
+							typeof body.displayName !== "string") ||
+						(body.remoteUrl !== undefined &&
+							typeof body.remoteUrl !== "string") ||
+						(body.source !== undefined &&
+							body.source !== "manual" &&
+							body.source !== "clone")
+					) {
+						return jsonError("Invalid coding repository request", 400);
+					}
+					return Response.json(
+						await browserApi.registerCodingRepository({
+							displayName: body.displayName,
+							remoteUrl: body.remoteUrl,
+							rootCwd: body.rootCwd,
+							source: body.source,
+						}),
+					);
 				}
-				return Response.json(
-					await browserApi.listCodingRepositories({
-						includeArchived: url.searchParams.get("includeArchived") === "true",
-					}),
-				);
+				return jsonError("Method not allowed", 405);
 			}
 
 			const repositoryId = decodeURIComponent(encodedRepositoryId);
@@ -408,134 +431,29 @@ export async function handleBrowserApiRequest(
 			return Response.json(await browserApi.getCodingRepository(repositoryId));
 		}
 
-		const registerCodingRepositoryMatch = url.pathname.match(
-			/^\/api\/agents\/([^/]+)\/coding-repositories$/,
-		);
-		if (registerCodingRepositoryMatch) {
-			if (req.method !== "POST") {
-				return jsonError("Method not allowed", 405);
-			}
-			if (!browserApi.registerAgentCodingRepository) {
-				return jsonError("Coding repository API is not configured", 404);
-			}
-			const agentId = decodeURIComponent(
-				registerCodingRepositoryMatch[1] ?? "",
-			);
-			const body = (await req.json().catch(() => undefined)) as
-				| {
-						displayName?: unknown;
-						remoteUrl?: unknown;
-						rootCwd?: unknown;
-						source?: unknown;
-				  }
-				| undefined;
-			if (
-				typeof body?.rootCwd !== "string" ||
-				body.rootCwd.trim() === "" ||
-				(body.displayName !== undefined &&
-					typeof body.displayName !== "string") ||
-				(body.remoteUrl !== undefined && typeof body.remoteUrl !== "string") ||
-				(body.source !== undefined &&
-					body.source !== "manual" &&
-					body.source !== "clone")
-			) {
-				return jsonError("Invalid coding repository request", 400);
-			}
-			return Response.json(
-				await browserApi.registerAgentCodingRepository(agentId, {
-					displayName: body.displayName,
-					remoteUrl: body.remoteUrl,
-					rootCwd: body.rootCwd,
-					source: body.source,
-				}),
-			);
-		}
-
-		const sessionsMatch = url.pathname.match(
-			/^\/api\/agents\/([^/]+)\/sessions$/,
-		);
-		if (sessionsMatch) {
-			if (req.method !== "GET") {
-				return jsonError("Method not allowed", 405);
-			}
-			if (!browserApi.listAgentSessions) {
-				return jsonError("Session API is not configured", 404);
-			}
-			const agentId = decodeURIComponent(sessionsMatch[1] ?? "");
-			const limitParam = url.searchParams.get("limit");
-			const limit = limitParam ? Number.parseInt(limitParam, 10) : 10;
-			if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
-				return jsonError("Invalid limit", 400);
-			}
-			const queryParam = url.searchParams.get("query");
-			const searchQuery = queryParam
-				? validateSessionSearchQuery(queryParam)
-				: undefined;
-			if (searchQuery && !searchQuery.ok) {
-				return jsonError(searchQuery.message, 400);
-			}
-			const cursorLastActiveParam = url.searchParams.get("cursorLastActive");
-			const cursorSessionId = url.searchParams.get("cursorSdkSessionId");
-			let cursor: SessionCursor | undefined;
-			if (cursorLastActiveParam !== null || cursorSessionId !== null) {
-				const lastActive =
-					cursorLastActiveParam === null
-						? Number.NaN
-						: Number.parseInt(cursorLastActiveParam, 10);
-				if (
-					!Number.isInteger(lastActive) ||
-					lastActive < 0 ||
-					!cursorSessionId
-				) {
-					return jsonError("Invalid session cursor", 400);
-				}
-				cursor = {
-					lastActive,
-					sdkSessionId: cursorSessionId,
-				};
-			}
-			return Response.json(
-				await browserApi.listAgentSessions(agentId, {
-					cursor,
-					limit,
-					query: searchQuery?.ok ? searchQuery.query || undefined : undefined,
-				}),
-			);
-		}
-
 		const codingSessionsMatch = url.pathname.match(
-			/^\/api\/agents\/([^/]+)\/coding-sessions(?:\/([^/]+)\/([^/]+))?$/,
+			/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+))?$/,
 		);
 		if (codingSessionsMatch) {
-			const [, encodedAgentId, encodedProviderId, encodedSdkSessionId] =
-				codingSessionsMatch;
-			const agentId = decodeURIComponent(encodedAgentId ?? "");
+			const [, encodedProviderId, encodedSdkSessionId] = codingSessionsMatch;
 
 			if (encodedProviderId && encodedSdkSessionId) {
 				const providerId = decodeURIComponent(encodedProviderId);
 				const sdkSessionId = decodeURIComponent(encodedSdkSessionId);
 				if (req.method === "GET") {
-					if (!browserApi.getAgentCodingSession) {
+					if (!browserApi.getCodingSession) {
 						return jsonError("Coding session API is not configured", 404);
 					}
 					return Response.json(
-						await browserApi.getAgentCodingSession(
-							agentId,
-							providerId,
-							sdkSessionId,
-						),
+						await browserApi.getCodingSession(providerId, sdkSessionId),
 					);
 				}
 				if (req.method === "DELETE") {
-					if (!browserApi.deleteAgentCodingSession) {
+					if (!browserApi.deleteCodingSession) {
 						return jsonError("Coding session API is not configured", 404);
 					}
 					return Response.json(
-						await browserApi.deleteAgentCodingSession(
-							agentId,
-							providerId,
-							sdkSessionId,
-						),
+						await browserApi.deleteCodingSession(providerId, sdkSessionId),
 					);
 				}
 				return jsonError("Method not allowed", 405);
@@ -544,7 +462,7 @@ export async function handleBrowserApiRequest(
 			if (req.method !== "GET") {
 				return jsonError("Method not allowed", 405);
 			}
-			if (!browserApi.listAgentCodingSessions) {
+			if (!browserApi.listCodingSessions) {
 				return jsonError("Coding session API is not configured", 404);
 			}
 			const limitParam = url.searchParams.get("limit");
@@ -572,37 +490,67 @@ export async function handleBrowserApiRequest(
 					sdkSessionId: cursorSessionId,
 				};
 			}
-			const linkedChatAgentId = url.searchParams.get("linkedChatAgentId");
-			const linkedChatProviderId = url.searchParams.get("linkedChatProviderId");
-			const linkedChatSessionId = url.searchParams.get("linkedChatSessionId");
-			let linkedChat:
-				| { agentId: string; providerId: string; sessionId: string }
-				| undefined;
-			if (
-				linkedChatAgentId !== null ||
-				linkedChatProviderId !== null ||
-				linkedChatSessionId !== null
-			) {
-				if (
-					!linkedChatAgentId ||
-					!linkedChatProviderId ||
-					!linkedChatSessionId
-				) {
-					return jsonError("Invalid linked chat filter", 400);
-				}
-				linkedChat = {
-					agentId: linkedChatAgentId,
-					providerId: linkedChatProviderId,
-					sessionId: linkedChatSessionId,
-				};
-			}
+			const linkedChatSessionId =
+				url.searchParams.get("linkedChatSessionId") ?? undefined;
 			return Response.json(
-				await browserApi.listAgentCodingSessions(agentId, {
+				await browserApi.listCodingSessions({
 					cursor,
 					limit,
-					linkedChat,
+					linkedChatSessionId,
 					providerId: url.searchParams.get("providerId") ?? undefined,
 					repositoryId: url.searchParams.get("repositoryId") ?? undefined,
+				}),
+			);
+		}
+
+		const sessionsMatch = url.pathname.match(
+			/^\/api\/agents\/([^/]+)\/sessions$/,
+		);
+		if (sessionsMatch) {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.listAgentSessions) {
+				return jsonError("Session API is not configured", 404);
+			}
+			const agentId = decodeURIComponent(sessionsMatch[1] ?? "");
+			const limitParam = url.searchParams.get("limit");
+			const limit = limitParam ? Number.parseInt(limitParam, 10) : 10;
+			if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
+				return jsonError("Invalid limit", 400);
+			}
+			const cursorLastActiveParam = url.searchParams.get("cursorLastActive");
+			const cursorSessionId = url.searchParams.get("cursorSdkSessionId");
+			let cursor: SessionCursor | undefined;
+			if (cursorLastActiveParam !== null || cursorSessionId !== null) {
+				const lastActive =
+					cursorLastActiveParam === null
+						? Number.NaN
+						: Number.parseInt(cursorLastActiveParam, 10);
+				if (
+					!Number.isInteger(lastActive) ||
+					lastActive < 0 ||
+					!cursorSessionId
+				) {
+					return jsonError("Invalid session cursor", 400);
+				}
+				cursor = {
+					lastActive,
+					sdkSessionId: cursorSessionId,
+				};
+			}
+			const queryParam = url.searchParams.get("query");
+			const searchQuery = queryParam
+				? validateSessionSearchQuery(queryParam)
+				: undefined;
+			if (searchQuery && !searchQuery.ok) {
+				return jsonError(searchQuery.message, 400);
+			}
+			return Response.json(
+				await browserApi.listAgentSessions(agentId, {
+					cursor,
+					limit,
+					query: searchQuery?.ok ? searchQuery.query || undefined : undefined,
 				}),
 			);
 		}

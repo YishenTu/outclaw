@@ -133,7 +133,7 @@ export class SupervisorController {
 		}
 
 		if (data?.type === "code_prompt") {
-			this.handleCodePromptMessage(ws, data);
+			await this.handleCodePromptMessage(ws, data);
 			return;
 		}
 
@@ -289,7 +289,7 @@ export class SupervisorController {
 		this.sendCronRunError(ws, `Cron job not found: ${result.jobName}`);
 	}
 
-	private handleCodePromptMessage(ws: WsClient, data: IncomingMessage) {
+	private async handleCodePromptMessage(ws: WsClient, data: IncomingMessage) {
 		if (
 			data.type !== "code_prompt" ||
 			typeof data.cwd !== "string" ||
@@ -306,7 +306,7 @@ export class SupervisorController {
 			return;
 		}
 
-		const result = runtime.coding.runPrompt({
+		const result = await runtime.coding.startPrompt({
 			cwd: data.cwd,
 			prompt: data.prompt,
 		});
@@ -318,7 +318,8 @@ export class SupervisorController {
 		ws.send(
 			serialize({
 				type: "code_prompt_response",
-				ocSessionId: result.ocSessionId,
+				providerId: result.providerId,
+				sdkSessionId: result.sdkSessionId,
 			}),
 		);
 	}

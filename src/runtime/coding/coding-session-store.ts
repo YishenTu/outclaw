@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { SessionCursor } from "../../common/protocol.ts";
 import type { SessionTag } from "../persistence/session-store/session-store.ts";
-import type { TableColumnInfo } from "../persistence/session-store/session-store-records.ts";
 import { ensureSessionStoreSchema } from "../persistence/session-store/session-store-schema.ts";
 import {
 	closeSqliteDatabase,
@@ -10,23 +9,21 @@ import {
 } from "../persistence/session-store/sqlite-file-lifecycle.ts";
 import { ensureCodingRepositoryStoreSchema } from "./coding-repository-store.ts";
 
-export type CodingSessionStatus = "running" | "completed" | "failed";
+export type CodingSessionLifecycleStatus = "open" | "archived";
+export type CodingSessionRunStatus = "idle" | "running" | "failed";
 
-export interface LinkedChatSession {
-	agentId: string;
-	providerId: string;
-	sessionId: string;
-}
+export const CODING_STORAGE_OWNER_ID = "__coding__";
 
 export interface CodingSessionRecord {
-	agentId: string;
+	storageOwnerId: string;
 	providerId: string;
 	sdkSessionId: string;
 	repositoryId?: string;
 	cwd: string;
-	linkedChat?: LinkedChatSession;
+	linkedChatSessionId?: string;
 	browserTabId?: string;
-	status: CodingSessionStatus;
+	lifecycleStatus: CodingSessionLifecycleStatus;
+	runStatus: CodingSessionRunStatus;
 	createdAt: number;
 	lastActive: number;
 }
@@ -46,17 +43,32 @@ export interface CodingSessionListResult {
 	nextCursor?: SessionCursor;
 }
 
+export type CodingSessionRefResolution =
+	| {
+			status: "resolved";
+			session: CodingSessionRecord;
+	  }
+	| {
+			status: "not_found";
+	  }
+	| {
+			status: "ambiguous";
+			matches: Array<{
+				providerId: string;
+				sdkSessionId: string;
+			}>;
+	  };
+
 interface CodingSessionDatabaseRow {
-	agent_id: string;
+	storage_owner_id: string;
 	provider_id: string;
 	sdk_session_id: string;
 	repository_id: string | null;
 	cwd: string;
-	linked_chat_agent_id: string | null;
-	linked_chat_provider_id: string | null;
 	linked_chat_session_id: string | null;
 	browser_tab_id: string | null;
-	status: CodingSessionStatus;
+	lifecycle_status: CodingSessionLifecycleStatus;
+	run_status: CodingSessionRunStatus;
 	created_at: number;
 	last_active: number;
 }
@@ -72,22 +84,20 @@ interface CodingSessionDetailDatabaseRow extends CodingSessionDatabaseRow {
 }
 
 interface CodingSessionStoreOptions {
-	agentId?: string;
 	journalMode?: SqliteJournalMode;
+	storageOwnerId?: string;
 }
-
-const DEFAULT_AGENT_ID = "agent-default";
 
 export class CodingSessionStore {
 	private readonly db: Database;
 	private readonly dbFileKey: string | undefined;
-	private readonly agentId: string;
+	private readonly storageOwnerId: string;
 
 	constructor(path: string, options: CodingSessionStoreOptions = {}) {
 		const sqlite = openSqliteDatabase(path, options.journalMode ?? "WAL");
 		this.db = sqlite.db;
 		this.dbFileKey = sqlite.fileKey;
-		this.agentId = options.agentId ?? DEFAULT_AGENT_ID;
+		this.storageOwnerId = options.storageOwnerId ?? CODING_STORAGE_OWNER_ID;
 
 		try {
 			ensureSessionStoreSchema(this.db);
@@ -103,9 +113,10 @@ export class CodingSessionStore {
 		sdkSessionId: string;
 		repositoryId?: string;
 		cwd: string;
-		linkedChat?: LinkedChatSession;
+		linkedChatSessionId?: string;
 		browserTabId?: string;
-		status: CodingSessionStatus;
+		lifecycleStatus?: CodingSessionLifecycleStatus;
+		runStatus: CodingSessionRunStatus;
 		timestamp?: number;
 	}) {
 		const now = params.timestamp ?? Date.now();
@@ -117,49 +128,45 @@ export class CodingSessionStore {
 					sdk_session_id,
 					repository_id,
 					cwd,
-					linked_chat_agent_id,
-					linked_chat_provider_id,
 					linked_chat_session_id,
 					browser_tab_id,
-					status,
+					lifecycle_status,
+					run_status,
 					created_at,
 					last_active
 				)
 				VALUES (
-					$agentId,
+					$storageOwnerId,
 					$providerId,
 					$sdkSessionId,
 					$repositoryId,
 					$cwd,
-					$linkedChatAgentId,
-					$linkedChatProviderId,
 					$linkedChatSessionId,
 					$browserTabId,
-					$status,
+					$lifecycleStatus,
+					$runStatus,
 					$now,
 					$now
 				)
 				ON CONFLICT(agent_id, provider_id, sdk_session_id) DO UPDATE SET
 					cwd = $cwd,
 					repository_id = COALESCE($repositoryId, repository_id),
-					linked_chat_agent_id = $linkedChatAgentId,
-					linked_chat_provider_id = $linkedChatProviderId,
 					linked_chat_session_id = $linkedChatSessionId,
 					browser_tab_id = COALESCE($browserTabId, browser_tab_id),
-					status = $status,
+					lifecycle_status = $lifecycleStatus,
+					run_status = $runStatus,
 					last_active = $now`,
 			)
 			.run({
-				$agentId: this.agentId,
+				$storageOwnerId: this.storageOwnerId,
 				$providerId: params.providerId,
 				$sdkSessionId: params.sdkSessionId,
 				$repositoryId: params.repositoryId ?? null,
 				$cwd: params.cwd,
-				$linkedChatAgentId: params.linkedChat?.agentId ?? null,
-				$linkedChatProviderId: params.linkedChat?.providerId ?? null,
-				$linkedChatSessionId: params.linkedChat?.sessionId ?? null,
+				$linkedChatSessionId: params.linkedChatSessionId ?? null,
 				$browserTabId: params.browserTabId ?? null,
-				$status: params.status,
+				$lifecycleStatus: params.lifecycleStatus ?? "open",
+				$runStatus: params.runStatus,
 				$now: now,
 			});
 	}
@@ -169,9 +176,9 @@ export class CodingSessionStore {
 		sdkSessionId: string;
 		timestamp?: number;
 	}) {
-		this.updateStatus({
+		this.updateRunStatus({
 			...params,
-			status: "running",
+			runStatus: "running",
 		});
 	}
 
@@ -180,9 +187,9 @@ export class CodingSessionStore {
 		sdkSessionId: string;
 		timestamp?: number;
 	}) {
-		this.updateStatus({
+		this.updateRunStatus({
 			...params,
-			status: "completed",
+			runStatus: "idle",
 		});
 	}
 
@@ -194,10 +201,10 @@ export class CodingSessionStore {
 	}) {
 		const now = params.timestamp ?? Date.now();
 		this.db.transaction(() => {
-			this.updateStatus({
+			this.updateRunStatus({
 				providerId: params.providerId,
 				sdkSessionId: params.sdkSessionId,
-				status: "failed",
+				runStatus: "failed",
 				timestamp: now,
 			});
 			this.db
@@ -211,7 +218,7 @@ export class CodingSessionStore {
 					   AND sdk_session_id = $sdkSessionId`,
 				)
 				.run({
-					$agentId: this.agentId,
+					$agentId: this.storageOwnerId,
 					$providerId: params.providerId,
 					$sdkSessionId: params.sdkSessionId,
 					$failedAt: now,
@@ -229,7 +236,7 @@ export class CodingSessionStore {
 				   AND sdk_session_id = $sdkSessionId`,
 			)
 			.run({
-				$agentId: this.agentId,
+				$agentId: this.storageOwnerId,
 				$providerId: providerId,
 				$sdkSessionId: sdkSessionId,
 			});
@@ -238,7 +245,7 @@ export class CodingSessionStore {
 	list(
 		options: {
 			cursor?: SessionCursor;
-			linkedChat?: LinkedChatSession;
+			linkedChatSessionId?: string;
 			limit?: number;
 			providerId?: string;
 			repositoryId?: string;
@@ -247,7 +254,7 @@ export class CodingSessionStore {
 		const limit = options.limit ?? 20;
 		const conditions = ["c.agent_id = $agentId"];
 		const params: Record<string, string | number> = {
-			$agentId: this.agentId,
+			$agentId: this.storageOwnerId,
 			$limit: limit,
 		};
 
@@ -259,13 +266,9 @@ export class CodingSessionStore {
 			conditions.push("c.repository_id = $repositoryId");
 			params.$repositoryId = options.repositoryId;
 		}
-		if (options.linkedChat) {
-			conditions.push("c.linked_chat_agent_id = $linkedChatAgentId");
-			conditions.push("c.linked_chat_provider_id = $linkedChatProviderId");
+		if (options.linkedChatSessionId) {
 			conditions.push("c.linked_chat_session_id = $linkedChatSessionId");
-			params.$linkedChatAgentId = options.linkedChat.agentId;
-			params.$linkedChatProviderId = options.linkedChat.providerId;
-			params.$linkedChatSessionId = options.linkedChat.sessionId;
+			params.$linkedChatSessionId = options.linkedChatSessionId;
 		}
 		if (options.cursor) {
 			conditions.push(
@@ -285,16 +288,15 @@ export class CodingSessionStore {
 			this.db
 				.query(
 					`SELECT
-						c.agent_id,
+						c.agent_id AS storage_owner_id,
 						c.provider_id,
 						c.sdk_session_id,
 						c.repository_id,
 						c.cwd,
-						c.linked_chat_agent_id,
-						c.linked_chat_provider_id,
 						c.linked_chat_session_id,
 						c.browser_tab_id,
-						c.status,
+						c.lifecycle_status,
+						c.run_status,
 						c.created_at,
 						c.last_active,
 						s.oc_session_id,
@@ -330,16 +332,15 @@ export class CodingSessionStore {
 			this.db
 				.query(
 					`SELECT
-						agent_id,
+						agent_id AS storage_owner_id,
 						provider_id,
 						sdk_session_id,
 						repository_id,
 						cwd,
-						linked_chat_agent_id,
-						linked_chat_provider_id,
 						linked_chat_session_id,
 						browser_tab_id,
-						status,
+						lifecycle_status,
+						run_status,
 						created_at,
 						last_active
 					FROM coding_sessions
@@ -348,11 +349,64 @@ export class CodingSessionStore {
 					  AND sdk_session_id = $sdkSessionId`,
 				)
 				.get({
-					$agentId: this.agentId,
+					$agentId: this.storageOwnerId,
 					$providerId: providerId,
 					$sdkSessionId: sdkSessionId,
 				}) as CodingSessionDatabaseRow | null,
 		);
+	}
+
+	resolveRef(params: {
+		providerId?: string;
+		sdkSessionId: string;
+	}): CodingSessionRefResolution {
+		if (params.providerId) {
+			const session = this.get(params.providerId, params.sdkSessionId);
+			return session
+				? { status: "resolved", session }
+				: { status: "not_found" };
+		}
+
+		const rows = this.db
+			.query(
+				`SELECT
+					agent_id AS storage_owner_id,
+					provider_id,
+					sdk_session_id,
+					repository_id,
+					cwd,
+					linked_chat_session_id,
+					browser_tab_id,
+					lifecycle_status,
+					run_status,
+					created_at,
+					last_active
+				FROM coding_sessions
+				WHERE agent_id = $agentId
+				  AND sdk_session_id = $sdkSessionId
+				ORDER BY provider_id ASC
+				LIMIT 2`,
+			)
+			.all({
+				$agentId: this.storageOwnerId,
+				$sdkSessionId: params.sdkSessionId,
+			}) as CodingSessionDatabaseRow[];
+
+		if (rows.length === 0) {
+			return { status: "not_found" };
+		}
+		if (rows.length > 1) {
+			return {
+				status: "ambiguous",
+				matches: rows.map((row) => ({
+					providerId: row.provider_id,
+					sdkSessionId: row.sdk_session_id,
+				})),
+			};
+		}
+
+		const session = mapCodingSessionRow(rows[0]);
+		return session ? { status: "resolved", session } : { status: "not_found" };
 	}
 
 	getDetail(
@@ -363,16 +417,15 @@ export class CodingSessionStore {
 			this.db
 				.query(
 					`SELECT
-						c.agent_id,
+						c.agent_id AS storage_owner_id,
 						c.provider_id,
 						c.sdk_session_id,
 						c.repository_id,
 						c.cwd,
-						c.linked_chat_agent_id,
-						c.linked_chat_provider_id,
 						c.linked_chat_session_id,
 						c.browser_tab_id,
-						c.status,
+						c.lifecycle_status,
+						c.run_status,
 						c.created_at,
 						c.last_active,
 						s.oc_session_id,
@@ -392,7 +445,7 @@ export class CodingSessionStore {
 					  AND c.sdk_session_id = $sdkSessionId`,
 				)
 				.get({
-					$agentId: this.agentId,
+					$agentId: this.storageOwnerId,
 					$providerId: providerId,
 					$sdkSessionId: sdkSessionId,
 				}) as CodingSessionDetailDatabaseRow | null,
@@ -403,27 +456,27 @@ export class CodingSessionStore {
 		closeSqliteDatabase(this.db, this.dbFileKey);
 	}
 
-	private updateStatus(params: {
+	private updateRunStatus(params: {
 		providerId: string;
 		sdkSessionId: string;
-		status: CodingSessionStatus;
+		runStatus: CodingSessionRunStatus;
 		timestamp?: number;
 	}) {
 		const now = params.timestamp ?? Date.now();
 		this.db
 			.query(
 				`UPDATE coding_sessions
-				 SET status = $status,
+				 SET run_status = $runStatus,
 				     last_active = $now
 				 WHERE agent_id = $agentId
 				   AND provider_id = $providerId
 				   AND sdk_session_id = $sdkSessionId`,
 			)
 			.run({
-				$agentId: this.agentId,
+				$agentId: this.storageOwnerId,
 				$providerId: params.providerId,
 				$sdkSessionId: params.sdkSessionId,
-				$status: params.status,
+				$runStatus: params.runStatus,
 				$now: now,
 			});
 	}
@@ -437,11 +490,10 @@ function ensureCodingSessionStoreSchema(db: Database) {
 		sdk_session_id TEXT NOT NULL,
 		repository_id TEXT,
 		cwd TEXT NOT NULL,
-		linked_chat_agent_id TEXT,
-		linked_chat_provider_id TEXT,
 		linked_chat_session_id TEXT,
 		browser_tab_id TEXT,
-		status TEXT NOT NULL,
+		lifecycle_status TEXT NOT NULL,
+		run_status TEXT NOT NULL,
 		created_at INTEGER NOT NULL,
 		last_active INTEGER NOT NULL,
 		PRIMARY KEY (agent_id, provider_id, sdk_session_id),
@@ -452,12 +504,6 @@ function ensureCodingSessionStoreSchema(db: Database) {
 			REFERENCES sessions(agent_id, provider_id, sdk_session_id)
 			ON DELETE CASCADE
 	)`);
-	const columns = db
-		.query("PRAGMA table_info(coding_sessions)")
-		.all() as TableColumnInfo[];
-	if (!columns.some((column) => column.name === "repository_id")) {
-		db.exec("ALTER TABLE coding_sessions ADD COLUMN repository_id TEXT");
-	}
 }
 
 function mapCodingSessionRow(
@@ -467,26 +513,18 @@ function mapCodingSessionRow(
 		return undefined;
 	}
 
-	const linkedChat =
-		row.linked_chat_agent_id &&
-		row.linked_chat_provider_id &&
-		row.linked_chat_session_id
-			? {
-					agentId: row.linked_chat_agent_id,
-					providerId: row.linked_chat_provider_id,
-					sessionId: row.linked_chat_session_id,
-				}
-			: undefined;
-
 	return {
-		agentId: row.agent_id,
+		storageOwnerId: row.storage_owner_id,
 		providerId: row.provider_id,
 		sdkSessionId: row.sdk_session_id,
-		repositoryId: row.repository_id ?? undefined,
+		...(row.repository_id ? { repositoryId: row.repository_id } : {}),
 		cwd: row.cwd,
-		linkedChat,
-		browserTabId: row.browser_tab_id ?? undefined,
-		status: row.status,
+		...(row.linked_chat_session_id
+			? { linkedChatSessionId: row.linked_chat_session_id }
+			: {}),
+		...(row.browser_tab_id ? { browserTabId: row.browser_tab_id } : {}),
+		lifecycleStatus: row.lifecycle_status,
+		runStatus: row.run_status,
 		createdAt: row.created_at,
 		lastActive: row.last_active,
 	};
@@ -508,13 +546,13 @@ function mapCodingSessionDetailRow(
 
 	return {
 		...codingSession,
-		ocSessionId: row.oc_session_id ?? undefined,
+		...(row.oc_session_id ? { ocSessionId: row.oc_session_id } : {}),
 		title: row.title,
 		model: row.model,
 		source: row.source,
 		tag: row.tag,
-		failedAt: row.failed_at ?? undefined,
-		failureMessage: row.failure_message ?? undefined,
+		...(row.failed_at !== null ? { failedAt: row.failed_at } : {}),
+		...(row.failure_message ? { failureMessage: row.failure_message } : {}),
 	};
 }
 

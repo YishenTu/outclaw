@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
 	archiveCodingRepository,
-	deleteAgentCodingSession,
-	fetchAgentCodingSession,
-	fetchAgentCodingSessions,
+	deleteCodingSession,
 	fetchAgentCron,
 	fetchAgentCronHistory,
 	fetchAgentFile,
@@ -11,6 +9,8 @@ import {
 	fetchAgentWorkspaceFiles,
 	fetchCodingRepositories,
 	fetchCodingRepository,
+	fetchCodingSession,
+	fetchCodingSessions,
 	fetchConfigFile,
 	fetchGitCommit,
 	fetchGitDiff,
@@ -18,7 +18,7 @@ import {
 	fetchRuntimeLatency,
 	fetchSidebarSummary,
 	initGitRepo,
-	registerAgentCodingRepository,
+	registerCodingRepository,
 	updateAgentCronEnabled,
 	updateConfigFile,
 	uploadPromptImages,
@@ -142,9 +142,9 @@ describe("browser API client integration", () => {
 					hasMore: false,
 				};
 			},
-			listAgentCodingSessions: async (agentId, params) => {
+			listCodingSessions: async (params) => {
 				calls.push(
-					`coding:list:${agentId}:${params.limit}:${params.cursor?.lastActive ?? "none"}:${params.cursor?.sdkSessionId ?? "none"}:${params.providerId ?? "none"}:${params.repositoryId ?? "none"}:${params.linkedChat?.sessionId ?? "none"}`,
+					`coding:list:${params.limit}:${params.cursor?.lastActive ?? "none"}:${params.cursor?.sdkSessionId ?? "none"}:${params.providerId ?? "none"}:${params.repositoryId ?? "none"}:${params.linkedChatSessionId ?? "none"}`,
 				);
 				return {
 					sessions: [
@@ -155,7 +155,8 @@ describe("browser API client integration", () => {
 							model: "gpt-5.5",
 							lastActive: 200,
 							cwd: "/workspace/outclaw",
-							status: "running",
+							lifecycleStatus: "open",
+							runStatus: "running",
 							createdAt: 100,
 							source: "code",
 							tag: "code",
@@ -163,8 +164,8 @@ describe("browser API client integration", () => {
 					],
 				};
 			},
-			getAgentCodingSession: async (agentId, providerId, sdkSessionId) => {
-				calls.push(`coding:get:${agentId}:${providerId}:${sdkSessionId}`);
+			getCodingSession: async (providerId, sdkSessionId) => {
+				calls.push(`coding:get:${providerId}:${sdkSessionId}`);
 				return {
 					providerId,
 					sdkSessionId,
@@ -172,14 +173,15 @@ describe("browser API client integration", () => {
 					model: "gpt-5.5",
 					lastActive: 200,
 					cwd: "/workspace/outclaw",
-					status: "running",
+					lifecycleStatus: "open",
+					runStatus: "running",
 					createdAt: 100,
 					source: "code",
 					tag: "code",
 				};
 			},
-			deleteAgentCodingSession: async (agentId, providerId, sdkSessionId) => {
-				calls.push(`coding:delete:${agentId}:${providerId}:${sdkSessionId}`);
+			deleteCodingSession: async (providerId, sdkSessionId) => {
+				calls.push(`coding:delete:${providerId}:${sdkSessionId}`);
 				return {
 					deleted: true,
 					providerId,
@@ -192,7 +194,6 @@ describe("browser API client integration", () => {
 					repositories: [
 						{
 							id: "repo-1",
-							defaultAgentId: "agent-railly",
 							rootCwd: "/workspace/outclaw",
 							displayName: "outclaw",
 							source: "manual",
@@ -207,7 +208,6 @@ describe("browser API client integration", () => {
 				calls.push(`repo:get:${repositoryId}`);
 				return {
 					id: repositoryId,
-					defaultAgentId: "agent-railly",
 					rootCwd: "/workspace/outclaw",
 					displayName: "outclaw",
 					source: "manual",
@@ -216,13 +216,12 @@ describe("browser API client integration", () => {
 					lastActive: 200,
 				};
 			},
-			registerAgentCodingRepository: async (agentId, params) => {
+			registerCodingRepository: async (params) => {
 				calls.push(
-					`repo:register:${agentId}:${params.rootCwd}:${params.displayName ?? "none"}`,
+					`repo:register:${params.rootCwd}:${params.displayName ?? "none"}`,
 				);
 				return {
 					id: "repo-2",
-					defaultAgentId: agentId,
 					rootCwd: params.rootCwd,
 					displayName: params.displayName ?? "repo",
 					source: "manual",
@@ -237,7 +236,6 @@ describe("browser API client integration", () => {
 					archived: true,
 					repository: {
 						id: repositoryId,
-						defaultAgentId: "agent-railly",
 						rootCwd: "/workspace/outclaw",
 						displayName: "outclaw",
 						source: "manual",
@@ -432,16 +430,12 @@ describe("browser API client integration", () => {
 			path: "cron/daily.yaml",
 		});
 		await expect(
-			fetchAgentCodingSessions("agent-railly", {
+			fetchCodingSessions({
 				limit: 3,
 				cursor: { lastActive: 200, sdkSessionId: "code-session-1" },
 				providerId: "codex",
 				repositoryId: "repo-1",
-				linkedChat: {
-					agentId: "agent-railly",
-					providerId: "mock",
-					sessionId: "sdk-active",
-				},
+				linkedChatSessionId: "sdk-active",
 			}),
 		).resolves.toMatchObject({
 			sessions: [
@@ -449,19 +443,20 @@ describe("browser API client integration", () => {
 					providerId: "codex",
 					sdkSessionId: "code-session-1",
 					cwd: "/workspace/outclaw",
-					status: "running",
+					lifecycleStatus: "open",
+					runStatus: "running",
 				},
 			],
 		});
 		await expect(
-			fetchAgentCodingSession("agent-railly", "codex", "code-session-1"),
+			fetchCodingSession("codex", "code-session-1"),
 		).resolves.toMatchObject({
 			providerId: "codex",
 			sdkSessionId: "code-session-1",
 			cwd: "/workspace/outclaw",
 		});
 		await expect(
-			deleteAgentCodingSession("agent-railly", "codex", "code-session-1"),
+			deleteCodingSession("codex", "code-session-1"),
 		).resolves.toEqual({
 			deleted: true,
 			providerId: "codex",
@@ -476,13 +471,12 @@ describe("browser API client integration", () => {
 			id: "repo-1",
 		});
 		await expect(
-			registerAgentCodingRepository("agent-railly", {
+			registerCodingRepository({
 				rootCwd: "/workspace/outclaw",
 				displayName: "Outclaw",
 			}),
 		).resolves.toMatchObject({
 			id: "repo-2",
-			defaultAgentId: "agent-railly",
 		});
 		await expect(archiveCodingRepository("repo-1")).resolves.toMatchObject({
 			archived: true,
@@ -525,12 +519,12 @@ describe("browser API client integration", () => {
 			"cron:list:agent-railly",
 			"cron:history:agent-railly:daily:3:200:mock:cron-session-2",
 			"cron:set:agent-railly:cron/daily.yaml:false",
-			"coding:list:agent-railly:3:200:code-session-1:codex:repo-1:sdk-active",
-			"coding:get:agent-railly:codex:code-session-1",
-			"coding:delete:agent-railly:codex:code-session-1",
+			"coding:list:3:200:code-session-1:codex:repo-1:sdk-active",
+			"coding:get:codex:code-session-1",
+			"coding:delete:codex:code-session-1",
 			"repo:list:true",
 			"repo:get:repo-1",
-			"repo:register:agent-railly:/workspace/outclaw:Outclaw",
+			"repo:register:/workspace/outclaw:Outclaw",
 			"repo:archive:repo-1",
 			"file:agent-railly:notes/today.md",
 			"diff:src/index.ts",

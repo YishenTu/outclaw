@@ -12,6 +12,7 @@ import { discoverAgents } from "./runtime/agents/discover-agents.ts";
 import { createAgentRuntime } from "./runtime/application/create-agent-runtime.ts";
 import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
 import {
+	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
 	CodingSessionStore,
 } from "./runtime/coding/index.ts";
@@ -86,14 +87,10 @@ function startMultiAgentDaemon(
 			}),
 		]),
 	);
-	const codingStores = new Map(
-		agents.map((agent) => [
-			agent.agentId,
-			new CodingSessionStore(layout.dbPath, {
-				agentId: agent.agentId,
-			}),
-		]),
-	);
+	const codingSharedSessionStore = new SessionStore(layout.dbPath, {
+		agentId: CODING_STORAGE_OWNER_ID,
+	});
+	const codingSessions = new CodingSessionStore(layout.dbPath);
 	const codingRepositories = new CodingRepositoryStore(layout.dbPath);
 	const codingFacade = new CodexAdapter();
 	const transcriptReadersByAgent = new Map<
@@ -138,7 +135,8 @@ function startMultiAgentDaemon(
 			store: agentStores.get(agent.agentId),
 			codingFacade,
 			codingRepositories,
-			codingSessions: codingStores.get(agent.agentId),
+			codingStore: codingSharedSessionStore,
+			codingSessions,
 		});
 	});
 	const availableAgentsByBotUser = buildTelegramAgentIndex(agents);
@@ -164,7 +162,7 @@ function startMultiAgentDaemon(
 				};
 			}),
 			codingRepositories,
-			codingStoresByAgent: codingStores,
+			codingSessions,
 			filesRoot: layout.filesRoot,
 			getBrowserClientAgentId: (clientId) =>
 				stateStore.getBrowserClientAgentId(clientId),
@@ -254,9 +252,8 @@ function startMultiAgentDaemon(
 			restartRequiredWatcher.stop();
 			await supervisor.stop();
 			botManager.stop();
-			for (const store of codingStores.values()) {
-				store.close();
-			}
+			codingSessions.close();
+			codingSharedSessionStore.close();
 			codingRepositories.close();
 			await codingFacade.dispose();
 			for (const store of agentStores.values()) {

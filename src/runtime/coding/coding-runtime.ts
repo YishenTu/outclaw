@@ -1,26 +1,50 @@
 import type { PromptExecution } from "../application/prompt-execution/prompt-dispatcher.ts";
 import type { DetachedPromptStartResult } from "../application/runtime-controller.ts";
 import type {
-	CodingSessionStatus,
-	LinkedChatSession,
+	CodingSessionRecord,
+	CodingSessionRefResolution,
+	CodingSessionRunStatus,
 } from "./coding-session-store.ts";
 
 export interface CodePromptRequest {
 	cwd: string;
-	linkedChat?: LinkedChatSession;
+	linkedChatSessionId?: string;
 	prompt: string;
 }
 
-export type CodePromptStartResult = DetachedPromptStartResult;
+export interface CodePromptResumeRequest {
+	prompt: string;
+	providerId?: string;
+	sdkSessionId: string;
+}
+
+export type CodePromptStartResult =
+	| {
+			status: "accepted";
+			providerId: string;
+			sdkSessionId: string;
+	  }
+	| {
+			status: "rejected";
+			message: string;
+	  };
 
 export interface CodingSessionRecorder {
+	get?(
+		providerId: string,
+		sdkSessionId: string,
+	): CodingSessionRecord | undefined;
+	resolveRef?(params: {
+		providerId?: string;
+		sdkSessionId: string;
+	}): CodingSessionRefResolution;
 	upsert(params: {
 		providerId: string;
 		sdkSessionId: string;
 		repositoryId?: string;
 		cwd: string;
-		linkedChat?: LinkedChatSession;
-		status: CodingSessionStatus;
+		linkedChatSessionId?: string;
+		runStatus: CodingSessionRunStatus;
 	}): void;
 	markCompleted?(params: { providerId: string; sdkSessionId: string }): void;
 	markFailed?(params: {
@@ -32,7 +56,7 @@ export interface CodingSessionRecorder {
 }
 
 export interface CodingRepositoryRegistrar {
-	registerForCwd(params: { cwd: string; defaultAgentId: string }): {
+	registerForCwd(params: { cwd: string }): {
 		id: string;
 	};
 }
@@ -40,8 +64,7 @@ export interface CodingRepositoryRegistrar {
 interface CodingRuntimeOptions {
 	codingRepositories?: CodingRepositoryRegistrar;
 	codingSessions?: CodingSessionRecorder;
-	defaultAgentId?: string;
-	getLinkedChatSession?: () => LinkedChatSession | undefined;
+	getLinkedChatSessionId?: () => string | undefined;
 	providerId: string;
 	runDetachedPrompt(task: PromptExecution): DetachedPromptStartResult;
 }
@@ -49,12 +72,24 @@ interface CodingRuntimeOptions {
 export class CodingRuntime {
 	constructor(private readonly options: CodingRuntimeOptions) {}
 
-	runPrompt(params: CodePromptRequest): CodePromptStartResult {
+	startPrompt(params: CodePromptRequest): Promise<CodePromptStartResult> {
 		const initializedSessionIds = new Set<string>();
-		const linkedChat =
-			params.linkedChat ?? this.options.getLinkedChatSession?.();
+		const linkedChatSessionId =
+			params.linkedChatSessionId ?? this.options.getLinkedChatSessionId?.();
 		const repositoryId = this.registerRepository(params.cwd)?.id;
-		return this.options.runDetachedPrompt({
+		let settleStart: (result: CodePromptStartResult) => void = () => {};
+		let settled = false;
+		const start = new Promise<CodePromptStartResult>((resolve) => {
+			settleStart = (result) => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				resolve(result);
+			};
+		});
+
+		const detachedResult = this.options.runDetachedPrompt({
 			cwd: params.cwd,
 			includeRuntimeSystemPrompt: false,
 			onEvent: (event) => {
@@ -65,8 +100,13 @@ export class CodingRuntime {
 						event.sessionId,
 						repositoryId,
 						"running",
-						linkedChat,
+						linkedChatSessionId,
 					);
+					settleStart({
+						status: "accepted",
+						providerId: this.options.providerId,
+						sdkSessionId: event.sessionId,
+					});
 					return;
 				}
 				if (
@@ -77,7 +117,7 @@ export class CodingRuntime {
 						params.cwd,
 						event.sessionId,
 						repositoryId,
-						linkedChat,
+						linkedChatSessionId,
 					);
 					return;
 				}
@@ -90,9 +130,23 @@ export class CodingRuntime {
 						params.cwd,
 						event.sessionId,
 						repositoryId,
-						linkedChat,
+						linkedChatSessionId,
 						event.message,
 					);
+					return;
+				}
+				if (event.type === "error" && !settled) {
+					settleStart({
+						status: "rejected",
+						message: event.message,
+					});
+					return;
+				}
+				if (event.type === "done" && !settled) {
+					settleStart({
+						status: "rejected",
+						message: "Coding session did not initialize",
+					});
 				}
 			},
 			prompt: params.prompt,
@@ -100,15 +154,142 @@ export class CodingRuntime {
 			source: "agent",
 			storedSessionSource: "code",
 		});
+		if (detachedResult.status === "rejected") {
+			settleStart(detachedResult);
+		}
+		return start;
+	}
+
+	async resumePrompt(
+		params: CodePromptResumeRequest,
+	): Promise<CodePromptStartResult> {
+		if (params.providerId && params.providerId !== this.options.providerId) {
+			return {
+				status: "rejected",
+				message: `Coding provider mismatch: ${params.providerId}`,
+			};
+		}
+
+		const resolution = this.resolveSessionRef(params);
+		if (resolution.status === "rejected") {
+			return resolution;
+		}
+		const session = resolution.session;
+		if (session.providerId !== this.options.providerId) {
+			return {
+				status: "rejected",
+				message: `Coding provider mismatch: ${session.providerId}`,
+			};
+		}
+		if (session.lifecycleStatus !== "open") {
+			return {
+				status: "rejected",
+				message: `Coding session is not open: ${params.providerId}/${params.sdkSessionId}`,
+			};
+		}
+		if (session.runStatus === "running") {
+			return {
+				status: "rejected",
+				message: `Coding session is busy: ${params.providerId}/${params.sdkSessionId}`,
+			};
+		}
+
+		const detachedResult = this.options.runDetachedPrompt({
+			cwd: session.cwd,
+			includeRuntimeSystemPrompt: false,
+			onEvent: (event) => {
+				if (event.type === "done" && event.sessionId === params.sdkSessionId) {
+					this.markCompleted(
+						session.cwd,
+						params.sdkSessionId,
+						session.repositoryId,
+						session.linkedChatSessionId,
+					);
+					return;
+				}
+				if (
+					event.type === "error" &&
+					(!event.sessionId || event.sessionId === params.sdkSessionId)
+				) {
+					this.markFailed(
+						session.cwd,
+						params.sdkSessionId,
+						session.repositoryId,
+						session.linkedChatSessionId,
+						event.message,
+					);
+				}
+			},
+			prompt: params.prompt,
+			resumeSessionId: params.sdkSessionId,
+			sessionTag: "code",
+			source: "agent",
+			storedSessionSource: "code",
+		});
+		if (detachedResult.status === "rejected") {
+			return detachedResult;
+		}
+
+		this.options.codingSessions?.markRunning?.({
+			providerId: session.providerId,
+			sdkSessionId: params.sdkSessionId,
+		});
+		return {
+			status: "accepted",
+			providerId: session.providerId,
+			sdkSessionId: params.sdkSessionId,
+		};
+	}
+
+	private resolveSessionRef(params: {
+		providerId?: string;
+		sdkSessionId: string;
+	}):
+		| { status: "resolved"; session: CodingSessionRecord }
+		| { status: "rejected"; message: string } {
+		const resolution = this.options.codingSessions?.resolveRef
+			? this.options.codingSessions.resolveRef({
+					providerId: params.providerId,
+					sdkSessionId: params.sdkSessionId,
+				})
+			: this.resolveSessionRefFallback(params);
+		if (resolution.status === "resolved") {
+			return resolution;
+		}
+		if (resolution.status === "ambiguous") {
+			return {
+				status: "rejected",
+				message: `Ambiguous coding session: ${params.sdkSessionId}`,
+			};
+		}
+		return {
+			status: "rejected",
+			message: params.providerId
+				? `Unknown coding session: ${params.providerId}/${params.sdkSessionId}`
+				: `Unknown coding session: ${params.sdkSessionId}`,
+		};
+	}
+
+	private resolveSessionRefFallback(params: {
+		providerId?: string;
+		sdkSessionId: string;
+	}): CodingSessionRefResolution {
+		if (!params.providerId) {
+			return { status: "not_found" };
+		}
+		const session = this.options.codingSessions?.get?.(
+			params.providerId,
+			params.sdkSessionId,
+		);
+		return session ? { status: "resolved", session } : { status: "not_found" };
 	}
 
 	private registerRepository(cwd: string): { id: string } | undefined {
-		if (!this.options.codingRepositories || !this.options.defaultAgentId) {
+		if (!this.options.codingRepositories) {
 			return undefined;
 		}
 		return this.options.codingRepositories.registerForCwd({
 			cwd,
-			defaultAgentId: this.options.defaultAgentId,
 		});
 	}
 
@@ -116,16 +297,16 @@ export class CodingRuntime {
 		cwd: string,
 		sessionId: string,
 		repositoryId: string | undefined,
-		status: CodingSessionStatus,
-		linkedChat: LinkedChatSession | undefined,
+		runStatus: CodingSessionRunStatus,
+		linkedChatSessionId: string | undefined,
 	) {
 		this.options.codingSessions?.upsert({
 			providerId: this.options.providerId,
 			sdkSessionId: sessionId,
 			repositoryId,
 			cwd,
-			linkedChat,
-			status,
+			linkedChatSessionId,
+			runStatus,
 		});
 	}
 
@@ -133,7 +314,7 @@ export class CodingRuntime {
 		cwd: string,
 		sessionId: string,
 		repositoryId: string | undefined,
-		linkedChat: LinkedChatSession | undefined,
+		linkedChatSessionId: string | undefined,
 	) {
 		if (this.options.codingSessions?.markCompleted) {
 			this.options.codingSessions.markCompleted({
@@ -142,14 +323,20 @@ export class CodingRuntime {
 			});
 			return;
 		}
-		this.recordSession(cwd, sessionId, repositoryId, "completed", linkedChat);
+		this.recordSession(
+			cwd,
+			sessionId,
+			repositoryId,
+			"idle",
+			linkedChatSessionId,
+		);
 	}
 
 	private markFailed(
 		cwd: string,
 		sessionId: string,
 		repositoryId: string | undefined,
-		linkedChat: LinkedChatSession | undefined,
+		linkedChatSessionId: string | undefined,
 		message: string,
 	) {
 		if (this.options.codingSessions?.markFailed) {
@@ -160,7 +347,13 @@ export class CodingRuntime {
 			});
 			return;
 		}
-		this.recordSession(cwd, sessionId, repositoryId, "failed", linkedChat);
+		this.recordSession(
+			cwd,
+			sessionId,
+			repositoryId,
+			"failed",
+			linkedChatSessionId,
+		);
 	}
 }
 

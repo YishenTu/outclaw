@@ -485,13 +485,8 @@ export interface BrowserSessionPageResponse {
 	sessions: BrowserSessionSummary[];
 }
 
-export type BrowserCodingSessionStatus = "running" | "completed" | "failed";
-
-export interface BrowserLinkedChatSession {
-	agentId: string;
-	providerId: string;
-	sessionId: string;
-}
+export type BrowserCodingSessionLifecycleStatus = "open" | "archived";
+export type BrowserCodingSessionRunStatus = "idle" | "running" | "failed";
 
 export interface BrowserCodingSessionSummary {
 	providerId: string;
@@ -501,12 +496,13 @@ export interface BrowserCodingSessionSummary {
 	model: string;
 	lastActive: number;
 	cwd: string;
-	status: BrowserCodingSessionStatus;
+	lifecycleStatus: BrowserCodingSessionLifecycleStatus;
+	runStatus: BrowserCodingSessionRunStatus;
 	createdAt: number;
 	source: string;
 	tag: BrowserSessionTag;
 	ocSessionId?: string;
-	linkedChat?: BrowserLinkedChatSession;
+	linkedChatSessionId?: string;
 	browserTabId?: string;
 	failedAt?: number;
 	failureMessage?: string;
@@ -531,7 +527,6 @@ export type BrowserCodingRepositoryStatus = "active" | "archived";
 
 export interface BrowserCodingRepositorySummary {
 	id: string;
-	defaultAgentId: string;
 	rootCwd: string;
 	displayName: string;
 	remoteUrl?: string;
@@ -831,7 +826,8 @@ export interface CronRunErrorEvent {
 
 export interface CodePromptResponseEvent {
 	type: "code_prompt_response";
-	ocSessionId: string;
+	providerId: string;
+	sdkSessionId: string;
 }
 
 export interface CodePromptErrorEvent {

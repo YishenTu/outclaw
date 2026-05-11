@@ -63,6 +63,7 @@ interface CreateAgentRuntimeOptions {
 	codingFacade?: Facade;
 	codingRepositories?: CodingRepositoryRegistrar;
 	codingSessions?: CodingSessionRecorder;
+	codingStore?: SessionStore;
 }
 
 export interface AgentRuntime {
@@ -184,46 +185,38 @@ export function createAgentRuntime(
 		state,
 	});
 	const codingFacade = options.codingFacade ?? facade;
-	const codingState =
-		codingFacade === facade
-			? state
-			: new RuntimeState(
-					codingFacade.providerId,
-					options.statusAgentName ?? options.name,
-					{ defaultEffort: options.defaultEffort },
-				);
-	const codingSessionService =
-		codingFacade === facade
-			? sessions
-			: new SessionService(codingState, options.store, {
-					onSessionCatalogChanged: () =>
-						sessionCatalogChanged?.({ agentId: options.agentId }),
-				});
-	const codingController =
-		codingFacade === facade
-			? controller
-			: createRuntimeController({
-					agentId: options.agentId,
-					canSendToClient: options.canSendToClient,
-					cwd: options.cwd,
-					facade: codingFacade,
-					onExecutionStateChange: () => noteRolloverStateChange(),
-					promptHomeDir: options.promptHomeDir,
-					sessions: codingSessionService,
-					state: codingState,
-				});
+	const codingStore = options.codingStore ?? options.store;
+	const useChatExecutionForCoding =
+		codingFacade === facade && codingStore === options.store;
+	const codingState = useChatExecutionForCoding
+		? state
+		: new RuntimeState(
+				codingFacade.providerId,
+				options.statusAgentName ?? options.name,
+				{ defaultEffort: options.defaultEffort },
+			);
+	const codingSessionService = useChatExecutionForCoding
+		? sessions
+		: new SessionService(codingState, codingStore, {
+				onSessionCatalogChanged: () =>
+					sessionCatalogChanged?.({ agentId: options.agentId }),
+			});
+	const codingController = useChatExecutionForCoding
+		? controller
+		: createRuntimeController({
+				agentId: options.agentId,
+				canSendToClient: options.canSendToClient,
+				cwd: options.cwd,
+				facade: codingFacade,
+				onExecutionStateChange: () => noteRolloverStateChange(),
+				promptHomeDir: options.promptHomeDir,
+				sessions: codingSessionService,
+				state: codingState,
+			});
 	const coding = createCodingRuntime({
 		codingRepositories: options.codingRepositories,
 		codingSessions: options.codingSessions,
-		defaultAgentId: options.agentId,
-		getLinkedChatSession: () =>
-			sessions.activeSessionId
-				? {
-						agentId: options.agentId,
-						providerId: sessions.providerId,
-						sessionId: sessions.activeSessionId,
-					}
-				: undefined,
+		getLinkedChatSessionId: () => sessions.activeSessionId,
 		providerId: codingFacade.providerId,
 		runDetachedPrompt:
 			codingController.runDetachedPrompt.bind(codingController),

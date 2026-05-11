@@ -13,7 +13,6 @@ export type CodingRepositoryStatus = "active" | "archived";
 
 export interface CodingRepositoryRecord {
 	id: string;
-	defaultAgentId: string;
 	rootCwd: string;
 	displayName: string;
 	remoteUrl?: string;
@@ -30,7 +29,6 @@ interface CodingRepositoryStoreOptions {
 
 interface CodingRepositoryDatabaseRow {
 	id: string;
-	default_agent_id: string;
 	root_cwd: string;
 	display_name: string;
 	remote_url: string | null;
@@ -59,7 +57,6 @@ export class CodingRepositoryStore {
 	}
 
 	register(params: {
-		defaultAgentId: string;
 		displayName?: string;
 		remoteUrl?: string;
 		rootCwd: string;
@@ -73,7 +70,6 @@ export class CodingRepositoryStore {
 			.query(
 				`INSERT INTO coding_repositories (
 					id,
-					default_agent_id,
 					root_cwd,
 					display_name,
 					remote_url,
@@ -85,7 +81,6 @@ export class CodingRepositoryStore {
 				)
 				VALUES (
 					$id,
-					$defaultAgentId,
 					$rootCwd,
 					$displayName,
 					$remoteUrl,
@@ -96,7 +91,6 @@ export class CodingRepositoryStore {
 					NULL
 				)
 				ON CONFLICT(root_cwd) DO UPDATE SET
-					default_agent_id = $defaultAgentId,
 					display_name = $displayName,
 					remote_url = COALESCE($remoteUrl, remote_url),
 					source = CASE
@@ -109,7 +103,6 @@ export class CodingRepositoryStore {
 			)
 			.run({
 				$id: randomUUID(),
-				$defaultAgentId: params.defaultAgentId,
 				$rootCwd: rootCwd,
 				$displayName: displayName,
 				$remoteUrl: params.remoteUrl ?? null,
@@ -126,12 +119,10 @@ export class CodingRepositoryStore {
 
 	registerForCwd(params: {
 		cwd: string;
-		defaultAgentId: string;
 		timestamp?: number;
 	}): CodingRepositoryRecord {
 		const rootCwd = resolveCodingRepositoryRoot(params.cwd);
 		return this.register({
-			defaultAgentId: params.defaultAgentId,
 			rootCwd,
 			source: "auto",
 			timestamp: params.timestamp,
@@ -157,7 +148,6 @@ export class CodingRepositoryStore {
 				.query(
 					`SELECT
 						id,
-						default_agent_id,
 						root_cwd,
 						display_name,
 						remote_url,
@@ -179,7 +169,6 @@ export class CodingRepositoryStore {
 				.query(
 					`SELECT
 						id,
-						default_agent_id,
 						root_cwd,
 						display_name,
 						remote_url,
@@ -204,7 +193,6 @@ export class CodingRepositoryStore {
 				.query(
 					`SELECT
 						id,
-						default_agent_id,
 						root_cwd,
 						display_name,
 						remote_url,
@@ -229,7 +217,6 @@ export class CodingRepositoryStore {
 export function ensureCodingRepositoryStoreSchema(db: Database) {
 	db.exec(`CREATE TABLE IF NOT EXISTS coding_repositories (
 		id TEXT PRIMARY KEY,
-		default_agent_id TEXT NOT NULL,
 		root_cwd TEXT NOT NULL UNIQUE,
 		display_name TEXT NOT NULL,
 		remote_url TEXT,
@@ -275,7 +262,6 @@ function mapRequiredCodingRepositoryRow(
 ): CodingRepositoryRecord {
 	return {
 		id: row.id,
-		defaultAgentId: row.default_agent_id,
 		rootCwd: row.root_cwd,
 		displayName: row.display_name,
 		remoteUrl: row.remote_url ?? undefined,

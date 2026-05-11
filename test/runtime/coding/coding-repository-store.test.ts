@@ -26,7 +26,6 @@ describe("CodingRepositoryStore", () => {
 		symlinkSync(root, link, "dir");
 
 		const first = repositories.register({
-			defaultAgentId: "agent-railly",
 			displayName: "Outclaw",
 			rootCwd: root,
 			source: "manual",
@@ -34,7 +33,6 @@ describe("CodingRepositoryStore", () => {
 		});
 		repositories.archive(first.id, 20);
 		const second = repositories.register({
-			defaultAgentId: "agent-mimi",
 			rootCwd: link,
 			source: "auto",
 			timestamp: 30,
@@ -42,7 +40,6 @@ describe("CodingRepositoryStore", () => {
 
 		expect(second).toMatchObject({
 			id: first.id,
-			defaultAgentId: "agent-mimi",
 			rootCwd: realpathSync(root),
 			displayName: expect.stringMatching(/^outclaw-repo-root-/),
 			source: "manual",
@@ -50,6 +47,7 @@ describe("CodingRepositoryStore", () => {
 			createdAt: 10,
 			lastActive: 30,
 		});
+		expect(second).not.toHaveProperty("defaultAgentId");
 		expect(repositories.list()).toEqual([second]);
 		expect(repositories.list({ includeArchived: true })).toEqual([second]);
 
@@ -65,17 +63,16 @@ describe("CodingRepositoryStore", () => {
 
 		const repository = repositories.registerForCwd({
 			cwd: nested,
-			defaultAgentId: "agent-railly",
 			timestamp: 10,
 		});
 
 		expect(repository).toMatchObject({
-			defaultAgentId: "agent-railly",
 			rootCwd: realpathSync(root),
 			displayName: expect.stringMatching(/^outclaw-git-repo-/),
 			source: "auto",
 			status: "active",
 		});
+		expect(repository).not.toHaveProperty("defaultAgentId");
 
 		repositories.close();
 	});

@@ -5,7 +5,10 @@ import { join } from "node:path";
 import type { FacadeEvent, RunParams } from "../../../src/common/protocol.ts";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
 import { createBrowserApi } from "../../../src/runtime/browser/create-browser-api.ts";
-import { CodingSessionStore } from "../../../src/runtime/coding/index.ts";
+import {
+	CODING_STORAGE_OWNER_ID,
+	CodingSessionStore,
+} from "../../../src/runtime/coding/index.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 import { createSupervisor } from "../../../src/runtime/supervisor/create-supervisor.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
@@ -1265,9 +1268,10 @@ describe("createSupervisor", () => {
 		const dbDir = mkdtempSync(join(tmpdir(), "outclaw-supervisor-code-"));
 		const dbPath = join(dbDir, "sessions.sqlite");
 		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
-		const codingSessions = new CodingSessionStore(dbPath, {
-			agentId: "agent-railly",
+		const codingSharedStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
 		});
+		const codingSessions = new CodingSessionStore(dbPath);
 		store.upsert({
 			providerId: "mock",
 			sdkSessionId: "chat-session-123",
@@ -1289,6 +1293,7 @@ describe("createSupervisor", () => {
 					facade,
 					promptHomeDir: codeHome,
 					store,
+					codingStore: codingSharedStore,
 					codingSessions,
 				}),
 			],
@@ -1296,6 +1301,7 @@ describe("createSupervisor", () => {
 		cleanup = async () => {
 			await supervisor.stop();
 			codingSessions.close();
+			codingSharedStore.close();
 			store.close();
 			rmSync(dbDir, { recursive: true, force: true });
 			rmSync(codeHome, { recursive: true, force: true });
@@ -1314,34 +1320,29 @@ describe("createSupervisor", () => {
 			ws,
 			(event) => event.type === "code_prompt_response",
 		);
-		const ocSessionId = response.ocSessionId;
-		if (typeof ocSessionId !== "string") {
-			throw new Error("Expected code prompt response to include ocSessionId");
-		}
+		expect(response).toMatchObject({
+			providerId: "mock",
+			sdkSessionId: "mock-session-123",
+		});
 		await waitForCondition(
-			() => store.get("mock", "mock-session-123") !== undefined,
+			() => codingSharedStore.get("mock", "mock-session-123") !== undefined,
 		);
 
 		expect(facade.lastParams?.prompt).toBe("implement the parser");
 		expect(facade.lastParams?.cwd).toBe(codeHome);
-		expect(facade.lastParams?.sessionId).toBe(ocSessionId);
 		expect(facade.lastParams?.systemPrompt).toBeUndefined();
 		expect(store.getActiveSessionId("mock")).toBe("chat-session-123");
 		expect(store.get("mock", "chat-session-123")?.tag).toBe("chat");
-		expect(store.get("mock", "mock-session-123")).toMatchObject({
-			ocSessionId,
+		expect(codingSharedStore.get("mock", "mock-session-123")).toMatchObject({
 			source: "code",
 			tag: "code",
 			title: "implement the parser",
 		});
 		expect(codingSessions.get("mock", "mock-session-123")).toMatchObject({
 			cwd: codeHome,
-			linkedChat: {
-				agentId: "agent-railly",
-				providerId: "mock",
-				sessionId: "chat-session-123",
-			},
-			status: "completed",
+			linkedChatSessionId: "chat-session-123",
+			lifecycleStatus: "open",
+			runStatus: "idle",
 		});
 
 		ws.close();

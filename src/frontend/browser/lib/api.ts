@@ -76,24 +76,14 @@ export async function fetchAgentSessions(
 	return parseJsonResponse(await fetch(url));
 }
 
-export async function fetchAgentCodingSessions(
-	agentId: string,
-	params: {
-		limit: number;
-		cursor?: SessionCursor;
-		linkedChat?: {
-			agentId: string;
-			providerId: string;
-			sessionId: string;
-		};
-		providerId?: string;
-		repositoryId?: string;
-	},
-): Promise<BrowserCodingSessionPageResponse> {
-	const url = new URL(
-		`/api/agents/${encodeURIComponent(agentId)}/coding-sessions`,
-		window.location.origin,
-	);
+export async function fetchCodingSessions(params: {
+	limit: number;
+	cursor?: SessionCursor;
+	linkedChatSessionId?: string;
+	providerId?: string;
+	repositoryId?: string;
+}): Promise<BrowserCodingSessionPageResponse> {
+	const url = new URL("/api/coding/sessions", window.location.origin);
 	url.searchParams.set("limit", String(params.limit));
 	if (params.cursor) {
 		url.searchParams.set("cursorLastActive", String(params.cursor.lastActive));
@@ -105,34 +95,30 @@ export async function fetchAgentCodingSessions(
 	if (params.repositoryId) {
 		url.searchParams.set("repositoryId", params.repositoryId);
 	}
-	if (params.linkedChat) {
-		url.searchParams.set("linkedChatAgentId", params.linkedChat.agentId);
-		url.searchParams.set("linkedChatProviderId", params.linkedChat.providerId);
-		url.searchParams.set("linkedChatSessionId", params.linkedChat.sessionId);
+	if (params.linkedChatSessionId) {
+		url.searchParams.set("linkedChatSessionId", params.linkedChatSessionId);
 	}
 	return parseJsonResponse(await fetch(url));
 }
 
-export async function fetchAgentCodingSession(
-	agentId: string,
+export async function fetchCodingSession(
 	providerId: string,
 	sdkSessionId: string,
 ): Promise<BrowserCodingSessionDetail> {
 	return parseJsonResponse(
 		await fetch(
-			`/api/agents/${encodeURIComponent(agentId)}/coding-sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}`,
+			`/api/coding/sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}`,
 		),
 	);
 }
 
-export async function deleteAgentCodingSession(
-	agentId: string,
+export async function deleteCodingSession(
 	providerId: string,
 	sdkSessionId: string,
 ): Promise<BrowserCodingSessionDeleteResponse> {
 	return parseJsonResponse(
 		await fetch(
-			`/api/agents/${encodeURIComponent(agentId)}/coding-sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}`,
+			`/api/coding/sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}`,
 			{
 				method: "DELETE",
 			},
@@ -158,26 +144,20 @@ export async function fetchCodingRepository(
 	);
 }
 
-export async function registerAgentCodingRepository(
-	agentId: string,
-	params: {
-		displayName?: string;
-		remoteUrl?: string;
-		rootCwd: string;
-		source?: "manual" | "clone";
-	},
-): Promise<BrowserCodingRepositoryDetail> {
+export async function registerCodingRepository(params: {
+	displayName?: string;
+	remoteUrl?: string;
+	rootCwd: string;
+	source?: "manual" | "clone";
+}): Promise<BrowserCodingRepositoryDetail> {
 	return parseJsonResponse(
-		await fetch(
-			`/api/agents/${encodeURIComponent(agentId)}/coding-repositories`,
-			{
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-				},
-				body: JSON.stringify(params),
+		await fetch("/api/coding/repositories", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
 			},
-		),
+			body: JSON.stringify(params),
+		}),
 	);
 }
 

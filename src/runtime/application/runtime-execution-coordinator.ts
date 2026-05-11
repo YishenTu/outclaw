@@ -256,6 +256,7 @@ export class RuntimeExecutionCoordinator {
 		const context = this.options.state.captureDetachedPromptContext(
 			task.prompt,
 			task.images,
+			{ resumeSessionId: task.resumeSessionId },
 		);
 		const lane = this.createDetachedLane(context.ocSessionId);
 		const queued = lane.queue.enqueue(() =>

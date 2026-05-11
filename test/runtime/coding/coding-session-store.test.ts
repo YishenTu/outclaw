@@ -3,23 +3,24 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
 	CodingSessionStore,
 } from "../../../src/runtime/coding/index.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 
-function createStores(agentId = "agent-railly") {
+function createStores(storageOwnerId = CODING_STORAGE_OWNER_ID) {
 	const dbPath = join(
 		mkdtempSync(join(tmpdir(), "outclaw-coding-sessions-")),
 		"sessions.sqlite",
 	);
 	const sessions = new SessionStore(dbPath, {
-		agentId,
+		agentId: storageOwnerId,
 		journalMode: "DELETE",
 	});
 	const codingSessions = new CodingSessionStore(dbPath, {
-		agentId,
 		journalMode: "DELETE",
+		storageOwnerId,
 	});
 	const repositories = new CodingRepositoryStore(dbPath, {
 		journalMode: "DELETE",
@@ -35,12 +36,8 @@ function insertCodingSession(
 		title: string;
 		timestamp: number;
 		cwd?: string;
-		linkedChat?: {
-			agentId: string;
-			providerId: string;
-			sessionId: string;
-		};
-		status?: "running" | "completed" | "failed";
+		linkedChatSessionId?: string;
+		runStatus?: "idle" | "running" | "failed";
 		repositoryId?: string;
 	},
 ) {
@@ -57,9 +54,9 @@ function insertCodingSession(
 		providerId: "codex",
 		sdkSessionId: params.id,
 		cwd: params.cwd ?? "/workspace/outclaw",
-		linkedChat: params.linkedChat,
+		linkedChatSessionId: params.linkedChatSessionId,
 		repositoryId: params.repositoryId,
-		status: params.status ?? "running",
+		runStatus: params.runStatus ?? "running",
 		timestamp: params.timestamp,
 	});
 }
@@ -81,26 +78,19 @@ describe("CodingSessionStore", () => {
 			providerId: "codex",
 			sdkSessionId: "codex-thread-1",
 			cwd: "/workspace/outclaw",
-			linkedChat: {
-				agentId: "agent-railly",
-				providerId: "claude",
-				sessionId: "chat-session-1",
-			},
-			status: "running",
+			linkedChatSessionId: "chat-session-1",
+			runStatus: "running",
 			timestamp: 20,
 		});
 
 		expect(codingSessions.get("codex", "codex-thread-1")).toEqual({
-			agentId: "agent-railly",
+			storageOwnerId: CODING_STORAGE_OWNER_ID,
 			providerId: "codex",
 			sdkSessionId: "codex-thread-1",
 			cwd: "/workspace/outclaw",
-			linkedChat: {
-				agentId: "agent-railly",
-				providerId: "claude",
-				sessionId: "chat-session-1",
-			},
-			status: "running",
+			linkedChatSessionId: "chat-session-1",
+			lifecycleStatus: "open",
+			runStatus: "running",
 			createdAt: 20,
 			lastActive: 20,
 		});
@@ -116,19 +106,19 @@ describe("CodingSessionStore", () => {
 	test("lists coding sessions with shared session metadata and cursor pagination", () => {
 		const { dbPath, sessions, codingSessions } = createStores();
 		const otherAgentSessions = new SessionStore(dbPath, {
-			agentId: "agent-mimi",
+			agentId: "other-coding-owner",
 			journalMode: "DELETE",
 		});
 		const otherAgentCodingSessions = new CodingSessionStore(dbPath, {
-			agentId: "agent-mimi",
 			journalMode: "DELETE",
+			storageOwnerId: "other-coding-owner",
 		});
 
 		insertCodingSession(sessions, codingSessions, {
 			id: "codex-old",
 			title: "Old code task",
 			timestamp: 10,
-			status: "completed",
+			runStatus: "idle",
 		});
 		insertCodingSession(sessions, codingSessions, {
 			id: "codex-new",
@@ -156,7 +146,7 @@ describe("CodingSessionStore", () => {
 		});
 		expect(firstPage.sessions).toEqual([
 			{
-				agentId: "agent-railly",
+				storageOwnerId: CODING_STORAGE_OWNER_ID,
 				providerId: "codex",
 				sdkSessionId: "codex-new",
 				title: "New code task",
@@ -164,7 +154,8 @@ describe("CodingSessionStore", () => {
 				source: "code",
 				tag: "code",
 				cwd: "/workspace/outclaw",
-				status: "running",
+				lifecycleStatus: "open",
+				runStatus: "running",
 				createdAt: 30,
 				lastActive: 30,
 			},
@@ -184,7 +175,7 @@ describe("CodingSessionStore", () => {
 			{
 				sdkSessionId: "codex-old",
 				title: "Old code task",
-				status: "completed",
+				runStatus: "idle",
 			},
 		]);
 		expect(codingSessions.getDetail("codex", "codex-new")).toMatchObject({
@@ -200,35 +191,26 @@ describe("CodingSessionStore", () => {
 		sessions.close();
 	});
 
-	test("filters coding sessions by linked chat identity", () => {
+	test("filters coding sessions by linked chat session id", () => {
 		const { sessions, codingSessions } = createStores();
-		const linkedChat = {
-			agentId: "agent-railly",
-			providerId: "claude",
-			sessionId: "chat-1",
-		};
 		insertCodingSession(sessions, codingSessions, {
 			id: "linked-code",
 			title: "Linked code task",
 			timestamp: 20,
-			linkedChat,
+			linkedChatSessionId: "chat-1",
 		});
 		insertCodingSession(sessions, codingSessions, {
 			id: "other-code",
 			title: "Other code task",
 			timestamp: 30,
-			linkedChat: {
-				agentId: "agent-railly",
-				providerId: "claude",
-				sessionId: "chat-2",
-			},
+			linkedChatSessionId: "chat-2",
 		});
 
 		expect(
 			codingSessions
 				.list({
 					providerId: "codex",
-					linkedChat,
+					linkedChatSessionId: "chat-1",
 				})
 				.sessions.map((session) => session.sdkSessionId),
 		).toEqual(["linked-code"]);
@@ -240,7 +222,6 @@ describe("CodingSessionStore", () => {
 	test("links coding sessions to registered repositories", () => {
 		const { sessions, codingSessions, repositories } = createStores();
 		const repo = repositories.register({
-			defaultAgentId: "agent-railly",
 			rootCwd: mkdtempSync(join(tmpdir(), "outclaw-code-repo-")),
 			source: "manual",
 			timestamp: 10,
@@ -272,13 +253,89 @@ describe("CodingSessionStore", () => {
 		sessions.close();
 	});
 
-	test("updates coding status, stores failure details, and deletes through the shared session row", () => {
+	test("resolves explicit and unambiguous bare coding session refs", () => {
+		const { sessions, codingSessions } = createStores();
+		insertCodingSession(sessions, codingSessions, {
+			id: "codex-code",
+			title: "Codex task",
+			timestamp: 20,
+		});
+		sessions.upsert({
+			providerId: "claude",
+			sdkSessionId: "shared-id",
+			title: "Claude code task",
+			model: "opus",
+			source: "code",
+			tag: "code",
+			timestamp: 30,
+		});
+		codingSessions.upsert({
+			providerId: "claude",
+			sdkSessionId: "shared-id",
+			cwd: "/workspace/claude",
+			runStatus: "idle",
+			timestamp: 30,
+		});
+		sessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "shared-id",
+			title: "Codex code task",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 40,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "shared-id",
+			cwd: "/workspace/codex",
+			runStatus: "idle",
+			timestamp: 40,
+		});
+
+		expect(
+			codingSessions.resolveRef({
+				providerId: "codex",
+				sdkSessionId: "shared-id",
+			}),
+		).toMatchObject({
+			status: "resolved",
+			session: {
+				providerId: "codex",
+				sdkSessionId: "shared-id",
+			},
+		});
+		expect(
+			codingSessions.resolveRef({ sdkSessionId: "codex-code" }),
+		).toMatchObject({
+			status: "resolved",
+			session: {
+				providerId: "codex",
+				sdkSessionId: "codex-code",
+			},
+		});
+		expect(codingSessions.resolveRef({ sdkSessionId: "shared-id" })).toEqual({
+			status: "ambiguous",
+			matches: [
+				{ providerId: "claude", sdkSessionId: "shared-id" },
+				{ providerId: "codex", sdkSessionId: "shared-id" },
+			],
+		});
+		expect(codingSessions.resolveRef({ sdkSessionId: "missing" })).toEqual({
+			status: "not_found",
+		});
+
+		codingSessions.close();
+		sessions.close();
+	});
+
+	test("updates coding run status, stores failure details, and deletes through the shared session row", () => {
 		const { sessions, codingSessions } = createStores();
 		insertCodingSession(sessions, codingSessions, {
 			id: "code-status",
 			title: "Status code task",
 			timestamp: 10,
-			status: "completed",
+			runStatus: "idle",
 		});
 
 		codingSessions.markRunning({
@@ -287,7 +344,8 @@ describe("CodingSessionStore", () => {
 			timestamp: 20,
 		});
 		expect(codingSessions.get("codex", "code-status")).toMatchObject({
-			status: "running",
+			lifecycleStatus: "open",
+			runStatus: "running",
 			lastActive: 20,
 		});
 
@@ -297,7 +355,8 @@ describe("CodingSessionStore", () => {
 			timestamp: 30,
 		});
 		expect(codingSessions.get("codex", "code-status")).toMatchObject({
-			status: "completed",
+			lifecycleStatus: "open",
+			runStatus: "idle",
 			lastActive: 30,
 		});
 
@@ -308,7 +367,8 @@ describe("CodingSessionStore", () => {
 			timestamp: 40,
 		});
 		expect(codingSessions.getDetail("codex", "code-status")).toMatchObject({
-			status: "failed",
+			lifecycleStatus: "open",
+			runStatus: "failed",
 			lastActive: 40,
 			failedAt: 40,
 			failureMessage: "Codex turn failed",

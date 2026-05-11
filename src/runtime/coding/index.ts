@@ -7,6 +7,7 @@ export {
 } from "./coding-repository-store.ts";
 export {
 	type CodePromptRequest,
+	type CodePromptResumeRequest,
 	type CodePromptStartResult,
 	type CodingRepositoryRegistrar,
 	CodingRuntime,
@@ -14,10 +15,12 @@ export {
 	createCodingRuntime,
 } from "./coding-runtime.ts";
 export {
+	CODING_STORAGE_OWNER_ID,
 	type CodingSessionDetail,
+	type CodingSessionLifecycleStatus,
 	type CodingSessionListResult,
 	type CodingSessionRecord,
-	type CodingSessionStatus,
+	type CodingSessionRefResolution,
+	type CodingSessionRunStatus,
 	CodingSessionStore,
-	type LinkedChatSession,
 } from "./coding-session-store.ts";

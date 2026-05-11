@@ -38,7 +38,6 @@ import type {
 	CodingRepositoryStore,
 	CodingSessionDetail,
 	CodingSessionStore,
-	LinkedChatSession,
 } from "../coding/index.ts";
 import {
 	readStoredAgentConfig,
@@ -83,7 +82,7 @@ import {
 interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
 	codingRepositories?: CodingRepositoryStore;
-	codingStoresByAgent?: Map<string, CodingSessionStore | undefined>;
+	codingSessions?: CodingSessionStore;
 	filesRoot?: string;
 	getBrowserClientAgentId?: (clientId: string) => string | undefined;
 	getRememberedAgentId: () => string | undefined;
@@ -126,41 +125,33 @@ export interface BrowserApi {
 			query?: string;
 		},
 	): Promise<BrowserSessionPageResponse>;
-	listAgentCodingSessions(
-		agentId: string,
-		params: {
-			limit: number;
-			cursor?: SessionCursor;
-			linkedChat?: LinkedChatSession;
-			providerId?: string;
-			repositoryId?: string;
-		},
-	): Promise<BrowserCodingSessionPageResponse>;
+	listCodingSessions(params: {
+		limit: number;
+		cursor?: SessionCursor;
+		linkedChatSessionId?: string;
+		providerId?: string;
+		repositoryId?: string;
+	}): Promise<BrowserCodingSessionPageResponse>;
 	listCodingRepositories(params?: {
 		includeArchived?: boolean;
 	}): Promise<BrowserCodingRepositoryListResponse>;
 	getCodingRepository(
 		repositoryId: string,
 	): Promise<BrowserCodingRepositoryDetail>;
-	registerAgentCodingRepository(
-		agentId: string,
-		params: {
-			displayName?: string;
-			remoteUrl?: string;
-			rootCwd: string;
-			source?: Extract<BrowserCodingRepositorySource, "manual" | "clone">;
-		},
-	): Promise<BrowserCodingRepositoryDetail>;
+	registerCodingRepository(params: {
+		displayName?: string;
+		remoteUrl?: string;
+		rootCwd: string;
+		source?: Extract<BrowserCodingRepositorySource, "manual" | "clone">;
+	}): Promise<BrowserCodingRepositoryDetail>;
 	archiveCodingRepository(
 		repositoryId: string,
 	): Promise<BrowserCodingRepositoryArchiveResponse>;
-	getAgentCodingSession(
-		agentId: string,
+	getCodingSession(
 		providerId: string,
 		sdkSessionId: string,
 	): Promise<BrowserCodingSessionDetail>;
-	deleteAgentCodingSession(
-		agentId: string,
+	deleteCodingSession(
 		providerId: string,
 		sdkSessionId: string,
 	): Promise<BrowserCodingSessionDeleteResponse>;
@@ -274,15 +265,14 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				nextCursor: nextSessionCursor(rows, params.limit),
 			};
 		},
-		async listAgentCodingSessions(agentId, params) {
-			requireAgent(agentsById, agentId);
-			const store = options.codingStoresByAgent?.get(agentId);
+		async listCodingSessions(params) {
+			const store = options.codingSessions;
 			if (!store) {
 				return { sessions: [] };
 			}
 			const result = store.list({
 				cursor: params.cursor,
-				linkedChat: params.linkedChat,
+				linkedChatSessionId: params.linkedChatSessionId,
 				limit: params.limit,
 				providerId: params.providerId,
 				repositoryId: params.repositoryId,
@@ -309,14 +299,12 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			}
 			return toBrowserCodingRepositorySummary(repository);
 		},
-		async registerAgentCodingRepository(agentId, params) {
-			requireAgent(agentsById, agentId);
+		async registerCodingRepository(params) {
 			if (!options.codingRepositories) {
 				throw new Error("Coding repository API is not configured");
 			}
 			return toBrowserCodingRepositorySummary(
 				options.codingRepositories.register({
-					defaultAgentId: agentId,
 					displayName: params.displayName,
 					remoteUrl: params.remoteUrl,
 					rootCwd: params.rootCwd,
@@ -338,11 +326,11 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				repository: toBrowserCodingRepositorySummary(repository),
 			};
 		},
-		async getAgentCodingSession(agentId, providerId, sdkSessionId) {
-			requireAgent(agentsById, agentId);
-			const session = options.codingStoresByAgent
-				?.get(agentId)
-				?.getDetail(providerId, sdkSessionId);
+		async getCodingSession(providerId, sdkSessionId) {
+			const session = options.codingSessions?.getDetail(
+				providerId,
+				sdkSessionId,
+			);
 			if (!session) {
 				throw new Error(
 					`Unknown coding session: ${providerId}/${sdkSessionId}`,
@@ -350,9 +338,8 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			}
 			return toBrowserCodingSessionSummary(session);
 		},
-		async deleteAgentCodingSession(agentId, providerId, sdkSessionId) {
-			requireAgent(agentsById, agentId);
-			const store = options.codingStoresByAgent?.get(agentId);
+		async deleteCodingSession(providerId, sdkSessionId) {
+			const store = options.codingSessions;
 			if (!store) {
 				throw new Error(
 					`Unknown coding session: ${providerId}/${sdkSessionId}`,
@@ -537,12 +524,15 @@ function toBrowserCodingSessionSummary(
 		model: session.model,
 		lastActive: session.lastActive,
 		cwd: session.cwd,
-		status: session.status,
+		lifecycleStatus: session.lifecycleStatus,
+		runStatus: session.runStatus,
 		createdAt: session.createdAt,
 		source: session.source,
 		tag: session.tag,
 		...(session.ocSessionId ? { ocSessionId: session.ocSessionId } : {}),
-		...(session.linkedChat ? { linkedChat: session.linkedChat } : {}),
+		...(session.linkedChatSessionId
+			? { linkedChatSessionId: session.linkedChatSessionId }
+			: {}),
 		...(session.browserTabId ? { browserTabId: session.browserTabId } : {}),
 		...(session.failedAt ? { failedAt: session.failedAt } : {}),
 		...(session.failureMessage
@@ -556,7 +546,6 @@ function toBrowserCodingRepositorySummary(
 ): BrowserCodingRepositorySummary {
 	return {
 		id: repository.id,
-		defaultAgentId: repository.defaultAgentId,
 		rootCwd: repository.rootCwd,
 		displayName: repository.displayName,
 		...(repository.remoteUrl ? { remoteUrl: repository.remoteUrl } : {}),

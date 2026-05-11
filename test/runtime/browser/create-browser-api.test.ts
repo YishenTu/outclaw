@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBrowserApi } from "../../../src/runtime/browser/create-browser-api.ts";
 import {
+	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
 	CodingSessionStore,
 } from "../../../src/runtime/coding/index.ts";
@@ -201,7 +202,7 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
-	test("lists agent coding sessions from the coding store", async () => {
+	test("lists coding sessions from the daemon coding store", async () => {
 		const root = createTempDir("outclaw-browser-coding-sessions-api-");
 		cleanupPaths.push(root);
 
@@ -209,13 +210,12 @@ describe("createBrowserApi", () => {
 		const agentHomeDir = join(root, "agents", "railly");
 		mkdirSync(agentHomeDir, { recursive: true });
 
-		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
-		const codingStore = new CodingSessionStore(dbPath, {
-			agentId: "agent-railly",
+		const store = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
 		});
+		const codingStore = new CodingSessionStore(dbPath);
 		const repositories = new CodingRepositoryStore(dbPath);
 		const repository = repositories.register({
-			defaultAgentId: "agent-railly",
 			rootCwd: join(root, "workspace"),
 			source: "manual",
 			timestamp: 100,
@@ -242,12 +242,8 @@ describe("createBrowserApi", () => {
 			sdkSessionId: "code-session",
 			repositoryId: repository.id,
 			cwd: join(root, "workspace"),
-			linkedChat: {
-				agentId: "agent-railly",
-				providerId: "claude",
-				sessionId: "chat-session",
-			},
-			status: "running",
+			linkedChatSessionId: "chat-session",
+			runStatus: "running",
 			timestamp: 250,
 		});
 		store.upsert({
@@ -263,7 +259,7 @@ describe("createBrowserApi", () => {
 			providerId: "codex",
 			sdkSessionId: "other-code-session",
 			cwd: join(root, "other-workspace"),
-			status: "running",
+			runStatus: "running",
 			timestamp: 300,
 		});
 
@@ -277,7 +273,7 @@ describe("createBrowserApi", () => {
 					terminalRunCommand: "",
 				},
 			],
-			codingStoresByAgent: new Map([["agent-railly", codingStore]]),
+			codingSessions: codingStore,
 			getRememberedAgentId: () => "agent-railly",
 			gitRoot: root,
 			homeDir: root,
@@ -285,7 +281,7 @@ describe("createBrowserApi", () => {
 		});
 
 		await expect(
-			api.listAgentCodingSessions("agent-railly", {
+			api.listCodingSessions({
 				limit: 10,
 				repositoryId: repository.id,
 			}),
@@ -299,15 +295,12 @@ describe("createBrowserApi", () => {
 					model: "gpt-5.5",
 					lastActive: 250,
 					cwd: join(root, "workspace"),
-					status: "running",
+					lifecycleStatus: "open",
+					runStatus: "running",
 					createdAt: 250,
 					source: "code",
 					tag: "code",
-					linkedChat: {
-						agentId: "agent-railly",
-						providerId: "claude",
-						sessionId: "chat-session",
-					},
+					linkedChatSessionId: "chat-session",
 				},
 			],
 		});
@@ -317,7 +310,7 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
-	test("reads agent coding session detail by provider session identity", async () => {
+	test("reads coding session detail by provider session identity", async () => {
 		const root = createTempDir("outclaw-browser-coding-session-detail-api-");
 		cleanupPaths.push(root);
 
@@ -325,10 +318,10 @@ describe("createBrowserApi", () => {
 		const agentHomeDir = join(root, "agents", "railly");
 		mkdirSync(agentHomeDir, { recursive: true });
 
-		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
-		const codingStore = new CodingSessionStore(dbPath, {
-			agentId: "agent-railly",
+		const store = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
 		});
+		const codingStore = new CodingSessionStore(dbPath);
 		store.upsert({
 			providerId: "codex",
 			sdkSessionId: "code-detail",
@@ -344,7 +337,7 @@ describe("createBrowserApi", () => {
 			sdkSessionId: "code-detail",
 			cwd: join(root, "workspace"),
 			browserTabId: "tab-code-detail",
-			status: "completed",
+			runStatus: "idle",
 			timestamp: 150,
 		});
 
@@ -358,35 +351,36 @@ describe("createBrowserApi", () => {
 					terminalRunCommand: "",
 				},
 			],
-			codingStoresByAgent: new Map([["agent-railly", codingStore]]),
+			codingSessions: codingStore,
 			getRememberedAgentId: () => "agent-railly",
 			gitRoot: root,
 			homeDir: root,
 			storesByAgent: new Map([["agent-railly", store]]),
 		});
 
-		await expect(
-			api.getAgentCodingSession("agent-railly", "codex", "code-detail"),
-		).resolves.toEqual({
-			providerId: "codex",
-			sdkSessionId: "code-detail",
-			ocSessionId: "oc-code-detail",
-			title: "Implement detail route",
-			model: "gpt-5.5",
-			lastActive: 150,
-			cwd: join(root, "workspace"),
-			status: "completed",
-			createdAt: 150,
-			source: "code",
-			tag: "code",
-			browserTabId: "tab-code-detail",
-		});
+		await expect(api.getCodingSession("codex", "code-detail")).resolves.toEqual(
+			{
+				providerId: "codex",
+				sdkSessionId: "code-detail",
+				ocSessionId: "oc-code-detail",
+				title: "Implement detail route",
+				model: "gpt-5.5",
+				lastActive: 150,
+				cwd: join(root, "workspace"),
+				lifecycleStatus: "open",
+				runStatus: "idle",
+				createdAt: 150,
+				source: "code",
+				tag: "code",
+				browserTabId: "tab-code-detail",
+			},
+		);
 
 		codingStore.close();
 		store.close();
 	});
 
-	test("deletes agent coding sessions through the coding store", async () => {
+	test("deletes coding sessions through the daemon coding store", async () => {
 		const root = createTempDir("outclaw-browser-coding-session-delete-api-");
 		cleanupPaths.push(root);
 
@@ -394,10 +388,10 @@ describe("createBrowserApi", () => {
 		const agentHomeDir = join(root, "agents", "railly");
 		mkdirSync(agentHomeDir, { recursive: true });
 
-		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
-		const codingStore = new CodingSessionStore(dbPath, {
-			agentId: "agent-railly",
+		const store = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
 		});
+		const codingStore = new CodingSessionStore(dbPath);
 		store.upsert({
 			providerId: "codex",
 			sdkSessionId: "code-delete",
@@ -411,7 +405,7 @@ describe("createBrowserApi", () => {
 			providerId: "codex",
 			sdkSessionId: "code-delete",
 			cwd: join(root, "workspace"),
-			status: "completed",
+			runStatus: "idle",
 			timestamp: 100,
 		});
 
@@ -425,7 +419,7 @@ describe("createBrowserApi", () => {
 					terminalRunCommand: "",
 				},
 			],
-			codingStoresByAgent: new Map([["agent-railly", codingStore]]),
+			codingSessions: codingStore,
 			getRememberedAgentId: () => "agent-railly",
 			gitRoot: root,
 			homeDir: root,
@@ -433,15 +427,15 @@ describe("createBrowserApi", () => {
 		});
 
 		await expect(
-			api.deleteAgentCodingSession("agent-railly", "codex", "code-delete"),
+			api.deleteCodingSession("codex", "code-delete"),
 		).resolves.toEqual({
 			deleted: true,
 			providerId: "codex",
 			sdkSessionId: "code-delete",
 		});
-		await expect(
-			api.getAgentCodingSession("agent-railly", "codex", "code-delete"),
-		).rejects.toThrow("Unknown coding session: codex/code-delete");
+		await expect(api.getCodingSession("codex", "code-delete")).rejects.toThrow(
+			"Unknown coding session: codex/code-delete",
+		);
 		expect(store.get("codex", "code-delete")).toBeUndefined();
 
 		codingStore.close();
@@ -477,11 +471,10 @@ describe("createBrowserApi", () => {
 			storesByAgent: new Map([["agent-railly", store]]),
 		});
 
-		const registered = await api.registerAgentCodingRepository("agent-railly", {
+		const registered = await api.registerCodingRepository({
 			rootCwd: repoRoot,
 		});
 		expect(registered).toMatchObject({
-			defaultAgentId: "agent-railly",
 			displayName: "outclaw",
 			rootCwd: realpathSync(repoRoot),
 			source: "manual",

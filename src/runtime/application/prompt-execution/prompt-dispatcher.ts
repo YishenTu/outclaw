@@ -40,6 +40,7 @@ export interface PromptExecution {
 	onEvent?: (event: FacadeEvent) => void;
 	prompt: string;
 	replyContext?: ReplyContext;
+	resumeSessionId?: string;
 	sender?: import("../../transport/client-hub.ts").WsClient;
 	source: PromptSource;
 	sessionTag?: SessionTag;
