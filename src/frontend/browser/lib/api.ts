@@ -1,11 +1,16 @@
+import type { EffortLevel } from "../../../common/commands.ts";
 import type {
 	BrowserAgentsResponse,
+	BrowserCodingFolderPickerResponse,
+	BrowserCodingModelsResponse,
 	BrowserCodingRepositoryArchiveResponse,
 	BrowserCodingRepositoryDetail,
 	BrowserCodingRepositoryListResponse,
 	BrowserCodingSessionDeleteResponse,
 	BrowserCodingSessionDetail,
 	BrowserCodingSessionPageResponse,
+	BrowserCodingSessionResumeResponse,
+	BrowserCodingSessionStartResponse,
 	BrowserConfigResponse,
 	BrowserCronEntry,
 	BrowserCronHistoryCursor,
@@ -81,6 +86,7 @@ export async function fetchCodingSessions(params: {
 	cursor?: SessionCursor;
 	linkedChatSessionId?: string;
 	providerId?: string;
+	query?: string;
 	repositoryId?: string;
 }): Promise<BrowserCodingSessionPageResponse> {
 	const url = new URL("/api/coding/sessions", window.location.origin);
@@ -97,6 +103,9 @@ export async function fetchCodingSessions(params: {
 	}
 	if (params.linkedChatSessionId) {
 		url.searchParams.set("linkedChatSessionId", params.linkedChatSessionId);
+	}
+	if (params.query?.trim()) {
+		url.searchParams.set("query", params.query.trim());
 	}
 	return parseJsonResponse(await fetch(url));
 }
@@ -126,6 +135,144 @@ export async function deleteCodingSession(
 	);
 }
 
+export async function renameCodingSession(
+	providerId: string,
+	sdkSessionId: string,
+	title: string,
+): Promise<BrowserCodingSessionDetail> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}`,
+			{
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ title }),
+			},
+		),
+	);
+}
+
+export async function startCodingSession(params: {
+	repositoryId?: string;
+	cwd?: string;
+	prompt: string;
+	linkedChatSessionId?: string;
+	model?: string;
+	effort?: EffortLevel;
+	serviceTier?: string;
+}): Promise<BrowserCodingSessionStartResponse> {
+	return parseJsonResponse(
+		await fetch("/api/coding/sessions", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(params),
+		}),
+	);
+}
+
+export async function resumeCodingSession(params: {
+	providerId: string;
+	sdkSessionId: string;
+	prompt: string;
+	model?: string;
+	effort?: EffortLevel;
+	serviceTier?: string;
+}): Promise<BrowserCodingSessionResumeResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/sessions/${encodeURIComponent(params.providerId)}/${encodeURIComponent(params.sdkSessionId)}/resume`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					prompt: params.prompt,
+					...(params.model ? { model: params.model } : {}),
+					...(params.effort ? { effort: params.effort } : {}),
+					...(params.serviceTier ? { serviceTier: params.serviceTier } : {}),
+				}),
+			},
+		),
+	);
+}
+
+export async function fetchCodingModels(): Promise<BrowserCodingModelsResponse> {
+	return parseJsonResponse(await fetch("/api/coding/models"));
+}
+
+export interface CodingSessionEventStreamItem {
+	providerId: string;
+	sdkSessionId: string;
+	sequence: number;
+	event: unknown;
+	createdAt: number;
+}
+
+export function openCodingSessionEventStream(params: {
+	providerId: string;
+	sdkSessionId: string;
+	sinceSequence?: number;
+	onEvent: (item: CodingSessionEventStreamItem) => void;
+	onError?: (message: string) => void;
+	reconnectDelayMs?: number;
+}): () => void {
+	let lastSequence = params.sinceSequence;
+	let closed = false;
+	let source: EventSource | undefined;
+	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+	const reconnectDelayMs = params.reconnectDelayMs ?? 1000;
+
+	const connect = () => {
+		if (closed) {
+			return;
+		}
+		const url = new URL(
+			`/api/coding/sessions/${encodeURIComponent(params.providerId)}/${encodeURIComponent(params.sdkSessionId)}/events`,
+			window.location.origin,
+		);
+		if (lastSequence !== undefined) {
+			url.searchParams.set("sinceSequence", String(lastSequence));
+		}
+		source = new EventSource(url.toString());
+		source.onmessage = (event) => {
+			try {
+				const parsed = JSON.parse(event.data) as CodingSessionEventStreamItem;
+				lastSequence = parsed.sequence;
+				params.onEvent(parsed);
+			} catch (err) {
+				params.onError?.(
+					err instanceof Error ? err.message : "Malformed coding event payload",
+				);
+			}
+		};
+		source.addEventListener("error", () => {
+			if (closed || !source) {
+				return;
+			}
+			// EventSource.readyState === 2 (CLOSED) means the connection is dead;
+			// readyState === 0 (CONNECTING) means the built-in retry is already in
+			// flight, so we let it ride.
+			if (source.readyState === EventSource.CLOSED) {
+				source.close();
+				source = undefined;
+				params.onError?.("Coding event stream interrupted; reconnecting");
+				reconnectTimer = setTimeout(connect, reconnectDelayMs);
+			}
+		});
+	};
+
+	connect();
+
+	return () => {
+		closed = true;
+		if (reconnectTimer) {
+			clearTimeout(reconnectTimer);
+			reconnectTimer = undefined;
+		}
+		source?.close();
+		source = undefined;
+	};
+}
+
 export async function fetchCodingRepositories(params?: {
 	includeArchived?: boolean;
 }): Promise<BrowserCodingRepositoryListResponse> {
@@ -141,6 +288,14 @@ export async function fetchCodingRepository(
 ): Promise<BrowserCodingRepositoryDetail> {
 	return parseJsonResponse(
 		await fetch(`/api/coding/repositories/${encodeURIComponent(repositoryId)}`),
+	);
+}
+
+export async function pickCodingRepositoryFolder(): Promise<BrowserCodingFolderPickerResponse> {
+	return parseJsonResponse(
+		await fetch("/api/coding/folder-picker", {
+			method: "POST",
+		}),
 	);
 }
 
@@ -210,6 +365,16 @@ export async function fetchAgentTree(
 ): Promise<BrowserTreeEntry[]> {
 	return parseJsonResponse(
 		await fetch(`/api/agents/${encodeURIComponent(agentId)}/tree`),
+	);
+}
+
+export async function fetchCodingRepositoryTree(
+	repositoryId: string,
+): Promise<BrowserTreeEntry[]> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/repositories/${encodeURIComponent(repositoryId)}/tree`,
+		),
 	);
 }
 
@@ -404,13 +569,35 @@ export async function writeAgentFile(
 	return parseJsonResponse(response);
 }
 
-export async function fetchGitStatus(): Promise<BrowserGitStatusResponse> {
-	return parseJsonResponse(await fetch("/api/git/status"));
+function appendRepositoryIdParam(
+	url: URL,
+	params?: { repositoryId?: string },
+): URL {
+	if (params?.repositoryId) {
+		url.searchParams.set("repositoryId", params.repositoryId);
+	}
+	return url;
 }
 
-export async function initGitRepo(): Promise<BrowserGitStatusResponse> {
+export async function fetchGitStatus(params?: {
+	repositoryId?: string;
+}): Promise<BrowserGitStatusResponse> {
+	const url = appendRepositoryIdParam(
+		new URL("/api/git/status", window.location.origin),
+		params,
+	);
+	return parseJsonResponse(await fetch(url));
+}
+
+export async function initGitRepo(params?: {
+	repositoryId?: string;
+}): Promise<BrowserGitStatusResponse> {
+	const url = appendRepositoryIdParam(
+		new URL("/api/git/init", window.location.origin),
+		params,
+	);
 	return parseJsonResponse(
-		await fetch("/api/git/init", {
+		await fetch(url, {
 			method: "POST",
 		}),
 	);
@@ -418,16 +605,24 @@ export async function initGitRepo(): Promise<BrowserGitStatusResponse> {
 
 export async function fetchGitDiff(
 	path: string,
+	params?: { repositoryId?: string },
 ): Promise<BrowserGitDiffResponse> {
-	const url = new URL("/api/git/diff", window.location.origin);
+	const url = appendRepositoryIdParam(
+		new URL("/api/git/diff", window.location.origin),
+		params,
+	);
 	url.searchParams.set("path", path);
 	return parseJsonResponse(await fetch(url));
 }
 
 export async function fetchGitCommit(
 	sha: string,
+	params?: { repositoryId?: string },
 ): Promise<BrowserGitCommitResponse> {
-	const url = new URL("/api/git/commit", window.location.origin);
+	const url = appendRepositoryIdParam(
+		new URL("/api/git/commit", window.location.origin),
+		params,
+	);
 	url.searchParams.set("sha", sha);
 	return parseJsonResponse(await fetch(url));
 }

@@ -13,6 +13,10 @@ import { AppLayoutView, type ResizeSide } from "./app-layout-view.tsx";
 import { MobileLayoutView } from "./mobile-layout-view.tsx";
 
 export function AppLayout() {
+	return <ChatAppLayout />;
+}
+
+function ChatAppLayout() {
 	useRolloverNoticeAutoDismiss();
 	const isMobile = useIsMobile();
 

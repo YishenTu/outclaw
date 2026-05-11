@@ -1,6 +1,11 @@
+import { existsSync, realpathSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
+import { relative, resolve } from "node:path";
+import type { EffortLevel } from "../../common/commands.ts";
 import type {
 	BrowserAgentsResponse,
+	BrowserCodingFolderPickerResponse,
+	BrowserCodingModelsResponse,
 	BrowserCodingRepositoryArchiveResponse,
 	BrowserCodingRepositoryDetail,
 	BrowserCodingRepositoryListResponse,
@@ -9,6 +14,8 @@ import type {
 	BrowserCodingSessionDeleteResponse,
 	BrowserCodingSessionDetail,
 	BrowserCodingSessionPageResponse,
+	BrowserCodingSessionResumeResponse,
+	BrowserCodingSessionStartResponse,
 	BrowserCodingSessionSummary,
 	BrowserConfigResponse,
 	BrowserCronEntry,
@@ -29,6 +36,7 @@ import type {
 	BrowserTreeEntry,
 	ImageMediaType,
 	ImageRef,
+	ProviderModelInfo,
 	SessionCursor,
 	TranscriptTurn,
 	WorkspaceFileEntry,
@@ -36,9 +44,13 @@ import type {
 import type {
 	CodingRepositoryRecord,
 	CodingRepositoryStore,
+	CodingRuntime,
 	CodingSessionDetail,
+	CodingSessionEventRecorder,
 	CodingSessionStore,
+	StoredCodingSessionEvent,
 } from "../coding/index.ts";
+import { replayThenFollowCodingSessionEvents } from "../coding/index.ts";
 import {
 	readStoredAgentConfig,
 	writeStoredAgentConfig,
@@ -51,6 +63,10 @@ import {
 	listBrowserAgents,
 	toBrowserSessionSummary,
 } from "./agent-sidebar/read-model.ts";
+import {
+	createNativeFolderPicker,
+	type FolderPicker,
+} from "./coding/folder-picker.ts";
 import { BROWSER_CONFIG_SCHEMA } from "./config/schema.ts";
 import { listCronRunsForJob } from "./cron/history.ts";
 import { listCronEntries, setCronEnabled } from "./cron/workbench.ts";
@@ -79,11 +95,23 @@ import {
 	resolveWritablePathWithinRoot,
 } from "./paths/path-safety.ts";
 
+// The browser API only needs the start/resume slice of the coding runtime,
+// plus an optional model catalog supplied by the surrounding CodingService.
+// Accept the full CodingRuntime slice directly so production wiring and tests
+// share one source of truth for method signatures.
+export interface BrowserCodingService
+	extends Pick<CodingRuntime, "startPrompt" | "resumePrompt"> {
+	listModels?(): Promise<ProviderModelInfo[]>;
+}
+
 interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
+	coding?: BrowserCodingService;
+	codingEvents?: CodingSessionEventRecorder;
 	codingRepositories?: CodingRepositoryStore;
 	codingSessions?: CodingSessionStore;
 	filesRoot?: string;
+	pickCodingFolder?: FolderPicker;
 	getBrowserClientAgentId?: (clientId: string) => string | undefined;
 	getRememberedAgentId: () => string | undefined;
 	gitRoot: string;
@@ -130,6 +158,7 @@ export interface BrowserApi {
 		cursor?: SessionCursor;
 		linkedChatSessionId?: string;
 		providerId?: string;
+		query?: string;
 		repositoryId?: string;
 	}): Promise<BrowserCodingSessionPageResponse>;
 	listCodingRepositories(params?: {
@@ -147,6 +176,7 @@ export interface BrowserApi {
 	archiveCodingRepository(
 		repositoryId: string,
 	): Promise<BrowserCodingRepositoryArchiveResponse>;
+	pickCodingRepositoryFolder(): Promise<BrowserCodingFolderPickerResponse>;
 	getCodingSession(
 		providerId: string,
 		sdkSessionId: string,
@@ -155,9 +185,40 @@ export interface BrowserApi {
 		providerId: string,
 		sdkSessionId: string,
 	): Promise<BrowserCodingSessionDeleteResponse>;
+	renameCodingSession(
+		providerId: string,
+		sdkSessionId: string,
+		title: string,
+	): Promise<BrowserCodingSessionDetail>;
+	startCodingSession(params: {
+		repositoryId?: string;
+		cwd?: string;
+		prompt: string;
+		linkedChatSessionId?: string;
+		model?: string;
+		effort?: EffortLevel;
+		serviceTier?: string;
+	}): Promise<BrowserCodingSessionStartResponse>;
+	resumeCodingSession(params: {
+		providerId: string;
+		sdkSessionId: string;
+		prompt: string;
+		model?: string;
+		effort?: EffortLevel;
+		serviceTier?: string;
+	}): Promise<BrowserCodingSessionResumeResponse>;
+	listCodingModels(): Promise<BrowserCodingModelsResponse>;
+	openCodingSessionEventStream(params: {
+		providerId: string;
+		sdkSessionId: string;
+		sinceSequence?: number;
+		signal?: AbortSignal;
+	}): AsyncIterable<StoredCodingSessionEvent>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
 	listAgentGraph(agentId: string): Promise<BrowserGraphResponse>;
 	listAgentWorkspaceFiles(agentId: string): Promise<WorkspaceFileEntry[]>;
+	listCodingRepositoryTree(repositoryId: string): Promise<BrowserTreeEntry[]>;
+	getCodingRepositoryCwd(repositoryId: string): string | undefined;
 	readConfigFile(): Promise<BrowserConfigResponse>;
 	writeConfigFile(
 		document: Record<string, unknown>,
@@ -176,10 +237,20 @@ export interface BrowserApi {
 		content: string,
 		expected: { mtimeMs: number; sha256: string },
 	): Promise<BrowserFileResponse>;
-	initGitRepo(): Promise<BrowserGitStatusResponse>;
-	readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
-	readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
-	readGitStatus(): Promise<BrowserGitStatusResponse>;
+	initGitRepo(params?: {
+		repositoryId?: string;
+	}): Promise<BrowserGitStatusResponse>;
+	readGitCommit(
+		sha: string,
+		params?: { repositoryId?: string },
+	): Promise<BrowserGitCommitResponse>;
+	readGitDiff(
+		path: string,
+		params?: { repositoryId?: string },
+	): Promise<BrowserGitDiffResponse>;
+	readGitStatus(params?: {
+		repositoryId?: string;
+	}): Promise<BrowserGitStatusResponse>;
 	restoreAgentInboxItem(
 		agentId: string,
 		archivedPath: string,
@@ -200,10 +271,30 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		options.agents.map((agent) => [agent.agentId, agent] as const),
 	);
 	const ignoredGitPaths = normalizeGitPaths(options.ignoredGitPaths ?? []);
+	const pickCodingFolder =
+		options.pickCodingFolder ?? createNativeFolderPicker();
+
+	function resolveRepositoryCwd(repositoryId: string): string {
+		const repository = options.codingRepositories?.get(repositoryId);
+		if (!repository) {
+			throw new Error(`Unknown coding repository: ${repositoryId}`);
+		}
+		return repository.rootCwd;
+	}
+
+	function resolveGitCwd(params?: { repositoryId?: string }): string {
+		if (params?.repositoryId) {
+			return resolveRepositoryCwd(params.repositoryId);
+		}
+		return options.gitRoot;
+	}
 
 	return {
 		getAgentTerminalCwd(agentId) {
 			return agentsById.get(agentId)?.homeDir;
+		},
+		getCodingRepositoryCwd(repositoryId) {
+			return options.codingRepositories?.get(repositoryId)?.rootCwd;
 		},
 		listAgents(params) {
 			return listBrowserAgents({
@@ -270,14 +361,17 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			if (!store) {
 				return { sessions: [] };
 			}
+			const query = params.query?.trim();
 			const result = store.list({
 				cursor: params.cursor,
 				linkedChatSessionId: params.linkedChatSessionId,
 				limit: params.limit,
 				providerId: params.providerId,
+				...(query ? { query } : {}),
 				repositoryId: params.repositoryId,
 			});
 			return {
+				...(query ? { query } : {}),
 				sessions: result.sessions.map(toBrowserCodingSessionSummary),
 				nextCursor: result.nextCursor,
 			};
@@ -311,6 +405,9 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					source: params.source ?? "manual",
 				}),
 			);
+		},
+		async pickCodingRepositoryFolder() {
+			return await pickCodingFolder();
 		},
 		async archiveCodingRepository(repositoryId) {
 			if (!options.codingRepositories) {
@@ -357,6 +454,128 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				providerId,
 				sdkSessionId,
 			};
+		},
+		async renameCodingSession(providerId, sdkSessionId, title) {
+			const store = options.codingSessions;
+			if (!store) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			const trimmed = title.trim();
+			if (trimmed === "") {
+				throw new Error("Coding session title cannot be empty");
+			}
+			const session = store.getDetail(providerId, sdkSessionId);
+			if (!session) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			store.rename(providerId, sdkSessionId, trimmed);
+			const renamed = store.getDetail(providerId, sdkSessionId);
+			if (!renamed) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			return toBrowserCodingSessionSummary(renamed);
+		},
+		async startCodingSession(params) {
+			const coding = options.coding;
+			if (!coding) {
+				return {
+					status: "rejected",
+					message: "Coding service is not configured",
+				};
+			}
+			const prompt = params.prompt?.trim();
+			if (!prompt) {
+				return {
+					status: "rejected",
+					message: "Coding session start requires a prompt",
+				};
+			}
+			let cwd: string | undefined = params.cwd;
+			if (params.repositoryId) {
+				const repository = options.codingRepositories?.get(params.repositoryId);
+				if (!repository) {
+					return {
+						status: "rejected",
+						message: `Unknown coding repository: ${params.repositoryId}`,
+					};
+				}
+				if (params.cwd && !isPathWithin(repository.rootCwd, params.cwd)) {
+					return {
+						status: "rejected",
+						message: `Coding session cwd must be within repository root: ${repository.rootCwd}`,
+					};
+				}
+				cwd = cwd ?? repository.rootCwd;
+			}
+			if (!cwd) {
+				return {
+					status: "rejected",
+					message:
+						"Coding session start requires either a repository id or an explicit cwd",
+				};
+			}
+			return coding.startPrompt({
+				cwd,
+				...(params.linkedChatSessionId
+					? { linkedChatSessionId: params.linkedChatSessionId }
+					: {}),
+				prompt,
+				...(params.model ? { model: params.model } : {}),
+				...(params.effort ? { effort: params.effort } : {}),
+				...(params.serviceTier ? { serviceTier: params.serviceTier } : {}),
+			});
+		},
+		openCodingSessionEventStream(params) {
+			const log = options.codingEvents;
+			if (!log) {
+				return emptyAsyncIterable();
+			}
+			return replayThenFollowCodingSessionEvents(log, {
+				providerId: params.providerId,
+				sdkSessionId: params.sdkSessionId,
+				...(params.sinceSequence !== undefined
+					? { sinceSequence: params.sinceSequence }
+					: {}),
+				...(params.signal ? { signal: params.signal } : {}),
+			});
+		},
+		async resumeCodingSession(params) {
+			const coding = options.coding;
+			if (!coding) {
+				return {
+					status: "rejected",
+					message: "Coding service is not configured",
+				};
+			}
+			const prompt = params.prompt?.trim();
+			if (!prompt) {
+				return {
+					status: "rejected",
+					message: "Coding session resume requires a prompt",
+				};
+			}
+			return coding.resumePrompt({
+				providerId: params.providerId,
+				sdkSessionId: params.sdkSessionId,
+				prompt,
+				...(params.model ? { model: params.model } : {}),
+				...(params.effort ? { effort: params.effort } : {}),
+				...(params.serviceTier ? { serviceTier: params.serviceTier } : {}),
+			});
+		},
+		async listCodingModels() {
+			const coding = options.coding;
+			if (!coding?.listModels) {
+				return { models: [] };
+			}
+			const models = await coding.listModels();
+			return { models };
 		},
 		async archiveAgentInboxItem(agentId, relativePath) {
 			const agent = requireAgent(agentsById, agentId);
@@ -475,17 +694,22 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				...(gitChange ? { gitChange } : {}),
 			};
 		},
-		async readGitStatus() {
-			return readGitStatusWorkbench(options.gitRoot, ignoredGitPaths);
+		async readGitStatus(params) {
+			return readGitStatusWorkbench(resolveGitCwd(params), ignoredGitPaths);
 		},
-		async initGitRepo() {
-			return initGitRepoWorkbench(options.gitRoot, ignoredGitPaths);
+		async initGitRepo(params) {
+			return initGitRepoWorkbench(resolveGitCwd(params), ignoredGitPaths);
 		},
-		async readGitCommit(sha) {
-			return readGitCommitWorkbench(options.gitRoot, sha);
+		async readGitCommit(sha, params) {
+			return readGitCommitWorkbench(resolveGitCwd(params), sha);
 		},
-		async readGitDiff(path) {
-			return readGitDiffWorkbench(options.gitRoot, path);
+		async readGitDiff(path, params) {
+			return readGitDiffWorkbench(resolveGitCwd(params), path);
+		},
+		async listCodingRepositoryTree(repositoryId) {
+			const cwd = resolveRepositoryCwd(repositoryId);
+			const gitStatuses = readAgentTreeGitStatuses(cwd, cwd, ignoredGitPaths);
+			return await listTreeEntries(cwd, cwd, gitStatuses);
 		},
 		async uploadImages(images) {
 			if (!options.filesRoot) {
@@ -588,6 +812,26 @@ function resolveBrowserActiveAgentId(params: {
 	return params.getRememberedAgentId();
 }
 
+function isPathWithin(root: string, candidate: string): boolean {
+	const absoluteRoot = canonicalizeForCompare(root);
+	const absoluteCandidate = canonicalizeForCompare(candidate);
+	if (absoluteCandidate === absoluteRoot) {
+		return true;
+	}
+	const rel = relative(absoluteRoot, absoluteCandidate);
+	return rel !== "" && !rel.startsWith("..");
+}
+
+function canonicalizeForCompare(path: string): string {
+	const absolute = resolve(path);
+	return existsSync(absolute) ? realpathSync(absolute) : absolute;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// biome-ignore lint/correctness/useYield: intentionally yields nothing
+async function* emptyAsyncIterable<T>(): AsyncIterable<T> {
+	return;
 }

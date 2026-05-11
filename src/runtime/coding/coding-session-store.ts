@@ -7,6 +7,10 @@ import {
 	openSqliteDatabase,
 	type SqliteJournalMode,
 } from "../persistence/session-store/sqlite-file-lifecycle.ts";
+import {
+	normalizeTitleSearchTokens,
+	titleMatchesSearchTokens,
+} from "../persistence/title-search.ts";
 import { ensureCodingRepositoryStoreSchema } from "./coding-repository-store.ts";
 
 export type CodingSessionLifecycleStatus = "open" | "archived";
@@ -242,12 +246,30 @@ export class CodingSessionStore {
 			});
 	}
 
+	rename(providerId: string, sdkSessionId: string, title: string) {
+		this.db
+			.query(
+				`UPDATE sessions
+				 SET title = $title
+				 WHERE agent_id = $agentId
+				   AND provider_id = $providerId
+				   AND sdk_session_id = $sdkSessionId`,
+			)
+			.run({
+				$agentId: this.storageOwnerId,
+				$providerId: providerId,
+				$sdkSessionId: sdkSessionId,
+				$title: title,
+			});
+	}
+
 	list(
 		options: {
 			cursor?: SessionCursor;
 			linkedChatSessionId?: string;
 			limit?: number;
 			providerId?: string;
+			query?: string;
 			repositoryId?: string;
 		} = {},
 	): CodingSessionListResult {
@@ -284,7 +306,13 @@ export class CodingSessionStore {
 			params.$cursorSessionId = options.cursor.sdkSessionId;
 		}
 
-		const sessions = mapCodingSessionDetailRows(
+		const tokens = options.query
+			? normalizeTitleSearchTokens(options.query)
+			: [];
+		const filtering = tokens.length > 0;
+		const limitClause = filtering ? "" : "LIMIT $limit";
+
+		const matched = mapCodingSessionDetailRows(
 			this.db
 				.query(
 					`SELECT
@@ -313,11 +341,14 @@ export class CodingSessionStore {
 					 AND s.sdk_session_id = c.sdk_session_id
 					WHERE ${conditions.join(" AND ")}
 					ORDER BY c.last_active DESC, c.sdk_session_id ASC
-					LIMIT $limit`,
+					${limitClause}`,
 				)
 				.all(params) as CodingSessionDetailDatabaseRow[],
+		).filter((row) =>
+			filtering ? titleMatchesSearchTokens(row.title, tokens) : true,
 		);
 
+		const sessions = filtering ? matched.slice(0, limit) : matched;
 		return {
 			sessions,
 			nextCursor: nextCodingSessionCursor(sessions, limit),
@@ -482,7 +513,7 @@ export class CodingSessionStore {
 	}
 }
 
-function ensureCodingSessionStoreSchema(db: Database) {
+export function ensureCodingSessionStoreSchema(db: Database) {
 	ensureCodingRepositoryStoreSchema(db);
 	db.exec(`CREATE TABLE IF NOT EXISTS coding_sessions (
 		agent_id TEXT NOT NULL,

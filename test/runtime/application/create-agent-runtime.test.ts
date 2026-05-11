@@ -11,7 +11,9 @@ import { createAgentRuntime } from "../../../src/runtime/application/create-agen
 import {
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
+	CodingSessionEventStore,
 	CodingSessionStore,
+	createCodingService,
 } from "../../../src/runtime/coding/index.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
@@ -424,7 +426,7 @@ describe("createAgentRuntime", () => {
 		store.close();
 	});
 
-	test("routes coding prompts through a separate coding facade without changing the active chat session", async () => {
+	test("delegates coding prompts to the daemon coding service without changing the active chat session", async () => {
 		const chatFacade = new ProviderSessionFacade("claude", "claude-chat-123");
 		const codingFacade = new ProviderSessionFacade("codex", "codex-code-456");
 		const store = new SessionStore(TEST_DB, {
@@ -441,15 +443,22 @@ describe("createAgentRuntime", () => {
 		const codingRepositories = new CodingRepositoryStore(TEST_DB, {
 			journalMode: "DELETE",
 		});
+		const codingEvents = new CodingSessionEventStore(TEST_DB, {
+			journalMode: "DELETE",
+		});
+		const codingService = createCodingService({
+			facade: codingFacade,
+			repositories: codingRepositories,
+			sessions: codingStore,
+			events: codingEvents,
+			sharedSessionStore: codingSharedStore,
+		});
 		const runtime = createAgentRuntime({
 			agentId: "agent-railly",
 			name: "railly",
 			facade: chatFacade,
-			codingFacade,
-			codingRepositories,
-			codingStore: codingSharedStore,
+			coding: codingService.runtime,
 			store,
-			codingSessions: codingStore,
 		});
 		const ws = mockWs();
 
@@ -464,9 +473,11 @@ describe("createAgentRuntime", () => {
 			providerId: "claude",
 			sessionId: "claude-chat-123",
 		});
+		expect(runtime.getActiveSessionId()).toBe("claude-chat-123");
 
 		const codeResult = await runtime.coding.startPrompt({
 			cwd: "/repo",
+			linkedChatSessionId: runtime.getActiveSessionId(),
 			prompt: "fix the tests",
 		});
 
@@ -538,9 +549,11 @@ describe("createAgentRuntime", () => {
 		});
 
 		await runtime.stop();
+		await codingService.stop();
 		store.close();
 		codingSharedStore.close();
 		codingStore.close();
 		codingRepositories.close();
+		codingEvents.close();
 	});
 });

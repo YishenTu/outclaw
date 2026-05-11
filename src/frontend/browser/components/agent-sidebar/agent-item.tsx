@@ -147,7 +147,8 @@ export function AgentItem({
 		return (
 			<SessionItem
 				key={`${session.providerId}:${session.sdkSessionId}`}
-				session={session}
+				title={session.title}
+				lastActive={session.lastActive}
 				isActive={
 					activeSession?.providerId === session.providerId &&
 					activeSession.sdkSessionId === session.sdkSessionId

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef } from "react";
 
 interface TerminalViewProps {
 	active: boolean;
-	agentId: string;
+	agentId?: string;
+	repositoryId?: string;
 	onRunRequestDispatched?: (requestId: number) => void;
 	runRequest?: TerminalRunRequest | null;
 	terminalId: string;
@@ -19,16 +20,24 @@ export function toTerminalRunInput(command: string): string {
 	return `${command}\r`;
 }
 
-function buildTerminalUrl(agentId: string): string {
+function buildTerminalUrl(params: {
+	agentId?: string;
+	repositoryId?: string;
+}): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/terminal`);
-	url.searchParams.set("agentId", agentId);
+	if (params.repositoryId) {
+		url.searchParams.set("repositoryId", params.repositoryId);
+	} else if (params.agentId) {
+		url.searchParams.set("agentId", params.agentId);
+	}
 	return url.toString();
 }
 
 export function TerminalView({
 	active,
 	agentId,
+	repositoryId,
 	onRunRequestDispatched,
 	runRequest,
 	terminalId,
@@ -116,7 +125,7 @@ export function TerminalView({
 		};
 		container.addEventListener("pointerdown", handlePointerDown);
 
-		const socket = new WebSocket(buildTerminalUrl(agentId));
+		const socket = new WebSocket(buildTerminalUrl({ agentId, repositoryId }));
 		socketRef.current = socket;
 		socket.onopen = () => {
 			sendResize();
@@ -155,7 +164,7 @@ export function TerminalView({
 			resizeObserver.disconnect();
 			terminal.dispose();
 		};
-	}, [agentId, sendResize, sendTerminalInput]);
+	}, [agentId, repositoryId, sendResize, sendTerminalInput]);
 
 	useEffect(() => {
 		if (!runRequest) {

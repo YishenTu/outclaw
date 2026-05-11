@@ -1,21 +1,35 @@
+import type { EffortLevel } from "../../common/commands.ts";
+import type { FacadeEvent } from "../../common/protocol.ts";
 import type { PromptExecution } from "../application/prompt-execution/prompt-dispatcher.ts";
 import type { DetachedPromptStartResult } from "../application/runtime-controller.ts";
+import type {
+	CodingSessionEvent,
+	CodingSessionEventRecorder,
+} from "./coding-session-event-store.ts";
 import type {
 	CodingSessionRecord,
 	CodingSessionRefResolution,
 	CodingSessionRunStatus,
 } from "./coding-session-store.ts";
 
+export type { CodingSessionEventRecorder };
+
 export interface CodePromptRequest {
 	cwd: string;
 	linkedChatSessionId?: string;
 	prompt: string;
+	model?: string;
+	effort?: EffortLevel;
+	serviceTier?: string;
 }
 
 export interface CodePromptResumeRequest {
 	prompt: string;
 	providerId?: string;
 	sdkSessionId: string;
+	model?: string;
+	effort?: EffortLevel;
+	serviceTier?: string;
 }
 
 export type CodePromptStartResult =
@@ -30,11 +44,7 @@ export type CodePromptStartResult =
 	  };
 
 export interface CodingSessionRecorder {
-	get?(
-		providerId: string,
-		sdkSessionId: string,
-	): CodingSessionRecord | undefined;
-	resolveRef?(params: {
+	resolveRef(params: {
 		providerId?: string;
 		sdkSessionId: string;
 	}): CodingSessionRefResolution;
@@ -62,6 +72,7 @@ export interface CodingRepositoryRegistrar {
 }
 
 interface CodingRuntimeOptions {
+	codingEvents?: CodingSessionEventRecorder;
 	codingRepositories?: CodingRepositoryRegistrar;
 	codingSessions?: CodingSessionRecorder;
 	getLinkedChatSessionId?: () => string | undefined;
@@ -92,6 +103,11 @@ export class CodingRuntime {
 		const detachedResult = this.options.runDetachedPrompt({
 			cwd: params.cwd,
 			includeRuntimeSystemPrompt: false,
+			...(params.model ? { modelOverride: params.model } : {}),
+			...(params.effort ? { effortOverride: params.effort } : {}),
+			...(params.serviceTier
+				? { serviceTierOverride: params.serviceTier }
+				: {}),
 			onEvent: (event) => {
 				if (event.type === "session_initialized") {
 					initializedSessionIds.add(event.sessionId);
@@ -102,6 +118,11 @@ export class CodingRuntime {
 						"running",
 						linkedChatSessionId,
 					);
+					this.recordEvent(event.sessionId, event);
+					this.recordEvent(event.sessionId, {
+						type: "user_prompt",
+						text: params.prompt,
+					});
 					settleStart({
 						status: "accepted",
 						providerId: this.options.providerId,
@@ -109,26 +130,29 @@ export class CodingRuntime {
 					});
 					return;
 				}
-				if (
-					event.type === "done" &&
-					initializedSessionIds.has(event.sessionId)
-				) {
+				const eventSessionId = readEventSessionId(event);
+				const inFlightSessionId =
+					eventSessionId && initializedSessionIds.has(eventSessionId)
+						? eventSessionId
+						: !eventSessionId && settled
+							? firstValue(initializedSessionIds)
+							: undefined;
+				if (inFlightSessionId) {
+					this.recordEvent(inFlightSessionId, event);
+				}
+				if (event.type === "done" && inFlightSessionId) {
 					this.markCompleted(
 						params.cwd,
-						event.sessionId,
+						inFlightSessionId,
 						repositoryId,
 						linkedChatSessionId,
 					);
 					return;
 				}
-				if (
-					event.type === "error" &&
-					event.sessionId &&
-					initializedSessionIds.has(event.sessionId)
-				) {
+				if (event.type === "error" && inFlightSessionId) {
 					this.markFailed(
 						params.cwd,
-						event.sessionId,
+						inFlightSessionId,
 						repositoryId,
 						linkedChatSessionId,
 						event.message,
@@ -194,10 +218,26 @@ export class CodingRuntime {
 			};
 		}
 
+		this.recordEvent(params.sdkSessionId, {
+			type: "user_prompt",
+			text: params.prompt,
+		});
+
 		const detachedResult = this.options.runDetachedPrompt({
 			cwd: session.cwd,
 			includeRuntimeSystemPrompt: false,
+			...(params.model ? { modelOverride: params.model } : {}),
+			...(params.effort ? { effortOverride: params.effort } : {}),
+			...(params.serviceTier
+				? { serviceTierOverride: params.serviceTier }
+				: {}),
 			onEvent: (event) => {
+				if (event.type !== "session_initialized") {
+					const eventSessionId = readEventSessionId(event);
+					if (!eventSessionId || eventSessionId === params.sdkSessionId) {
+						this.recordEvent(params.sdkSessionId, event);
+					}
+				}
 				if (event.type === "done" && event.sessionId === params.sdkSessionId) {
 					this.markCompleted(
 						session.cwd,
@@ -247,12 +287,13 @@ export class CodingRuntime {
 	}):
 		| { status: "resolved"; session: CodingSessionRecord }
 		| { status: "rejected"; message: string } {
-		const resolution = this.options.codingSessions?.resolveRef
-			? this.options.codingSessions.resolveRef({
+		const recorder = this.options.codingSessions;
+		const resolution: CodingSessionRefResolution = recorder
+			? recorder.resolveRef({
 					providerId: params.providerId,
 					sdkSessionId: params.sdkSessionId,
 				})
-			: this.resolveSessionRefFallback(params);
+			: { status: "not_found" };
 		if (resolution.status === "resolved") {
 			return resolution;
 		}
@@ -268,20 +309,6 @@ export class CodingRuntime {
 				? `Unknown coding session: ${params.providerId}/${params.sdkSessionId}`
 				: `Unknown coding session: ${params.sdkSessionId}`,
 		};
-	}
-
-	private resolveSessionRefFallback(params: {
-		providerId?: string;
-		sdkSessionId: string;
-	}): CodingSessionRefResolution {
-		if (!params.providerId) {
-			return { status: "not_found" };
-		}
-		const session = this.options.codingSessions?.get?.(
-			params.providerId,
-			params.sdkSessionId,
-		);
-		return session ? { status: "resolved", session } : { status: "not_found" };
 	}
 
 	private registerRepository(cwd: string): { id: string } | undefined {
@@ -332,6 +359,14 @@ export class CodingRuntime {
 		);
 	}
 
+	private recordEvent(sdkSessionId: string, event: CodingSessionEvent) {
+		this.options.codingEvents?.append({
+			providerId: this.options.providerId,
+			sdkSessionId,
+			event,
+		});
+	}
+
 	private markFailed(
 		cwd: string,
 		sessionId: string,
@@ -361,4 +396,18 @@ export function createCodingRuntime(
 	options: CodingRuntimeOptions,
 ): CodingRuntime {
 	return new CodingRuntime(options);
+}
+
+function readEventSessionId(event: FacadeEvent): string | undefined {
+	if ("sessionId" in event) {
+		return event.sessionId;
+	}
+	return undefined;
+}
+
+function firstValue<T>(values: Iterable<T>): T | undefined {
+	for (const value of values) {
+		return value;
+	}
+	return undefined;
 }

@@ -4,6 +4,8 @@ import type {
 	BrowserSessionSummary,
 	SessionCursor,
 } from "../../../../common/protocol.ts";
+import { ChatCodePillSwitcher } from "../../coding/chat-code-pill-switcher.tsx";
+import { useCodingStore } from "../../coding/coding-store.ts";
 import { requestConfigRestart } from "../../commands/config-save-restart.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import {
@@ -38,6 +40,7 @@ interface AgentSidebarProps {
 
 export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 	const { sendCommand } = useWs();
+	const setAppMode = useCodingStore((state) => state.setAppMode);
 	const dragThreshold = 4;
 	const [expandedAgents, setExpandedAgents] = useState<Record<string, boolean>>(
 		{},
@@ -457,9 +460,14 @@ export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
 			</div>
 
 			<div className="flex h-8 shrink-0 items-center border-b border-dark-800 px-3">
-				<div className="font-mono-ui text-[11px] uppercase tracking-[0.22em] text-dark-500">
-					Agents and sessions
-				</div>
+				<ChatCodePillSwitcher
+					active="chat"
+					onSelect={(mode) => {
+						if (mode === "code") {
+							setAppMode("code");
+						}
+					}}
+				/>
 			</div>
 
 			<div className="scrollbar-none flex-1 overflow-y-auto px-3 py-3">

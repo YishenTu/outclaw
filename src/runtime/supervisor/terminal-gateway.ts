@@ -24,9 +24,15 @@ export function handleTerminalGatewayRequest(
 		return new Response("outclaw runtime", { status: 200 });
 	}
 
+	const repositoryId = url.searchParams.get("repositoryId") ?? undefined;
 	const agentId = url.searchParams.get("agentId") ?? undefined;
-	const terminalCwd =
-		agentId && browserApi ? browserApi.getAgentTerminalCwd(agentId) : undefined;
+	const terminalCwd = browserApi
+		? repositoryId
+			? browserApi.getCodingRepositoryCwd?.(repositoryId)
+			: agentId
+				? browserApi.getAgentTerminalCwd(agentId)
+				: undefined
+		: undefined;
 	if (
 		server.upgrade(req, {
 			data: {

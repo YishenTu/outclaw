@@ -29,6 +29,7 @@ interface PromptRunOptions {
 	model: string;
 	ocSessionId: string;
 	resume?: string;
+	serviceTier?: string;
 	task: PromptRunnerTask;
 }
 
@@ -50,6 +51,7 @@ export class PromptRunner {
 			promptHomeDir: this.options.promptHomeDir,
 			replyContext: options.task.replyContext,
 			resume: options.resume,
+			serviceTier: options.serviceTier,
 			stream: options.task.stream,
 		});
 	}

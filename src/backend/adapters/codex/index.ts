@@ -3,6 +3,7 @@ import {
 	type Facade,
 	type FacadeEvent,
 	type ImageRef,
+	type ProviderModelInfo,
 	type RunParams,
 } from "../../../common/protocol.ts";
 import {
@@ -13,6 +14,7 @@ import { CodexNotificationQueue } from "./notification-queue.ts";
 import { normalizeCodexTurnNotifications } from "./stream-normalizer.ts";
 import type {
 	CodexAppServerClient,
+	CodexModelListResponse,
 	CodexThreadResumeResult,
 	CodexThreadStartResult,
 	CodexTurnStartResult,
@@ -39,6 +41,42 @@ export class CodexAdapter implements Facade {
 		const client = this.cachedClient ?? this.injectedClient;
 		this.cachedClient = undefined;
 		await client?.dispose?.();
+	}
+
+	async listModels(): Promise<ProviderModelInfo[]> {
+		const client = await this.loadClient();
+		await client.initialize();
+		const models: ProviderModelInfo[] = [];
+		let cursor: string | undefined;
+		do {
+			const response = await client.request<CodexModelListResponse>(
+				"model/list",
+				cursor === undefined ? {} : { cursor },
+			);
+			for (const entry of response.data) {
+				if (entry.hidden) {
+					continue;
+				}
+				models.push({
+					id: entry.id,
+					model: entry.model,
+					displayName: entry.displayName,
+					description: entry.description,
+					isDefault: entry.isDefault,
+					defaultReasoningEffort: entry.defaultReasoningEffort,
+					supportedReasoningEfforts: entry.supportedReasoningEfforts.map(
+						(effort) => effort.reasoningEffort,
+					),
+					serviceTiers: (entry.serviceTiers ?? []).map((tier) => ({
+						id: tier.id,
+						name: tier.name,
+						description: tier.description,
+					})),
+				});
+			}
+			cursor = response.nextCursor ?? undefined;
+		} while (cursor !== undefined);
+		return models;
 	}
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
@@ -125,10 +163,9 @@ export class CodexAdapter implements Facade {
 function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
 		experimentalRawEvents: false,
-		persistExtendedHistory: true,
 	};
 
-	if (params.model) {
+	if (params.model && isCodexCompatibleModel(params.model)) {
 		payload.model = params.model;
 	}
 	if (params.cwd) {
@@ -140,6 +177,9 @@ function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 	if (params.ephemeral !== undefined) {
 		payload.ephemeral = params.ephemeral;
 	}
+	if (params.serviceTier) {
+		payload.serviceTier = params.serviceTier;
+	}
 
 	return payload;
 }
@@ -147,10 +187,9 @@ function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 function buildThreadResumeParams(params: RunParams): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
 		threadId: params.resume,
-		persistExtendedHistory: true,
 	};
 
-	if (params.model) {
+	if (params.model && isCodexCompatibleModel(params.model)) {
 		payload.model = params.model;
 	}
 	if (params.cwd) {
@@ -158,6 +197,9 @@ function buildThreadResumeParams(params: RunParams): Record<string, unknown> {
 	}
 	if (params.systemPrompt) {
 		payload.baseInstructions = params.systemPrompt;
+	}
+	if (params.serviceTier) {
+		payload.serviceTier = params.serviceTier;
 	}
 
 	return payload;
@@ -172,14 +214,24 @@ function buildTurnStartParams(
 		input: buildUserInput(params.prompt, params.images),
 	};
 
-	if (params.model) {
+	if (params.model && isCodexCompatibleModel(params.model)) {
 		payload.model = params.model;
 	}
 	if (params.effort) {
 		payload.effort = params.effort;
 	}
+	if (params.serviceTier) {
+		payload.serviceTier = params.serviceTier;
+	}
 
 	return payload;
+}
+
+function isCodexCompatibleModel(model: string): boolean {
+	// The runtime currently resolves model aliases against the Claude registry,
+	// so Codex calls would otherwise receive a Claude-side identifier and fail.
+	// Codex falls back to its own config default when `model` is omitted.
+	return model.startsWith("gpt-") || model.startsWith("codex");
 }
 
 function buildUserInput(prompt: string, images?: ImageRef[]): CodexUserInput[] {

@@ -1,3 +1,4 @@
+import type { EffortLevel } from "../../../common/commands.ts";
 import type {
 	DisplayImage,
 	DoneEvent,
@@ -48,6 +49,22 @@ export interface PromptExecution {
 	stream?: boolean;
 	telegramBotId?: string;
 	telegramChatId?: number;
+	/**
+	 * Per-call model override. When set, supersedes the runtime state's model
+	 * for both the provider call and the persisted session record. Used by the
+	 * coding runtime to send a Codex-side model id without mutating the shared
+	 * chat-side runtime state.
+	 */
+	modelOverride?: string;
+	/**
+	 * Per-call reasoning effort override. Same rationale as `modelOverride`.
+	 */
+	effortOverride?: EffortLevel;
+	/**
+	 * Per-call provider service tier override. Codex uses this to switch
+	 * between standard and priority/Fast tier for a single conversation.
+	 */
+	serviceTierOverride?: string;
 }
 
 type ClientFacadeEvent = Exclude<FacadeEvent, SessionInitializedEvent>;
@@ -119,6 +136,10 @@ export class PromptDispatcher {
 			this.options.onVisibleRunStarted?.();
 		}
 
+		const storedModel = task.modelOverride ?? context.model;
+		const runModel = task.modelOverride ?? context.resolvedModel;
+		const runEffort = task.effortOverride ?? context.effort;
+
 		const emit = (event: FacadeEvent) => {
 			const visible = isVisible();
 			if (event.type === "session_initialized") {
@@ -128,7 +149,7 @@ export class PromptDispatcher {
 						sessionId: event.sessionId,
 						ocSessionId: context.ocSessionId,
 						title: titleForPersistence(context),
-						model: context.model,
+						model: storedModel,
 						source: toStoredSessionSource(task),
 						tag: task.sessionTag,
 					});
@@ -175,7 +196,7 @@ export class PromptDispatcher {
 				} else {
 					this.options.sessions.recordBackgroundCompletion({
 						event,
-						model: context.model,
+						model: storedModel,
 						ocSessionId: context.ocSessionId,
 						source: toStoredSessionSource(task),
 						tag: task.sessionTag,
@@ -188,11 +209,12 @@ export class PromptDispatcher {
 		try {
 			await this.options.promptRunner.run({
 				abortController,
-				effort: context.effort,
+				effort: runEffort,
 				emit,
-				model: context.resolvedModel,
+				model: runModel,
 				ocSessionId: context.ocSessionId,
 				resume: context.resumeSessionId,
+				serviceTier: task.serviceTierOverride,
 				task,
 			});
 		} finally {
@@ -211,7 +233,7 @@ export class PromptDispatcher {
 			this.options.sessions.recordInterruptedRun({
 				sessionId: context.ocSessionId,
 				title: titleForPersistence(context),
-				model: context.model,
+				model: storedModel,
 				source: toInterruptedSessionSource(task.source),
 			});
 		}

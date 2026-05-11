@@ -386,4 +386,56 @@ describe("CodingSessionStore", () => {
 		codingSessions.close();
 		sessions.close();
 	});
+
+	test("renames coding sessions through the shared session row", () => {
+		const { sessions, codingSessions } = createStores();
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-rename",
+			title: "Original title",
+			timestamp: 10,
+		});
+
+		codingSessions.rename("codex", "code-rename", "Renamed coding session");
+
+		expect(codingSessions.getDetail("codex", "code-rename")).toMatchObject({
+			title: "Renamed coding session",
+		});
+		expect(sessions.get("codex", "code-rename")).toMatchObject({
+			title: "Renamed coding session",
+		});
+
+		codingSessions.close();
+		sessions.close();
+	});
+
+	test("filters coding sessions by title-search tokens", () => {
+		const { sessions, codingSessions } = createStores();
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-auth",
+			title: "Auth flow refactor",
+			timestamp: 30,
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-billing",
+			title: "Billing cleanup",
+			timestamp: 20,
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-other",
+			title: "Unrelated work",
+			timestamp: 10,
+		});
+
+		const matches = codingSessions.list({ query: "auth" }).sessions;
+		expect(matches.map((entry) => entry.sdkSessionId)).toEqual(["code-auth"]);
+
+		const multi = codingSessions.list({ query: "auth flow" }).sessions;
+		expect(multi.map((entry) => entry.sdkSessionId)).toEqual(["code-auth"]);
+
+		const missing = codingSessions.list({ query: "nothing" }).sessions;
+		expect(missing).toEqual([]);
+
+		codingSessions.close();
+		sessions.close();
+	});
 });

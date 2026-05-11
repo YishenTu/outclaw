@@ -1,135 +1,34 @@
+import { type EffortLevel, isEffortLevel } from "../../common/commands.ts";
 import type {
-	BrowserAgentsResponse,
-	BrowserCodingRepositoryArchiveResponse,
-	BrowserCodingRepositoryDetail,
-	BrowserCodingRepositoryListResponse,
-	BrowserCodingRepositorySource,
-	BrowserCodingSessionDeleteResponse,
-	BrowserCodingSessionDetail,
-	BrowserCodingSessionPageResponse,
-	BrowserConfigResponse,
-	BrowserCronEntry,
 	BrowserCronHistoryCursor,
-	BrowserCronHistoryResponse,
-	BrowserFileResponse,
-	BrowserGitCommitResponse,
-	BrowserGitDiffResponse,
-	BrowserGitStatusResponse,
-	BrowserGraphResponse,
-	BrowserInboxArchiveResponse,
-	BrowserInboxCreateNoteInput,
-	BrowserInboxCreateNoteResponse,
-	BrowserInboxResponse,
-	BrowserInboxRestoreResponse,
 	BrowserLatencyResponse,
-	BrowserSessionPageResponse,
-	BrowserTerminalRunCommandResponse,
-	BrowserTreeEntry,
 	ImageMediaType,
 	SessionCursor,
-	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
 import { validateSessionSearchQuery } from "../application/session-search-query.ts";
+import type { BrowserApi as BrowserApiImpl } from "../browser/create-browser-api.ts";
 import { FileConflictError } from "../browser/files/write-browser-file.ts";
 
-export interface BrowserApi {
-	getAgentTerminalCwd(agentId: string): string | undefined;
-	archiveAgentInboxItem?(
-		agentId: string,
-		relativePath: string,
-	): Promise<BrowserInboxArchiveResponse>;
-	createAgentInboxNote?(
-		agentId: string,
-		input: BrowserInboxCreateNoteInput,
-	): Promise<BrowserInboxCreateNoteResponse>;
-	initGitRepo(): Promise<BrowserGitStatusResponse>;
-	listAgentCron(agentId: string): Promise<BrowserCronEntry[]>;
-	listAgentCronHistory?(
-		agentId: string,
-		params: {
-			jobName: string;
-			limit: number;
-			before?: BrowserCronHistoryCursor;
-		},
-	): Promise<BrowserCronHistoryResponse>;
-	listAgentInbox?(agentId: string): Promise<BrowserInboxResponse>;
-	listAgentSessions?(
-		agentId: string,
-		params: {
-			limit: number;
-			cursor?: SessionCursor;
-			query?: string;
-		},
-	): Promise<BrowserSessionPageResponse>;
-	listCodingSessions?(params: {
-		limit: number;
-		cursor?: SessionCursor;
-		linkedChatSessionId?: string;
-		providerId?: string;
-		repositoryId?: string;
-	}): Promise<BrowserCodingSessionPageResponse>;
-	listCodingRepositories?(params?: {
-		includeArchived?: boolean;
-	}): Promise<BrowserCodingRepositoryListResponse>;
-	getCodingRepository?(
-		repositoryId: string,
-	): Promise<BrowserCodingRepositoryDetail>;
-	registerCodingRepository?(params: {
-		displayName?: string;
-		remoteUrl?: string;
-		rootCwd: string;
-		source?: Extract<BrowserCodingRepositorySource, "manual" | "clone">;
-	}): Promise<BrowserCodingRepositoryDetail>;
-	archiveCodingRepository?(
-		repositoryId: string,
-	): Promise<BrowserCodingRepositoryArchiveResponse>;
-	getCodingSession?(
-		providerId: string,
-		sdkSessionId: string,
-	): Promise<BrowserCodingSessionDetail>;
-	deleteCodingSession?(
-		providerId: string,
-		sdkSessionId: string,
-	): Promise<BrowserCodingSessionDeleteResponse>;
-	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
-	listAgentGraph?(agentId: string): Promise<BrowserGraphResponse>;
-	listAgentWorkspaceFiles?(agentId: string): Promise<WorkspaceFileEntry[]>;
-	listAgents(params?: { browserClientId?: string }): BrowserAgentsResponse;
-	readAgentFile(
-		agentId: string,
-		relativePath: string,
-	): Promise<BrowserFileResponse>;
-	writeAgentFile?(
-		agentId: string,
-		relativePath: string,
-		content: string,
-		expected: { mtimeMs: number; sha256: string },
-	): Promise<BrowserFileResponse>;
-	readConfigFile(): Promise<BrowserConfigResponse>;
-	readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
-	readGitDiff(path: string): Promise<BrowserGitDiffResponse>;
-	readGitStatus(): Promise<BrowserGitStatusResponse>;
-	restoreAgentInboxItem?(
-		agentId: string,
-		archivedPath: string,
-		originalPath: string,
-	): Promise<BrowserInboxRestoreResponse>;
-	setAgentCronEnabled(
-		agentId: string,
-		relativePath: string,
-		enabled: boolean,
-	): Promise<BrowserCronEntry>;
-	uploadImages?(
-		images: Array<{ bytes: Uint8Array; mediaType: ImageMediaType }>,
-	): Promise<Array<{ path: string; mediaType: ImageMediaType }>>;
-	writeAgentTerminalRunCommand?(
-		agentId: string,
-		command: string,
-	): Promise<BrowserTerminalRunCommandResponse>;
-	writeConfigFile(
-		document: Record<string, unknown>,
-	): Promise<BrowserConfigResponse>;
-}
+// Method signatures are owned by `runtime/browser/create-browser-api.ts` so
+// the router cannot drift from the implementation. A small set of methods are
+// always invoked without a guard; everything else is optional so partial test
+// mocks still satisfy the type.
+type AlwaysRequired =
+	| "getAgentTerminalCwd"
+	| "initGitRepo"
+	| "listAgentCron"
+	| "listAgentTree"
+	| "listAgents"
+	| "readAgentFile"
+	| "readConfigFile"
+	| "readGitCommit"
+	| "readGitDiff"
+	| "readGitStatus"
+	| "setAgentCronEnabled"
+	| "writeConfigFile";
+
+export type BrowserApi = Pick<BrowserApiImpl, AlwaysRequired> &
+	Partial<Omit<BrowserApiImpl, AlwaysRequired>>;
 
 export async function handleBrowserApiRequest(
 	req: Request,
@@ -179,14 +78,18 @@ export async function handleBrowserApiRequest(
 		}
 
 		if (url.pathname === "/api/git/status") {
-			return Response.json(await browserApi.readGitStatus());
+			return Response.json(
+				await browserApi.readGitStatus(readRepositoryIdParams(url)),
+			);
 		}
 
 		if (url.pathname === "/api/git/init") {
 			if (req.method !== "POST") {
 				return jsonError("Method not allowed", 405);
 			}
-			return Response.json(await browserApi.initGitRepo());
+			return Response.json(
+				await browserApi.initGitRepo(readRepositoryIdParams(url)),
+			);
 		}
 
 		if (url.pathname === "/api/git/diff") {
@@ -194,7 +97,9 @@ export async function handleBrowserApiRequest(
 			if (!path) {
 				return jsonError("Missing path query parameter", 400);
 			}
-			return Response.json(await browserApi.readGitDiff(path));
+			return Response.json(
+				await browserApi.readGitDiff(path, readRepositoryIdParams(url)),
+			);
 		}
 
 		if (url.pathname === "/api/git/commit") {
@@ -202,7 +107,9 @@ export async function handleBrowserApiRequest(
 			if (!sha) {
 				return jsonError("Missing sha query parameter", 400);
 			}
-			return Response.json(await browserApi.readGitCommit(sha));
+			return Response.json(
+				await browserApi.readGitCommit(sha, readRepositoryIdParams(url)),
+			);
 		}
 
 		if (url.pathname === "/api/images") {
@@ -355,8 +262,28 @@ export async function handleBrowserApiRequest(
 			);
 		}
 
+		if (url.pathname === "/api/coding/models") {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.listCodingModels) {
+				return jsonError("Coding model catalog is not configured", 404);
+			}
+			return Response.json(await browserApi.listCodingModels());
+		}
+
+		if (url.pathname === "/api/coding/folder-picker") {
+			if (req.method !== "POST") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.pickCodingRepositoryFolder) {
+				return jsonError("Coding folder picker is not configured", 404);
+			}
+			return Response.json(await browserApi.pickCodingRepositoryFolder());
+		}
+
 		const codingRepositoriesMatch = url.pathname.match(
-			/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive))?)?$/,
+			/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive|tree))?)?$/,
 		);
 		if (codingRepositoriesMatch) {
 			const [, encodedRepositoryId, action] = codingRepositoriesMatch;
@@ -422,6 +349,18 @@ export async function handleBrowserApiRequest(
 				);
 			}
 
+			if (action === "tree") {
+				if (req.method !== "GET") {
+					return jsonError("Method not allowed", 405);
+				}
+				if (!browserApi.listCodingRepositoryTree) {
+					return jsonError("Coding repository API is not configured", 404);
+				}
+				return Response.json(
+					await browserApi.listCodingRepositoryTree(repositoryId),
+				);
+			}
+
 			if (req.method !== "GET") {
 				return jsonError("Method not allowed", 405);
 			}
@@ -432,14 +371,99 @@ export async function handleBrowserApiRequest(
 		}
 
 		const codingSessionsMatch = url.pathname.match(
-			/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+))?$/,
+			/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(resume|events))?)?$/,
 		);
 		if (codingSessionsMatch) {
-			const [, encodedProviderId, encodedSdkSessionId] = codingSessionsMatch;
+			const [, encodedProviderId, encodedSdkSessionId, action] =
+				codingSessionsMatch;
 
 			if (encodedProviderId && encodedSdkSessionId) {
 				const providerId = decodeURIComponent(encodedProviderId);
 				const sdkSessionId = decodeURIComponent(encodedSdkSessionId);
+				if (action === "events") {
+					if (req.method !== "GET") {
+						return jsonError("Method not allowed", 405);
+					}
+					if (!browserApi.openCodingSessionEventStream) {
+						return jsonError("Coding session API is not configured", 404);
+					}
+					const sinceParam = url.searchParams.get("sinceSequence");
+					let sinceSequence: number | undefined;
+					if (sinceParam !== null) {
+						const parsed = Number.parseInt(sinceParam, 10);
+						if (!Number.isInteger(parsed) || parsed < 0) {
+							return jsonError("Invalid sinceSequence", 400);
+						}
+						sinceSequence = parsed;
+					}
+					// EventSource auto-retry preserves the original URL — including a now
+					// stale sinceSequence — but resends Last-Event-ID with the latest
+					// frame the client received. Take the max so reconnects (manual or
+					// browser-initiated) never replay events the client already saw.
+					const lastEventId = req.headers.get("last-event-id");
+					if (lastEventId) {
+						const parsed = Number.parseInt(lastEventId, 10);
+						if (Number.isInteger(parsed) && parsed >= 0) {
+							sinceSequence = Math.max(sinceSequence ?? 0, parsed);
+						}
+					}
+					const iterable = browserApi.openCodingSessionEventStream({
+						providerId,
+						sdkSessionId,
+						...(sinceSequence !== undefined ? { sinceSequence } : {}),
+						signal: req.signal,
+					});
+					return createSseResponse(iterable, req.signal);
+				}
+				if (action === "resume") {
+					if (req.method !== "POST") {
+						return jsonError("Method not allowed", 405);
+					}
+					if (!browserApi.resumeCodingSession) {
+						return jsonError("Coding session API is not configured", 404);
+					}
+					let body: {
+						prompt?: unknown;
+						model?: unknown;
+						effort?: unknown;
+						serviceTier?: unknown;
+					};
+					try {
+						body = (await req.json()) as typeof body;
+					} catch {
+						return jsonError("Invalid coding resume request", 400);
+					}
+					if (typeof body.prompt !== "string" || body.prompt.trim() === "") {
+						return jsonError("Invalid coding resume request", 400);
+					}
+					const modelOverride = readModelOverride(body.model);
+					if (modelOverride.status === "invalid") {
+						return jsonError(modelOverride.message, 400);
+					}
+					const effortOverride = readEffortOverride(body.effort);
+					if (effortOverride.status === "invalid") {
+						return jsonError(effortOverride.message, 400);
+					}
+					const serviceTierOverride = readServiceTierOverride(body.serviceTier);
+					if (serviceTierOverride.status === "invalid") {
+						return jsonError(serviceTierOverride.message, 400);
+					}
+					return Response.json(
+						await browserApi.resumeCodingSession({
+							providerId,
+							sdkSessionId,
+							prompt: body.prompt,
+							...(modelOverride.value ? { model: modelOverride.value } : {}),
+							...(effortOverride.value ? { effort: effortOverride.value } : {}),
+							...(serviceTierOverride.value
+								? { serviceTier: serviceTierOverride.value }
+								: {}),
+						}),
+					);
+				}
+				if (action) {
+					return jsonError("Method not allowed", 405);
+				}
 				if (req.method === "GET") {
 					if (!browserApi.getCodingSession) {
 						return jsonError("Coding session API is not configured", 404);
@@ -456,7 +480,91 @@ export async function handleBrowserApiRequest(
 						await browserApi.deleteCodingSession(providerId, sdkSessionId),
 					);
 				}
+				if (req.method === "PATCH") {
+					if (!browserApi.renameCodingSession) {
+						return jsonError("Coding session API is not configured", 404);
+					}
+					let body: { title?: unknown };
+					try {
+						body = (await req.json()) as typeof body;
+					} catch {
+						return jsonError("Invalid coding rename request", 400);
+					}
+					if (typeof body.title !== "string" || body.title.trim() === "") {
+						return jsonError("Invalid coding rename request", 400);
+					}
+					return Response.json(
+						await browserApi.renameCodingSession(
+							providerId,
+							sdkSessionId,
+							body.title,
+						),
+					);
+				}
 				return jsonError("Method not allowed", 405);
+			}
+
+			if (req.method === "POST") {
+				if (!browserApi.startCodingSession) {
+					return jsonError("Coding session API is not configured", 404);
+				}
+				let body: {
+					repositoryId?: unknown;
+					cwd?: unknown;
+					prompt?: unknown;
+					linkedChatSessionId?: unknown;
+					model?: unknown;
+					effort?: unknown;
+					serviceTier?: unknown;
+				};
+				try {
+					body = (await req.json()) as typeof body;
+				} catch {
+					return jsonError("Invalid coding start request", 400);
+				}
+				if (typeof body.prompt !== "string" || body.prompt.trim() === "") {
+					return jsonError("Invalid coding start request", 400);
+				}
+				const modelOverride = readModelOverride(body.model);
+				if (modelOverride.status === "invalid") {
+					return jsonError(modelOverride.message, 400);
+				}
+				const effortOverride = readEffortOverride(body.effort);
+				if (effortOverride.status === "invalid") {
+					return jsonError(effortOverride.message, 400);
+				}
+				const serviceTierOverride = readServiceTierOverride(body.serviceTier);
+				if (serviceTierOverride.status === "invalid") {
+					return jsonError(serviceTierOverride.message, 400);
+				}
+				const startParams: {
+					prompt: string;
+					repositoryId?: string;
+					cwd?: string;
+					linkedChatSessionId?: string;
+					model?: string;
+					effort?: EffortLevel;
+					serviceTier?: string;
+				} = { prompt: body.prompt };
+				if (typeof body.repositoryId === "string") {
+					startParams.repositoryId = body.repositoryId;
+				}
+				if (typeof body.cwd === "string") {
+					startParams.cwd = body.cwd;
+				}
+				if (typeof body.linkedChatSessionId === "string") {
+					startParams.linkedChatSessionId = body.linkedChatSessionId;
+				}
+				if (modelOverride.value) {
+					startParams.model = modelOverride.value;
+				}
+				if (effortOverride.value) {
+					startParams.effort = effortOverride.value;
+				}
+				if (serviceTierOverride.value) {
+					startParams.serviceTier = serviceTierOverride.value;
+				}
+				return Response.json(await browserApi.startCodingSession(startParams));
 			}
 
 			if (req.method !== "GET") {
@@ -492,12 +600,23 @@ export async function handleBrowserApiRequest(
 			}
 			const linkedChatSessionId =
 				url.searchParams.get("linkedChatSessionId") ?? undefined;
+			const queryParam = url.searchParams.get("query");
+			const searchQuery = queryParam
+				? validateSessionSearchQuery(queryParam)
+				: undefined;
+			if (searchQuery && !searchQuery.ok) {
+				return jsonError(searchQuery.message, 400);
+			}
+			const normalizedQuery = searchQuery?.ok
+				? searchQuery.query || undefined
+				: undefined;
 			return Response.json(
 				await browserApi.listCodingSessions({
 					cursor,
 					limit,
 					linkedChatSessionId,
 					providerId: url.searchParams.get("providerId") ?? undefined,
+					...(normalizedQuery ? { query: normalizedQuery } : {}),
 					repositoryId: url.searchParams.get("repositoryId") ?? undefined,
 				}),
 			);
@@ -675,6 +794,16 @@ function jsonError(message: string, status: number) {
 	);
 }
 
+function readRepositoryIdParams(
+	url: URL,
+): { repositoryId?: string } | undefined {
+	const repositoryId = url.searchParams.get("repositoryId");
+	if (!repositoryId) {
+		return undefined;
+	}
+	return { repositoryId };
+}
+
 async function readUploadedImages(req: Request) {
 	const formData = await req.formData();
 	const files = formData.getAll("images");
@@ -772,6 +901,111 @@ function isImageMediaType(type: string): type is ImageMediaType {
 		type === "image/gif" ||
 		type === "image/webp"
 	);
+}
+
+function createSseResponse<
+	T extends { sequence: number; providerId: string; sdkSessionId: string },
+>(iterable: AsyncIterable<T>, signal: AbortSignal): Response {
+	const encoder = new TextEncoder();
+	const stream = new ReadableStream<Uint8Array>({
+		async start(controller) {
+			const abort = () => {
+				try {
+					controller.close();
+				} catch {
+					// already closed
+				}
+			};
+			if (signal.aborted) {
+				abort();
+				return;
+			}
+			signal.addEventListener("abort", abort, { once: true });
+			try {
+				for await (const item of iterable) {
+					if (signal.aborted) {
+						return;
+					}
+					const payload = `id: ${item.sequence}\ndata: ${JSON.stringify(
+						item,
+					)}\n\n`;
+					controller.enqueue(encoder.encode(payload));
+				}
+			} catch (err) {
+				if (!signal.aborted) {
+					const message = err instanceof Error ? err.message : String(err);
+					const payload = `event: error\ndata: ${JSON.stringify({
+						message,
+					})}\n\n`;
+					try {
+						controller.enqueue(encoder.encode(payload));
+					} catch {
+						// stream already closed
+					}
+				}
+			} finally {
+				signal.removeEventListener("abort", abort);
+				try {
+					controller.close();
+				} catch {
+					// already closed
+				}
+			}
+		},
+	});
+	return new Response(stream, {
+		headers: {
+			"content-type": "text/event-stream; charset=utf-8",
+			"cache-control": "no-cache, no-transform",
+			connection: "keep-alive",
+			"x-accel-buffering": "no",
+		},
+	});
+}
+
+type OverrideReadResult<T> =
+	| { status: "absent"; value: undefined }
+	| { status: "valid"; value: T }
+	| { status: "invalid"; message: string };
+
+function readModelOverride(raw: unknown): OverrideReadResult<string> {
+	if (raw === undefined || raw === null) {
+		return { status: "absent", value: undefined };
+	}
+	if (typeof raw !== "string" || raw.trim() === "") {
+		return {
+			status: "invalid",
+			message: "Coding model override must be a non-empty string",
+		};
+	}
+	return { status: "valid", value: raw };
+}
+
+function readEffortOverride(raw: unknown): OverrideReadResult<EffortLevel> {
+	if (raw === undefined || raw === null) {
+		return { status: "absent", value: undefined };
+	}
+	if (typeof raw !== "string" || !isEffortLevel(raw)) {
+		return {
+			status: "invalid",
+			message:
+				"Coding effort override must be one of low/medium/high/xhigh/max",
+		};
+	}
+	return { status: "valid", value: raw };
+}
+
+function readServiceTierOverride(raw: unknown): OverrideReadResult<string> {
+	if (raw === undefined || raw === null) {
+		return { status: "absent", value: undefined };
+	}
+	if (typeof raw !== "string" || raw.trim() === "") {
+		return {
+			status: "invalid",
+			message: "Coding service tier override must be a non-empty string",
+		};
+	}
+	return { status: "valid", value: raw };
 }
 
 function statusForBrowserApiError(message: string): number {

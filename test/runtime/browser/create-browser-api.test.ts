@@ -16,6 +16,7 @@ import { createBrowserApi } from "../../../src/runtime/browser/create-browser-ap
 import {
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
+	CodingSessionEventStore,
 	CodingSessionStore,
 } from "../../../src/runtime/coding/index.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
@@ -512,6 +513,430 @@ describe("createBrowserApi", () => {
 
 		repositories.close();
 		store.close();
+	});
+
+	test("starts a coding session through the daemon coding service by repository id", async () => {
+		const root = createTempDir("outclaw-browser-coding-start-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+		const repoRoot = join(root, "repos", "outclaw");
+		mkdirSync(repoRoot, { recursive: true });
+
+		const repositories = new CodingRepositoryStore(dbPath);
+		const registered = repositories.register({
+			rootCwd: repoRoot,
+			source: "manual",
+		});
+
+		const calls: Array<{ cwd: string; prompt: string }> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt(params) {
+					calls.push({ cwd: params.cwd, prompt: params.prompt });
+					return {
+						status: "accepted",
+						providerId: "codex",
+						sdkSessionId: "codex-thread-1",
+					};
+				},
+				async resumePrompt() {
+					throw new Error("resume should not be called");
+				},
+			},
+			codingRepositories: repositories,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.startCodingSession({
+				repositoryId: registered.id,
+				prompt: "fix the tests",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
+		});
+		expect(calls).toEqual([
+			{ cwd: registered.rootCwd, prompt: "fix the tests" },
+		]);
+
+		repositories.close();
+	});
+
+	test("rejects starting a coding session with an explicit cwd outside the chosen repository", async () => {
+		const root = createTempDir("outclaw-browser-coding-start-outside-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+		const repoRoot = join(root, "repos", "outclaw");
+		const elsewhere = join(root, "elsewhere");
+		mkdirSync(repoRoot, { recursive: true });
+		mkdirSync(elsewhere, { recursive: true });
+
+		const repositories = new CodingRepositoryStore(dbPath);
+		const registered = repositories.register({
+			rootCwd: repoRoot,
+			source: "manual",
+		});
+
+		const calls: Array<{ cwd: string }> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt(params) {
+					calls.push({ cwd: params.cwd });
+					return {
+						status: "accepted",
+						providerId: "codex",
+						sdkSessionId: "codex-thread-1",
+					};
+				},
+				async resumePrompt() {
+					throw new Error("resume should not be called");
+				},
+			},
+			codingRepositories: repositories,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.startCodingSession({
+				repositoryId: registered.id,
+				cwd: elsewhere,
+				prompt: "fix the tests",
+			}),
+		).resolves.toEqual({
+			status: "rejected",
+			message: `Coding session cwd must be within repository root: ${registered.rootCwd}`,
+		});
+		expect(calls).toEqual([]);
+
+		repositories.close();
+	});
+
+	test("accepts an explicit cwd that is a subdirectory of the chosen repository", async () => {
+		const root = createTempDir("outclaw-browser-coding-start-subdir-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+		const repoRoot = join(root, "repos", "outclaw");
+		const subdir = join(repoRoot, "packages", "app");
+		mkdirSync(subdir, { recursive: true });
+
+		const repositories = new CodingRepositoryStore(dbPath);
+		const registered = repositories.register({
+			rootCwd: repoRoot,
+			source: "manual",
+		});
+
+		const calls: Array<{ cwd: string }> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt(params) {
+					calls.push({ cwd: params.cwd });
+					return {
+						status: "accepted",
+						providerId: "codex",
+						sdkSessionId: "codex-thread-1",
+					};
+				},
+				async resumePrompt() {
+					throw new Error("resume should not be called");
+				},
+			},
+			codingRepositories: repositories,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.startCodingSession({
+				repositoryId: registered.id,
+				cwd: subdir,
+				prompt: "fix the tests",
+			}),
+		).resolves.toMatchObject({ status: "accepted" });
+		expect(calls).toEqual([{ cwd: subdir }]);
+
+		repositories.close();
+	});
+
+	test("rejects starting a coding session without a repository or cwd", async () => {
+		const root = createTempDir("outclaw-browser-coding-start-invalid-");
+		cleanupPaths.push(root);
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt() {
+					throw new Error("should not be called");
+				},
+				async resumePrompt() {
+					throw new Error("should not be called");
+				},
+			},
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.startCodingSession({ prompt: "anything" }),
+		).resolves.toEqual({
+			status: "rejected",
+			message:
+				"Coding session start requires either a repository id or an explicit cwd",
+		});
+	});
+
+	test("resumes a coding session by provider session identity", async () => {
+		const root = createTempDir("outclaw-browser-coding-resume-");
+		cleanupPaths.push(root);
+		const calls: Array<{
+			providerId: string;
+			sdkSessionId: string;
+			prompt: string;
+		}> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt() {
+					throw new Error("start should not be called");
+				},
+				async resumePrompt(params) {
+					calls.push({
+						providerId: params.providerId ?? "",
+						sdkSessionId: params.sdkSessionId,
+						prompt: params.prompt,
+					});
+					return {
+						status: "accepted",
+						providerId: params.providerId ?? "codex",
+						sdkSessionId: params.sdkSessionId,
+					};
+				},
+			},
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.resumeCodingSession({
+				providerId: "codex",
+				sdkSessionId: "codex-thread-1",
+				prompt: "follow up",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
+		});
+		expect(calls).toEqual([
+			{
+				providerId: "codex",
+				sdkSessionId: "codex-thread-1",
+				prompt: "follow up",
+			},
+		]);
+	});
+
+	test("forwards model and effort overrides into the coding service", async () => {
+		const root = createTempDir("outclaw-browser-coding-model-effort-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+		const repoRoot = join(root, "repos", "outclaw");
+		mkdirSync(repoRoot, { recursive: true });
+
+		const repositories = new CodingRepositoryStore(dbPath);
+		const registered = repositories.register({
+			rootCwd: repoRoot,
+			source: "manual",
+		});
+
+		const startCalls: Array<{ model?: string; effort?: string }> = [];
+		const resumeCalls: Array<{ model?: string; effort?: string }> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt(params) {
+					startCalls.push({ model: params.model, effort: params.effort });
+					return {
+						status: "accepted",
+						providerId: "codex",
+						sdkSessionId: "codex-1",
+					};
+				},
+				async resumePrompt(params) {
+					resumeCalls.push({ model: params.model, effort: params.effort });
+					return {
+						status: "accepted",
+						providerId: params.providerId ?? "codex",
+						sdkSessionId: params.sdkSessionId,
+					};
+				},
+			},
+			codingRepositories: repositories,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await api.startCodingSession({
+			repositoryId: registered.id,
+			prompt: "do work",
+			model: "gpt-5.5",
+			effort: "high",
+		});
+		await api.resumeCodingSession({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			prompt: "more work",
+			model: "gpt-5.4-mini",
+			effort: "low",
+		});
+
+		expect(startCalls).toEqual([{ model: "gpt-5.5", effort: "high" }]);
+		expect(resumeCalls).toEqual([{ model: "gpt-5.4-mini", effort: "low" }]);
+
+		repositories.close();
+	});
+
+	test("lists coding models from the coding service", async () => {
+		const root = createTempDir("outclaw-browser-coding-models-");
+		cleanupPaths.push(root);
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt() {
+					throw new Error("not called");
+				},
+				async resumePrompt() {
+					throw new Error("not called");
+				},
+				async listModels() {
+					return [
+						{
+							id: "gpt-5.5",
+							model: "gpt-5.5",
+							displayName: "GPT-5.5",
+							description: "frontier",
+							isDefault: true,
+							defaultReasoningEffort: "medium",
+							supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
+							serviceTiers: [],
+						},
+					];
+				},
+			},
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(api.listCodingModels()).resolves.toEqual({
+			models: [
+				{
+					id: "gpt-5.5",
+					model: "gpt-5.5",
+					displayName: "GPT-5.5",
+					description: "frontier",
+					isDefault: true,
+					defaultReasoningEffort: "medium",
+					supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
+					serviceTiers: [],
+				},
+			],
+		});
+	});
+
+	test("opens a coding-session event stream that replays then follows", async () => {
+		const root = createTempDir("outclaw-browser-coding-events-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingSessions = new CodingSessionStore(dbPath);
+		const events = new CodingSessionEventStore(dbPath);
+
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			title: "demo",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 10,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			cwd: root,
+			runStatus: "running",
+			timestamp: 10,
+		});
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "text", text: "a", sessionId: "codex-1" },
+		});
+
+		const api = createBrowserApi({
+			agents: [],
+			codingEvents: events,
+			codingSessions,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const controller = new AbortController();
+		const iterator = api
+			.openCodingSessionEventStream({
+				providerId: "codex",
+				sdkSessionId: "codex-1",
+				signal: controller.signal,
+			})
+			[Symbol.asyncIterator]();
+
+		const first = await iterator.next();
+		expect(first.value?.sequence).toBe(1);
+
+		const live = iterator.next();
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "text", text: "b", sessionId: "codex-1" },
+		});
+		const second = await live;
+		expect(second.value?.sequence).toBe(2);
+		expect(second.value?.event).toEqual({
+			type: "text",
+			text: "b",
+			sessionId: "codex-1",
+		});
+
+		controller.abort();
+		await iterator.next();
+
+		events.close();
+		codingSessions.close();
+		sessionStore.close();
 	});
 
 	test("sorts sidebar agents by name while preserving provider active sessions", () => {

@@ -1,10 +1,10 @@
 import { Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { SessionEntry } from "../../stores/sessions.ts";
 import { formatLastActive } from "./format-last-active.ts";
 
 interface SessionItemProps {
-	session: SessionEntry;
+	title: string;
+	lastActive: number;
 	isActive: boolean;
 	onSelect: () => void;
 	onRename: (title: string) => void;
@@ -12,7 +12,8 @@ interface SessionItemProps {
 }
 
 export function SessionItem({
-	session,
+	title,
+	lastActive,
 	isActive,
 	onSelect,
 	onRename,
@@ -21,7 +22,7 @@ export function SessionItem({
 	const titleInputRef = useRef<HTMLInputElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
 	const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
-	const [draftTitle, setDraftTitle] = useState(session.title);
+	const [draftTitle, setDraftTitle] = useState(title);
 	const [editing, setEditing] = useState(false);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 	const [menuPosition, setMenuPosition] = useState<{
@@ -30,7 +31,7 @@ export function SessionItem({
 	} | null>(null);
 
 	function startInlineRename() {
-		setDraftTitle(session.title);
+		setDraftTitle(title);
 		setEditing(true);
 		setMenuPosition(null);
 	}
@@ -38,13 +39,13 @@ export function SessionItem({
 	function finishInlineRename(commit: boolean) {
 		if (commit) {
 			const nextTitle = draftTitle.trim();
-			if (nextTitle !== "" && nextTitle !== session.title) {
+			if (nextTitle !== "" && nextTitle !== title) {
 				onRename(nextTitle);
 			}
 		}
 
 		setEditing(false);
-		setDraftTitle(session.title);
+		setDraftTitle(title);
 	}
 
 	function handleDelete() {
@@ -128,8 +129,8 @@ export function SessionItem({
 			return;
 		}
 
-		setDraftTitle(session.title);
-	}, [editing, session.title]);
+		setDraftTitle(title);
+	}, [editing, title]);
 
 	return (
 		<div className="group relative">
@@ -199,17 +200,17 @@ export function SessionItem({
 								/>
 							</div>
 							<div className="min-w-0 truncate text-sm font-medium">
-								{session.title}
+								{title}
 							</div>
 						</div>
 					</button>
 					<div className="absolute inset-y-0 right-2 flex items-center">
 						<div className="font-mono-ui w-8 shrink-0 text-right text-[10px] uppercase tracking-[0.12em] text-dark-500 group-hover:hidden">
-							{formatLastActive(session.lastActive)}
+							{formatLastActive(lastActive)}
 						</div>
 						<button
 							type="button"
-							aria-label={`Delete session ${session.title}`}
+							aria-label={`Delete session ${title}`}
 							onClick={(event) => {
 								event.preventDefault();
 								event.stopPropagation();
@@ -254,7 +255,7 @@ export function SessionItem({
 						<div className="px-4 py-4 text-sm leading-6 text-dark-300">
 							Permanently delete session{" "}
 							<span className="font-medium text-dark-50">
-								&ldquo;{session.title}&rdquo;
+								&ldquo;{title}&rdquo;
 							</span>
 						</div>
 						<div className="flex items-center justify-end gap-2 bg-dark-900/40 px-4 py-3">

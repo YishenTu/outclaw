@@ -60,7 +60,7 @@ describe("browser app layout", () => {
 			/>,
 		);
 
-		expect(html).toContain("Agents and sessions");
+		expect(html).toContain('aria-label="Switch between chat and code"');
 		expect(html).toContain('aria-label="Resize left sidebar"');
 	});
 

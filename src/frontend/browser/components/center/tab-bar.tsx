@@ -60,7 +60,7 @@ export function TabBarView({
 	tabs,
 }: TabBarViewProps) {
 	return (
-		<div className="flex h-12 items-stretch border-b border-dark-800 bg-dark-950 px-3">
+		<div className="flex h-12 shrink-0 items-stretch border-b border-dark-800 bg-dark-950 px-3">
 			{leftCollapsed && onExpandLeft && (
 				<button
 					type="button"

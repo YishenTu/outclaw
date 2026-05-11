@@ -14,7 +14,9 @@ import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
 import {
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
+	CodingSessionEventStore,
 	CodingSessionStore,
+	createCodingService,
 } from "./runtime/coding/index.ts";
 import { loadGlobalConfig } from "./runtime/config/index.ts";
 import { createCronTelegramChatIdResolver } from "./runtime/cron/resolve-telegram-chat-id.ts";
@@ -92,7 +94,15 @@ function startMultiAgentDaemon(
 	});
 	const codingSessions = new CodingSessionStore(layout.dbPath);
 	const codingRepositories = new CodingRepositoryStore(layout.dbPath);
+	const codingEvents = new CodingSessionEventStore(layout.dbPath);
 	const codingFacade = new CodexAdapter();
+	const codingService = createCodingService({
+		facade: codingFacade,
+		repositories: codingRepositories,
+		sessions: codingSessions,
+		events: codingEvents,
+		sharedSessionStore: codingSharedSessionStore,
+	});
 	const transcriptReadersByAgent = new Map<
 		string,
 		| ((sessionId: string) => ReturnType<ClaudeAdapter["readTranscript"]>)
@@ -133,10 +143,7 @@ function startMultiAgentDaemon(
 				spawnDaemonRestart(layout.cliEntry);
 			},
 			store: agentStores.get(agent.agentId),
-			codingFacade,
-			codingRepositories,
-			codingStore: codingSharedSessionStore,
-			codingSessions,
+			coding: codingService.runtime,
 		});
 	});
 	const availableAgentsByBotUser = buildTelegramAgentIndex(agents);
@@ -161,6 +168,16 @@ function startMultiAgentDaemon(
 					terminalRunCommand: agent.config.terminal.runCommand,
 				};
 			}),
+			coding: {
+				startPrompt: codingService.runtime.startPrompt.bind(
+					codingService.runtime,
+				),
+				resumePrompt: codingService.runtime.resumePrompt.bind(
+					codingService.runtime,
+				),
+				listModels: () => codingService.listModels(),
+			},
+			codingEvents,
 			codingRepositories,
 			codingSessions,
 			filesRoot: layout.filesRoot,
@@ -252,10 +269,15 @@ function startMultiAgentDaemon(
 			restartRequiredWatcher.stop();
 			await supervisor.stop();
 			botManager.stop();
+			await codingService.stop();
+			// Dispose the Codex adapter before closing SQLite stores so any final
+			// facade events recorded during dispose can still append. After this,
+			// no more append/append-on-finally paths can fire.
+			await codingFacade.dispose();
+			codingEvents.close();
 			codingSessions.close();
 			codingSharedSessionStore.close();
 			codingRepositories.close();
-			await codingFacade.dispose();
 			for (const store of agentStores.values()) {
 				store.close();
 			}

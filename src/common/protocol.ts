@@ -164,6 +164,39 @@ export interface DoneEvent {
 	usage?: UsageInfo;
 }
 
+export interface CommandExecutionStartedEvent {
+	type: "command_execution_started";
+	callId: string;
+	command: string;
+	cwd?: string;
+	sessionId?: string;
+}
+
+export interface CommandExecutionCompletedEvent {
+	type: "command_execution_completed";
+	callId: string;
+	exitCode?: number;
+	durationMs?: number;
+	output?: string;
+	sessionId?: string;
+}
+
+export type FileChangeKind = "add" | "update" | "delete" | "move";
+
+export interface FileChange {
+	path: string;
+	kind: FileChangeKind;
+	diff?: string;
+	movePath?: string;
+}
+
+export interface FileChangeAppliedEvent {
+	type: "file_change_applied";
+	callId: string;
+	changes: FileChange[];
+	sessionId?: string;
+}
+
 export interface SessionInitializedEvent {
 	type: "session_initialized";
 	sessionId: string;
@@ -510,6 +543,7 @@ export interface BrowserCodingSessionSummary {
 
 export interface BrowserCodingSessionPageResponse {
 	nextCursor?: SessionCursor;
+	query?: string;
 	sessions: BrowserCodingSessionSummary[];
 }
 
@@ -520,6 +554,35 @@ export interface BrowserCodingSessionDeleteResponse {
 	deleted: true;
 	providerId: string;
 	sdkSessionId: string;
+}
+
+export type BrowserCodingSessionStartResponse =
+	| {
+			status: "accepted";
+			providerId: string;
+			sdkSessionId: string;
+	  }
+	| {
+			status: "rejected";
+			message: string;
+	  };
+
+export type BrowserCodingSessionResumeResponse =
+	BrowserCodingSessionStartResponse;
+
+export interface BrowserCodingModel {
+	id: string;
+	model: string;
+	displayName: string;
+	description: string;
+	isDefault: boolean;
+	defaultReasoningEffort: string;
+	supportedReasoningEfforts: string[];
+	serviceTiers: ProviderServiceTier[];
+}
+
+export interface BrowserCodingModelsResponse {
+	models: BrowserCodingModel[];
 }
 
 export type BrowserCodingRepositorySource = "auto" | "manual" | "clone";
@@ -548,6 +611,11 @@ export interface BrowserCodingRepositoryArchiveResponse {
 	archived: true;
 	repository: BrowserCodingRepositorySummary;
 }
+
+export type BrowserCodingFolderPickerResponse =
+	| { status: "selected"; path: string }
+	| { status: "canceled" }
+	| { status: "unavailable"; message: string };
 
 export interface BrowserLatencyResponse {
 	ok: true;
@@ -842,6 +910,10 @@ export type ServerEvent =
 	| StatusEvent
 	| ErrorEvent
 	| DoneEvent
+	| UsageUpdatedEvent
+	| CommandExecutionStartedEvent
+	| CommandExecutionCompletedEvent
+	| FileChangeAppliedEvent
 	| UserPromptEvent
 	| SessionClearedEvent
 	| ModelChangedEvent
@@ -887,8 +959,24 @@ export type FacadeEvent =
 	| ErrorEvent
 	| SessionInitializedEvent
 	| DoneEvent
+	| UsageUpdatedEvent
+	| CommandExecutionStartedEvent
+	| CommandExecutionCompletedEvent
+	| FileChangeAppliedEvent
 	| CompactingStartedEvent
 	| CompactingFinishedEvent;
+
+/**
+ * Mid-stream usage update. Codex emits `thread/tokenUsage/updated` while a
+ * turn is in flight; surfacing this lets the context gauge tick along with
+ * the turn instead of waiting for the final `done` event. Adapters that lack
+ * an equivalent signal simply never emit this.
+ */
+export interface UsageUpdatedEvent {
+	type: "usage_updated";
+	usage: UsageInfo;
+	sessionId?: string;
+}
 
 export interface RunParams {
 	prompt: string;
@@ -908,6 +996,12 @@ export interface RunParams {
 	cwd?: string;
 	model?: string;
 	effort?: string;
+	/**
+	 * Provider-side service tier override. Codex's `model/list` advertises a
+	 * `serviceTiers` array per model; the canonical id (e.g. `priority`) is
+	 * passed verbatim. Adapters that don't expose a tiering knob ignore this.
+	 */
+	serviceTier?: string;
 	stream?: boolean;
 	/**
 	 * Tool names allowed for this run. Omitted means the adapter default tool set.
@@ -935,7 +1029,35 @@ export interface Facade {
 	readReplay?(sessionId: string): Promise<DisplayMessage[]>;
 	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;
 	getSkills?(cwd?: string): Promise<SkillInfo[]>;
+	/**
+	 * List provider-side models the runtime can offer to the user. Coding
+	 * mode uses this to populate the model picker so users can pick a Codex
+	 * model and a matching reasoning effort without the runtime hardcoding
+	 * the catalog.
+	 */
+	listModels?(): Promise<ProviderModelInfo[]>;
 	dispose?(): Promise<void> | void;
+}
+
+export interface ProviderModelInfo {
+	id: string;
+	model: string;
+	displayName: string;
+	description: string;
+	isDefault: boolean;
+	defaultReasoningEffort: string;
+	supportedReasoningEfforts: string[];
+	/**
+	 * Service tiers the model exposes (e.g. Codex's `priority`/Fast). Empty
+	 * when the provider has no tiering or the current model offers none.
+	 */
+	serviceTiers: ProviderServiceTier[];
+}
+
+export interface ProviderServiceTier {
+	id: string;
+	name: string;
+	description: string;
 }
 
 // --- Helpers ---

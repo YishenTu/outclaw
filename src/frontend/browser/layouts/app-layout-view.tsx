@@ -1,4 +1,8 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
+import { CodingCenter } from "../coding/coding-center.tsx";
+import { CodingRightPanel } from "../coding/coding-right-panel.tsx";
+import { CodingSidebarContainer } from "../coding/coding-sidebar-container.tsx";
+import { useCodingStore } from "../coding/coding-store.ts";
 import { AgentSidebar } from "../components/agent-sidebar/agent-sidebar";
 import { CenterPanel } from "../components/center/center-panel";
 import { RightPanel } from "../components/right-panel/right-panel";
@@ -35,8 +39,13 @@ export function AppLayoutView({
 	showWelcomePage,
 	sidebarWidth,
 }: AppLayoutViewProps) {
-	const showLeftSidebar = showWelcomePage || !leftCollapsed;
-	const showRightPanel = !showWelcomePage && !rightCollapsed;
+	const appMode = useCodingStore((state) => state.appMode);
+	const isCodeMode = appMode === "code";
+	// In code mode the workspace is always interactive; the welcome page only
+	// applies to chat mode.
+	const effectiveShowWelcomePage = !isCodeMode && showWelcomePage;
+	const showLeftSidebar = effectiveShowWelcomePage || !leftCollapsed;
+	const showRightPanel = !effectiveShowWelcomePage && !rightCollapsed;
 	const leftWidth = showLeftSidebar ? sidebarWidth : 0;
 	const rightWidth = showRightPanel ? inspectorWidth : 0;
 
@@ -49,7 +58,11 @@ export function AppLayoutView({
 				}`}
 			>
 				<div style={{ width: sidebarWidth }} className="h-full">
-					<AgentSidebar onCollapse={onCollapseLeft} />
+					{isCodeMode ? (
+						<CodingSidebarContainer onCollapse={onCollapseLeft} />
+					) : (
+						<AgentSidebar onCollapse={onCollapseLeft} />
+					)}
 				</div>
 			</div>
 			{showLeftSidebar && (
@@ -63,7 +76,9 @@ export function AppLayoutView({
 				</button>
 			)}
 			<div className="min-w-0 flex-1 overflow-hidden">
-				{showWelcomePage ? (
+				{isCodeMode ? (
+					<CodingCenter />
+				) : showWelcomePage ? (
 					<WelcomePage />
 				) : (
 					<CenterPanel
@@ -93,7 +108,11 @@ export function AppLayoutView({
 					}`}
 				>
 					<div style={{ width: inspectorWidth }} className="h-full">
-						<RightPanel onCollapse={onCollapseRight} />
+						{isCodeMode ? (
+							<CodingRightPanel onCollapse={onCollapseRight} />
+						) : (
+							<RightPanel onCollapse={onCollapseRight} />
+						)}
 					</div>
 				</div>
 			)}

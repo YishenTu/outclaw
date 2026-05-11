@@ -56,6 +56,12 @@ interface MessageInputProps {
 	active?: boolean;
 	headerSlot?: React.ReactNode;
 	compact?: boolean;
+	/**
+	 * Optional override for the model/effort controls. The coding composer
+	 * uses this to mount a Codex-aware selector that reads its catalog from
+	 * the coding store instead of the chat-side runtime status event.
+	 */
+	modelSelectorSlot?: React.ReactNode;
 }
 
 export function MessageInput({
@@ -70,6 +76,7 @@ export function MessageInput({
 	active = true,
 	headerSlot,
 	compact = false,
+	modelSelectorSlot,
 }: MessageInputProps) {
 	const { sendCommand } = useWs();
 	const [value, setValue] = useState("");
@@ -457,13 +464,15 @@ export function MessageInput({
 					</div>
 					<div className="flex items-center justify-between gap-3 px-1 pt-1">
 						<div className="flex min-w-0 items-center gap-1 overflow-visible">
-							<ModelSelector
-								model={model}
-								effort={effort}
-								disabled={isInputDisabled}
-								onModelChange={onModelChange}
-								onEffortChange={onEffortChange}
-							/>
+							{modelSelectorSlot ?? (
+								<ModelSelector
+									model={model}
+									effort={effort}
+									disabled={isInputDisabled}
+									onModelChange={onModelChange}
+									onEffortChange={onEffortChange}
+								/>
+							)}
 							<ContextGauge sessionKey={sessionKey} />
 							<HeartbeatIndicator />
 						</div>

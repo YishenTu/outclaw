@@ -74,3 +74,27 @@ export interface CodexUsageSnapshot {
 	threadId: string;
 	turnId: string;
 }
+
+export interface CodexModelListResponse {
+	data: CodexModelListEntry[];
+	nextCursor?: string | null;
+}
+
+export interface CodexModelListEntry {
+	id: string;
+	model: string;
+	displayName: string;
+	description: string;
+	hidden: boolean;
+	isDefault: boolean;
+	defaultReasoningEffort: string;
+	supportedReasoningEfforts: Array<{
+		reasoningEffort: string;
+		description?: string;
+	}>;
+	serviceTiers?: Array<{
+		id: string;
+		name: string;
+		description: string;
+	}>;
+}

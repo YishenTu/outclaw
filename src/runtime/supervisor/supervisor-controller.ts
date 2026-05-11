@@ -306,9 +306,11 @@ export class SupervisorController {
 			return;
 		}
 
+		const linkedChatSessionId = runtime.getActiveSessionId();
 		const result = await runtime.coding.startPrompt({
 			cwd: data.cwd,
 			prompt: data.prompt,
+			...(linkedChatSessionId ? { linkedChatSessionId } : {}),
 		});
 		if (result.status === "rejected") {
 			this.sendCodePromptError(ws, result.message);

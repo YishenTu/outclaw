@@ -7,7 +7,10 @@ import { createAgentRuntime } from "../../../src/runtime/application/create-agen
 import { createBrowserApi } from "../../../src/runtime/browser/create-browser-api.ts";
 import {
 	CODING_STORAGE_OWNER_ID,
+	CodingRepositoryStore,
+	CodingSessionEventStore,
 	CodingSessionStore,
+	createCodingService,
 } from "../../../src/runtime/coding/index.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 import { createSupervisor } from "../../../src/runtime/supervisor/create-supervisor.ts";
@@ -1272,6 +1275,8 @@ describe("createSupervisor", () => {
 			agentId: CODING_STORAGE_OWNER_ID,
 		});
 		const codingSessions = new CodingSessionStore(dbPath);
+		const codingRepositories = new CodingRepositoryStore(dbPath);
+		const codingEvents = new CodingSessionEventStore(dbPath);
 		store.upsert({
 			providerId: "mock",
 			sdkSessionId: "chat-session-123",
@@ -1283,6 +1288,14 @@ describe("createSupervisor", () => {
 		const codeHome = createAgentHome("agent-railly");
 		writeFileSync(join(codeHome, "AGENTS.md"), "chat runtime prompt");
 		const facade = new SessionInitializingMockFacade();
+		const codingFacade = new SessionInitializingMockFacade();
+		const codingService = createCodingService({
+			facade: codingFacade,
+			repositories: codingRepositories,
+			sessions: codingSessions,
+			events: codingEvents,
+			sharedSessionStore: codingSharedStore,
+		});
 		const supervisor = createSupervisor({
 			port: 0,
 			agents: [
@@ -1293,13 +1306,15 @@ describe("createSupervisor", () => {
 					facade,
 					promptHomeDir: codeHome,
 					store,
-					codingStore: codingSharedStore,
-					codingSessions,
+					coding: codingService.runtime,
 				}),
 			],
 		});
 		cleanup = async () => {
 			await supervisor.stop();
+			await codingService.stop();
+			codingEvents.close();
+			codingRepositories.close();
 			codingSessions.close();
 			codingSharedStore.close();
 			store.close();
@@ -1328,9 +1343,10 @@ describe("createSupervisor", () => {
 			() => codingSharedStore.get("mock", "mock-session-123") !== undefined,
 		);
 
-		expect(facade.lastParams?.prompt).toBe("implement the parser");
-		expect(facade.lastParams?.cwd).toBe(codeHome);
-		expect(facade.lastParams?.systemPrompt).toBeUndefined();
+		expect(codingFacade.lastParams?.prompt).toBe("implement the parser");
+		expect(codingFacade.lastParams?.cwd).toBe(codeHome);
+		expect(codingFacade.lastParams?.systemPrompt).toBeUndefined();
+		expect(facade.lastParams?.prompt).toBeUndefined();
 		expect(store.getActiveSessionId("mock")).toBe("chat-session-123");
 		expect(store.get("mock", "chat-session-123")?.tag).toBe("chat");
 		expect(codingSharedStore.get("mock", "mock-session-123")).toMatchObject({

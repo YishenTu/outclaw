@@ -15,6 +15,15 @@ export {
 	createCodingRuntime,
 } from "./coding-runtime.ts";
 export {
+	type CodingSessionEvent,
+	type CodingSessionEventRecorder,
+	CodingSessionEventStore,
+	type CodingSessionEventSubscriber,
+	type CodingUserPromptEvent,
+	replayThenFollowCodingSessionEvents,
+	type StoredCodingSessionEvent,
+} from "./coding-session-event-store.ts";
+export {
 	CODING_STORAGE_OWNER_ID,
 	type CodingSessionDetail,
 	type CodingSessionLifecycleStatus,
@@ -24,3 +33,7 @@ export {
 	type CodingSessionRunStatus,
 	CodingSessionStore,
 } from "./coding-session-store.ts";
+export {
+	type CodingService,
+	createCodingService,
+} from "./create-coding-service.ts";

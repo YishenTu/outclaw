@@ -1,4 +1,9 @@
-import type { FacadeEvent, UsageInfo } from "../../../common/protocol.ts";
+import type {
+	FacadeEvent,
+	FileChange,
+	FileChangeKind,
+	UsageInfo,
+} from "../../../common/protocol.ts";
 import type {
 	CodexServerNotification,
 	CodexThreadTokenUsage,
@@ -50,10 +55,43 @@ export async function* normalizeCodexTurnNotifications(
 				}
 				break;
 			}
+			case "item/started": {
+				const event = readCommandExecutionStarted(
+					notification.params,
+					options.sessionId,
+				);
+				if (event) {
+					yield event;
+				}
+				break;
+			}
+			case "item/completed": {
+				const command = readCommandExecutionCompleted(
+					notification.params,
+					options.sessionId,
+				);
+				if (command) {
+					yield command;
+					break;
+				}
+				const fileChange = readFileChangeApplied(
+					notification.params,
+					options.sessionId,
+				);
+				if (fileChange) {
+					yield fileChange;
+				}
+				break;
+			}
 			case "thread/tokenUsage/updated": {
 				const usage = readUsage(notification.params);
 				if (usage) {
 					pendingUsage = usage;
+					yield {
+						type: "usage_updated",
+						usage,
+						sessionId: options.sessionId,
+					};
 				}
 				break;
 			}
@@ -177,4 +215,138 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 	return value && typeof value === "object"
 		? (value as Record<string, unknown>)
 		: undefined;
+}
+
+function readCommandExecutionStarted(
+	params: unknown,
+	sessionId: string,
+): FacadeEvent | undefined {
+	const item = asRecord(asRecord(params)?.item);
+	if (!item || item.type !== "commandExecution") {
+		return undefined;
+	}
+	const callId = typeof item.id === "string" ? item.id : undefined;
+	if (!callId) {
+		return undefined;
+	}
+	const command = resolveCommandText(item);
+	const cwd = typeof item.cwd === "string" ? item.cwd : undefined;
+	return {
+		type: "command_execution_started",
+		callId,
+		command,
+		...(cwd ? { cwd } : {}),
+		sessionId,
+	};
+}
+
+function readCommandExecutionCompleted(
+	params: unknown,
+	sessionId: string,
+): FacadeEvent | undefined {
+	const item = asRecord(asRecord(params)?.item);
+	if (!item || item.type !== "commandExecution") {
+		return undefined;
+	}
+	const callId = typeof item.id === "string" ? item.id : undefined;
+	if (!callId) {
+		return undefined;
+	}
+	const exitCode =
+		typeof item.exitCode === "number" ? item.exitCode : undefined;
+	const durationMs =
+		typeof item.durationMs === "number" ? item.durationMs : undefined;
+	const output =
+		typeof item.aggregatedOutput === "string"
+			? item.aggregatedOutput
+			: undefined;
+	return {
+		type: "command_execution_completed",
+		callId,
+		...(exitCode !== undefined ? { exitCode } : {}),
+		...(durationMs !== undefined ? { durationMs } : {}),
+		...(output !== undefined ? { output } : {}),
+		sessionId,
+	};
+}
+
+function resolveCommandText(item: Record<string, unknown>): string {
+	const actions = Array.isArray(item.commandActions) ? item.commandActions : [];
+	const firstAction = asRecord(actions[0]);
+	const cooked =
+		firstAction && typeof firstAction.command === "string"
+			? firstAction.command
+			: undefined;
+	if (cooked) {
+		return cooked;
+	}
+	return typeof item.command === "string" ? item.command : "";
+}
+
+function readFileChangeApplied(
+	params: unknown,
+	sessionId: string,
+): FacadeEvent | undefined {
+	const item = asRecord(asRecord(params)?.item);
+	if (!item || item.type !== "fileChange") {
+		return undefined;
+	}
+	const callId = typeof item.id === "string" ? item.id : undefined;
+	if (!callId) {
+		return undefined;
+	}
+	const rawChanges = Array.isArray(item.changes) ? item.changes : [];
+	const changes = rawChanges
+		.map((entry) => normalizeFileChange(entry))
+		.filter((change): change is FileChange => change !== undefined);
+	if (changes.length === 0) {
+		return undefined;
+	}
+	return {
+		type: "file_change_applied",
+		callId,
+		changes,
+		sessionId,
+	};
+}
+
+function normalizeFileChange(value: unknown): FileChange | undefined {
+	const record = asRecord(value);
+	if (!record || typeof record.path !== "string") {
+		return undefined;
+	}
+	const kindRecord = asRecord(record.kind);
+	const rawKind =
+		kindRecord && typeof kindRecord.type === "string"
+			? kindRecord.type
+			: undefined;
+	const kind = mapFileChangeKind(rawKind);
+	if (!kind) {
+		return undefined;
+	}
+	const diff = typeof record.diff === "string" ? record.diff : undefined;
+	const movePath =
+		kindRecord && typeof kindRecord.move_path === "string"
+			? kindRecord.move_path
+			: undefined;
+	return {
+		path: record.path,
+		kind,
+		...(diff !== undefined ? { diff } : {}),
+		...(movePath !== undefined ? { movePath } : {}),
+	};
+}
+
+function mapFileChangeKind(
+	value: string | undefined,
+): FileChangeKind | undefined {
+	switch (value) {
+		case "add":
+		case "update":
+		case "delete":
+		case "move":
+			return value;
+		default:
+			return undefined;
+	}
 }

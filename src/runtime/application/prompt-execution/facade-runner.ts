@@ -24,6 +24,7 @@ export interface FacadePromptRun {
 	promptHomeDir?: string;
 	replyContext?: ReplyContext;
 	resume?: string;
+	serviceTier?: string;
 	stream?: boolean;
 }
 
@@ -51,6 +52,7 @@ export async function runFacadePrompt(options: FacadePromptRun): Promise<void> {
 			cwd: options.cwd,
 			model: options.model,
 			effort: options.effort,
+			serviceTier: options.serviceTier,
 			stream: options.stream,
 			sessionEnv,
 		})) {
