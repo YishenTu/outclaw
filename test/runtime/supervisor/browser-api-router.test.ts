@@ -47,7 +47,12 @@ describe("handleBrowserApiRequest", () => {
 			  }
 			| undefined;
 		const browserApi = {
-			writeAgentFile: async (agentId, path, content, expected) => {
+			writeAgentFile: async (
+				agentId: string,
+				path: string,
+				content: string,
+				expected: { mtimeMs: number; sha256: string },
+			) => {
 				call = { agentId, path, content, expected };
 				return {
 					content: "next",

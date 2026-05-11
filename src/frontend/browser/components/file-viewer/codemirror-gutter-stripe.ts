@@ -27,20 +27,20 @@ const fileLineStatusField = StateField.define<FileLineStatus>({
 });
 
 class StripeMarker extends GutterMarker {
-	readonly elementClass: string;
+	override readonly elementClass: string;
 
 	constructor(elementClass: string) {
 		super();
 		this.elementClass = elementClass;
 	}
 
-	eq(other: GutterMarker): boolean {
+	override eq(other: GutterMarker): boolean {
 		return (
 			other instanceof StripeMarker && other.elementClass === this.elementClass
 		);
 	}
 
-	toDOM(): HTMLElement {
+	override toDOM(): HTMLElement {
 		const marker = document.createElement("div");
 		marker.className = this.elementClass;
 		return marker;

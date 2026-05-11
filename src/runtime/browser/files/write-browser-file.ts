@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
-import { readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { createHash } from "node:crypto";
+import { open } from "node:fs/promises";
 import type { BrowserFileResponse } from "../../../common/protocol.ts";
+import { resolveExistingPathWithinRoot } from "../paths/path-safety.ts";
+import { writeFileContentInPlace } from "./in-place-file-writer.ts";
 import { readBrowserFile } from "./read-browser-file.ts";
 
 export class FileConflictError extends Error {
@@ -20,40 +21,32 @@ export async function writeBrowserFile(
 	content: string,
 	expected: { mtimeMs: number; sha256: string },
 ): Promise<BrowserFileResponse> {
-	assertInsideRoot(rootDir, absolutePath);
+	const resolvedPath = resolveExistingPathWithinRoot(rootDir, absolutePath);
 
-	const info = await stat(absolutePath);
-	if (!info.isFile()) {
-		throw new Error("Path does not reference a file");
-	}
-
-	const currentBuffer = await readFile(absolutePath);
-	const currentSha256 = hashBuffer(currentBuffer);
-	if (info.mtimeMs !== expected.mtimeMs || currentSha256 !== expected.sha256) {
-		throw new FileConflictError(await readBrowserFile(rootDir, absolutePath));
-	}
-
-	const tempPath = `${absolutePath}.tmp.${randomUUID()}`;
+	const file = await open(resolvedPath, "r+");
 	try {
-		await writeFile(tempPath, content, "utf8");
-		await rename(tempPath, absolutePath);
-	} catch (error) {
-		await unlink(tempPath).catch(() => undefined);
-		throw error;
+		const info = await file.stat();
+		if (!info.isFile()) {
+			throw new Error("Path does not reference a file");
+		}
+
+		const currentBuffer = await file.readFile();
+		const currentSha256 = hashBuffer(currentBuffer);
+		if (
+			info.mtimeMs !== expected.mtimeMs ||
+			currentSha256 !== expected.sha256
+		) {
+			throw new FileConflictError(await readBrowserFile(rootDir, absolutePath));
+		}
+
+		await writeFileContentInPlace(file, content, {
+			restoreContent: currentBuffer,
+		});
+	} finally {
+		await file.close();
 	}
 
-	return await readBrowserFile(rootDir, absolutePath);
-}
-
-function assertInsideRoot(rootDir: string, absolutePath: string) {
-	const resolvedRoot = resolve(rootDir);
-	const resolvedPath = resolve(absolutePath);
-	if (
-		resolvedPath !== resolvedRoot &&
-		!resolvedPath.startsWith(`${resolvedRoot}${sep}`)
-	) {
-		throw new Error("Path escapes agent home");
-	}
+	return await readBrowserFile(rootDir, resolvedPath);
 }
 
 function hashBuffer(buffer: Uint8Array): string {
