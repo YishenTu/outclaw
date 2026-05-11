@@ -7,7 +7,7 @@ import {
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
 describe("GitCommitContent", () => {
-	test("renders commit metadata, message body, and parsed patch", () => {
+	test("renders commit metadata, message body, and Pierre patch host", () => {
 		const html = renderToStaticMarkup(
 			<GitCommitContent
 				commit={{
@@ -39,8 +39,7 @@ index cefe630..1111111 100644
 		expect(html).toContain("test@example.com");
 		expect(html).toContain("Parents");
 		expect(html).toContain("aaaaaaa");
-		expect(html).toContain("README.md");
-		expect(html).toContain("second");
+		expect(html).toContain("<diffs-container");
 	});
 });
 

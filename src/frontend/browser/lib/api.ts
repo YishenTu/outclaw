@@ -33,6 +33,16 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 	return (await response.json()) as T;
 }
 
+export class FileConflictError extends Error {
+	readonly current: BrowserFileResponse;
+
+	constructor(current: BrowserFileResponse) {
+		super("File changed on disk");
+		this.current = current;
+		this.name = "FileConflictError";
+	}
+}
+
 export async function fetchSidebarSummary(): Promise<BrowserAgentsResponse> {
 	return parseJsonResponse(await fetch("/api/agents"));
 }
@@ -253,6 +263,41 @@ export async function fetchAgentFile(
 	);
 	url.searchParams.set("path", path);
 	return parseJsonResponse(await fetch(url));
+}
+
+export async function writeAgentFile(
+	agentId: string,
+	path: string,
+	content: string,
+	expected: { mtimeMs: number; sha256: string },
+): Promise<BrowserFileResponse> {
+	const url = new URL(
+		`/api/agents/${encodeURIComponent(agentId)}/file`,
+		window.location.origin,
+	);
+	url.searchParams.set("path", path);
+	const response = await fetch(url, {
+		method: "PUT",
+		headers: {
+			"content-type": "application/json",
+		},
+		body: JSON.stringify({
+			content,
+			expectedMtimeMs: expected.mtimeMs,
+			expectedSha256: expected.sha256,
+		}),
+	});
+
+	if (response.status === 409) {
+		const conflictBody = (await response.json().catch(() => undefined)) as
+			| { kind?: string; current?: BrowserFileResponse }
+			| undefined;
+		if (conflictBody?.kind === "conflict" && conflictBody.current) {
+			throw new FileConflictError(conflictBody.current);
+		}
+	}
+
+	return parseJsonResponse(response);
 }
 
 export async function fetchGitStatus(): Promise<BrowserGitStatusResponse> {

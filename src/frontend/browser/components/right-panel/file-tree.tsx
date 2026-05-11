@@ -1,18 +1,59 @@
-import {
-	BookText,
-	ChevronDown,
-	ChevronRight,
-	FileCode2,
-	FileImage,
-	FileJson2,
-	FileText,
-	Folder,
-	FolderTree,
-	Network,
-} from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
+import type { GitStatusEntry } from "@pierre/trees";
+import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react";
+import { FolderTree, Network } from "lucide-react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { BrowserTreeEntry } from "../../../../common/protocol.ts";
-import { treeEntryToneClass } from "./git/git-status-tone.ts";
+
+// Maps the outclaw browser palette (defined in index.css) onto Pierre's
+// `--trees-*-override` surface so the file tree blends with the rest of the
+// right panel instead of using Pierre's defaults. Pierre reads `*-override`
+// vars via `var(..., fallback)`, so we only need to set the ones we care
+// about. Hex colors stay as hex; tokens defined as `R G B` triples are wrapped
+// in `rgb(...)` to materialize a real color.
+const fileTreeThemeStyle: CSSProperties = {
+	height: "100%",
+	"--trees-bg-override": "var(--dark-950)",
+	"--trees-bg-muted-override": "var(--dark-900)",
+	// Match the previous default item color (`text-dark-400` from the old
+	// treeEntryToneClass) — dark-100 was too bright against the dark-950 panel.
+	"--trees-fg-override": "var(--dark-400)",
+	"--trees-fg-muted-override": "var(--dark-500)",
+	"--trees-border-color-override": "var(--dark-800)",
+	"--trees-selected-bg-override": "var(--dark-800)",
+	"--trees-selected-fg-override": "var(--dark-100)",
+	"--trees-selected-focused-border-color-override": "rgb(var(--brand))",
+	"--trees-accent-override": "rgb(var(--brand))",
+	"--trees-focus-ring-color-override": "rgb(var(--brand))",
+	"--trees-indent-guide-bg-override": "var(--dark-800)",
+	"--trees-scrollbar-thumb-override": "var(--dark-700)",
+	"--trees-input-bg-override": "var(--dark-900)",
+	"--trees-search-bg-override": "var(--dark-900)",
+	"--trees-search-fg-override": "var(--dark-100)",
+	"--trees-font-family-override":
+		'"IBM Plex Sans", "Inter", "Segoe UI", sans-serif',
+	// Match Tailwind `text-sm` used by git-panel.tsx file rows (Pierre default
+	// is 13px, which read 1px denser than the surrounding panel surfaces).
+	"--trees-font-size-override": "14px",
+	// Git status — aligned with `gitPanelFileToneClass` so the file tree and
+	// the git panel use one palette: modified = warning amber (the panel
+	// deliberately uses warning over brand — see the `--warning` comment in
+	// index.css), new/added = success, deleted = danger, renamed = info,
+	// ignored = dark-500. Set both `git-*` and `status-*` so every Pierre
+	// code path that reads either family lands on the same color.
+	"--trees-git-modified-color-override": "rgb(var(--warning))",
+	"--trees-git-untracked-color-override": "rgb(var(--success))",
+	"--trees-git-added-color-override": "rgb(var(--success))",
+	"--trees-git-deleted-color-override": "rgb(var(--danger))",
+	"--trees-git-renamed-color-override": "rgb(var(--info))",
+	"--trees-git-ignored-color-override": "var(--dark-500)",
+	"--trees-status-modified-override": "rgb(var(--warning))",
+	"--trees-status-untracked-override": "rgb(var(--success))",
+	"--trees-status-added-override": "rgb(var(--success))",
+	"--trees-status-deleted-override": "rgb(var(--danger))",
+	"--trees-status-renamed-override": "rgb(var(--info))",
+	"--trees-status-ignored-override": "var(--dark-500)",
+} as CSSProperties;
 
 interface FileTreeProps {
 	agentId: string;
@@ -20,71 +61,63 @@ interface FileTreeProps {
 	onOpenFile: (params: { agentId: string; path: string }) => void;
 }
 
-export function isTreeNodeExpanded(
-	expandedPaths: Record<string, boolean>,
-	path: string,
-): boolean {
-	return expandedPaths[path] ?? false;
-}
-
-export function treeNodePaddingLeft(depth: number): string {
-	return `${depth * 18 + 12}px`;
-}
-
-export function fileNodePaddingLeft(depth: number): string {
-	return `${depth * 18 + 34}px`;
-}
-
-export function fileKindForPath(path: string) {
-	const lowerPath = path.toLowerCase();
-	if (lowerPath.endsWith(".md")) {
-		return "markdown";
-	}
-	if (lowerPath.endsWith(".json")) {
-		return "json";
-	}
-	if (
-		lowerPath.endsWith(".ts") ||
-		lowerPath.endsWith(".tsx") ||
-		lowerPath.endsWith(".js") ||
-		lowerPath.endsWith(".jsx") ||
-		lowerPath.endsWith(".css") ||
-		lowerPath.endsWith(".html") ||
-		lowerPath.endsWith(".yaml") ||
-		lowerPath.endsWith(".yml") ||
-		lowerPath.endsWith(".sh")
-	) {
-		return "code";
-	}
-	if (
-		lowerPath.endsWith(".png") ||
-		lowerPath.endsWith(".jpg") ||
-		lowerPath.endsWith(".jpeg") ||
-		lowerPath.endsWith(".gif") ||
-		lowerPath.endsWith(".webp") ||
-		lowerPath.endsWith(".svg")
-	) {
-		return "image";
-	}
-	return "default";
-}
-
-function FileIcon({ path }: { path: string }) {
-	switch (fileKindForPath(path)) {
-		case "markdown":
-			return <BookText size={14} className="shrink-0" />;
-		case "json":
-			return <FileJson2 size={14} className="shrink-0" />;
-		case "code":
-			return <FileCode2 size={14} className="shrink-0" />;
-		case "image":
-			return <FileImage size={14} className="shrink-0" />;
-		default:
-			return <FileText size={14} className="shrink-0" />;
-	}
-}
-
 export type FilesViewMode = "tree" | "graph";
+
+function normalizeDirectoryStatusPath(path: string): string {
+	return path.endsWith("/") ? path : `${path}/`;
+}
+
+function pierreGitStatus(
+	entry: BrowserTreeEntry,
+): GitStatusEntry["status"] | undefined {
+	if (entry.gitStatus === "modified") {
+		return "modified";
+	}
+	if (entry.gitStatus === "new") {
+		return "untracked";
+	}
+	return undefined;
+}
+
+export function flattenBrowserTreePaths(entries: BrowserTreeEntry[]): string[] {
+	const paths: string[] = [];
+
+	for (const entry of entries) {
+		if (entry.kind === "file") {
+			paths.push(entry.path);
+			continue;
+		}
+		if (entry.children) {
+			paths.push(...flattenBrowserTreePaths(entry.children));
+		}
+	}
+
+	return paths;
+}
+
+export function browserTreeGitStatusEntries(
+	entries: BrowserTreeEntry[],
+): GitStatusEntry[] {
+	const gitStatusEntries: GitStatusEntry[] = [];
+
+	for (const entry of entries) {
+		const status = pierreGitStatus(entry);
+		if (status) {
+			gitStatusEntries.push({
+				path:
+					entry.kind === "directory"
+						? normalizeDirectoryStatusPath(entry.path)
+						: entry.path,
+				status,
+			});
+		}
+		if (entry.children) {
+			gitStatusEntries.push(...browserTreeGitStatusEntries(entry.children));
+		}
+	}
+
+	return gitStatusEntries;
+}
 
 export function FileTreeHeader({
 	agentName,
@@ -126,90 +159,57 @@ export function FileTreeHeader({
 	);
 }
 
-export function FileTree({ agentId, entries, onOpenFile }: FileTreeProps) {
-	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>(
-		{},
-	);
-	const visibleEntries = useMemo(() => entries, [entries]);
+function clickedFilePath(event: ReactMouseEvent<HTMLElement>): string | null {
+	const path = event.nativeEvent.composedPath();
 
-	return (
-		<div className="space-y-0.5 px-3 py-3">
-			{visibleEntries.map((entry) => (
-				<TreeNode
-					key={entry.path}
-					agentId={agentId}
-					depth={0}
-					entry={entry}
-					expandedPaths={expandedPaths}
-					onOpenFile={onOpenFile}
-					onToggle={(path) =>
-						setExpandedPaths((current) => ({
-							...current,
-							[path]: !current[path],
-						}))
-					}
-				/>
-			))}
-		</div>
-	);
-}
-
-interface TreeNodeProps {
-	agentId: string;
-	depth: number;
-	entry: BrowserTreeEntry;
-	expandedPaths: Record<string, boolean>;
-	onOpenFile: (params: { agentId: string; path: string }) => void;
-	onToggle: (path: string) => void;
-}
-
-function TreeNode({
-	agentId,
-	depth,
-	entry,
-	expandedPaths,
-	onOpenFile,
-	onToggle,
-}: TreeNodeProps) {
-	if (entry.kind === "file") {
-		return (
-			<button
-				type="button"
-				onClick={() => onOpenFile({ agentId, path: entry.path })}
-				className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-dark-900 ${treeEntryToneClass(entry)}`}
-				style={{ paddingLeft: fileNodePaddingLeft(depth) }}
-			>
-				<FileIcon path={entry.path} />
-				<span className="truncate">{entry.name}</span>
-			</button>
-		);
+	for (const target of path) {
+		if (!(target instanceof HTMLElement)) {
+			continue;
+		}
+		if (target.dataset.itemType === "file" && target.dataset.itemPath) {
+			return target.dataset.itemPath;
+		}
 	}
 
-	const expanded = isTreeNodeExpanded(expandedPaths, entry.path);
+	return null;
+}
+
+export function FileTree({ agentId, entries, onOpenFile }: FileTreeProps) {
+	const paths = useMemo(() => flattenBrowserTreePaths(entries), [entries]);
+	const gitStatusEntries = useMemo(
+		() => browserTreeGitStatusEntries(entries),
+		[entries],
+	);
+	const latestAgentId = useRef(agentId);
+	const latestOnOpenFile = useRef(onOpenFile);
+	latestAgentId.current = agentId;
+	latestOnOpenFile.current = onOpenFile;
+	const { model } = useFileTree({
+		gitStatus: gitStatusEntries,
+		initialExpansion: "closed",
+		paths,
+	});
+
+	useEffect(() => {
+		model.resetPaths(paths);
+	}, [model, paths]);
+
+	useEffect(() => {
+		model.setGitStatus(gitStatusEntries);
+	}, [model, gitStatusEntries]);
+
 	return (
-		<Fragment>
-			<button
-				type="button"
-				onClick={() => onToggle(entry.path)}
-				className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-dark-900 ${treeEntryToneClass(entry)}`}
-				style={{ paddingLeft: treeNodePaddingLeft(depth) }}
-			>
-				{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-				<Folder size={14} className="shrink-0" />
-				<span className="truncate">{entry.name}</span>
-			</button>
-			{expanded &&
-				entry.children?.map((child) => (
-					<TreeNode
-						key={child.path}
-						agentId={agentId}
-						depth={depth + 1}
-						entry={child}
-						expandedPaths={expandedPaths}
-						onOpenFile={onOpenFile}
-						onToggle={onToggle}
-					/>
-				))}
-		</Fragment>
+		<PierreFileTree
+			model={model}
+			className="block h-full min-h-0"
+			onClick={(event) => {
+				const path = clickedFilePath(event);
+				if (!path) {
+					return;
+				}
+				latestOnOpenFile.current({ agentId: latestAgentId.current, path });
+			}}
+			style={fileTreeThemeStyle}
+		/>
 	);
 }

@@ -1,36 +1,77 @@
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import {
+	browserTreeGitStatusEntries,
 	FileTreeHeader,
-	fileKindForPath,
-	fileNodePaddingLeft,
-	isTreeNodeExpanded,
-	treeNodePaddingLeft,
+	flattenBrowserTreePaths,
 } from "../../../src/frontend/browser/components/right-panel/file-tree.tsx";
-import { treeEntryToneClass } from "../../../src/frontend/browser/components/right-panel/git/git-status-tone.ts";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
-describe("file tree helpers", () => {
-	test("folders are collapsed by default", () => {
-		expect(isTreeNodeExpanded({}, "src")).toBe(false);
-		expect(isTreeNodeExpanded({ src: true }, "src")).toBe(true);
+describe("file tree adapters", () => {
+	test("flattens the browser tree shape to leaf file paths", () => {
+		expect(
+			flattenBrowserTreePaths([
+				{
+					kind: "directory",
+					name: "src",
+					path: "src",
+					children: [
+						{
+							kind: "file",
+							name: "index.ts",
+							path: "src/index.ts",
+						},
+						{
+							kind: "directory",
+							name: "components",
+							path: "src/components",
+							children: [
+								{
+									kind: "file",
+									name: "button.tsx",
+									path: "src/components/button.tsx",
+								},
+							],
+						},
+					],
+				},
+				{
+					kind: "file",
+					name: "README.md",
+					path: "README.md",
+				},
+			]),
+		).toEqual(["src/index.ts", "src/components/button.tsx", "README.md"]);
 	});
 
-	test("nested entries use deeper indentation", () => {
-		expect(treeNodePaddingLeft(0)).toBe("12px");
-		expect(treeNodePaddingLeft(1)).toBe("30px");
-		expect(treeNodePaddingLeft(2)).toBe("48px");
-		expect(fileNodePaddingLeft(0)).toBe("34px");
-		expect(fileNodePaddingLeft(1)).toBe("52px");
-	});
-
-	test("chooses file kinds from file extensions", () => {
-		expect(fileKindForPath("README.md")).toBe("markdown");
-		expect(fileKindForPath("src/index.ts")).toBe("code");
-		expect(fileKindForPath("package.json")).toBe("json");
-		expect(fileKindForPath("screenshot.png")).toBe("image");
-		expect(fileKindForPath("notes.txt")).toBe("default");
+	test("maps browser git statuses to Pierre tree status entries", () => {
+		expect(
+			browserTreeGitStatusEntries([
+				{
+					kind: "directory",
+					name: "src",
+					path: "src",
+					gitStatus: "new",
+					children: [
+						{
+							kind: "file",
+							name: "index.ts",
+							path: "src/index.ts",
+							gitStatus: "modified",
+						},
+						{
+							kind: "file",
+							name: "stable.ts",
+							path: "src/stable.ts",
+						},
+					],
+				},
+			]),
+		).toEqual([
+			{ path: "src/", status: "untracked" },
+			{ path: "src/index.ts", status: "modified" },
+		]);
 	});
 
 	test("renders the agents directory path on the same h-8 subheader row as git panel", () => {
@@ -46,39 +87,5 @@ describe("file tree helpers", () => {
 		);
 
 		expect(html).toContain("~/.outclaw/agents/scout");
-	});
-
-	test("uses IDE-style colors for modified and new git tree entries", () => {
-		expect(
-			treeEntryToneClass({
-				kind: "file",
-				name: "AGENTS.md",
-				path: "AGENTS.md",
-				gitStatus: "modified",
-			}),
-		).toContain("text-brand");
-		expect(
-			treeEntryToneClass({
-				kind: "file",
-				name: "todo.md",
-				path: "notes/todo.md",
-				gitStatus: "new",
-			}),
-		).toContain("text-success");
-		expect(
-			treeEntryToneClass({
-				kind: "directory",
-				name: "notes",
-				path: "notes",
-				gitStatus: "new",
-			}),
-		).toContain("text-success");
-		expect(
-			treeEntryToneClass({
-				kind: "file",
-				name: "README.md",
-				path: "README.md",
-			}),
-		).toContain("text-dark-400");
 	});
 });

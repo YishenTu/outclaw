@@ -22,11 +22,13 @@ describe("readBrowserFile", () => {
 
 			await expect(
 				readBrowserFile(root, join(root, "notes", "large.md")),
-			).resolves.toEqual({
+			).resolves.toMatchObject({
 				content,
 				kind: "text",
 				language: "markdown",
+				mtimeMs: expect.any(Number),
 				path: "notes/large.md",
+				sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
 				truncated: false,
 			});
 		} finally {

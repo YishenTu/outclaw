@@ -350,22 +350,26 @@ describe("createBrowserApi", () => {
 
 		await expect(
 			api.readAgentFile("agent-railly", "AGENTS.md"),
-		).resolves.toEqual({
+		).resolves.toMatchObject({
 			content: "# Agent\n",
 			kind: "text",
 			language: "markdown",
+			mtimeMs: expect.any(Number),
 			path: "AGENTS.md",
+			sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
 			truncated: false,
 		});
 
 		await expect(
 			api.readAgentFile("agent-railly", "cron/daily.yaml"),
-		).resolves.toEqual({
+		).resolves.toMatchObject({
 			content:
 				"name: Daily\nschedule: 15 6 * * *\nmodel: haiku\neffort: high\nenabled: true\nprompt: Check inbox\n",
 			kind: "text",
 			language: "yaml",
+			mtimeMs: expect.any(Number),
 			path: "cron/daily.yaml",
+			sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
 			truncated: false,
 		});
 
@@ -932,10 +936,11 @@ describe("createBrowserApi", () => {
 			storesByAgent: new Map([["agent-railly", store]]),
 		});
 
-		await expect(api.readConfigFile()).resolves.toEqual({
+		await expect(api.readConfigFile()).resolves.toMatchObject({
 			content: '{\n\t"host": "127.0.0.1",\n\t"port": 4000\n}\n',
 			kind: "text",
 			language: "json",
+			mtimeMs: expect.any(Number),
 			path: "config.json",
 			schema: expect.objectContaining({
 				kind: "object",
@@ -947,6 +952,7 @@ describe("createBrowserApi", () => {
 					},
 				}),
 			}),
+			sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
 			truncated: false,
 		});
 
@@ -984,10 +990,11 @@ describe("createBrowserApi", () => {
 				host: "127.0.0.1",
 				port: 4100,
 			}),
-		).resolves.toEqual({
+		).resolves.toMatchObject({
 			content: '{\n\t"host": "127.0.0.1",\n\t"port": 4100\n}\n',
 			kind: "text",
 			language: "json",
+			mtimeMs: expect.any(Number),
 			path: "config.json",
 			schema: expect.objectContaining({
 				kind: "object",
@@ -1010,6 +1017,7 @@ describe("createBrowserApi", () => {
 					}),
 				}),
 			}),
+			sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
 			truncated: false,
 		});
 		expect(readFileSync(join(root, "config.json"), "utf-8")).toBe(

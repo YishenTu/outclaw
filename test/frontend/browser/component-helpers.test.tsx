@@ -107,7 +107,7 @@ describe("browser component helpers", () => {
 		expect(menuHtml).toContain("text-dark-300 hover:bg-dark-800/70");
 	});
 
-	test("renders file tree roots as file buttons and collapsed directory rows", () => {
+	test("renders the Pierre file tree host for browser tree entries", () => {
 		const html = renderToStaticMarkup(
 			<FileTree
 				agentId="agent-railly"
@@ -135,11 +135,11 @@ describe("browser component helpers", () => {
 			/>,
 		);
 
-		expect(html).toContain("AGENTS.md");
-		expect(html).toContain("cron");
-		expect(html).toContain("lucide-chevron-right");
-		expect(html).toContain("text-brand");
-		expect(html).not.toContain("daily.yaml");
+		expect(html).toContain("<file-tree-container");
+		expect(html).toContain('class="block h-full min-h-0"');
+		expect(html).toContain("--trees-item-height:30px");
+		expect(html).not.toContain("lucide-chevron-right");
+		expect(html).not.toContain("text-brand");
 	});
 
 	test("renders an empty git graph without invoking commit graph layout", () => {

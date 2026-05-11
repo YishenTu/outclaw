@@ -43,6 +43,7 @@ import { buildAgentGraph } from "./files/build-graph.ts";
 import { listWorkspaceFiles } from "./files/list-workspace-files.ts";
 import { readBrowserFile } from "./files/read-browser-file.ts";
 import { listTreeEntries } from "./files/tree-workbench.ts";
+import { writeBrowserFile } from "./files/write-browser-file.ts";
 import {
 	initGitRepo as initGitRepoWorkbench,
 	normalizeGitPaths,
@@ -121,6 +122,12 @@ export interface BrowserApi {
 	readAgentFile(
 		agentId: string,
 		relativePath: string,
+	): Promise<BrowserFileResponse>;
+	writeAgentFile(
+		agentId: string,
+		relativePath: string,
+		content: string,
+		expected: { mtimeMs: number; sha256: string },
 	): Promise<BrowserFileResponse>;
 	initGitRepo(): Promise<BrowserGitStatusResponse>;
 	readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
@@ -294,6 +301,29 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				relativePath,
 			);
 			const file = await readBrowserFile(agent.homeDir, absolutePath);
+			const gitChange = readAgentFileGitChange(
+				options.gitRoot,
+				agent.homeDir,
+				file.path,
+				ignoredGitPaths,
+			);
+			return {
+				...file,
+				...(gitChange ? { gitChange } : {}),
+			};
+		},
+		async writeAgentFile(agentId, relativePath, content, expected) {
+			const agent = requireAgent(agentsById, agentId);
+			const absolutePath = resolveExistingPathWithinRoot(
+				agent.homeDir,
+				relativePath,
+			);
+			const file = await writeBrowserFile(
+				agent.homeDir,
+				absolutePath,
+				content,
+				expected,
+			);
 			const gitChange = readAgentFileGitChange(
 				options.gitRoot,
 				agent.homeDir,

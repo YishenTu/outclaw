@@ -1,64 +1,41 @@
-import { AlertCircle } from "lucide-react";
-import { useEffect, useState } from "react";
-import type { BrowserGitDiffResponse } from "../../../../common/protocol.ts";
-import { fetchGitDiff } from "../../lib/api.ts";
-import {
-	selectGitRevision,
-	useRightPanelRefreshStore,
-} from "../../stores/right-panel-refresh.ts";
-import { GitDiffContent } from "./git-diff-content.tsx";
+import { AlertCircle, Columns, Rows } from "lucide-react";
+import { useState } from "react";
+import { GitDiffContent, type GitDiffStyle } from "./git-diff-content.tsx";
+import { useGitDiff } from "./use-git-diff.ts";
 
 interface GitDiffViewerProps {
 	path: string;
 }
 
 export function GitDiffViewer({ path }: GitDiffViewerProps) {
-	const [diff, setDiff] = useState<BrowserGitDiffResponse | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	const [loading, setLoading] = useState(true);
-	const gitRevision = useRightPanelRefreshStore(selectGitRevision);
-
-	useEffect(() => {
-		void gitRevision;
-
-		let cancelled = false;
-		setLoading(true);
-		setError(null);
-
-		void fetchGitDiff(path)
-			.then((nextDiff) => {
-				if (!cancelled) {
-					setDiff(nextDiff);
-				}
-			})
-			.catch((nextError) => {
-				if (!cancelled) {
-					setDiff(null);
-					setError(
-						nextError instanceof Error
-							? nextError.message
-							: "Failed to load diff",
-					);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setLoading(false);
-				}
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [gitRevision, path]);
+	const [diffStyle, setDiffStyle] = useState<GitDiffStyle>("unified");
+	const { diff, loading, error } = useGitDiff(path);
+	const nextDiffStyle = diffStyle === "unified" ? "split" : "unified";
+	const toggleDiffStyleLabel =
+		nextDiffStyle === "split"
+			? "Switch to split diff"
+			: "Switch to unified diff";
 
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-dark-950">
 			<div className="h-8 shrink-0 border-b border-dark-800 px-6">
 				<div className="mx-auto flex h-full max-w-5xl items-center gap-4">
-					<div className="min-w-0 truncate font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
+					<div className="min-w-0 flex-1 truncate font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
 						Git diff / {path}
 					</div>
+					<button
+						type="button"
+						onClick={() => setDiffStyle(nextDiffStyle)}
+						aria-label={toggleDiffStyleLabel}
+						title={toggleDiffStyleLabel}
+						className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
+					>
+						{diffStyle === "unified" ? (
+							<Columns size={13} />
+						) : (
+							<Rows size={13} />
+						)}
+					</button>
 				</div>
 			</div>
 
@@ -74,7 +51,7 @@ export function GitDiffViewer({ path }: GitDiffViewerProps) {
 							<div className="text-sm">{error}</div>
 						</div>
 					) : (
-						diff && <GitDiffContent diff={diff} />
+						diff && <GitDiffContent diff={diff} diffStyle={diffStyle} />
 					)}
 				</div>
 			</div>

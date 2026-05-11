@@ -1,64 +1,81 @@
-import type { BrowserGitDiffResponse } from "../../../../common/protocol.ts";
-import { fileNameFromPath } from "../../lib/path-display.ts";
-import { CodePreview } from "../file-viewer/file-viewer.tsx";
 import {
-	type GitDiffFileStatus,
-	type ParsedGitDiffLine,
-	parseGitDiff,
-} from "./parse-git-diff.ts";
+	type FileDiffMetadata,
+	parsePatchFiles,
+	type SupportedLanguages,
+	setLanguageOverride,
+} from "@pierre/diffs";
+import { FileDiff } from "@pierre/diffs/react";
+import type { CSSProperties } from "react";
+import type { BrowserGitDiffResponse } from "../../../../common/protocol.ts";
+import { CodePreview } from "../file-viewer/file-viewer.tsx";
+
+export type GitDiffStyle = "unified" | "split";
 
 interface GitDiffContentProps {
 	diff: BrowserGitDiffResponse;
+	diffStyle?: GitDiffStyle;
 }
 
-function statusLabel(status: GitDiffFileStatus): string {
-	switch (status) {
-		case "added":
-			return "Added";
-		case "deleted":
-			return "Deleted";
-		case "renamed":
-			return "Renamed";
-		default:
-			return "Modified";
+export function languageForDiffPath(path: string): SupportedLanguages {
+	const lowerPath = path.toLowerCase();
+	if (lowerPath.endsWith(".ts") || lowerPath.endsWith(".tsx")) {
+		return "typescript";
 	}
-}
-
-function lineClasses(line: ParsedGitDiffLine): string {
-	switch (line.kind) {
-		case "addition":
-			return "bg-success/10 text-success";
-		case "deletion":
-			return "bg-danger/10 text-danger";
-		case "meta":
-			return "bg-warning/10 text-warning";
-		default:
-			return "bg-dark-950/40 text-dark-200";
+	if (lowerPath.endsWith(".js") || lowerPath.endsWith(".jsx")) {
+		return "javascript";
 	}
-}
-
-function markerClasses(line: ParsedGitDiffLine): string {
-	switch (line.kind) {
-		case "addition":
-			return "text-success";
-		case "deletion":
-			return "text-danger";
-		case "meta":
-			return "text-warning";
-		default:
-			return "text-dark-500";
+	if (lowerPath.endsWith(".md")) {
+		return "markdown";
 	}
+	if (lowerPath.endsWith(".json")) {
+		return "json";
+	}
+	if (lowerPath.endsWith(".css")) {
+		return "css";
+	}
+	if (lowerPath.endsWith(".html")) {
+		return "html";
+	}
+	if (lowerPath.endsWith(".yaml") || lowerPath.endsWith(".yml")) {
+		return "yaml";
+	}
+	if (lowerPath.endsWith(".sh")) {
+		return "shell";
+	}
+	return "text";
 }
 
-function renderLineNumber(value: number | null): string {
-	return value === null ? "" : String(value);
+function languageSourcePath(
+	file: FileDiffMetadata,
+	fallbackPath: string,
+): string {
+	if (file.name && file.name !== "/dev/null") {
+		return file.name;
+	}
+	if (file.prevName && file.prevName !== "/dev/null") {
+		return file.prevName;
+	}
+	return fallbackPath;
 }
 
-function renderLineContent(content: string): string {
-	return content.length > 0 ? content : " ";
+export function pierreDiffFiles(
+	diff: BrowserGitDiffResponse,
+): FileDiffMetadata[] {
+	return parsePatchFiles(diff.diff, diff.path)
+		.flatMap((patch) => patch.files)
+		.filter((file) => file.hunks.length > 0)
+		.map((file) =>
+			setLanguageOverride(
+				file,
+				languageForDiffPath(languageSourcePath(file, diff.path)),
+			),
+		);
 }
 
-export function GitDiffContent({ diff }: GitDiffContentProps) {
+export function GitDiffContent({
+	diff,
+	diffStyle = "unified",
+}: GitDiffContentProps) {
 	if (diff.diff.trim() === "") {
 		return (
 			<div className="border border-dark-800 bg-dark-900/40 px-5 py-4 text-sm text-dark-300">
@@ -67,7 +84,7 @@ export function GitDiffContent({ diff }: GitDiffContentProps) {
 		);
 	}
 
-	const files = parseGitDiff(diff.diff, diff.path);
+	const files = pierreDiffFiles(diff);
 	if (files.length === 0) {
 		return (
 			<div className="overflow-hidden rounded-xl border border-dark-800 bg-dark-900/50">
@@ -85,65 +102,29 @@ export function GitDiffContent({ diff }: GitDiffContentProps) {
 
 	return (
 		<div className="flex flex-col gap-6">
-			{files.map((file) => (
-				<section
-					key={file.key}
-					className="overflow-hidden rounded-xl bg-dark-900/50"
+			{files.map((file, index) => (
+				<div
+					key={file.cacheKey ?? `${file.name}:${index}`}
+					data-diff-style={diffStyle}
 				>
-					<div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
-						<div className="min-w-0">
-							<div className="text-[11px] uppercase tracking-[0.16em] text-dark-500">
-								{statusLabel(file.status)}
-							</div>
-							<div className="truncate text-sm text-dark-100">
-								{fileNameFromPath(file.displayPath)}
-							</div>
-							{file.status === "renamed" && (
-								<div className="mt-1 text-[11px] text-dark-500">
-									{fileNameFromPath(file.oldPath)} -&gt;{" "}
-									{fileNameFromPath(file.newPath)}
-								</div>
-							)}
-						</div>
-						<div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] tabular-nums">
-							<span className="text-success">+{file.additions}</span>
-							<span className="text-danger">-{file.deletions}</span>
-						</div>
-					</div>
-
-					<div className="flex flex-col gap-4 px-4 py-4">
-						{file.hunks.map((hunk) => (
-							<div
-								key={hunk.key}
-								className="overflow-hidden rounded-lg bg-dark-950/40"
-							>
-								<div>
-									{hunk.lines.map((line) => (
-										<div
-											key={line.key}
-											className={`grid grid-cols-[2.75rem_2.75rem_1rem_minmax(0,1fr)] text-xs leading-6 ${lineClasses(line)}`}
-										>
-											<div className="px-1.5 py-1 font-mono text-right text-dark-500 tabular-nums">
-												{renderLineNumber(line.oldLineNumber)}
-											</div>
-											<div className="px-1.5 py-1 font-mono text-right text-dark-500 tabular-nums">
-												{renderLineNumber(line.newLineNumber)}
-											</div>
-											<div
-												className={`px-0.5 py-1 text-center font-mono ${markerClasses(line)}`}
-											>
-												{line.marker}
-											</div>
-											<div className="font-mono min-w-0 px-3 py-1 whitespace-pre-wrap [overflow-wrap:anywhere]">
-												{renderLineContent(line.content)}
-											</div>
-										</div>
-									))}
-								</div>
-							</div>
-						))}
-					</div>
-				</section>
+					<FileDiff
+						fileDiff={file}
+						options={{ diffStyle, overflow: "wrap" }}
+						className="block"
+						style={
+							{
+								// Make Pierre's whole panel inherit the site bg (dark-950).
+								// Pierre resolves `--diffs-bg` via
+								// `light-dark(--diffs-light-bg, --diffs-dark-bg)`, so overriding
+								// `--diffs-dark-bg` recolors the panel, header, gutter, and any
+								// other non-addition/deletion surface in dark mode without
+								// disturbing the colored +/- line tints.
+								"--diffs-dark-bg": "var(--dark-950)",
+								"--diffs-light-bg": "var(--dark-950)",
+							} as CSSProperties
+						}
+					/>
+				</div>
 			))}
 		</div>
 	);

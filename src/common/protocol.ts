@@ -593,6 +593,8 @@ export interface BrowserFileResponse {
 	content?: string;
 	gitChange?: BrowserFileGitChange;
 	language?: string;
+	mtimeMs?: number;
+	sha256?: string;
 	truncated: boolean;
 }
 

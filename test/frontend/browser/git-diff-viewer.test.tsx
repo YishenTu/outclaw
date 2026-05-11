@@ -1,16 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { GitDiffContent } from "../../../src/frontend/browser/components/git-diff-viewer/git-diff-content.tsx";
+import type { BrowserGitDiffResponse } from "../../../src/common/protocol.ts";
+import {
+	GitDiffContent,
+	languageForDiffPath,
+	pierreDiffFiles,
+} from "../../../src/frontend/browser/components/git-diff-viewer/git-diff-content.tsx";
 import { GitDiffViewer } from "../../../src/frontend/browser/components/git-diff-viewer/git-diff-viewer.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
-describe("GitDiffContent", () => {
-	test("renders parsed hunks as a structured diff panel", () => {
-		const html = renderToStaticMarkup(
-			<GitDiffContent
-				diff={{
-					path: "agents/john-doe/AGENTS.md",
-					diff: `diff --git a/agents/john-doe/AGENTS.md b/agents/john-doe/AGENTS.md
+function structuredDiff(): BrowserGitDiffResponse {
+	return {
+		path: "agents/john-doe/AGENTS.md",
+		diff: `diff --git a/agents/john-doe/AGENTS.md b/agents/john-doe/AGENTS.md
 index cefe630..1111111 100644
 --- a/agents/john-doe/AGENTS.md
 +++ b/agents/john-doe/AGENTS.md
@@ -20,52 +22,78 @@ index cefe630..1111111 100644
 -You're a personal AI assistant that grows through collaboration.
 +You're a personal AI assistant that collaborates through change.
 `,
-				}}
-			/>,
-		);
+	};
+}
 
-		expect(html).toContain("AGENTS.md");
-		expect(html).not.toContain("agents/john-doe/AGENTS.md");
-		expect(html).toContain("Modified");
-		expect(html).not.toContain("@@ -1,3 +1,2 @@");
-		expect(html).toContain("bg-success/10");
-		expect(html).toContain("bg-danger/10");
-		expect(html).toContain("tabular-nums");
-		expect(html).toContain("grid-cols-[2.75rem_2.75rem_1rem_minmax(0,1fr)]");
-		expect(html).not.toContain("grid-cols-[3rem_3rem_1.25rem_minmax(0,1fr)]");
-		expect(html).not.toContain("grid-cols-[4rem_4rem_1.5rem_minmax(0,1fr)]");
-		expect(html).toContain("font-mono min-w-0 px-3 py-1 whitespace-pre-wrap");
-		expect(html).not.toContain("font-mono-ui whitespace-pre-wrap");
-		expect(html).toContain("collaborates through change");
-		expect(html).not.toContain("<pre");
+describe("GitDiffContent", () => {
+	test("detects the language from the changed file path", () => {
+		expect(languageForDiffPath("src/index.ts")).toBe("typescript");
+		expect(languageForDiffPath("src/index.tsx")).toBe("typescript");
+		expect(languageForDiffPath("src/index.js")).toBe("javascript");
+		expect(languageForDiffPath("src/index.jsx")).toBe("javascript");
+		expect(languageForDiffPath("README.md")).toBe("markdown");
+		expect(languageForDiffPath("package.json")).toBe("json");
+		expect(languageForDiffPath("src/index.css")).toBe("css");
+		expect(languageForDiffPath("src/index.html")).toBe("html");
+		expect(languageForDiffPath("config.yaml")).toBe("yaml");
+		expect(languageForDiffPath("config.yml")).toBe("yaml");
+		expect(languageForDiffPath("scripts/run.sh")).toBe("shell");
+		expect(languageForDiffPath("notes.txt")).toBe("text");
 	});
 
-	test("renders parsed diffs without card borders or inner table grid lines", () => {
-		const html = renderToStaticMarkup(
-			<GitDiffContent
-				diff={{
-					path: "agents/john-doe/HEARTBEAT.md",
-					diff: `diff --git a/agents/john-doe/HEARTBEAT.md b/agents/john-doe/HEARTBEAT.md
-deleted file mode 100644
-index cefe630..0000000
---- a/agents/john-doe/HEARTBEAT.md
-+++ /dev/null
-@@ -1,2 +0,0 @@
--# Heartbeat
--
+	test("parses patch files through Pierre and applies language overrides", () => {
+		const files = pierreDiffFiles({
+			path: "src/index.ts",
+			diff: `diff --git a/src/index.ts b/src/index.ts
+index 1111111..2222222 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -1 +1 @@
+-const value = 1;
++const value = 2;
+diff --git a/README.md b/README.md
+index 3333333..4444444 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1 @@
+-# Old
++# New
 `,
-				}}
-			/>,
+		});
+
+		expect(files.map((file) => [file.name, file.lang])).toEqual([
+			["src/index.ts", "typescript"],
+			["README.md", "markdown"],
+		]);
+	});
+
+	test("renders Pierre diff components for structured patches", () => {
+		const html = renderToStaticMarkup(
+			<GitDiffContent diff={structuredDiff()} />,
 		);
 
-		expect(html).not.toContain("border border-dark-800");
-		expect(html).not.toContain("border-b border-dark-800");
-		expect(html).not.toContain("divide-y");
-		expect(html).not.toContain("border-r border-dark-950/70");
-		expect(html).not.toContain("border-success/30 px-2");
-		expect(html).not.toContain("border-danger/30 px-2");
-		expect(html).not.toContain("bg-success/10 px-2 py-1");
-		expect(html).not.toContain("bg-danger/10 px-2 py-1");
+		expect(html).toContain("<diffs-container");
+		expect(html).not.toContain(
+			"grid-cols-[2.75rem_2.75rem_1rem_minmax(0,1fr)]",
+		);
+		expect(html).not.toContain("bg-success/10");
+		expect(html).not.toContain("bg-danger/10");
+	});
+
+	test("passes an explicit split diff style to Pierre diff components", () => {
+		const html = renderToStaticMarkup(
+			<GitDiffContent diff={structuredDiff()} diffStyle="split" />,
+		);
+
+		expect(html).toContain('data-diff-style="split"');
+	});
+
+	test("defaults Pierre diff components to unified diff style", () => {
+		const html = renderToStaticMarkup(
+			<GitDiffContent diff={structuredDiff()} />,
+		);
+
+		expect(html).toContain('data-diff-style="unified"');
 	});
 
 	test("falls back to raw diff output when the payload has no structured hunks", () => {

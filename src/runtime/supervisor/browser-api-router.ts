@@ -23,6 +23,7 @@ import type {
 	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
 import { validateSessionSearchQuery } from "../application/session-search-query.ts";
+import { FileConflictError } from "../browser/files/write-browser-file.ts";
 
 export interface BrowserApi {
 	getAgentTerminalCwd(agentId: string): string | undefined;
@@ -60,6 +61,12 @@ export interface BrowserApi {
 	readAgentFile(
 		agentId: string,
 		relativePath: string,
+	): Promise<BrowserFileResponse>;
+	writeAgentFile?(
+		agentId: string,
+		relativePath: string,
+		content: string,
+		expected: { mtimeMs: number; sha256: string },
 	): Promise<BrowserFileResponse>;
 	readConfigFile(): Promise<BrowserConfigResponse>;
 	readGitCommit(sha: string): Promise<BrowserGitCommitResponse>;
@@ -364,7 +371,7 @@ export async function handleBrowserApiRequest(
 		}
 
 		const agentMatch = url.pathname.match(
-			/^\/api\/agents\/([^/]+)\/(tree|graph|workspace-files|files|cron|terminal-run-command)$/,
+			/^\/api\/agents\/([^/]+)\/(tree|graph|workspace-files|file|files|cron|terminal-run-command)$/,
 		);
 		if (!agentMatch) {
 			return jsonError("Not found", 404);
@@ -403,26 +410,34 @@ export async function handleBrowserApiRequest(
 			);
 		}
 
-		if (req.method !== "GET") {
-			return jsonError("Method not allowed", 405);
-		}
-
 		if (resource === "tree") {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
 			return Response.json(await browserApi.listAgentTree(agentId));
 		}
 		if (resource === "graph") {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
 			if (!browserApi.listAgentGraph) {
 				return jsonError("Graph API is not configured", 404);
 			}
 			return Response.json(await browserApi.listAgentGraph(agentId));
 		}
 		if (resource === "workspace-files") {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
 			if (!browserApi.listAgentWorkspaceFiles) {
 				return jsonError("Workspace files API is not configured", 404);
 			}
 			return Response.json(await browserApi.listAgentWorkspaceFiles(agentId));
 		}
 		if (resource === "cron") {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
 			return Response.json(await browserApi.listAgentCron(agentId));
 		}
 
@@ -430,8 +445,37 @@ export async function handleBrowserApiRequest(
 		if (!path) {
 			return jsonError("Missing path query parameter", 400);
 		}
+		if (resource === "file" && req.method === "PUT") {
+			if (!browserApi.writeAgentFile) {
+				return jsonError("File write API is not configured", 404);
+			}
+			const writeRequest = await readFileWriteRequest(req);
+			if (!writeRequest.ok) {
+				return jsonError(writeRequest.message, writeRequest.status);
+			}
+			return Response.json(
+				await browserApi.writeAgentFile(
+					agentId,
+					path,
+					writeRequest.body.content,
+					{
+						mtimeMs: writeRequest.body.expectedMtimeMs,
+						sha256: writeRequest.body.expectedSha256,
+					},
+				),
+			);
+		}
+		if (req.method !== "GET") {
+			return jsonError("Method not allowed", 405);
+		}
 		return Response.json(await browserApi.readAgentFile(agentId, path));
 	} catch (error) {
+		if (error instanceof FileConflictError) {
+			return Response.json(
+				{ kind: "conflict", current: error.current },
+				{ status: 409 },
+			);
+		}
 		const message = error instanceof Error ? error.message : "Unexpected error";
 		return jsonError(message, statusForBrowserApiError(message));
 	}
@@ -473,6 +517,67 @@ async function readUploadedImages(req: Request) {
 	}
 
 	return images;
+}
+
+async function readFileWriteRequest(req: Request): Promise<
+	| {
+			ok: true;
+			body: {
+				content: string;
+				expectedMtimeMs: number;
+				expectedSha256: string;
+			};
+	  }
+	| { ok: false; message: string; status: number }
+> {
+	const maxBodyBytes = 1024 * 1024;
+	const contentLength = req.headers.get("content-length");
+	if (contentLength) {
+		const declaredBytes = Number.parseInt(contentLength, 10);
+		if (
+			!Number.isFinite(declaredBytes) ||
+			declaredBytes < 0 ||
+			declaredBytes > maxBodyBytes
+		) {
+			return { ok: false, message: "File write body too large", status: 413 };
+		}
+	}
+
+	const bytes = new Uint8Array(await req.arrayBuffer());
+	if (bytes.byteLength > maxBodyBytes) {
+		return { ok: false, message: "File write body too large", status: 413 };
+	}
+
+	let body: unknown;
+	try {
+		body = JSON.parse(new TextDecoder().decode(bytes));
+	} catch {
+		return { ok: false, message: "Malformed file write body", status: 400 };
+	}
+
+	if (!isFileWriteBody(body)) {
+		return { ok: false, message: "Malformed file write body", status: 400 };
+	}
+
+	return { ok: true, body };
+}
+
+function isFileWriteBody(value: unknown): value is {
+	content: string;
+	expectedMtimeMs: number;
+	expectedSha256: string;
+} {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"content" in value &&
+		typeof value.content === "string" &&
+		"expectedMtimeMs" in value &&
+		typeof value.expectedMtimeMs === "number" &&
+		Number.isFinite(value.expectedMtimeMs) &&
+		"expectedSha256" in value &&
+		typeof value.expectedSha256 === "string"
+	);
 }
 
 function isImageMediaType(type: string): type is ImageMediaType {

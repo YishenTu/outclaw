@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { relative } from "node:path";
 import type { BrowserFileResponse } from "../../../common/protocol.ts";
@@ -28,6 +29,8 @@ export async function readBrowserFile(
 		kind: "text",
 		content: new TextDecoder().decode(fileBuffer),
 		language: detectFileLanguage(path),
+		mtimeMs: info.mtimeMs,
+		sha256: hashBuffer(fileBuffer),
 		truncated: false,
 	};
 }
@@ -44,4 +47,8 @@ function looksBinary(buffer: Uint8Array): boolean {
 		}
 	}
 	return false;
+}
+
+function hashBuffer(buffer: Uint8Array): string {
+	return createHash("sha256").update(buffer).digest("hex");
 }
