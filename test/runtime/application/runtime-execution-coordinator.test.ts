@@ -40,6 +40,14 @@ function makeDoneEvent(sessionId = "sdk-active"): DoneEvent {
 	};
 }
 
+function retainedLaneCount(coordinator: RuntimeExecutionCoordinator): number {
+	return (
+		coordinator as unknown as {
+			lanes: Map<string, unknown>;
+		}
+	).lanes.size;
+}
+
 describe("RuntimeExecutionCoordinator", () => {
 	afterEach(() => {
 		if (existsSync(TEST_DB)) rmSync(TEST_DB);
@@ -191,5 +199,38 @@ describe("RuntimeExecutionCoordinator", () => {
 		});
 
 		store.close();
+	});
+
+	test("completed detached prompts retire their execution lane", async () => {
+		const state = new RuntimeState("mock");
+		const sessions = new SessionService(state);
+		const release = createDeferred();
+		const coordinator = new RuntimeExecutionCoordinator({
+			promptDispatcher: {
+				run: async (task) => {
+					await release.promise;
+					task.onEvent?.({
+						type: "done",
+						sessionId: "sdk-code",
+						durationMs: 1,
+					});
+				},
+			} as Pick<PromptDispatcher, "run">,
+			sessions,
+			state,
+		});
+
+		expect(
+			coordinator.enqueueDetachedPrompt({
+				prompt: "fix tests",
+				source: "agent",
+			}),
+		).toMatchObject({ ocSessionId: expect.any(String) });
+		expect(retainedLaneCount(coordinator)).toBe(1);
+
+		release.resolve();
+		await coordinator.drain();
+
+		expect(retainedLaneCount(coordinator)).toBe(0);
 	});
 });

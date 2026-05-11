@@ -65,6 +65,12 @@ export interface CronRunMessage {
 	jobName: string;
 }
 
+export interface CodePromptMessage {
+	type: "code_prompt";
+	cwd: string;
+	prompt: string;
+}
+
 export type RuntimeClientType = "telegram" | "tui" | "browser" | "control";
 export type PromptSource =
 	| "telegram"
@@ -102,7 +108,8 @@ export type ClientMessage =
 	| RequestFilesMessage
 	| AskMessage
 	| SendMessage
-	| CronRunMessage;
+	| CronRunMessage
+	| CodePromptMessage;
 
 // --- Server → Client events ---
 
@@ -453,6 +460,8 @@ export interface BrowserSessionSummary {
 	lastActive: number;
 }
 
+export type BrowserSessionTag = "chat" | "cron" | "code";
+
 export interface BrowserAgentSummary {
 	agentId: string;
 	name: string;
@@ -474,6 +483,75 @@ export interface BrowserSessionPageResponse {
 	nextCursor?: SessionCursor;
 	query?: string;
 	sessions: BrowserSessionSummary[];
+}
+
+export type BrowserCodingSessionStatus = "running" | "completed" | "failed";
+
+export interface BrowserLinkedChatSession {
+	agentId: string;
+	providerId: string;
+	sessionId: string;
+}
+
+export interface BrowserCodingSessionSummary {
+	providerId: string;
+	sdkSessionId: string;
+	repositoryId?: string;
+	title: string;
+	model: string;
+	lastActive: number;
+	cwd: string;
+	status: BrowserCodingSessionStatus;
+	createdAt: number;
+	source: string;
+	tag: BrowserSessionTag;
+	ocSessionId?: string;
+	linkedChat?: BrowserLinkedChatSession;
+	browserTabId?: string;
+	failedAt?: number;
+	failureMessage?: string;
+}
+
+export interface BrowserCodingSessionPageResponse {
+	nextCursor?: SessionCursor;
+	sessions: BrowserCodingSessionSummary[];
+}
+
+export interface BrowserCodingSessionDetail
+	extends BrowserCodingSessionSummary {}
+
+export interface BrowserCodingSessionDeleteResponse {
+	deleted: true;
+	providerId: string;
+	sdkSessionId: string;
+}
+
+export type BrowserCodingRepositorySource = "auto" | "manual" | "clone";
+export type BrowserCodingRepositoryStatus = "active" | "archived";
+
+export interface BrowserCodingRepositorySummary {
+	id: string;
+	defaultAgentId: string;
+	rootCwd: string;
+	displayName: string;
+	remoteUrl?: string;
+	source: BrowserCodingRepositorySource;
+	status: BrowserCodingRepositoryStatus;
+	createdAt: number;
+	lastActive: number;
+	archivedAt?: number;
+}
+
+export interface BrowserCodingRepositoryDetail
+	extends BrowserCodingRepositorySummary {}
+
+export interface BrowserCodingRepositoryListResponse {
+	repositories: BrowserCodingRepositorySummary[];
+}
+
+export interface BrowserCodingRepositoryArchiveResponse {
+	archived: true;
+	repository: BrowserCodingRepositorySummary;
 }
 
 export interface BrowserLatencyResponse {
@@ -751,6 +829,16 @@ export interface CronRunErrorEvent {
 	message: string;
 }
 
+export interface CodePromptResponseEvent {
+	type: "code_prompt_response";
+	ocSessionId: string;
+}
+
+export interface CodePromptErrorEvent {
+	type: "code_prompt_error";
+	message: string;
+}
+
 export type ServerEvent =
 	| TextEvent
 	| ThinkingEvent
@@ -789,7 +877,9 @@ export type ServerEvent =
 	| SendResponseEvent
 	| SendErrorEvent
 	| CronRunResponseEvent
-	| CronRunErrorEvent;
+	| CronRunErrorEvent
+	| CodePromptResponseEvent
+	| CodePromptErrorEvent;
 
 // --- Facade types (backend contract) ---
 
@@ -849,6 +939,7 @@ export interface Facade {
 	readReplay?(sessionId: string): Promise<DisplayMessage[]>;
 	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;
 	getSkills?(cwd?: string): Promise<SkillInfo[]>;
+	dispose?(): Promise<void> | void;
 }
 
 // --- Helpers ---

@@ -45,6 +45,7 @@ interface RuntimeExecutionCoordinatorOptions {
 interface ExecutionLane {
 	activeAbort?: AbortController;
 	activeContext?: RuntimePromptContext;
+	detached?: boolean;
 	key: string;
 	queue: MessageQueue;
 	resolvedSessionId?: string;
@@ -245,6 +246,24 @@ export class RuntimeExecutionCoordinator {
 		return lane.queue.enqueue(() => this.runPromptInLane(lane, task, context));
 	}
 
+	enqueueDetachedPrompt(
+		task: PromptExecution,
+	): { ocSessionId: string } | undefined {
+		if (this.shuttingDown) {
+			return undefined;
+		}
+
+		const context = this.options.state.captureDetachedPromptContext(
+			task.prompt,
+			task.images,
+		);
+		const lane = this.createDetachedLane(context.ocSessionId);
+		const queued = lane.queue.enqueue(() =>
+			this.runPromptInLane(lane, task, context),
+		);
+		return queued ? { ocSessionId: context.ocSessionId } : undefined;
+	}
+
 	setRolloverNoticeHandler(
 		handler: RuntimeExecutionCoordinatorOptions["deliverRolloverNotice"],
 	) {
@@ -402,10 +421,25 @@ export class RuntimeExecutionCoordinator {
 		return lane;
 	}
 
+	private createDetachedLane(ocSessionId: string): ExecutionLane {
+		const key = `detached:${ocSessionId}`;
+		const lane: ExecutionLane = {
+			detached: true,
+			key,
+			queue: new MessageQueue(),
+		};
+		this.lanes.set(key, lane);
+		return lane;
+	}
+
 	private isLaneVisible(
 		lane: ExecutionLane,
 		context: RuntimePromptContext,
 	): boolean {
+		if (lane.detached) {
+			return false;
+		}
+
 		const resolvedSessionId = lane.resolvedSessionId ?? context.sessionId;
 		if (resolvedSessionId) {
 			return this.options.state.sessionId === resolvedSessionId;
@@ -477,6 +511,9 @@ export class RuntimeExecutionCoordinator {
 			}
 			lane.activeAbort = undefined;
 			lane.activeContext = undefined;
+			if (lane.detached) {
+				this.lanes.delete(lane.key);
+			}
 			this.options.onStatusChange?.();
 		}
 	}

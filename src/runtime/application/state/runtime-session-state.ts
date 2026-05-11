@@ -75,6 +75,13 @@ export class RuntimeSessionState {
 		return this.createLastUserDeliveryTarget();
 	}
 
+	createDetachedPromptContext(prompt: string, images?: ImageRef[]) {
+		return {
+			ocSessionId: randomUUID(),
+			sessionTitle: deriveSessionTitle(prompt, images),
+		};
+	}
+
 	preparePrompt(
 		prompt: string,
 		images?: ImageRef[],

@@ -144,6 +144,7 @@ export class SessionService {
 		model: string;
 		ocSessionId?: string;
 		source: string;
+		tag?: SessionTag;
 	}) {
 		const existing = this.store?.get(
 			this.state.providerId,
@@ -155,6 +156,7 @@ export class SessionService {
 			title: existing?.title ?? params.title,
 			model: params.model,
 			source: params.source,
+			tag: params.tag,
 			usage: params.event.usage,
 		});
 		this.notifySessionCatalogChanged();
@@ -166,7 +168,8 @@ export class SessionService {
 		title: string;
 		model: string;
 		ocSessionId?: string;
-		source: "agent" | "telegram" | "tui";
+		source: string;
+		tag?: SessionTag;
 	}) {
 		if (params.active) {
 			this.state.initializeRun(params.sessionId, params.source);
@@ -423,6 +426,7 @@ export class SessionService {
 		title: string;
 		model: string;
 		source: string;
+		tag?: SessionTag;
 		usage?: DoneEvent["usage"];
 	}) {
 		this.store?.upsert({
@@ -432,7 +436,7 @@ export class SessionService {
 			title: params.title,
 			model: params.model,
 			source: params.source,
-			tag: "chat",
+			tag: params.tag ?? "chat",
 		});
 
 		if (params.usage) {

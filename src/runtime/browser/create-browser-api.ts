@@ -1,6 +1,15 @@
 import { writeFile } from "node:fs/promises";
 import type {
 	BrowserAgentsResponse,
+	BrowserCodingRepositoryArchiveResponse,
+	BrowserCodingRepositoryDetail,
+	BrowserCodingRepositoryListResponse,
+	BrowserCodingRepositorySource,
+	BrowserCodingRepositorySummary,
+	BrowserCodingSessionDeleteResponse,
+	BrowserCodingSessionDetail,
+	BrowserCodingSessionPageResponse,
+	BrowserCodingSessionSummary,
 	BrowserConfigResponse,
 	BrowserCronEntry,
 	BrowserCronHistoryCursor,
@@ -24,6 +33,13 @@ import type {
 	TranscriptTurn,
 	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
+import type {
+	CodingRepositoryRecord,
+	CodingRepositoryStore,
+	CodingSessionDetail,
+	CodingSessionStore,
+	LinkedChatSession,
+} from "../coding/index.ts";
 import {
 	readStoredAgentConfig,
 	writeStoredAgentConfig,
@@ -66,6 +82,8 @@ import {
 
 interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
+	codingRepositories?: CodingRepositoryStore;
+	codingStoresByAgent?: Map<string, CodingSessionStore | undefined>;
 	filesRoot?: string;
 	getBrowserClientAgentId?: (clientId: string) => string | undefined;
 	getRememberedAgentId: () => string | undefined;
@@ -108,6 +126,44 @@ export interface BrowserApi {
 			query?: string;
 		},
 	): Promise<BrowserSessionPageResponse>;
+	listAgentCodingSessions(
+		agentId: string,
+		params: {
+			limit: number;
+			cursor?: SessionCursor;
+			linkedChat?: LinkedChatSession;
+			providerId?: string;
+			repositoryId?: string;
+		},
+	): Promise<BrowserCodingSessionPageResponse>;
+	listCodingRepositories(params?: {
+		includeArchived?: boolean;
+	}): Promise<BrowserCodingRepositoryListResponse>;
+	getCodingRepository(
+		repositoryId: string,
+	): Promise<BrowserCodingRepositoryDetail>;
+	registerAgentCodingRepository(
+		agentId: string,
+		params: {
+			displayName?: string;
+			remoteUrl?: string;
+			rootCwd: string;
+			source?: Extract<BrowserCodingRepositorySource, "manual" | "clone">;
+		},
+	): Promise<BrowserCodingRepositoryDetail>;
+	archiveCodingRepository(
+		repositoryId: string,
+	): Promise<BrowserCodingRepositoryArchiveResponse>;
+	getAgentCodingSession(
+		agentId: string,
+		providerId: string,
+		sdkSessionId: string,
+	): Promise<BrowserCodingSessionDetail>;
+	deleteAgentCodingSession(
+		agentId: string,
+		providerId: string,
+		sdkSessionId: string,
+	): Promise<BrowserCodingSessionDeleteResponse>;
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
 	listAgentGraph(agentId: string): Promise<BrowserGraphResponse>;
 	listAgentWorkspaceFiles(agentId: string): Promise<WorkspaceFileEntry[]>;
@@ -216,6 +272,103 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				query: query || undefined,
 				sessions: rows.map(toBrowserSessionSummary),
 				nextCursor: nextSessionCursor(rows, params.limit),
+			};
+		},
+		async listAgentCodingSessions(agentId, params) {
+			requireAgent(agentsById, agentId);
+			const store = options.codingStoresByAgent?.get(agentId);
+			if (!store) {
+				return { sessions: [] };
+			}
+			const result = store.list({
+				cursor: params.cursor,
+				linkedChat: params.linkedChat,
+				limit: params.limit,
+				providerId: params.providerId,
+				repositoryId: params.repositoryId,
+			});
+			return {
+				sessions: result.sessions.map(toBrowserCodingSessionSummary),
+				nextCursor: result.nextCursor,
+			};
+		},
+		async listCodingRepositories(params) {
+			if (!options.codingRepositories) {
+				return { repositories: [] };
+			}
+			return {
+				repositories: options.codingRepositories
+					.list({ includeArchived: params?.includeArchived })
+					.map(toBrowserCodingRepositorySummary),
+			};
+		},
+		async getCodingRepository(repositoryId) {
+			const repository = options.codingRepositories?.get(repositoryId);
+			if (!repository) {
+				throw new Error(`Unknown coding repository: ${repositoryId}`);
+			}
+			return toBrowserCodingRepositorySummary(repository);
+		},
+		async registerAgentCodingRepository(agentId, params) {
+			requireAgent(agentsById, agentId);
+			if (!options.codingRepositories) {
+				throw new Error("Coding repository API is not configured");
+			}
+			return toBrowserCodingRepositorySummary(
+				options.codingRepositories.register({
+					defaultAgentId: agentId,
+					displayName: params.displayName,
+					remoteUrl: params.remoteUrl,
+					rootCwd: params.rootCwd,
+					source: params.source ?? "manual",
+				}),
+			);
+		},
+		async archiveCodingRepository(repositoryId) {
+			if (!options.codingRepositories) {
+				throw new Error("Coding repository API is not configured");
+			}
+			options.codingRepositories.archive(repositoryId);
+			const repository = options.codingRepositories.get(repositoryId);
+			if (!repository) {
+				throw new Error(`Unknown coding repository: ${repositoryId}`);
+			}
+			return {
+				archived: true,
+				repository: toBrowserCodingRepositorySummary(repository),
+			};
+		},
+		async getAgentCodingSession(agentId, providerId, sdkSessionId) {
+			requireAgent(agentsById, agentId);
+			const session = options.codingStoresByAgent
+				?.get(agentId)
+				?.getDetail(providerId, sdkSessionId);
+			if (!session) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			return toBrowserCodingSessionSummary(session);
+		},
+		async deleteAgentCodingSession(agentId, providerId, sdkSessionId) {
+			requireAgent(agentsById, agentId);
+			const store = options.codingStoresByAgent?.get(agentId);
+			if (!store) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			const session = store.getDetail(providerId, sdkSessionId);
+			if (!session) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			store.delete(providerId, sdkSessionId);
+			return {
+				deleted: true,
+				providerId,
+				sdkSessionId,
 			};
 		},
 		async archiveAgentInboxItem(agentId, relativePath) {
@@ -371,6 +524,48 @@ function normalizeTerminalRunCommand(command: string): string {
 		throw new Error("Terminal run command must be a single line");
 	}
 	return nextCommand;
+}
+
+function toBrowserCodingSessionSummary(
+	session: CodingSessionDetail,
+): BrowserCodingSessionSummary {
+	return {
+		providerId: session.providerId,
+		sdkSessionId: session.sdkSessionId,
+		...(session.repositoryId ? { repositoryId: session.repositoryId } : {}),
+		title: session.title,
+		model: session.model,
+		lastActive: session.lastActive,
+		cwd: session.cwd,
+		status: session.status,
+		createdAt: session.createdAt,
+		source: session.source,
+		tag: session.tag,
+		...(session.ocSessionId ? { ocSessionId: session.ocSessionId } : {}),
+		...(session.linkedChat ? { linkedChat: session.linkedChat } : {}),
+		...(session.browserTabId ? { browserTabId: session.browserTabId } : {}),
+		...(session.failedAt ? { failedAt: session.failedAt } : {}),
+		...(session.failureMessage
+			? { failureMessage: session.failureMessage }
+			: {}),
+	};
+}
+
+function toBrowserCodingRepositorySummary(
+	repository: CodingRepositoryRecord,
+): BrowserCodingRepositorySummary {
+	return {
+		id: repository.id,
+		defaultAgentId: repository.defaultAgentId,
+		rootCwd: repository.rootCwd,
+		displayName: repository.displayName,
+		...(repository.remoteUrl ? { remoteUrl: repository.remoteUrl } : {}),
+		source: repository.source,
+		status: repository.status,
+		createdAt: repository.createdAt,
+		lastActive: repository.lastActive,
+		...(repository.archivedAt ? { archivedAt: repository.archivedAt } : {}),
+	};
 }
 
 function requireAgent(

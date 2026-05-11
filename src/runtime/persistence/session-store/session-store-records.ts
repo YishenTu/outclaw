@@ -1,6 +1,6 @@
 import type { UsageInfo } from "../../../common/protocol.ts";
 
-export type SessionTag = "chat" | "cron";
+export type SessionTag = "chat" | "cron" | "code";
 
 export interface SessionRow {
 	agentId: string;

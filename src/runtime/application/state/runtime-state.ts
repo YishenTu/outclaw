@@ -133,6 +133,22 @@ export class RuntimeState {
 		};
 	}
 
+	captureDetachedPromptContext(
+		prompt: string,
+		images?: ImageRef[],
+	): RuntimePromptContext {
+		const detached = this.sessions.createDetachedPromptContext(prompt, images);
+		return {
+			effort: this.settings.effort,
+			generation: this.sessions.generation,
+			model: this.settings.model,
+			ocSessionId: detached.ocSessionId,
+			resolvedModel: this.settings.resolvedModel,
+			sessionSource: "agent",
+			sessionTitle: detached.sessionTitle,
+		};
+	}
+
 	createStatusEvent(): RuntimeStatusEvent {
 		return {
 			type: "runtime_status",

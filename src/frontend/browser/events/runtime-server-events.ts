@@ -372,6 +372,8 @@ export function handleBrowserServerEvent(
 		case "ask_error":
 		case "send_response":
 		case "send_error":
+		case "code_prompt_response":
+		case "code_prompt_error":
 			return;
 	}
 }

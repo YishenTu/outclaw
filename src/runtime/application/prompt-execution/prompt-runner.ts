@@ -8,7 +8,9 @@ import type {
 import { runFacadePrompt } from "./facade-runner.ts";
 
 export interface PromptRunnerTask {
+	cwd?: string;
 	images?: ImageRef[];
+	includeRuntimeSystemPrompt?: boolean;
 	prompt: string;
 	replyContext?: ReplyContext;
 	stream?: boolean;
@@ -36,11 +38,12 @@ export class PromptRunner {
 	async run(options: PromptRunOptions): Promise<void> {
 		await runFacadePrompt({
 			abortController: options.abortController,
-			cwd: this.options.cwd,
+			cwd: options.task.cwd ?? this.options.cwd,
 			effort: options.effort,
 			emit: options.emit,
 			facade: this.options.facade,
 			images: options.task.images,
+			includeSystemPrompt: options.task.includeRuntimeSystemPrompt,
 			model: options.model,
 			ocSessionId: options.ocSessionId,
 			prompt: options.task.prompt,

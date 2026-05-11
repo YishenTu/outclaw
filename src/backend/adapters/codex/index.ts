@@ -35,6 +35,12 @@ export class CodexAdapter implements Facade {
 		this.appServerOptions = options.appServer;
 	}
 
+	async dispose(): Promise<void> {
+		const client = this.cachedClient ?? this.injectedClient;
+		this.cachedClient = undefined;
+		await client?.dispose?.();
+	}
+
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		const startedAtMs = Date.now();
 		const client = await this.loadClient();

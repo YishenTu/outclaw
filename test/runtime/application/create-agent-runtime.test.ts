@@ -8,6 +8,10 @@ import type {
 	ServerEvent,
 } from "../../../src/common/protocol.ts";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
+import {
+	CodingRepositoryStore,
+	CodingSessionStore,
+} from "../../../src/runtime/coding/index.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
@@ -79,7 +83,45 @@ class RecordingFacade implements Facade {
 	}
 }
 
+class ProviderSessionFacade implements Facade {
+	readonly seenParams: RunParams[] = [];
+
+	constructor(
+		readonly providerId: string,
+		private readonly sessionId: string,
+	) {}
+
+	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		this.seenParams.push(params);
+		yield {
+			type: "session_initialized",
+			sessionId: this.sessionId,
+		};
+		yield {
+			type: "done",
+			sessionId: this.sessionId,
+			durationMs: 1,
+		};
+	}
+}
+
 const TEST_DB = join(import.meta.dir, ".tmp-create-agent-runtime.sqlite");
+
+async function waitForCondition(
+	check: () => boolean | Promise<boolean>,
+	timeoutMs = 500,
+) {
+	const deadline = Date.now() + timeoutMs;
+
+	while (Date.now() < deadline) {
+		if (await check()) {
+			return;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+
+	throw new Error("Timed out waiting for condition");
+}
 
 describe("createAgentRuntime", () => {
 	afterEach(() => {
@@ -379,5 +421,97 @@ describe("createAgentRuntime", () => {
 
 		await runtime.stop();
 		store.close();
+	});
+
+	test("routes coding prompts through a separate coding facade without changing the active chat session", async () => {
+		const chatFacade = new ProviderSessionFacade("claude", "claude-chat-123");
+		const codingFacade = new ProviderSessionFacade("codex", "codex-code-456");
+		const store = new SessionStore(TEST_DB, {
+			agentId: "agent-railly",
+			journalMode: "DELETE",
+		});
+		const codingStore = new CodingSessionStore(TEST_DB, {
+			agentId: "agent-railly",
+			journalMode: "DELETE",
+		});
+		const codingRepositories = new CodingRepositoryStore(TEST_DB, {
+			journalMode: "DELETE",
+		});
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: chatFacade,
+			codingFacade,
+			codingRepositories,
+			store,
+			codingSessions: codingStore,
+		});
+		const ws = mockWs();
+
+		runtime.handleOpen(ws);
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "prompt", prompt: "chat turn" }),
+		);
+		await waitForDone(ws);
+
+		expect(runtime.getStatusEvent()).toMatchObject({
+			providerId: "claude",
+			sessionId: "claude-chat-123",
+		});
+
+		const codeResult = runtime.coding.runPrompt({
+			cwd: "/repo",
+			prompt: "fix the tests",
+		});
+
+		expect(codeResult.status).toBe("accepted");
+		await waitForCondition(
+			() => codingStore.get("codex", "codex-code-456")?.status === "completed",
+		);
+
+		expect(chatFacade.seenParams.map((params) => params.prompt)).toEqual([
+			"chat turn",
+		]);
+		expect(codingFacade.seenParams.map((params) => params.prompt)).toEqual([
+			"fix the tests",
+		]);
+		expect(codingFacade.seenParams[0]).toMatchObject({
+			cwd: "/repo",
+		});
+		expect(codingFacade.seenParams[0]?.systemPrompt).toBeUndefined();
+		expect(store.get("codex", "codex-code-456")).toMatchObject({
+			providerId: "codex",
+			sdkSessionId: "codex-code-456",
+			source: "code",
+			tag: "code",
+		});
+		const repository = codingRepositories.list()[0];
+		expect(repository).toMatchObject({
+			defaultAgentId: "agent-railly",
+			rootCwd: "/repo",
+			status: "active",
+		});
+		expect(codingStore.get("codex", "codex-code-456")).toMatchObject({
+			repositoryId: repository?.id,
+			providerId: "codex",
+			sdkSessionId: "codex-code-456",
+			cwd: "/repo",
+			linkedChat: {
+				agentId: "agent-railly",
+				providerId: "claude",
+				sessionId: "claude-chat-123",
+			},
+			status: "completed",
+		});
+		expect(runtime.getStatusEvent()).toMatchObject({
+			providerId: "claude",
+			sessionId: "claude-chat-123",
+		});
+
+		await runtime.stop();
+		store.close();
+		codingStore.close();
+		codingRepositories.close();
 	});
 });

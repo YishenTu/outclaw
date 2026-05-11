@@ -1,5 +1,5 @@
 import { createInterface, type Interface } from "node:readline";
-import type { CodexAppServerProcess } from "./app-server-process.ts";
+import type { Readable, Writable } from "node:stream";
 import type { CodexServerNotification } from "./types.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -21,6 +21,26 @@ interface JsonRpcResponse {
 	};
 }
 
+export interface CodexServerRequest {
+	id: number | string;
+	method: string;
+	params?: unknown;
+}
+
+interface CodexRpcTransportOptions {
+	handleServerRequest?: (
+		request: CodexServerRequest,
+	) => unknown | Promise<unknown>;
+}
+
+export interface CodexRpcProcess {
+	stdin: Writable;
+	stdout: Readable;
+	onExit(
+		handler: (code: number | null, signal: NodeJS.Signals | null) => void,
+	): void;
+}
+
 export class CodexRpcTransport {
 	private nextId = 1;
 	private readonly pending = new Map<number, PendingRequest>();
@@ -30,7 +50,10 @@ export class CodexRpcTransport {
 	private reader: Interface | undefined;
 	private disposed = false;
 
-	constructor(private readonly process: CodexAppServerProcess) {}
+	constructor(
+		private readonly process: CodexRpcProcess,
+		private readonly options: CodexRpcTransportOptions = {},
+	) {}
 
 	start(): void {
 		if (this.reader) {
@@ -120,8 +143,12 @@ export class CodexRpcTransport {
 			return;
 		}
 
-		if (method && id !== undefined) {
-			this.rejectServerRequest(id, method);
+		if (method && (typeof id === "number" || typeof id === "string")) {
+			void this.handleServerRequest({
+				id,
+				method,
+				params: message.params,
+			});
 			return;
 		}
 
@@ -162,13 +189,40 @@ export class CodexRpcTransport {
 		}
 	}
 
-	private rejectServerRequest(id: unknown, method: string): void {
+	private async handleServerRequest(
+		request: CodexServerRequest,
+	): Promise<void> {
+		if (!this.options.handleServerRequest) {
+			this.rejectServerRequest(request);
+			return;
+		}
+
+		try {
+			const result = await this.options.handleServerRequest(request);
+			this.sendRaw({
+				jsonrpc: "2.0",
+				id: request.id,
+				result,
+			});
+		} catch (error) {
+			this.sendRaw({
+				jsonrpc: "2.0",
+				id: request.id,
+				error: {
+					code: -32603,
+					message: error instanceof Error ? error.message : String(error),
+				},
+			});
+		}
+	}
+
+	private rejectServerRequest(request: CodexServerRequest): void {
 		this.sendRaw({
 			jsonrpc: "2.0",
-			id,
+			id: request.id,
 			error: {
 				code: -32601,
-				message: `Unhandled Codex app-server request: ${method}`,
+				message: `Unhandled Codex app-server request: ${request.method}`,
 			},
 		});
 	}

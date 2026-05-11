@@ -1,5 +1,11 @@
 import type {
 	BrowserAgentsResponse,
+	BrowserCodingRepositoryArchiveResponse,
+	BrowserCodingRepositoryDetail,
+	BrowserCodingRepositoryListResponse,
+	BrowserCodingSessionDeleteResponse,
+	BrowserCodingSessionDetail,
+	BrowserCodingSessionPageResponse,
 	BrowserConfigResponse,
 	BrowserCronEntry,
 	BrowserCronHistoryCursor,
@@ -68,6 +74,124 @@ export async function fetchAgentSessions(
 		url.searchParams.set("query", params.query.trim());
 	}
 	return parseJsonResponse(await fetch(url));
+}
+
+export async function fetchAgentCodingSessions(
+	agentId: string,
+	params: {
+		limit: number;
+		cursor?: SessionCursor;
+		linkedChat?: {
+			agentId: string;
+			providerId: string;
+			sessionId: string;
+		};
+		providerId?: string;
+		repositoryId?: string;
+	},
+): Promise<BrowserCodingSessionPageResponse> {
+	const url = new URL(
+		`/api/agents/${encodeURIComponent(agentId)}/coding-sessions`,
+		window.location.origin,
+	);
+	url.searchParams.set("limit", String(params.limit));
+	if (params.cursor) {
+		url.searchParams.set("cursorLastActive", String(params.cursor.lastActive));
+		url.searchParams.set("cursorSdkSessionId", params.cursor.sdkSessionId);
+	}
+	if (params.providerId) {
+		url.searchParams.set("providerId", params.providerId);
+	}
+	if (params.repositoryId) {
+		url.searchParams.set("repositoryId", params.repositoryId);
+	}
+	if (params.linkedChat) {
+		url.searchParams.set("linkedChatAgentId", params.linkedChat.agentId);
+		url.searchParams.set("linkedChatProviderId", params.linkedChat.providerId);
+		url.searchParams.set("linkedChatSessionId", params.linkedChat.sessionId);
+	}
+	return parseJsonResponse(await fetch(url));
+}
+
+export async function fetchAgentCodingSession(
+	agentId: string,
+	providerId: string,
+	sdkSessionId: string,
+): Promise<BrowserCodingSessionDetail> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/agents/${encodeURIComponent(agentId)}/coding-sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}`,
+		),
+	);
+}
+
+export async function deleteAgentCodingSession(
+	agentId: string,
+	providerId: string,
+	sdkSessionId: string,
+): Promise<BrowserCodingSessionDeleteResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/agents/${encodeURIComponent(agentId)}/coding-sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}`,
+			{
+				method: "DELETE",
+			},
+		),
+	);
+}
+
+export async function fetchCodingRepositories(params?: {
+	includeArchived?: boolean;
+}): Promise<BrowserCodingRepositoryListResponse> {
+	const url = new URL("/api/coding/repositories", window.location.origin);
+	if (params?.includeArchived) {
+		url.searchParams.set("includeArchived", "true");
+	}
+	return parseJsonResponse(await fetch(url));
+}
+
+export async function fetchCodingRepository(
+	repositoryId: string,
+): Promise<BrowserCodingRepositoryDetail> {
+	return parseJsonResponse(
+		await fetch(`/api/coding/repositories/${encodeURIComponent(repositoryId)}`),
+	);
+}
+
+export async function registerAgentCodingRepository(
+	agentId: string,
+	params: {
+		displayName?: string;
+		remoteUrl?: string;
+		rootCwd: string;
+		source?: "manual" | "clone";
+	},
+): Promise<BrowserCodingRepositoryDetail> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/agents/${encodeURIComponent(agentId)}/coding-repositories`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+				},
+				body: JSON.stringify(params),
+			},
+		),
+	);
+}
+
+export async function archiveCodingRepository(
+	repositoryId: string,
+): Promise<BrowserCodingRepositoryArchiveResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/repositories/${encodeURIComponent(repositoryId)}/archive`,
+			{
+				method: "POST",
+			},
+		),
+	);
 }
 
 export async function fetchRuntimeLatency(

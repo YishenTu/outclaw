@@ -9,6 +9,7 @@ import type { FacadeEvent } from "../../../src/common/protocol.ts";
 class FakeCodexAppServerClient implements CodexAppServerClient {
 	readonly initialize = mock(async () => {});
 	readonly notify = mock((_method: string, _params?: unknown) => {});
+	readonly dispose = mock(async () => {});
 	readonly requests: Array<{ method: string; params: unknown }> = [];
 	private readonly subscribers = new Set<
 		(notification: CodexServerNotification) => void
@@ -149,5 +150,14 @@ describe("CodexAdapter", () => {
 				durationMs: 31,
 			},
 		]);
+	});
+
+	test("disposes its app-server client", async () => {
+		const client = new FakeCodexAppServerClient([]);
+		const adapter = new CodexAdapter({ client });
+
+		await adapter.dispose();
+
+		expect(client.dispose).toHaveBeenCalledTimes(1);
 	});
 });

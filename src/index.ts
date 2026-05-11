@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, relative, sep } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude/index.ts";
+import { CodexAdapter } from "./backend/adapters/codex/index.ts";
 import { createOutclawLayout } from "./common/layout.ts";
 import type { ImageMediaType } from "./common/protocol.ts";
 import { deriveTelegramBotId } from "./common/telegram.ts";
@@ -10,6 +11,10 @@ import { createTelegramBotManager } from "./frontend/telegram/index.ts";
 import { discoverAgents } from "./runtime/agents/discover-agents.ts";
 import { createAgentRuntime } from "./runtime/application/create-agent-runtime.ts";
 import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
+import {
+	CodingRepositoryStore,
+	CodingSessionStore,
+} from "./runtime/coding/index.ts";
 import { loadGlobalConfig } from "./runtime/config/index.ts";
 import { createCronTelegramChatIdResolver } from "./runtime/cron/resolve-telegram-chat-id.ts";
 import { createRestartRequiredWatcher } from "./runtime/notice/restart-required-watcher.ts";
@@ -81,6 +86,16 @@ function startMultiAgentDaemon(
 			}),
 		]),
 	);
+	const codingStores = new Map(
+		agents.map((agent) => [
+			agent.agentId,
+			new CodingSessionStore(layout.dbPath, {
+				agentId: agent.agentId,
+			}),
+		]),
+	);
+	const codingRepositories = new CodingRepositoryStore(layout.dbPath);
+	const codingFacade = new CodexAdapter();
 	const transcriptReadersByAgent = new Map<
 		string,
 		| ((sessionId: string) => ReturnType<ClaudeAdapter["readTranscript"]>)
@@ -121,6 +136,9 @@ function startMultiAgentDaemon(
 				spawnDaemonRestart(layout.cliEntry);
 			},
 			store: agentStores.get(agent.agentId),
+			codingFacade,
+			codingRepositories,
+			codingSessions: codingStores.get(agent.agentId),
 		});
 	});
 	const availableAgentsByBotUser = buildTelegramAgentIndex(agents);
@@ -145,6 +163,8 @@ function startMultiAgentDaemon(
 					terminalRunCommand: agent.config.terminal.runCommand,
 				};
 			}),
+			codingRepositories,
+			codingStoresByAgent: codingStores,
 			filesRoot: layout.filesRoot,
 			getBrowserClientAgentId: (clientId) =>
 				stateStore.getBrowserClientAgentId(clientId),
@@ -234,6 +254,11 @@ function startMultiAgentDaemon(
 			restartRequiredWatcher.stop();
 			await supervisor.stop();
 			botManager.stop();
+			for (const store of codingStores.values()) {
+				store.close();
+			}
+			codingRepositories.close();
+			await codingFacade.dispose();
 			for (const store of agentStores.values()) {
 				store.close();
 			}

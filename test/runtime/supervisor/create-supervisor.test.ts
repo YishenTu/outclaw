@@ -5,9 +5,20 @@ import { join } from "node:path";
 import type { FacadeEvent, RunParams } from "../../../src/common/protocol.ts";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
 import { createBrowserApi } from "../../../src/runtime/browser/create-browser-api.ts";
+import { CodingSessionStore } from "../../../src/runtime/coding/index.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
 import { createSupervisor } from "../../../src/runtime/supervisor/create-supervisor.ts";
 import { MockFacade } from "../../helpers/mock-facade.ts";
+
+class SessionInitializingMockFacade extends MockFacade {
+	override async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		yield {
+			type: "session_initialized",
+			sessionId: "mock-session-123",
+		};
+		yield* super.run(params);
+	}
+}
 
 function connectWs(port: number, agent?: string): Promise<WebSocket> {
 	return new Promise((resolve) => {
@@ -153,6 +164,12 @@ schedule: "* * * * *"
 prompt: ${prompt}
 `.trim(),
 	);
+	return dir;
+}
+
+function createAgentHome(agentId: string) {
+	const dir = mkdtempSync(join(tmpdir(), "outclaw-supervisor-agent-"));
+	writeFileSync(join(dir, ".agent-id"), `${agentId}\n`);
 	return dir;
 }
 
@@ -1240,6 +1257,92 @@ describe("createSupervisor", () => {
 			raillyFacade.callOrder.includes("run railly cron"),
 		);
 		expect(mimiFacade.callOrder).toEqual([]);
+
+		ws.close();
+	});
+
+	test("control clients start code prompts without changing the active chat session", async () => {
+		const dbDir = mkdtempSync(join(tmpdir(), "outclaw-supervisor-code-"));
+		const dbPath = join(dbDir, "sessions.sqlite");
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const codingSessions = new CodingSessionStore(dbPath, {
+			agentId: "agent-railly",
+		});
+		store.upsert({
+			providerId: "mock",
+			sdkSessionId: "chat-session-123",
+			title: "Existing chat",
+			model: "opus",
+			tag: "chat",
+		});
+		store.setActiveSessionId("mock", "chat-session-123");
+		const codeHome = createAgentHome("agent-railly");
+		writeFileSync(join(codeHome, "AGENTS.md"), "chat runtime prompt");
+		const facade = new SessionInitializingMockFacade();
+		const supervisor = createSupervisor({
+			port: 0,
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					cwd: "/tmp/agent-home",
+					facade,
+					promptHomeDir: codeHome,
+					store,
+					codingSessions,
+				}),
+			],
+		});
+		cleanup = async () => {
+			await supervisor.stop();
+			codingSessions.close();
+			store.close();
+			rmSync(dbDir, { recursive: true, force: true });
+			rmSync(codeHome, { recursive: true, force: true });
+		};
+		const ws = await connectControlWs(supervisor.port);
+
+		ws.send(
+			JSON.stringify({
+				type: "code_prompt",
+				cwd: codeHome,
+				prompt: "implement the parser",
+			}),
+		);
+
+		const response = await waitForEvent(
+			ws,
+			(event) => event.type === "code_prompt_response",
+		);
+		const ocSessionId = response.ocSessionId;
+		if (typeof ocSessionId !== "string") {
+			throw new Error("Expected code prompt response to include ocSessionId");
+		}
+		await waitForCondition(
+			() => store.get("mock", "mock-session-123") !== undefined,
+		);
+
+		expect(facade.lastParams?.prompt).toBe("implement the parser");
+		expect(facade.lastParams?.cwd).toBe(codeHome);
+		expect(facade.lastParams?.sessionId).toBe(ocSessionId);
+		expect(facade.lastParams?.systemPrompt).toBeUndefined();
+		expect(store.getActiveSessionId("mock")).toBe("chat-session-123");
+		expect(store.get("mock", "chat-session-123")?.tag).toBe("chat");
+		expect(store.get("mock", "mock-session-123")).toMatchObject({
+			ocSessionId,
+			source: "code",
+			tag: "code",
+			title: "implement the parser",
+		});
+		expect(codingSessions.get("mock", "mock-session-123")).toMatchObject({
+			cwd: codeHome,
+			linkedChat: {
+				agentId: "agent-railly",
+				providerId: "mock",
+				sessionId: "chat-session-123",
+			},
+			status: "completed",
+		});
 
 		ws.close();
 	});

@@ -1,10 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+	archiveCodingRepository,
+	deleteAgentCodingSession,
+	fetchAgentCodingSession,
+	fetchAgentCodingSessions,
 	fetchAgentCron,
 	fetchAgentCronHistory,
 	fetchAgentFile,
 	fetchAgentTree,
 	fetchAgentWorkspaceFiles,
+	fetchCodingRepositories,
+	fetchCodingRepository,
 	fetchConfigFile,
 	fetchGitCommit,
 	fetchGitDiff,
@@ -12,6 +18,7 @@ import {
 	fetchRuntimeLatency,
 	fetchSidebarSummary,
 	initGitRepo,
+	registerAgentCodingRepository,
 	updateAgentCronEnabled,
 	updateConfigFile,
 	uploadPromptImages,
@@ -133,6 +140,112 @@ describe("browser API client integration", () => {
 						},
 					],
 					hasMore: false,
+				};
+			},
+			listAgentCodingSessions: async (agentId, params) => {
+				calls.push(
+					`coding:list:${agentId}:${params.limit}:${params.cursor?.lastActive ?? "none"}:${params.cursor?.sdkSessionId ?? "none"}:${params.providerId ?? "none"}:${params.repositoryId ?? "none"}:${params.linkedChat?.sessionId ?? "none"}`,
+				);
+				return {
+					sessions: [
+						{
+							providerId: "codex",
+							sdkSessionId: "code-session-1",
+							title: "Fix browser UX",
+							model: "gpt-5.5",
+							lastActive: 200,
+							cwd: "/workspace/outclaw",
+							status: "running",
+							createdAt: 100,
+							source: "code",
+							tag: "code",
+						},
+					],
+				};
+			},
+			getAgentCodingSession: async (agentId, providerId, sdkSessionId) => {
+				calls.push(`coding:get:${agentId}:${providerId}:${sdkSessionId}`);
+				return {
+					providerId,
+					sdkSessionId,
+					title: "Fix browser UX",
+					model: "gpt-5.5",
+					lastActive: 200,
+					cwd: "/workspace/outclaw",
+					status: "running",
+					createdAt: 100,
+					source: "code",
+					tag: "code",
+				};
+			},
+			deleteAgentCodingSession: async (agentId, providerId, sdkSessionId) => {
+				calls.push(`coding:delete:${agentId}:${providerId}:${sdkSessionId}`);
+				return {
+					deleted: true,
+					providerId,
+					sdkSessionId,
+				};
+			},
+			listCodingRepositories: async (params) => {
+				calls.push(`repo:list:${params?.includeArchived ?? false}`);
+				return {
+					repositories: [
+						{
+							id: "repo-1",
+							defaultAgentId: "agent-railly",
+							rootCwd: "/workspace/outclaw",
+							displayName: "outclaw",
+							source: "manual",
+							status: "active",
+							createdAt: 100,
+							lastActive: 200,
+						},
+					],
+				};
+			},
+			getCodingRepository: async (repositoryId) => {
+				calls.push(`repo:get:${repositoryId}`);
+				return {
+					id: repositoryId,
+					defaultAgentId: "agent-railly",
+					rootCwd: "/workspace/outclaw",
+					displayName: "outclaw",
+					source: "manual",
+					status: "active",
+					createdAt: 100,
+					lastActive: 200,
+				};
+			},
+			registerAgentCodingRepository: async (agentId, params) => {
+				calls.push(
+					`repo:register:${agentId}:${params.rootCwd}:${params.displayName ?? "none"}`,
+				);
+				return {
+					id: "repo-2",
+					defaultAgentId: agentId,
+					rootCwd: params.rootCwd,
+					displayName: params.displayName ?? "repo",
+					source: "manual",
+					status: "active",
+					createdAt: 300,
+					lastActive: 300,
+				};
+			},
+			archiveCodingRepository: async (repositoryId) => {
+				calls.push(`repo:archive:${repositoryId}`);
+				return {
+					archived: true,
+					repository: {
+						id: repositoryId,
+						defaultAgentId: "agent-railly",
+						rootCwd: "/workspace/outclaw",
+						displayName: "outclaw",
+						source: "manual",
+						status: "archived",
+						createdAt: 100,
+						lastActive: 400,
+						archivedAt: 400,
+					},
 				};
 			},
 			listAgentTree: async (agentId) => {
@@ -319,6 +432,66 @@ describe("browser API client integration", () => {
 			path: "cron/daily.yaml",
 		});
 		await expect(
+			fetchAgentCodingSessions("agent-railly", {
+				limit: 3,
+				cursor: { lastActive: 200, sdkSessionId: "code-session-1" },
+				providerId: "codex",
+				repositoryId: "repo-1",
+				linkedChat: {
+					agentId: "agent-railly",
+					providerId: "mock",
+					sessionId: "sdk-active",
+				},
+			}),
+		).resolves.toMatchObject({
+			sessions: [
+				{
+					providerId: "codex",
+					sdkSessionId: "code-session-1",
+					cwd: "/workspace/outclaw",
+					status: "running",
+				},
+			],
+		});
+		await expect(
+			fetchAgentCodingSession("agent-railly", "codex", "code-session-1"),
+		).resolves.toMatchObject({
+			providerId: "codex",
+			sdkSessionId: "code-session-1",
+			cwd: "/workspace/outclaw",
+		});
+		await expect(
+			deleteAgentCodingSession("agent-railly", "codex", "code-session-1"),
+		).resolves.toEqual({
+			deleted: true,
+			providerId: "codex",
+			sdkSessionId: "code-session-1",
+		});
+		await expect(
+			fetchCodingRepositories({ includeArchived: true }),
+		).resolves.toMatchObject({
+			repositories: [{ id: "repo-1" }],
+		});
+		await expect(fetchCodingRepository("repo-1")).resolves.toMatchObject({
+			id: "repo-1",
+		});
+		await expect(
+			registerAgentCodingRepository("agent-railly", {
+				rootCwd: "/workspace/outclaw",
+				displayName: "Outclaw",
+			}),
+		).resolves.toMatchObject({
+			id: "repo-2",
+			defaultAgentId: "agent-railly",
+		});
+		await expect(archiveCodingRepository("repo-1")).resolves.toMatchObject({
+			archived: true,
+			repository: {
+				id: "repo-1",
+				status: "archived",
+			},
+		});
+		await expect(
 			fetchAgentFile("agent-railly", "notes/today.md"),
 		).resolves.toMatchObject({
 			content: "# Agent\n",
@@ -352,6 +525,13 @@ describe("browser API client integration", () => {
 			"cron:list:agent-railly",
 			"cron:history:agent-railly:daily:3:200:mock:cron-session-2",
 			"cron:set:agent-railly:cron/daily.yaml:false",
+			"coding:list:agent-railly:3:200:code-session-1:codex:repo-1:sdk-active",
+			"coding:get:agent-railly:codex:code-session-1",
+			"coding:delete:agent-railly:codex:code-session-1",
+			"repo:list:true",
+			"repo:get:repo-1",
+			"repo:register:agent-railly:/workspace/outclaw:Outclaw",
+			"repo:archive:repo-1",
 			"file:agent-railly:notes/today.md",
 			"diff:src/index.ts",
 			"commit:abc123",

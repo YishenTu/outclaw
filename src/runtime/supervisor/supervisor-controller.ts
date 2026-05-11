@@ -34,6 +34,7 @@ interface IncomingMessage {
 	fromAgentId?: string;
 	jobName?: string;
 	message?: string;
+	prompt?: string;
 	to?: string;
 	type?: string;
 }
@@ -128,6 +129,11 @@ export class SupervisorController {
 
 		if (data?.type === "cron_run") {
 			this.handleCronRunMessage(ws, data);
+			return;
+		}
+
+		if (data?.type === "code_prompt") {
+			this.handleCodePromptMessage(ws, data);
 			return;
 		}
 
@@ -283,6 +289,40 @@ export class SupervisorController {
 		this.sendCronRunError(ws, `Cron job not found: ${result.jobName}`);
 	}
 
+	private handleCodePromptMessage(ws: WsClient, data: IncomingMessage) {
+		if (
+			data.type !== "code_prompt" ||
+			typeof data.cwd !== "string" ||
+			typeof data.prompt !== "string" ||
+			data.prompt.trim() === ""
+		) {
+			this.sendCodePromptError(ws, "Invalid code prompt request");
+			return;
+		}
+
+		const runtime = this.resolveRuntimeFromCwd(data.cwd);
+		if (!runtime) {
+			this.sendCodePromptError(ws, "cannot resolve agent from cwd");
+			return;
+		}
+
+		const result = runtime.coding.runPrompt({
+			cwd: data.cwd,
+			prompt: data.prompt,
+		});
+		if (result.status === "rejected") {
+			this.sendCodePromptError(ws, result.message);
+			return;
+		}
+
+		ws.send(
+			serialize({
+				type: "code_prompt_response",
+				ocSessionId: result.ocSessionId,
+			}),
+		);
+	}
+
 	private handleAgentCommand(
 		ws: WsClient,
 		command: string,
@@ -394,6 +434,15 @@ export class SupervisorController {
 		ws.send(
 			serialize({
 				type: "cron_run_error",
+				message,
+			}),
+		);
+	}
+
+	private sendCodePromptError(ws: WsClient, message: string) {
+		ws.send(
+			serialize({
+				type: "code_prompt_error",
 				message,
 			}),
 		);

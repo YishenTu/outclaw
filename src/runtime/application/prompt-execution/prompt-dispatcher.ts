@@ -9,6 +9,7 @@ import type {
 	TranscriptTurn,
 } from "../../../common/protocol.ts";
 import { extractError } from "../../../common/protocol.ts";
+import type { SessionTag } from "../../persistence/session-store/session-store.ts";
 import type { RuntimeClientGateway } from "../gateway/runtime-client-gateway.ts";
 import type { SessionService } from "../session-service.ts";
 import type {
@@ -34,11 +35,15 @@ export interface AgentPromptMetadata {
 export interface PromptExecution {
 	agentMessage?: AgentPromptMetadata;
 	images?: ImageRef[];
+	includeRuntimeSystemPrompt?: boolean;
+	cwd?: string;
 	onEvent?: (event: FacadeEvent) => void;
 	prompt: string;
 	replyContext?: ReplyContext;
 	sender?: import("../../transport/client-hub.ts").WsClient;
 	source: PromptSource;
+	sessionTag?: SessionTag;
+	storedSessionSource?: string;
 	stream?: boolean;
 	telegramBotId?: string;
 	telegramChatId?: number;
@@ -123,7 +128,8 @@ export class PromptDispatcher {
 						ocSessionId: context.ocSessionId,
 						title: titleForPersistence(context),
 						model: context.model,
-						source: toStoredSessionSource(task.source),
+						source: toStoredSessionSource(task),
+						tag: task.sessionTag,
 					});
 				}
 				task.onEvent?.(event);
@@ -170,7 +176,8 @@ export class PromptDispatcher {
 						event,
 						model: context.model,
 						ocSessionId: context.ocSessionId,
-						source: toStoredSessionSource(task.source),
+						source: toStoredSessionSource(task),
+						tag: task.sessionTag,
 						title: titleForPersistence(context),
 					});
 				}
@@ -204,7 +211,7 @@ export class PromptDispatcher {
 				sessionId: context.ocSessionId,
 				title: titleForPersistence(context),
 				model: context.model,
-				source: toStoredSessionSource(task.source),
+				source: toInterruptedSessionSource(task.source),
 			});
 		}
 
@@ -274,20 +281,29 @@ function titleForPersistence(context: RuntimePromptContext): string {
 	return resolveSessionTitleForPersistence(context);
 }
 
-function toStoredSessionSource(
-	source: PromptSource,
-): "agent" | "telegram" | "tui" {
-	if (source === "telegram") {
+function toStoredSessionSource(task: PromptExecution): string {
+	if (task.storedSessionSource) {
+		return task.storedSessionSource;
+	}
+	if (task.source === "telegram") {
 		return "telegram";
 	}
-	if (source === "agent") {
+	if (task.source === "agent") {
 		return "agent";
 	}
 	return "tui";
 }
 
-function shouldPersistInterruptedRun(source: PromptSource): boolean {
+function shouldPersistInterruptedRun(
+	source: PromptSource,
+): source is "browser" | "telegram" | "tui" {
 	return source === "browser" || source === "telegram" || source === "tui";
+}
+
+function toInterruptedSessionSource(
+	source: "browser" | "telegram" | "tui",
+): "telegram" | "tui" {
+	return source === "telegram" ? "telegram" : "tui";
 }
 
 function toDisplayImages(

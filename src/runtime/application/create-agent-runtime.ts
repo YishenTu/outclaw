@@ -6,6 +6,12 @@ import type {
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
 import { listWorkspaceFiles } from "../browser/files/list-workspace-files.ts";
+import {
+	type CodingRepositoryRegistrar,
+	type CodingRuntime,
+	type CodingSessionRecorder,
+	createCodingRuntime,
+} from "../coding/index.ts";
 import type { Config } from "../config/index.ts";
 import type { CronJobConfig, CronRunStartResult } from "../cron/index.ts";
 import { CronScheduler, createCronAgentRunner } from "../cron/index.ts";
@@ -54,6 +60,9 @@ interface CreateAgentRuntimeOptions {
 	cronDir?: string;
 	statusAgentName?: string;
 	store?: SessionStore;
+	codingFacade?: Facade;
+	codingRepositories?: CodingRepositoryRegistrar;
+	codingSessions?: CodingSessionRecorder;
 }
 
 export interface AgentRuntime {
@@ -77,6 +86,7 @@ export interface AgentRuntime {
 	handleOpen(ws: WsClient): void;
 	name: string;
 	providerId: string;
+	coding: CodingRuntime;
 	runCronJob(params: { jobName: string }):
 		| CronRunStartResult
 		| {
@@ -173,6 +183,51 @@ export function createAgentRuntime(
 		sessions,
 		state,
 	});
+	const codingFacade = options.codingFacade ?? facade;
+	const codingState =
+		codingFacade === facade
+			? state
+			: new RuntimeState(
+					codingFacade.providerId,
+					options.statusAgentName ?? options.name,
+					{ defaultEffort: options.defaultEffort },
+				);
+	const codingSessionService =
+		codingFacade === facade
+			? sessions
+			: new SessionService(codingState, options.store, {
+					onSessionCatalogChanged: () =>
+						sessionCatalogChanged?.({ agentId: options.agentId }),
+				});
+	const codingController =
+		codingFacade === facade
+			? controller
+			: createRuntimeController({
+					agentId: options.agentId,
+					canSendToClient: options.canSendToClient,
+					cwd: options.cwd,
+					facade: codingFacade,
+					onExecutionStateChange: () => noteRolloverStateChange(),
+					promptHomeDir: options.promptHomeDir,
+					sessions: codingSessionService,
+					state: codingState,
+				});
+	const coding = createCodingRuntime({
+		codingRepositories: options.codingRepositories,
+		codingSessions: options.codingSessions,
+		defaultAgentId: options.agentId,
+		getLinkedChatSession: () =>
+			sessions.activeSessionId
+				? {
+						agentId: options.agentId,
+						providerId: sessions.providerId,
+						sessionId: sessions.activeSessionId,
+					}
+				: undefined,
+		providerId: codingFacade.providerId,
+		runDetachedPrompt:
+			codingController.runDetachedPrompt.bind(codingController),
+	});
 	const promptHomeDir = options.promptHomeDir;
 	const heartbeat =
 		promptHomeDir && options.heartbeat
@@ -260,6 +315,7 @@ export function createAgentRuntime(
 		handleMessage: controller.handleMessage,
 		handleOpen: controller.handleOpen,
 		name: options.name,
+		coding,
 		runCronJob(params) {
 			if (!cronScheduler) {
 				return {
@@ -292,7 +348,15 @@ export function createAgentRuntime(
 					rollover?.stop();
 					memoryIndexWatcher?.stop();
 					controller.beginShutdown();
-					await controller.drain();
+					if (codingController !== controller) {
+						codingController.beginShutdown();
+					}
+					await Promise.all([
+						controller.drain(),
+						codingController === controller
+							? Promise.resolve()
+							: codingController.drain(),
+					]);
 				})();
 			}
 			return stopPromise;

@@ -17,6 +17,7 @@ export interface FacadePromptRun {
 	emit: (event: FacadeEvent) => void;
 	facade: Facade;
 	images?: ImageRef[];
+	includeSystemPrompt?: boolean;
 	model?: string;
 	ocSessionId: string;
 	prompt: string;
@@ -30,9 +31,10 @@ export async function runFacadePrompt(options: FacadePromptRun): Promise<void> {
 	const imageEventExtractor = new RuntimeImageEventExtractor();
 
 	try {
-		const systemPrompt = options.promptHomeDir
-			? await assembleSystemPrompt(options.promptHomeDir)
-			: undefined;
+		const systemPrompt =
+			options.promptHomeDir && options.includeSystemPrompt !== false
+				? await assembleSystemPrompt(options.promptHomeDir)
+				: undefined;
 		const sessionEnv = buildSessionEnv(
 			options.promptHomeDir,
 			options.ocSessionId,

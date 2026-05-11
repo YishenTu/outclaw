@@ -8,6 +8,7 @@ export interface CodexAppServerProcessOptions {
 	args: string[];
 	cwd?: string;
 	env?: Record<string, string | undefined>;
+	onStderr?: (chunk: string) => void;
 }
 
 type ExitHandler = (code: number | null, signal: NodeJS.Signals | null) => void;
@@ -41,6 +42,18 @@ export class CodexAppServerProcess {
 
 		this.process.on("error", () => {
 			this.alive = false;
+		});
+
+		this.process.stderr?.on("data", (chunk) => {
+			const text = String(chunk);
+			if (this.options.onStderr) {
+				this.options.onStderr(text);
+				return;
+			}
+			const trimmed = text.trimEnd();
+			if (trimmed !== "") {
+				console.error(`[codex app-server] ${trimmed}`);
+			}
 		});
 	}
 
