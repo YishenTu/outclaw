@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { ClaudeAdapter } from "../../backend/adapters/claude.ts";
+import { ClaudeAdapter } from "../../backend/adapters/claude/index.ts";
 import { createOutclawLayout } from "../../common/layout.ts";
 import {
 	type AgentOnboardingSubmission,

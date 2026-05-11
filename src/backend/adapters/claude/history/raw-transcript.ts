@@ -1,6 +1,6 @@
 import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { extractError } from "../../../common/protocol.ts";
+import { extractError } from "../../../../common/protocol.ts";
 import type { ClaudeHistoryMessage } from "./types.ts";
 
 export async function loadClaudeRawHistory(

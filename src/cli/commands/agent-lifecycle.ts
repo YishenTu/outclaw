@@ -1,4 +1,4 @@
-import { ClaudeAdapter } from "../../backend/adapters/claude.ts";
+import { ClaudeAdapter } from "../../backend/adapters/claude/index.ts";
 import { createAgent } from "../../runtime/agents/create-agent.ts";
 import { ensureGlobalEnvFile } from "../../runtime/agents/ensure-global-env-file.ts";
 import { listAgents } from "../../runtime/agents/list-agents.ts";

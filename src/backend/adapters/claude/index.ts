@@ -5,24 +5,21 @@ import {
 	type FacadeEvent,
 	type RunParams,
 	type SkillInfo,
-} from "../../common/protocol.ts";
+} from "../../../common/protocol.ts";
 import {
 	type LoadClaudeHistory,
 	readClaudeHistory,
 	readClaudeReplay,
 	readClaudeTranscript,
-} from "./claude-history/index.ts";
+} from "./history/index.ts";
 import {
 	type ClaudeSdkUserMessage,
 	createClaudePromptInput,
-} from "./claude-prompt-input.ts";
-import { buildClaudeSdkOptions } from "./claude-sdk-options.ts";
-import { ensureClaudeSkillsSymlink } from "./claude-setup.ts";
-import {
-	cleanupClaudeSessionFile,
-	probeClaudeSkills,
-} from "./claude-skill-probe.ts";
-import { normalizeClaudeStream } from "./claude-stream-normalizer.ts";
+} from "./prompt-input.ts";
+import { buildClaudeSdkOptions } from "./sdk-options.ts";
+import { ensureClaudeSkillsSymlink } from "./setup.ts";
+import { cleanupClaudeSessionFile, probeClaudeSkills } from "./skill-probe.ts";
+import { normalizeClaudeStream } from "./stream-normalizer.ts";
 
 type SdkQueryFn = (params: {
 	prompt: string | AsyncIterable<ClaudeSdkUserMessage>;

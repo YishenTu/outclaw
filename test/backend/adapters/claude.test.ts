@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ClaudeAdapter } from "../../../src/backend/adapters/claude.ts";
+import { ClaudeAdapter } from "../../../src/backend/adapters/claude/index.ts";
 
 function createAdapter(
 	overrides: {

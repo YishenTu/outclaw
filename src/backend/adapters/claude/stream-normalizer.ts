@@ -1,10 +1,10 @@
-import type { FacadeEvent, UsageInfo } from "../../common/protocol.ts";
-import { extractClaudeSkills } from "./claude-skill-probe.ts";
+import type { FacadeEvent, UsageInfo } from "../../../common/protocol.ts";
+import { extractClaudeSkills } from "./skill-probe.ts";
 import {
 	applyAuthoritativeClaudeModelUsage,
 	type ClaudeModelUsageEntry,
 	extractClaudeAssistantUsage,
-} from "./claude-usage.ts";
+} from "./usage.ts";
 
 interface ClaudeStreamConversation extends AsyncIterable<unknown> {
 	supportedCommands(): Promise<{ name: string; description: string }[]>;

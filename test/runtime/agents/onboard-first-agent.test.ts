@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ClaudeAdapter } from "../../../src/backend/adapters/claude.ts";
+import { ClaudeAdapter } from "../../../src/backend/adapters/claude/index.ts";
 import { completeAgentOnboarding } from "../../../src/runtime/agents/complete-agent-onboarding.ts";
 import { readAgentId } from "../../../src/runtime/agents/read-agent-id.ts";
 

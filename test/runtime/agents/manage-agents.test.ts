@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ClaudeAdapter } from "../../../src/backend/adapters/claude.ts";
+import { ClaudeAdapter } from "../../../src/backend/adapters/claude/index.ts";
 import { createAgent as createAgentBase } from "../../../src/runtime/agents/create-agent.ts";
 import { listAgents } from "../../../src/runtime/agents/list-agents.ts";
 import { readAgentId } from "../../../src/runtime/agents/read-agent-id.ts";

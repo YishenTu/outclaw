@@ -1,9 +1,9 @@
-import { createDisplayCompactBoundaryMessage } from "../../../common/compact-boundary.ts";
+import { createDisplayCompactBoundaryMessage } from "../../../../common/compact-boundary.ts";
 import {
 	HEARTBEAT_DISPLAY_LABEL,
 	isHeartbeatNoopResult,
 	isOperationalHeartbeatPrompt,
-} from "../../../common/heartbeat-prompt.ts";
+} from "../../../../common/heartbeat-prompt.ts";
 import type {
 	DisplayChatMessage,
 	DisplayImage,
@@ -11,13 +11,13 @@ import type {
 	DisplaySystemMessage,
 	ImageMediaType,
 	TranscriptTurn,
-} from "../../../common/protocol.ts";
-import { annotateHistoryWithTranscript } from "../../../common/replay-history.ts";
-import { parsePromptWithReplyContext } from "../../../common/reply-context.ts";
+} from "../../../../common/protocol.ts";
+import { annotateHistoryWithTranscript } from "../../../../common/replay-history.ts";
+import { parsePromptWithReplyContext } from "../../../../common/reply-context.ts";
 import {
 	isOperationalRolloverPrompt,
 	ROLLOVER_DISPLAY_LABEL,
-} from "../../../common/rollover-prompt.ts";
+} from "../../../../common/rollover-prompt.ts";
 import { restoreClaudeCommandPrompt } from "./command-envelope.ts";
 import { loadClaudeRawHistory } from "./raw-transcript.ts";
 import type { ClaudeHistoryMessage, LoadClaudeHistory } from "./types.ts";

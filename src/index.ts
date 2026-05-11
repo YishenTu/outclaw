@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, relative, sep } from "node:path";
-import { ClaudeAdapter } from "./backend/adapters/claude.ts";
+import { ClaudeAdapter } from "./backend/adapters/claude/index.ts";
 import { createOutclawLayout } from "./common/layout.ts";
 import type { ImageMediaType } from "./common/protocol.ts";
 import { deriveTelegramBotId } from "./common/telegram.ts";

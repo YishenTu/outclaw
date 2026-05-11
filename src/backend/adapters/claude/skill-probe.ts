@@ -1,4 +1,4 @@
-import type { SkillInfo } from "../../common/protocol.ts";
+import type { SkillInfo } from "../../../common/protocol.ts";
 
 interface ClaudeSkillConversation extends AsyncIterable<unknown> {
 	supportedCommands(): Promise<{ name: string; description: string }[]>;

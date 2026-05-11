@@ -1,5 +1,5 @@
-import type { ImageMediaType, RunParams } from "../../common/protocol.ts";
-import { buildPromptWithReplyContext } from "../../common/reply-context.ts";
+import type { ImageMediaType, RunParams } from "../../../common/protocol.ts";
+import { buildPromptWithReplyContext } from "../../../common/reply-context.ts";
 
 export interface ClaudeSdkUserMessage {
 	type: "user";

@@ -4,7 +4,7 @@ import type {
 	PreToolUseHookSpecificOutput,
 	SyncHookJSONOutput,
 } from "@anthropic-ai/claude-agent-sdk";
-import { blockDotClaudeHook } from "../../../src/backend/adapters/claude-block-dotclaude-hook.ts";
+import { blockDotClaudeHook } from "../../../src/backend/adapters/claude/block-dotclaude-hook.ts";
 
 type PreToolUseHookOutput = Omit<SyncHookJSONOutput, "hookSpecificOutput"> & {
 	hookSpecificOutput?: PreToolUseHookSpecificOutput;

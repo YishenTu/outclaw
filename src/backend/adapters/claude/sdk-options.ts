@@ -1,7 +1,7 @@
 import type { HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
-import { contextWindowForResolvedModel } from "../../common/models.ts";
-import type { RunParams } from "../../common/protocol.ts";
-import { blockDotClaudeHookMatcher } from "./claude-block-dotclaude-hook.ts";
+import { contextWindowForResolvedModel } from "../../../common/models.ts";
+import type { RunParams } from "../../../common/protocol.ts";
+import { blockDotClaudeHookMatcher } from "./block-dotclaude-hook.ts";
 
 const CLAUDE_TOOLS = [
 	"Bash",
