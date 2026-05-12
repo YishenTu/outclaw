@@ -190,6 +190,16 @@ export interface BrowserApi {
 		sdkSessionId: string,
 		title: string,
 	): Promise<BrowserCodingSessionDetail>;
+	readCodingRepositoryFile(
+		repositoryId: string,
+		relativePath: string,
+	): Promise<BrowserFileResponse>;
+	writeCodingRepositoryFile(
+		repositoryId: string,
+		relativePath: string,
+		content: string,
+		expected: { mtimeMs: number; sha256: string },
+	): Promise<BrowserFileResponse>;
 	startCodingSession(params: {
 		repositoryId?: string;
 		cwd?: string;
@@ -663,6 +673,41 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const gitChange = readAgentFileGitChange(
 				options.gitRoot,
 				agent.homeDir,
+				file.path,
+				ignoredGitPaths,
+			);
+			return {
+				...file,
+				...(gitChange ? { gitChange } : {}),
+			};
+		},
+		async readCodingRepositoryFile(repositoryId, relativePath) {
+			const cwd = resolveRepositoryCwd(repositoryId);
+			const absolutePath = resolveExistingPathWithinRoot(cwd, relativePath);
+			const file = await readBrowserFile(cwd, absolutePath);
+			const gitChange = readAgentFileGitChange(
+				cwd,
+				cwd,
+				file.path,
+				ignoredGitPaths,
+			);
+			return {
+				...file,
+				...(gitChange ? { gitChange } : {}),
+			};
+		},
+		async writeCodingRepositoryFile(
+			repositoryId,
+			relativePath,
+			content,
+			expected,
+		) {
+			const cwd = resolveRepositoryCwd(repositoryId);
+			const absolutePath = resolveExistingPathWithinRoot(cwd, relativePath);
+			const file = await writeBrowserFile(cwd, absolutePath, content, expected);
+			const gitChange = readAgentFileGitChange(
+				cwd,
+				cwd,
 				file.path,
 				ignoredGitPaths,
 			);

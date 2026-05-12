@@ -283,7 +283,7 @@ export async function handleBrowserApiRequest(
 		}
 
 		const codingRepositoriesMatch = url.pathname.match(
-			/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive|tree))?)?$/,
+			/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive|tree|files))?)?$/,
 		);
 		if (codingRepositoriesMatch) {
 			const [, encodedRepositoryId, action] = codingRepositoriesMatch;
@@ -358,6 +358,42 @@ export async function handleBrowserApiRequest(
 				}
 				return Response.json(
 					await browserApi.listCodingRepositoryTree(repositoryId),
+				);
+			}
+
+			if (action === "files") {
+				const path = url.searchParams.get("path");
+				if (!path) {
+					return jsonError("Missing path query parameter", 400);
+				}
+				if (req.method === "PUT") {
+					if (!browserApi.writeCodingRepositoryFile) {
+						return jsonError("Coding repository API is not configured", 404);
+					}
+					const writeRequest = await readFileWriteRequest(req);
+					if (!writeRequest.ok) {
+						return jsonError(writeRequest.message, writeRequest.status);
+					}
+					return Response.json(
+						await browserApi.writeCodingRepositoryFile(
+							repositoryId,
+							path,
+							writeRequest.body.content,
+							{
+								mtimeMs: writeRequest.body.expectedMtimeMs,
+								sha256: writeRequest.body.expectedSha256,
+							},
+						),
+					);
+				}
+				if (req.method !== "GET") {
+					return jsonError("Method not allowed", 405);
+				}
+				if (!browserApi.readCodingRepositoryFile) {
+					return jsonError("Coding repository API is not configured", 404);
+				}
+				return Response.json(
+					await browserApi.readCodingRepositoryFile(repositoryId, path),
 				);
 			}
 

@@ -98,7 +98,7 @@ function CenterTabPanel({ active, tab }: { active: boolean; tab: Tab }) {
 				active={active}
 				tabId={tab.id}
 				path={tab.path}
-				agentId={tab.agentId}
+				source={{ kind: "agent", agentId: tab.agentId }}
 			/>
 		);
 	}

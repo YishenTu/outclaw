@@ -1,5 +1,17 @@
-import { MessageSquareText, PanelLeftClose, Plus, X } from "lucide-react";
-import { type CodingTab, codingTabId } from "./coding-store.ts";
+import {
+	FileDiff,
+	FileText,
+	MessageSquareText,
+	PanelLeftClose,
+	Plus,
+	X,
+} from "lucide-react";
+import {
+	type CodingTab,
+	codingTabId,
+	isCodingDiffTab,
+	isCodingFileTab,
+} from "./coding-store.ts";
 
 interface CodingTabBarProps {
 	tabs: CodingTab[];
@@ -38,6 +50,11 @@ export function CodingTabBar({
 				{tabs.map((tab) => {
 					const id = codingTabId(tab);
 					const active = id === activeTabId;
+					const kind: CodingTabKind = isCodingDiffTab(tab)
+						? "diff"
+						: isCodingFileTab(tab)
+							? "file"
+							: "session";
 					return (
 						<div
 							key={id}
@@ -52,14 +69,14 @@ export function CodingTabBar({
 								aria-hidden="true"
 								className="invisible col-start-1 row-start-1 flex h-full max-w-52 items-center gap-2 overflow-hidden px-2 leading-none"
 							>
-								<CodingTabContent title={tab.title} />
+								<CodingTabContent title={tab.title} kind={kind} />
 							</span>
 							<button
 								type="button"
 								onClick={() => onSelect(tab)}
 								className="absolute inset-0 flex h-full min-w-0 items-center overflow-hidden px-2 pr-2 transition-[padding] group-hover:pr-6"
 							>
-								<CodingTabContent title={tab.title} />
+								<CodingTabContent title={tab.title} kind={kind} />
 							</button>
 							<button
 								type="button"
@@ -93,10 +110,24 @@ export function CodingTabBar({
 	);
 }
 
-function CodingTabContent({ title }: { title: string }) {
+type CodingTabKind = "session" | "file" | "diff";
+
+function CodingTabContent({
+	title,
+	kind,
+}: {
+	title: string;
+	kind: CodingTabKind;
+}) {
 	return (
 		<span className="inline-flex min-w-0 items-center gap-2 leading-none">
-			<MessageSquareText size={14} className="shrink-0" />
+			{kind === "diff" ? (
+				<FileDiff size={14} className="shrink-0" />
+			) : kind === "file" ? (
+				<FileText size={14} className="shrink-0" />
+			) : (
+				<MessageSquareText size={14} className="shrink-0" />
+			)}
 			<span className="min-w-0 truncate">{title}</span>
 		</span>
 	);

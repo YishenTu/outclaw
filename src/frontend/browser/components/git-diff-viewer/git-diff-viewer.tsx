@@ -5,11 +5,15 @@ import { useGitDiff } from "./use-git-diff.ts";
 
 interface GitDiffViewerProps {
 	path: string;
+	repositoryId?: string;
 }
 
-export function GitDiffViewer({ path }: GitDiffViewerProps) {
+export function GitDiffViewer({ path, repositoryId }: GitDiffViewerProps) {
 	const [diffStyle, setDiffStyle] = useState<GitDiffStyle>("unified");
-	const { diff, loading, error } = useGitDiff(path);
+	const { diff, loading, error } = useGitDiff(
+		path,
+		repositoryId ? { repositoryId } : undefined,
+	);
 	const nextDiffStyle = diffStyle === "unified" ? "split" : "unified";
 	const toggleDiffStyleLabel =
 		nextDiffStyle === "split"

@@ -35,7 +35,11 @@ import {
 	selectAgentTerminals,
 	useTerminalStore,
 } from "../stores/terminal.ts";
-import { useCodingStore } from "./coding-store.ts";
+import {
+	makeCodingDiffTab,
+	makeCodingFileTab,
+	useCodingStore,
+} from "./coding-store.ts";
 
 type CodingRightTab = "files" | "git";
 
@@ -62,6 +66,25 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	);
 	const repository = useCodingStore((state) =>
 		state.repositories.find((entry) => entry.id === state.focusedRepositoryId),
+	);
+	const openCodingTab = useCodingStore((state) => state.openTab);
+	const handleOpenFile = useCallback(
+		(params: { agentId: string; path: string }) => {
+			if (!focusedRepositoryId) {
+				return;
+			}
+			openCodingTab(makeCodingFileTab(focusedRepositoryId, params.path));
+		},
+		[focusedRepositoryId, openCodingTab],
+	);
+	const handleOpenDiff = useCallback(
+		(path: string) => {
+			if (!focusedRepositoryId) {
+				return;
+			}
+			openCodingTab(makeCodingDiffTab(focusedRepositoryId, path));
+		},
+		[focusedRepositoryId, openCodingTab],
 	);
 	const splitRatio = useLayoutStore((state) => state.rightPanelSplitRatio);
 	const setRightPanelSplitRatio = useLayoutStore(
@@ -279,7 +302,7 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 							<FileTree
 								agentId={focusedRepositoryId}
 								entries={tree}
-								onOpenFile={() => {}}
+								onOpenFile={handleOpenFile}
 							/>
 						)}
 					</div>
@@ -293,7 +316,7 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 				status={gitStatus}
 				loading={gitLoading}
 				error={gitError}
-				onOpenDiff={() => {}}
+				onOpenDiff={handleOpenDiff}
 				onSelectCommit={setSelectedGitCommitSha}
 				onToggleGraphCollapsed={() =>
 					setRightGitGraphCollapsed(!rightGitGraphCollapsed)

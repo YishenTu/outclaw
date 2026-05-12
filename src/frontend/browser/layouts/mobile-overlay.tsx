@@ -66,7 +66,12 @@ function describeDoc(doc: MobileOverlayDoc): {
 function OverlayBody({ doc }: { doc: MobileOverlayDoc }) {
 	if (doc.type === "file") {
 		return (
-			<FileViewer active tabId={doc.id} path={doc.path} agentId={doc.agentId} />
+			<FileViewer
+				active
+				tabId={doc.id}
+				path={doc.path}
+				source={{ kind: "agent", agentId: doc.agentId }}
+			/>
 		);
 	}
 	if (doc.type === "git-diff") {

@@ -538,7 +538,7 @@ describe("FileViewer", () => {
 			<FileViewer
 				tabId="agent-a:AGENTS.md"
 				path="AGENTS.md"
-				agentId="agent-a"
+				source={{ kind: "agent", agentId: "agent-a" }}
 			/>,
 		);
 

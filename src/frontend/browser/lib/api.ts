@@ -54,6 +54,36 @@ export class FileConflictError extends Error {
 	}
 }
 
+export type FileSource =
+	| { kind: "agent"; agentId: string }
+	| { kind: "repository"; repositoryId: string };
+
+export function fileSourceKey(source: FileSource): string {
+	return source.kind === "agent"
+		? `agent:${source.agentId}`
+		: `repository:${source.repositoryId}`;
+}
+
+export function fetchFileFromSource(
+	source: FileSource,
+	path: string,
+): Promise<BrowserFileResponse> {
+	return source.kind === "agent"
+		? fetchAgentFile(source.agentId, path)
+		: fetchCodingRepositoryFile(source.repositoryId, path);
+}
+
+export function writeFileToSource(
+	source: FileSource,
+	path: string,
+	content: string,
+	expected: { mtimeMs: number; sha256: string },
+): Promise<BrowserFileResponse> {
+	return source.kind === "agent"
+		? writeAgentFile(source.agentId, path, content, expected)
+		: writeCodingRepositoryFile(source.repositoryId, path, content, expected);
+}
+
 export async function fetchSidebarSummary(): Promise<BrowserAgentsResponse> {
 	return parseJsonResponse(await fetch("/api/agents"));
 }
@@ -376,6 +406,53 @@ export async function fetchCodingRepositoryTree(
 			`/api/coding/repositories/${encodeURIComponent(repositoryId)}/tree`,
 		),
 	);
+}
+
+export async function fetchCodingRepositoryFile(
+	repositoryId: string,
+	path: string,
+): Promise<BrowserFileResponse> {
+	const url = new URL(
+		`/api/coding/repositories/${encodeURIComponent(repositoryId)}/files`,
+		window.location.origin,
+	);
+	url.searchParams.set("path", path);
+	return parseJsonResponse(await fetch(url));
+}
+
+export async function writeCodingRepositoryFile(
+	repositoryId: string,
+	path: string,
+	content: string,
+	expected: { mtimeMs: number; sha256: string },
+): Promise<BrowserFileResponse> {
+	const url = new URL(
+		`/api/coding/repositories/${encodeURIComponent(repositoryId)}/files`,
+		window.location.origin,
+	);
+	url.searchParams.set("path", path);
+	const response = await fetch(url, {
+		method: "PUT",
+		headers: {
+			"content-type": "application/json",
+		},
+		body: JSON.stringify({
+			content,
+			expectedMtimeMs: expected.mtimeMs,
+			expectedSha256: expected.sha256,
+		}),
+	});
+
+	if (response.status === 409) {
+		const conflictBody = (await response.json().catch(() => undefined)) as
+			| { kind?: string; current?: BrowserFileResponse }
+			| undefined;
+		if (conflictBody?.kind === "conflict" && conflictBody.current) {
+			throw new FileConflictError(conflictBody.current);
+		}
+	}
+
+	return parseJsonResponse(response);
 }
 
 export async function fetchAgentGraph(

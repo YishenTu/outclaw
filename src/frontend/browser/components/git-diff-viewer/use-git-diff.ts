@@ -6,11 +6,15 @@ import {
 	useRightPanelRefreshStore,
 } from "../../stores/right-panel-refresh.ts";
 
-export function useGitDiff(path: string | null): {
+export function useGitDiff(
+	path: string | null,
+	options?: { repositoryId?: string },
+): {
 	diff: BrowserGitDiffResponse | null;
 	loading: boolean;
 	error: string | null;
 } {
+	const repositoryId = options?.repositoryId;
 	const [diff, setDiff] = useState<BrowserGitDiffResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(() => Boolean(path));
@@ -33,7 +37,7 @@ export function useGitDiff(path: string | null): {
 		setLoading(true);
 		setError(null);
 
-		void fetchGitDiff(path)
+		void fetchGitDiff(path, repositoryId ? { repositoryId } : undefined)
 			.then((nextDiff) => {
 				if (!cancelled) {
 					setDiff(nextDiff);
@@ -58,7 +62,7 @@ export function useGitDiff(path: string | null): {
 		return () => {
 			cancelled = true;
 		};
-	}, [gitRevision, path]);
+	}, [gitRevision, path, repositoryId]);
 
 	return { diff, loading, error };
 }

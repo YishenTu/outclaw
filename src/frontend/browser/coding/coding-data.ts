@@ -9,7 +9,10 @@ import {
 } from "../lib/api.ts";
 import type { CodingTab } from "./coding-store.ts";
 import {
+	isCodingDiffTab,
+	isCodingFileTab,
 	isPendingCodingTab,
+	makeCodingFileTab,
 	makePendingCodingTab,
 	useCodingStore,
 } from "./coding-store.ts";
@@ -249,6 +252,30 @@ export function useCodingData() {
 		[repositories, setRepositories, setFocusedRepository],
 	);
 
+	const handleOpenFile = useCallback(
+		(params: { repositoryId: string; path: string }) => {
+			setFocusedRepository(params.repositoryId);
+			openTab(makeCodingFileTab(params.repositoryId, params.path));
+		},
+		[openTab, setFocusedRepository],
+	);
+
+	const focusedTab = focusedSession
+		? openTabs.find(
+				(entry) =>
+					entry.providerId === focusedSession.providerId &&
+					entry.sdkSessionId === focusedSession.sdkSessionId,
+			)
+		: undefined;
+	const focusedFilePath =
+		focusedTab && isCodingFileTab(focusedTab)
+			? focusedTab.sdkSessionId
+			: undefined;
+	const focusedDiffPath =
+		focusedTab && isCodingDiffTab(focusedTab)
+			? focusedTab.sdkSessionId
+			: undefined;
+
 	// Keep the active tab's stored title in sync with whatever data we have.
 	useEffect(() => {
 		if (!session) {
@@ -266,13 +293,17 @@ export function useCodingData() {
 	}, [openTabs, session, updateTabTitle]);
 
 	return {
+		focusedDiffPath,
+		focusedFilePath,
 		focusedRepositoryId,
 		focusedSession,
+		focusedTab,
 		handleAddTab,
 		handleCloseTab,
 		handleCreateRepository,
 		handleDeleteSession,
 		handleNewSessionForRepository,
+		handleOpenFile,
 		handleSelectRepository,
 		handleSelectSession,
 		handleSelectTab,

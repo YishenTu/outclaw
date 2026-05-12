@@ -5,9 +5,11 @@ import ReactMarkdown from "react-markdown";
 import type { BrowserFileResponse } from "../../../../common/protocol.ts";
 import {
 	FileConflictError,
-	fetchAgentFile,
+	type FileSource,
+	fetchFileFromSource,
 	fetchGitDiff,
-	writeAgentFile,
+	fileSourceKey,
+	writeFileToSource,
 } from "../../lib/api.ts";
 import { fileNameFromPath } from "../../lib/path-display.ts";
 import {
@@ -36,9 +38,9 @@ import { remarkHtmlComments } from "./remark-html-comments.ts";
 
 interface FileViewerProps {
 	active?: boolean;
-	tabId: string;
+	tabId?: string;
 	path: string;
-	agentId: string;
+	source: FileSource;
 }
 
 const FILE_PREVIEW_CODE_BLOCK_CLASSES =
@@ -350,8 +352,19 @@ export function FileViewer({
 	active = true,
 	tabId,
 	path,
-	agentId,
+	source,
 }: FileViewerProps) {
+	const sourceKey = fileSourceKey(source);
+	// Mirror `source` in a ref so effects can resolve the latest source without
+	// taking it as a dependency. The caller likely constructs `source` inline,
+	// so its referential identity changes on every render even when `sourceKey`
+	// is stable; effects must rerun on the latter, not the former.
+	const sourceRef = useRef(source);
+	sourceRef.current = source;
+	const gitDiffOptions =
+		source.kind === "repository"
+			? { repositoryId: source.repositoryId }
+			: undefined;
 	const [file, setFile] = useState<BrowserFileResponse | null>(null);
 	const [savedFile, setSavedFile] = useState<BrowserFileResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -374,10 +387,12 @@ export function FileViewer({
 	const savedFileRef = useRef<BrowserFileResponse | null>(null);
 	savedFileRef.current = savedFile;
 	const treeRevision = useRightPanelRefreshStore((state) =>
-		selectAgentTreeRevision(state, agentId),
+		selectAgentTreeRevision(state, sourceKey),
 	);
 	const gitRevision = useRightPanelRefreshStore(selectGitRevision);
-	const scrollTop = useTabsStore((state) => state.scrollPositions[tabId] ?? 0);
+	const scrollTop = useTabsStore((state) =>
+		tabId ? (state.scrollPositions[tabId] ?? 0) : 0,
+	);
 	const setScrollPosition = useTabsStore((state) => state.setScrollPosition);
 	const scrollRestoreTrigger = resolveFilePreviewScrollRestoreTrigger({
 		loading,
@@ -406,10 +421,10 @@ export function FileViewer({
 	const gitLineStatusDiffPath = resolveGitLineStatusDiffPath({ file, path });
 	const inlineGitDiffPath =
 		mode === "git" ? (file?.gitChange?.path ?? null) : null;
-	const inlineGitDiff = useGitDiff(inlineGitDiffPath);
-	const fileIdentity = `${agentId}:${path}`;
+	const inlineGitDiff = useGitDiff(inlineGitDiffPath, gitDiffOptions);
+	const fileIdentity = `${sourceKey}:${path}`;
 	const sourceResetKey = savedFile
-		? `${agentId}:${savedFile.path}:${savedFile.mtimeMs ?? ""}:${
+		? `${sourceKey}:${savedFile.path}:${savedFile.mtimeMs ?? ""}:${
 				savedFile.sha256 ?? ""
 			}`
 		: fileIdentity;
@@ -439,11 +454,12 @@ export function FileViewer({
 
 	useEffect(() => {
 		void reloadTrigger;
+		void sourceKey;
 
 		let cancelled = false;
 		const baseline = savedFileRef.current;
 		if (editDirtyRef.current && baseline?.kind === "text") {
-			void fetchAgentFile(agentId, path)
+			void fetchFileFromSource(sourceRef.current, path)
 				.then((nextFile) => {
 					if (cancelled) {
 						return;
@@ -467,7 +483,7 @@ export function FileViewer({
 		setLoading(true);
 		setError(null);
 
-		void fetchAgentFile(agentId, path)
+		void fetchFileFromSource(sourceRef.current, path)
 			.then((nextFile) => {
 				if (!cancelled) {
 					setFile(nextFile);
@@ -494,10 +510,11 @@ export function FileViewer({
 		return () => {
 			cancelled = true;
 		};
-	}, [agentId, path, reloadTrigger]);
+	}, [sourceKey, path, reloadTrigger]);
 
 	useEffect(() => {
 		void gitRevision;
+		void sourceKey;
 
 		let cancelled = false;
 
@@ -508,7 +525,12 @@ export function FileViewer({
 			};
 		}
 
-		void fetchGitDiff(gitLineStatusDiffPath)
+		const currentSource = sourceRef.current;
+		const diffOptions =
+			currentSource.kind === "repository"
+				? { repositoryId: currentSource.repositoryId }
+				: undefined;
+		void fetchGitDiff(gitLineStatusDiffPath, diffOptions)
 			.then((response) => {
 				if (!cancelled) {
 					// Match against the diff response's normalized path, not the
@@ -527,7 +549,7 @@ export function FileViewer({
 		return () => {
 			cancelled = true;
 		};
-	}, [gitLineStatusDiffPath, gitRevision, sourceFileLoaded]);
+	}, [gitLineStatusDiffPath, gitRevision, sourceFileLoaded, sourceKey]);
 
 	const handleSelectMode = useCallback(
 		(nextMode: FilePreviewMode) => {
@@ -554,8 +576,8 @@ export function FileViewer({
 			setSaving(true);
 			setSaveError(null);
 			try {
-				const nextFile = await writeAgentFile(
-					agentId,
+				const nextFile = await writeFileToSource(
+					sourceRef.current,
 					savedFile.path,
 					content,
 					{
@@ -583,7 +605,7 @@ export function FileViewer({
 				setSaving(false);
 			}
 		},
-		[agentId, savedFile],
+		[savedFile],
 	);
 
 	const handleDiscard = useCallback(() => {
@@ -595,7 +617,7 @@ export function FileViewer({
 	const handleAcceptReload = useCallback(async () => {
 		setSaveError(null);
 		try {
-			const nextFile = await fetchAgentFile(agentId, path);
+			const nextFile = await fetchFileFromSource(sourceRef.current, path);
 			setFile(nextFile);
 			setSavedFile(nextFile.kind === "text" ? nextFile : null);
 			editDirtyRef.current = false;
@@ -607,7 +629,7 @@ export function FileViewer({
 					: "Failed to reload file",
 			);
 		}
-	}, [agentId, path]);
+	}, [path]);
 
 	const handleDirtyChange = useCallback((dirty: boolean) => {
 		editDirtyRef.current = dirty;
@@ -639,9 +661,11 @@ export function FileViewer({
 
 			<div
 				ref={containerRef}
-				onScroll={(event) =>
-					setScrollPosition(tabId, event.currentTarget.scrollTop)
-				}
+				onScroll={(event) => {
+					if (tabId) {
+						setScrollPosition(tabId, event.currentTarget.scrollTop);
+					}
+				}}
 				className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-6 py-6"
 			>
 				<div className="mx-auto max-w-5xl">
