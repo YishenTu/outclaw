@@ -10,8 +10,7 @@ const STATUS: BrowserGitStatusResponse = {
 	behind: 0,
 	clean: true,
 	files: [],
-	graph: {
-		branchHeads: [],
+	history: {
 		commits: [
 			{
 				sha: "abc123",

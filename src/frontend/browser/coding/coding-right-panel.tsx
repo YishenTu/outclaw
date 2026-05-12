@@ -8,6 +8,7 @@ import {
 	FileTree,
 	FileTreeHeader,
 } from "../components/right-panel/file-tree.tsx";
+import { useGitHistoryPagination } from "../components/right-panel/git/git-history-pagination.ts";
 import { GitPanel } from "../components/right-panel/git/git-panel.tsx";
 import { shouldClearSelectedGitCommit } from "../components/right-panel/git/git-selection-state.ts";
 import {
@@ -87,11 +88,11 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	const setRightPanelSplitRatio = useLayoutStore(
 		(state) => state.setRightPanelSplitRatio,
 	);
-	const rightGitGraphCollapsed = useLayoutStore(
-		(state) => state.rightGitGraphCollapsed,
+	const rightGitHistoryCollapsed = useLayoutStore(
+		(state) => state.rightGitHistoryCollapsed,
 	);
-	const setRightGitGraphCollapsed = useLayoutStore(
-		(state) => state.setRightGitGraphCollapsed,
+	const setRightGitHistoryCollapsed = useLayoutStore(
+		(state) => state.setRightGitHistoryCollapsed,
 	);
 	const rightTerminalCollapsed = useLayoutStore(
 		(state) => state.rightTerminalCollapsed,
@@ -127,6 +128,12 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	const [selectedGitCommitSha, setSelectedGitCommitSha] = useState<
 		string | null
 	>(null);
+	const { gitHistoryLoadError, gitHistoryLoadingMore, loadMoreGitHistory } =
+		useGitHistoryPagination({
+			repositoryId: focusedRepositoryId,
+			setStatus: setGitStatus,
+			status: gitStatus,
+		});
 	const [isResizing, setIsResizing] = useState(false);
 	const contentRef = useRef<HTMLDivElement | null>(null);
 
@@ -308,15 +315,19 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		}
 		return (
 			<GitPanel
-				graphCollapsed={rightGitGraphCollapsed}
+				historyCollapsed={rightGitHistoryCollapsed}
+				historyLoadError={gitHistoryLoadError}
+				historyLoadingMore={gitHistoryLoadingMore}
 				onInitialize={handleInitialize}
+				onLoadMoreHistory={loadMoreGitHistory}
+				repositoryId={focusedRepositoryId}
 				status={gitStatus}
 				loading={gitLoading}
 				error={gitError}
 				onOpenDiff={handleOpenDiff}
 				onSelectCommit={setSelectedGitCommitSha}
-				onToggleGraphCollapsed={() =>
-					setRightGitGraphCollapsed(!rightGitGraphCollapsed)
+				onToggleHistoryCollapsed={() =>
+					setRightGitHistoryCollapsed(!rightGitHistoryCollapsed)
 				}
 				selectedCommitSha={selectedGitCommitSha}
 			/>

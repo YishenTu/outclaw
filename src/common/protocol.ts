@@ -572,6 +572,14 @@ export interface SkillInfo {
 	description: string;
 }
 
+export type ProviderSkillScope = "user" | "repo" | "system" | "admin" | string;
+
+export interface ProviderSkillInfo {
+	name: string;
+	description: string;
+	scope?: ProviderSkillScope;
+}
+
 export interface BrowserSessionSummary {
 	providerId: string;
 	sdkSessionId: string;
@@ -643,6 +651,16 @@ export interface BrowserCodingSessionDeleteResponse {
 	sdkSessionId: string;
 }
 
+export interface BrowserCodingSessionArchiveResponse {
+	archived: true;
+	session: BrowserCodingSessionSummary;
+}
+
+export interface BrowserCodingSessionRestoreResponse {
+	restored: true;
+	session: BrowserCodingSessionSummary;
+}
+
 export type BrowserCodingSessionStartResponse =
 	| {
 			status: "accepted";
@@ -675,6 +693,10 @@ export interface BrowserCodingModelsResponse {
 	models: BrowserCodingModel[];
 }
 
+export interface BrowserCodingSkillsResponse {
+	skills: ProviderSkillInfo[];
+}
+
 export type BrowserCodingRepositorySource = "auto" | "manual" | "clone";
 export type BrowserCodingRepositoryStatus = "active" | "archived";
 
@@ -699,6 +721,11 @@ export interface BrowserCodingRepositoryListResponse {
 
 export interface BrowserCodingRepositoryArchiveResponse {
 	archived: true;
+	repository: BrowserCodingRepositorySummary;
+}
+
+export interface BrowserCodingRepositoryRestoreResponse {
+	restored: true;
 	repository: BrowserCodingRepositorySummary;
 }
 
@@ -876,11 +903,11 @@ export interface BrowserGitFileStatus {
 	renamedFrom?: string;
 }
 
-export interface BrowserGitGraphCommitParent {
+export interface BrowserGitCommitParent {
 	sha: string;
 }
 
-export interface BrowserGitGraphCommit {
+export interface BrowserGitHistoryCommit {
 	sha: string;
 	commit: {
 		author: {
@@ -890,19 +917,12 @@ export interface BrowserGitGraphCommit {
 		};
 		message: string;
 	};
-	parents: BrowserGitGraphCommitParent[];
+	parents: BrowserGitCommitParent[];
 }
 
-export interface BrowserGitGraphBranchHead {
-	name: string;
-	commit: {
-		sha: string;
-	};
-}
-
-export interface BrowserGitGraph {
-	commits: BrowserGitGraphCommit[];
-	branchHeads: BrowserGitGraphBranchHead[];
+export interface BrowserGitHistory {
+	commits: BrowserGitHistoryCommit[];
+	nextCursor?: string;
 }
 
 export interface BrowserGitUninitializedResponse {
@@ -917,7 +937,7 @@ export interface BrowserGitInitializedResponse {
 	ahead: number;
 	behind: number;
 	clean: boolean;
-	graph: BrowserGitGraph;
+	history: BrowserGitHistory;
 	files: BrowserGitFileStatus[];
 }
 
@@ -938,8 +958,32 @@ export interface BrowserGitCommitResponse {
 		date: string;
 	};
 	message: string;
-	parents: BrowserGitGraphCommitParent[];
+	parents: BrowserGitCommitParent[];
 	diff: string;
+}
+
+export type BrowserGitCommitFileChangeType =
+	| "added"
+	| "modified"
+	| "deleted"
+	| "renamed"
+	| "copied"
+	| "type-changed";
+
+export interface BrowserGitCommitFileStat {
+	path: string;
+	change: BrowserGitCommitFileChangeType;
+	renamedFrom?: string;
+	additions: number;
+	deletions: number;
+	binary: boolean;
+}
+
+export interface BrowserGitCommitStats {
+	sha: string;
+	files: BrowserGitCommitFileStat[];
+	totalAdditions: number;
+	totalDeletions: number;
 }
 
 export interface SkillsUpdateEvent {
@@ -1074,6 +1118,14 @@ export type FacadeEvent =
 	| CompactingStartedEvent
 	| CompactingFinishedEvent;
 
+export interface CodingUserPromptEvent {
+	type: "user_prompt";
+	text: string;
+	sessionId?: string;
+}
+
+export type CodingSessionEvent = FacadeEvent | CodingUserPromptEvent;
+
 /**
  * Mid-stream usage update. Codex emits `thread/tokenUsage/updated` while a
  * turn is in flight; surfacing this lets the context gauge tick along with
@@ -1137,13 +1189,22 @@ export interface Facade {
 	readReplay?(sessionId: string): Promise<DisplayMessage[]>;
 	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;
 	/**
-	 * Provider-owned rehydration hook for coding-session event logs. Adapters
-	 * project provider-native persisted artifacts into the same FacadeEvent
-	 * shapes used by live streaming; runtime/frontend code must not parse
+	 * Provider-owned rehydration hook for coding-session history. Adapters
+	 * project provider-native persisted artifacts into the same coding-session
+	 * event shapes used by live streaming; runtime/frontend code must not parse
 	 * provider transcript formats directly.
 	 */
-	readCodingSessionEvents?(sessionId: string): Promise<FacadeEvent[]>;
+	readCodingSessionEvents?(sessionId: string): Promise<CodingSessionEvent[]>;
 	getSkills?(cwd?: string): Promise<SkillInfo[]>;
+	/**
+	 * Provider-owned skill catalog for cwd-bound coding sessions. This is
+	 * intentionally separate from getSkills(), which feeds the normal chat
+	 * slash-command transport.
+	 */
+	listProviderSkills?(params: {
+		cwd: string;
+		forceReload?: boolean;
+	}): Promise<ProviderSkillInfo[]>;
 	/**
 	 * List provider-side models the runtime can offer to the user. Coding
 	 * mode uses this to populate the model picker so users can pick a Codex

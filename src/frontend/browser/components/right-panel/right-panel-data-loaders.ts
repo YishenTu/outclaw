@@ -10,6 +10,7 @@ import {
 	fetchAgentTree,
 	fetchGitStatus,
 } from "../../lib/api.ts";
+import { useGitHistoryPagination } from "./git/git-history-pagination.ts";
 import {
 	shouldFetchAgentTree,
 	shouldFetchGitStatus,
@@ -130,6 +131,11 @@ export function useGitStatusLoader(params: {
 	const [loadedGitRevision, setLoadedGitRevision] = useState<number | null>(
 		null,
 	);
+	const { gitHistoryLoadError, gitHistoryLoadingMore, loadMoreGitHistory } =
+		useGitHistoryPagination({
+			setStatus: setGitStatus,
+			status: gitStatus,
+		});
 
 	useEffect(() => {
 		void params.gitRevision;
@@ -184,8 +190,11 @@ export function useGitStatusLoader(params: {
 
 	return {
 		gitError,
+		gitHistoryLoadError,
+		gitHistoryLoadingMore,
 		gitLoading,
 		gitStatus,
+		loadMoreGitHistory,
 	};
 }
 

@@ -131,6 +131,9 @@ export interface CodingState {
 	sessionsByRepository: Record<string, BrowserCodingSessionSummary[]>;
 	nextCursorByRepository: Record<string, SessionCursor | undefined>;
 	searchByRepository: Record<string, RepositorySearchState>;
+	archivedSessions: BrowserCodingSessionSummary[];
+	archivedNextCursor: SessionCursor | undefined;
+	archivedSearchState: RepositorySearchState | undefined;
 	repositoriesLoaded: boolean;
 	codingModels: BrowserCodingModel[];
 	codingModelsLoaded: boolean;
@@ -165,10 +168,30 @@ export interface CodingState {
 		nextCursor?: SessionCursor,
 	): void;
 	clearRepositorySearch(repositoryId: string): void;
+	setArchivedSessions(
+		sessions: BrowserCodingSessionSummary[],
+		nextCursor?: SessionCursor,
+	): void;
+	appendArchivedSessions(
+		sessions: BrowserCodingSessionSummary[],
+		nextCursor?: SessionCursor,
+	): void;
+	setArchivedSearchResults(
+		query: string,
+		sessions: BrowserCodingSessionSummary[],
+		nextCursor?: SessionCursor,
+	): void;
+	appendArchivedSearchResults(
+		query: string,
+		sessions: BrowserCodingSessionSummary[],
+		nextCursor?: SessionCursor,
+	): void;
+	clearArchivedSearch(): void;
 	upsertSession(
 		repositoryId: string,
 		session: BrowserCodingSessionSummary,
 	): void;
+	upsertArchivedSession(session: BrowserCodingSessionSummary): void;
 	renameSession(
 		repositoryId: string,
 		providerId: string,
@@ -187,6 +210,8 @@ export interface CodingState {
 		providerId: string,
 		sdkSessionId: string,
 	): void;
+	removeArchivedSession(providerId: string, sdkSessionId: string): void;
+	updateRepository(repository: BrowserCodingRepositorySummary): void;
 	setCodingModels(models: BrowserCodingModel[]): void;
 	setSelectedModelId(modelId: string): void;
 	setSelectedEffort(effort: EffortLevel): void;
@@ -311,6 +336,9 @@ export const useCodingStore = create<CodingState>()(
 			sessionsByRepository: {},
 			nextCursorByRepository: {},
 			searchByRepository: {},
+			archivedSessions: [],
+			archivedNextCursor: undefined,
+			archivedSearchState: undefined,
 			repositoriesLoaded: false,
 			codingModels: [],
 			codingModelsLoaded: false,
@@ -371,7 +399,9 @@ export const useCodingStore = create<CodingState>()(
 					const stillExists =
 						state.focusedRepositoryId === undefined ||
 						repositories.some(
-							(entry) => entry.id === state.focusedRepositoryId,
+							(entry) =>
+								entry.id === state.focusedRepositoryId &&
+								entry.status === "active",
 						);
 					return {
 						repositories,
@@ -401,11 +431,13 @@ export const useCodingStore = create<CodingState>()(
 				set((state) => {
 					const existing = state.sessionsByRepository[repositoryId] ?? [];
 					const seen = new Set(
-						existing.map((entry) => `${entry.providerId} ${entry.sdkSessionId}`),
+						existing.map(
+							(entry) => `${entry.providerId}\u0000${entry.sdkSessionId}`,
+						),
 					);
 					const merged = [...existing];
 					for (const session of sessions) {
-						const key = `${session.providerId} ${session.sdkSessionId}`;
+						const key = `${session.providerId}\u0000${session.sdkSessionId}`;
 						if (seen.has(key)) {
 							continue;
 						}
@@ -440,12 +472,12 @@ export const useCodingStore = create<CodingState>()(
 					}
 					const seen = new Set(
 						current.sessions.map(
-							(entry) => `${entry.providerId} ${entry.sdkSessionId}`,
+							(entry) => `${entry.providerId}\u0000${entry.sdkSessionId}`,
 						),
 					);
 					const merged = [...current.sessions];
 					for (const session of sessions) {
-						const key = `${session.providerId} ${session.sdkSessionId}`;
+						const key = `${session.providerId}\u0000${session.sdkSessionId}`;
 						if (seen.has(key)) {
 							continue;
 						}
@@ -474,6 +506,71 @@ export const useCodingStore = create<CodingState>()(
 					return { searchByRepository: rest };
 				});
 			},
+			setArchivedSessions(sessions, nextCursor) {
+				set({
+					archivedSessions: sessions,
+					archivedNextCursor: nextCursor,
+				});
+			},
+			appendArchivedSessions(sessions, nextCursor) {
+				set((state) => {
+					const seen = new Set(
+						state.archivedSessions.map(
+							(entry) => `${entry.providerId}\u0000${entry.sdkSessionId}`,
+						),
+					);
+					const merged = [...state.archivedSessions];
+					for (const session of sessions) {
+						const key = `${session.providerId}\u0000${session.sdkSessionId}`;
+						if (seen.has(key)) {
+							continue;
+						}
+						merged.push(session);
+						seen.add(key);
+					}
+					return {
+						archivedSessions: merged,
+						archivedNextCursor: nextCursor,
+					};
+				});
+			},
+			setArchivedSearchResults(query, sessions, nextCursor) {
+				set({
+					archivedSearchState: { query, sessions, nextCursor },
+				});
+			},
+			appendArchivedSearchResults(query, sessions, nextCursor) {
+				set((state) => {
+					const current = state.archivedSearchState;
+					if (!current || current.query !== query) {
+						return state;
+					}
+					const seen = new Set(
+						current.sessions.map(
+							(entry) => `${entry.providerId}\u0000${entry.sdkSessionId}`,
+						),
+					);
+					const merged = [...current.sessions];
+					for (const session of sessions) {
+						const key = `${session.providerId}\u0000${session.sdkSessionId}`;
+						if (seen.has(key)) {
+							continue;
+						}
+						merged.push(session);
+						seen.add(key);
+					}
+					return {
+						archivedSearchState: {
+							query,
+							sessions: merged,
+							nextCursor,
+						},
+					};
+				});
+			},
+			clearArchivedSearch() {
+				set({ archivedSearchState: undefined });
+			},
 			renameSession(repositoryId, providerId, sdkSessionId, title) {
 				set((state) => {
 					const matches = (entry: BrowserCodingSessionSummary) =>
@@ -500,6 +597,17 @@ export const useCodingStore = create<CodingState>()(
 								},
 							}
 						: state.searchByRepository;
+					const nextArchivedSessions = state.archivedSessions.map((entry) =>
+						matches(entry) ? { ...entry, title } : entry,
+					);
+					const nextArchivedSearchState = state.archivedSearchState
+						? {
+								...state.archivedSearchState,
+								sessions: state.archivedSearchState.sessions.map((entry) =>
+									matches(entry) ? { ...entry, title } : entry,
+								),
+							}
+						: state.archivedSearchState;
 					const nextOpenTabs = state.openTabs.map((entry) =>
 						entry.providerId === providerId &&
 						entry.sdkSessionId === sdkSessionId
@@ -509,6 +617,8 @@ export const useCodingStore = create<CodingState>()(
 					return {
 						sessionsByRepository: nextSessionsByRepository,
 						searchByRepository: nextSearchByRepository,
+						archivedSessions: nextArchivedSessions,
+						archivedSearchState: nextArchivedSearchState,
 						openTabs: nextOpenTabs,
 					};
 				});
@@ -528,6 +638,20 @@ export const useCodingStore = create<CodingState>()(
 							...state.sessionsByRepository,
 							[repositoryId]: [session, ...filtered],
 						},
+					};
+				});
+			},
+			upsertArchivedSession(session) {
+				set((state) => {
+					const filtered = state.archivedSessions.filter(
+						(entry) =>
+							!(
+								entry.providerId === session.providerId &&
+								entry.sdkSessionId === session.sdkSessionId
+							),
+					);
+					return {
+						archivedSessions: [session, ...filtered],
 					};
 				});
 			},
@@ -647,19 +771,26 @@ export const useCodingStore = create<CodingState>()(
 			},
 			removeSession(repositoryId, providerId, sdkSessionId) {
 				set((state) => {
+					const matches = (entry: BrowserCodingSessionSummary) =>
+						entry.providerId === providerId &&
+						entry.sdkSessionId === sdkSessionId;
 					const sessions = state.sessionsByRepository[repositoryId];
 					const nextSessionsByRepository = sessions
 						? {
 								...state.sessionsByRepository,
-								[repositoryId]: sessions.filter(
-									(entry) =>
-										!(
-											entry.providerId === providerId &&
-											entry.sdkSessionId === sdkSessionId
-										),
-								),
+								[repositoryId]: sessions.filter((entry) => !matches(entry)),
 							}
 						: state.sessionsByRepository;
+					const search = state.searchByRepository[repositoryId];
+					const nextSearchByRepository = search
+						? {
+								...state.searchByRepository,
+								[repositoryId]: {
+									...search,
+									sessions: search.sessions.filter((entry) => !matches(entry)),
+								},
+							}
+						: state.searchByRepository;
 					const tabPatch = removeTabAndPickFocus(state, {
 						providerId,
 						repositoryId,
@@ -667,7 +798,56 @@ export const useCodingStore = create<CodingState>()(
 					});
 					return {
 						sessionsByRepository: nextSessionsByRepository,
+						searchByRepository: nextSearchByRepository,
 						...tabPatch,
+					};
+				});
+			},
+			removeArchivedSession(providerId, sdkSessionId) {
+				set((state) => {
+					const matches = (entry: BrowserCodingSessionSummary) =>
+						entry.providerId === providerId &&
+						entry.sdkSessionId === sdkSessionId;
+					const nextArchivedSessions = state.archivedSessions.filter(
+						(entry) => !matches(entry),
+					);
+					const search = state.archivedSearchState;
+					const nextArchivedSearchState = search
+						? {
+								...search,
+								sessions: search.sessions.filter((entry) => !matches(entry)),
+							}
+						: state.archivedSearchState;
+					return {
+						archivedSessions: nextArchivedSessions,
+						archivedSearchState: nextArchivedSearchState,
+					};
+				});
+			},
+			updateRepository(repository) {
+				set((state) => {
+					const nextRepositories = [
+						repository,
+						...state.repositories.filter((entry) => entry.id !== repository.id),
+					];
+					const stillFocused =
+						state.focusedRepositoryId === undefined ||
+						(repository.id !== state.focusedRepositoryId &&
+							state.repositories.some(
+								(entry) =>
+									entry.id === state.focusedRepositoryId &&
+									entry.status === "active",
+							)) ||
+						(repository.id === state.focusedRepositoryId &&
+							repository.status === "active");
+					return {
+						repositories: nextRepositories,
+						...(stillFocused
+							? {}
+							: {
+									focusedRepositoryId: undefined,
+									focusedSession: undefined,
+								}),
 					};
 				});
 			},

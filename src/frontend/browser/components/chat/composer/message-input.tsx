@@ -21,6 +21,7 @@ import { useWs } from "../../../contexts/websocket-context.tsx";
 import { useAgentFilesStore } from "../../../stores/agent-files.ts";
 import { useAgentsStore } from "../../../stores/agents.ts";
 import { useRuntimePopupStore } from "../../../stores/runtime-popup.ts";
+import type { CommandEntry } from "../../../stores/slash-commands.ts";
 import { useSlashCommandsStore } from "../../../stores/slash-commands.ts";
 import { ContextGauge } from "../context-gauge.tsx";
 import { useGlobalStopShortcut } from "../global-stop-shortcut.ts";
@@ -34,7 +35,9 @@ import { SlashCommandMenu } from "../slash-command-menu.tsx";
 import {
 	canSubmitMessageInput,
 	filterSlashCommands,
+	isSlashAutocompleteInput,
 	resolveRuntimePopupItemCount,
+	shouldShowSlashCommandMenu,
 } from "./message-input-behavior.ts";
 import { handleMessageInputKeydown } from "./message-input-keydown.ts";
 
@@ -64,6 +67,11 @@ interface MessageInputProps {
 	modelSelectorSlot?: React.ReactNode;
 	attachmentsEnabled?: boolean;
 	onInterrupt?: () => boolean;
+	commandEntries?: CommandEntry[];
+	commandMenuEmptyMessage?: string;
+	commandTriggerChars?: readonly string[];
+	fileMentionEntries?: WorkspaceFileEntry[];
+	onFileMentionEntriesRequested?: () => Promise<void> | void;
 }
 
 export function MessageInput({
@@ -81,6 +89,11 @@ export function MessageInput({
 	modelSelectorSlot,
 	attachmentsEnabled = true,
 	onInterrupt,
+	commandEntries,
+	commandMenuEmptyMessage,
+	commandTriggerChars = ["/"],
+	fileMentionEntries,
+	onFileMentionEntriesRequested,
 }: MessageInputProps) {
 	const { sendCommand } = useWs();
 	const [value, setValue] = useState("");
@@ -96,7 +109,8 @@ export function MessageInput({
 		text: "",
 		images: [],
 	});
-	const commands = useSlashCommandsStore((state) => state.commands);
+	const storeCommands = useSlashCommandsStore((state) => state.commands);
+	const commands = commandEntries ?? storeCommands;
 	const runtimePopup = useRuntimePopupStore((state) => state.popup);
 	const closeRuntimePopup = useRuntimePopupStore((state) => state.closePopup);
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
@@ -104,17 +118,31 @@ export function MessageInput({
 		activeAgentId ? state.entriesByAgent[activeAgentId] : undefined,
 	);
 	const agentFiles = agentFilesEntry?.files ?? EMPTY_FILES;
+	const mentionFiles = fileMentionEntries ?? agentFiles;
 	const requestAgentFiles = useAgentFilesStore((state) => state.requestFiles);
 	const mentionToken = detectMentionToken(value, cursor);
 	const mentionMatches: WorkspaceFileEntry[] = mentionToken
-		? matchMentionEntries(agentFiles, mentionToken.query, {
+		? matchMentionEntries(mentionFiles, mentionToken.query, {
 				limit: MAX_MENTION_RESULTS,
 			})
 		: [];
 	const showMentionMenu =
 		mentionToken !== null && mentionMatches.length > 0 && !mentionDismissed;
-	const filteredCommands = filterSlashCommands(value, commands);
-	const showSlashMenu = !showMentionMenu && filteredCommands.length > 0;
+	const filteredCommands = filterSlashCommands(
+		value,
+		commands,
+		commandTriggerChars,
+	);
+	const isCommandTriggerActive = isSlashAutocompleteInput(
+		value,
+		commandTriggerChars,
+	);
+	const showSlashMenu = shouldShowSlashCommandMenu({
+		filteredCommandCount: filteredCommands.length,
+		hasEmptyMessage: commandMenuEmptyMessage !== undefined,
+		isTriggerActive: isCommandTriggerActive,
+		showMentionMenu,
+	});
 	const canSend = canSubmitMessageInput({
 		disabled,
 		imageCount: images.length,
@@ -181,14 +209,18 @@ export function MessageInput({
 	}, [mentionMatches.length, mentionSelectedIndex]);
 
 	useEffect(() => {
-		if (!activeAgentId) {
-			return;
-		}
 		if (!value.includes("@")) {
 			return;
 		}
+		if (onFileMentionEntriesRequested) {
+			void onFileMentionEntriesRequested();
+			return;
+		}
+		if (!activeAgentId) {
+			return;
+		}
 		void requestAgentFiles(activeAgentId);
-	}, [activeAgentId, requestAgentFiles, value]);
+	}, [activeAgentId, onFileMentionEntriesRequested, requestAgentFiles, value]);
 
 	useEffect(() => {
 		if (attachmentsEnabled) {
@@ -234,10 +266,11 @@ export function MessageInput({
 		});
 	}
 
-	function applySlashCommand(name: string) {
+	function applySlashCommand(command: CommandEntry) {
 		closeRuntimePopup();
-		replaceDraftText(`/${name} `);
-		setCursor(`/${name} `.length);
+		const replacement = `${command.insertPrefix ?? "/"}${command.name} `;
+		replaceDraftText(replacement);
+		setCursor(replacement.length);
 		setSelectedIndex(0);
 		setMentionDismissed(false);
 		focusTextarea();
@@ -363,7 +396,8 @@ export function MessageInput({
 						<SlashCommandMenu
 							commands={filteredCommands}
 							selectedIndex={selectedIndex}
-							onSelect={(command) => applySlashCommand(command.name)}
+							onSelect={applySlashCommand}
+							emptyMessage={commandMenuEmptyMessage}
 						/>
 					) : null}
 					{headerSlot ? (
@@ -473,7 +507,7 @@ export function MessageInput({
 											const selectedCommand =
 												filteredCommands[index] ?? filteredCommands[0];
 											if (selectedCommand) {
-												applySlashCommand(selectedCommand.name);
+												applySlashCommand(selectedCommand);
 											}
 										},
 										sendStopCommand: interrupt,

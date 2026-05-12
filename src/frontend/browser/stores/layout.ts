@@ -25,7 +25,7 @@ export const BROWSER_LAYOUT_STORAGE_KEY = "outclaw.browser.layout";
 export interface LayoutState {
 	inspectorWidth: number;
 	leftCollapsed: boolean;
-	rightGitGraphCollapsed: boolean;
+	rightGitHistoryCollapsed: boolean;
 	rightPanelUpperTab: UpperRightPanelTab;
 	rightPanelSplitRatio: number;
 	rightCollapsed: boolean;
@@ -35,7 +35,7 @@ export interface LayoutState {
 	resetLayout: () => void;
 	setInspectorWidth: (width: number) => void;
 	setLeftCollapsed: (collapsed: boolean) => void;
-	setRightGitGraphCollapsed: (collapsed: boolean) => void;
+	setRightGitHistoryCollapsed: (collapsed: boolean) => void;
 	setRightPanelUpperTab: (tab: UpperRightPanelTab) => void;
 	setRightPanelSplitRatio: (ratio: number) => void;
 	setRightCollapsed: (collapsed: boolean) => void;
@@ -70,7 +70,7 @@ function clampSplitRatio(ratio: number): number {
 function sanitizeState(state: {
 	inspectorWidth: number;
 	leftCollapsed: boolean;
-	rightGitGraphCollapsed: boolean;
+	rightGitHistoryCollapsed: boolean;
 	rightCollapsed: boolean;
 	rightPanelSplitRatio: number;
 	rightPanelUpperTab: string;
@@ -85,7 +85,7 @@ function sanitizeState(state: {
 			DEFAULT_INSPECTOR_WIDTH,
 		),
 		leftCollapsed: state.leftCollapsed === true,
-		rightGitGraphCollapsed: state.rightGitGraphCollapsed === true,
+		rightGitHistoryCollapsed: state.rightGitHistoryCollapsed === true,
 		rightPanelUpperTab: coerceUpperRightPanelTab(state.rightPanelUpperTab),
 		rightPanelSplitRatio: clampSplitRatio(state.rightPanelSplitRatio),
 		rightCollapsed: state.rightCollapsed === true,
@@ -115,7 +115,7 @@ function getDefaultState() {
 	return {
 		inspectorWidth: DEFAULT_INSPECTOR_WIDTH,
 		leftCollapsed: false,
-		rightGitGraphCollapsed: false,
+		rightGitHistoryCollapsed: false,
 		rightPanelUpperTab: "files" as UpperRightPanelTab,
 		rightPanelSplitRatio: DEFAULT_RIGHT_PANEL_SPLIT_RATIO,
 		rightCollapsed: false,
@@ -140,8 +140,8 @@ export function createLayoutStore(storage?: StateStorage) {
 						),
 					}),
 				setLeftCollapsed: (leftCollapsed) => set({ leftCollapsed }),
-				setRightGitGraphCollapsed: (rightGitGraphCollapsed) =>
-					set({ rightGitGraphCollapsed }),
+				setRightGitHistoryCollapsed: (rightGitHistoryCollapsed) =>
+					set({ rightGitHistoryCollapsed }),
 				setRightPanelUpperTab: (rightPanelUpperTab) =>
 					set({
 						rightPanelUpperTab: coerceUpperRightPanelTab(rightPanelUpperTab),
@@ -173,9 +173,20 @@ export function createLayoutStore(storage?: StateStorage) {
 						leftCollapsed:
 							(persistedState as Partial<ReturnType<typeof getDefaultState>>)
 								.leftCollapsed ?? currentState.leftCollapsed,
-						rightGitGraphCollapsed:
-							(persistedState as Partial<ReturnType<typeof getDefaultState>>)
-								.rightGitGraphCollapsed ?? currentState.rightGitGraphCollapsed,
+						rightGitHistoryCollapsed:
+							(
+								persistedState as Partial<
+									ReturnType<typeof getDefaultState>
+								> & {
+									rightGitGraphCollapsed?: boolean;
+								}
+							).rightGitHistoryCollapsed ??
+							(
+								persistedState as Partial<{
+									rightGitGraphCollapsed?: boolean;
+								}>
+							).rightGitGraphCollapsed ??
+							currentState.rightGitHistoryCollapsed,
 						rightPanelUpperTab:
 							(
 								persistedState as Partial<
@@ -212,7 +223,7 @@ export function createLayoutStore(storage?: StateStorage) {
 				partialize: (state) => ({
 					inspectorWidth: state.inspectorWidth,
 					leftCollapsed: state.leftCollapsed,
-					rightGitGraphCollapsed: state.rightGitGraphCollapsed,
+					rightGitHistoryCollapsed: state.rightGitHistoryCollapsed,
 					rightPanelUpperTab: state.rightPanelUpperTab,
 					rightPanelSplitRatio: state.rightPanelSplitRatio,
 					rightCollapsed: state.rightCollapsed,

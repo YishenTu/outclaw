@@ -10,7 +10,7 @@ export function shouldClearSelectedGitCommit(params: {
 	if (!params.status?.initialized) {
 		return true;
 	}
-	return !params.status.graph.commits.some(
+	return !params.status.history.commits.some(
 		(commit) => commit.sha === params.selectedCommitSha,
 	);
 }

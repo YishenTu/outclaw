@@ -120,6 +120,45 @@ describe("browser message input keydown", () => {
 		expect(prevented).toBe(false);
 	});
 
+	test("does not navigate below zero while an empty slash menu is open", () => {
+		let selectedIndex = 0;
+		let prevented = false;
+
+		const handled = handleMessageInputKeydown(
+			{
+				key: "ArrowDown",
+				preventDefault: () => {
+					prevented = true;
+				},
+			},
+			{
+				showSlashMenu: true,
+				filteredCommandCount: 0,
+				selectedIndex,
+				interruptible: false,
+				isComposing: false,
+				showMentionMenu: false,
+				mentionItemCount: 0,
+				mentionSelectedIndex: 0,
+			},
+			{
+				setSelectedIndex: (index) => {
+					selectedIndex = index;
+				},
+				applySelectedSlashCommand: () => {},
+				sendStopCommand: () => false,
+				submitValue: () => {},
+				setMentionSelectedIndex: () => {},
+				applySelectedMention: () => {},
+				dismissMentionMenu: () => {},
+			},
+		);
+
+		expect(handled).toBe(true);
+		expect(selectedIndex).toBe(0);
+		expect(prevented).toBe(true);
+	});
+
 	test("Tab applies the selected mention and prevents default", () => {
 		let appliedIndex = -1;
 		let prevented = false;

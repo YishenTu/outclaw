@@ -9,12 +9,17 @@ export function CodingSidebarContainer({
 	onCollapse,
 }: CodingSidebarContainerProps) {
 	const {
+		archivedRepositories,
+		archivedSessions,
 		focusedRepositoryId,
 		focusedSession,
+		handleArchiveRepository,
+		handleArchiveSession,
 		handleCreateRepository,
-		handleDeleteSession,
 		handleNewSessionForRepository,
 		handleRenameSession,
+		handleRestoreRepository,
+		handleRestoreSession,
 		handleSelectRepository,
 		handleSelectSession,
 		repositories,
@@ -25,6 +30,8 @@ export function CodingSidebarContainer({
 	return (
 		<div className="relative flex h-full flex-col">
 			<CodingSidebar
+				archivedRepositories={archivedRepositories}
+				archivedSessions={archivedSessions}
 				repositories={repositories}
 				sessionsByRepository={sessionsByRepository}
 				focusedRepositoryId={focusedRepositoryId}
@@ -33,7 +40,10 @@ export function CodingSidebarContainer({
 				onSelectSession={handleSelectSession}
 				onCreateRepository={handleCreateRepository}
 				onNewSession={handleNewSessionForRepository}
-				onDeleteSession={handleDeleteSession}
+				onArchiveRepository={handleArchiveRepository}
+				onRestoreRepository={handleRestoreRepository}
+				onArchiveSession={handleArchiveSession}
+				onRestoreSession={handleRestoreSession}
 				onRenameSession={handleRenameSession}
 				{...(onCollapse ? { onCollapse } : {})}
 			/>

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
 	archiveCodingRepository,
+	archiveCodingSession,
 	deleteCodingSession,
 	fetchAgentCron,
 	fetchAgentCronHistory,
@@ -9,16 +10,20 @@ import {
 	fetchAgentWorkspaceFiles,
 	fetchCodingRepositories,
 	fetchCodingRepository,
+	fetchCodingRepositoryWorkspaceFiles,
 	fetchCodingSession,
 	fetchCodingSessions,
 	fetchConfigFile,
 	fetchGitCommit,
 	fetchGitDiff,
+	fetchGitHistory,
 	fetchGitStatus,
 	fetchRuntimeLatency,
 	fetchSidebarSummary,
 	initGitRepo,
 	registerCodingRepository,
+	restoreCodingRepository,
+	restoreCodingSession,
 	stopCodingSession,
 	updateAgentCronEnabled,
 	updateConfigFile,
@@ -145,7 +150,7 @@ describe("browser API client integration", () => {
 			},
 			listCodingSessions: async (params) => {
 				calls.push(
-					`coding:list:${params.limit}:${params.cursor?.lastActive ?? "none"}:${params.cursor?.sdkSessionId ?? "none"}:${params.providerId ?? "none"}:${params.repositoryId ?? "none"}:${params.linkedChatSessionId ?? "none"}`,
+					`coding:list:${params.limit}:${params.cursor?.lastActive ?? "none"}:${params.cursor?.sdkSessionId ?? "none"}:${params.providerId ?? "none"}:${params.repositoryId ?? "none"}:${params.linkedChatSessionId ?? "none"}:${params.lifecycleStatus ?? "none"}`,
 				);
 				return {
 					sessions: [
@@ -187,6 +192,44 @@ describe("browser API client integration", () => {
 					deleted: true,
 					providerId,
 					sdkSessionId,
+				};
+			},
+			archiveCodingSession: async (providerId, sdkSessionId) => {
+				calls.push(`coding:archive:${providerId}:${sdkSessionId}`);
+				return {
+					archived: true,
+					session: {
+						providerId,
+						sdkSessionId,
+						title: "Fix browser UX",
+						model: "gpt-5.5",
+						lastActive: 300,
+						cwd: "/workspace/outclaw",
+						lifecycleStatus: "archived",
+						runStatus: "idle",
+						createdAt: 100,
+						source: "code",
+						tag: "code",
+					},
+				};
+			},
+			restoreCodingSession: async (providerId, sdkSessionId) => {
+				calls.push(`coding:restore:${providerId}:${sdkSessionId}`);
+				return {
+					restored: true,
+					session: {
+						providerId,
+						sdkSessionId,
+						title: "Fix browser UX",
+						model: "gpt-5.5",
+						lastActive: 400,
+						cwd: "/workspace/outclaw",
+						lifecycleStatus: "open",
+						runStatus: "idle",
+						createdAt: 100,
+						source: "code",
+						tag: "code",
+					},
 				};
 			},
 			stopCodingSession: async (params) => {
@@ -255,6 +298,29 @@ describe("browser API client integration", () => {
 					},
 				};
 			},
+			restoreCodingRepository: async (repositoryId) => {
+				calls.push(`repo:restore:${repositoryId}`);
+				return {
+					restored: true,
+					repository: {
+						id: repositoryId,
+						rootCwd: "/workspace/outclaw",
+						displayName: "outclaw",
+						source: "manual",
+						status: "active",
+						createdAt: 100,
+						lastActive: 500,
+					},
+				};
+			},
+			listCodingRepositoryWorkspaceFiles: async (repositoryId) => {
+				calls.push(`repo:workspace-files:${repositoryId}`);
+				return [
+					{ kind: "directory", path: "node_modules" },
+					{ kind: "file", path: "node_modules/dependency.js" },
+					{ kind: "file", path: "README.md" },
+				];
+			},
 			listAgentTree: async (agentId) => {
 				calls.push(`tree:${agentId}`);
 				return [
@@ -293,7 +359,7 @@ describe("browser API client integration", () => {
 				ahead: 1,
 				behind: 0,
 				clean: false,
-				graph: { commits: [], branchHeads: [] },
+				history: { commits: [] },
 				files: [
 					{
 						path: "src/index.ts",
@@ -311,7 +377,7 @@ describe("browser API client integration", () => {
 				ahead: 0,
 				behind: 0,
 				clean: true,
-				graph: { commits: [], branchHeads: [] },
+				history: { commits: [] },
 				files: [],
 			}),
 			readGitDiff: async (path) => {
@@ -333,6 +399,33 @@ describe("browser API client integration", () => {
 					message: "test commit",
 					parents: [],
 					diff: "diff --git a/README.md b/README.md",
+				};
+			},
+			readGitCommitStats: async (sha) => ({
+				sha,
+				files: [],
+				totalAdditions: 0,
+				totalDeletions: 0,
+			}),
+			readGitHistory: async (params) => {
+				calls.push(
+					`history:${params?.repositoryId ?? "default"}:${params?.cursor ?? "none"}:${params?.limit ?? "none"}`,
+				);
+				return {
+					commits: [
+						{
+							sha: "def456",
+							commit: {
+								author: {
+									name: "Test User",
+									date: "2026-05-12T00:00:00.000Z",
+								},
+								message: "Older commit",
+							},
+							parents: [],
+						},
+					],
+					nextCursor: "45",
 				};
 			},
 			uploadImages: async (images) => {
@@ -445,6 +538,7 @@ describe("browser API client integration", () => {
 				providerId: "codex",
 				repositoryId: "repo-1",
 				linkedChatSessionId: "sdk-active",
+				lifecycleStatus: "archived",
 			}),
 		).resolves.toMatchObject({
 			sessions: [
@@ -472,6 +566,26 @@ describe("browser API client integration", () => {
 			sdkSessionId: "code-session-1",
 		});
 		await expect(
+			archiveCodingSession("codex", "code-session-1"),
+		).resolves.toMatchObject({
+			archived: true,
+			session: {
+				providerId: "codex",
+				sdkSessionId: "code-session-1",
+				lifecycleStatus: "archived",
+			},
+		});
+		await expect(
+			restoreCodingSession("codex", "code-session-1"),
+		).resolves.toMatchObject({
+			restored: true,
+			session: {
+				providerId: "codex",
+				sdkSessionId: "code-session-1",
+				lifecycleStatus: "open",
+			},
+		});
+		await expect(
 			stopCodingSession({
 				providerId: "codex",
 				sdkSessionId: "code-session-1",
@@ -490,6 +604,13 @@ describe("browser API client integration", () => {
 			id: "repo-1",
 		});
 		await expect(
+			fetchCodingRepositoryWorkspaceFiles("repo-1"),
+		).resolves.toEqual([
+			{ kind: "directory", path: "node_modules" },
+			{ kind: "file", path: "node_modules/dependency.js" },
+			{ kind: "file", path: "README.md" },
+		]);
+		await expect(
 			registerCodingRepository({
 				rootCwd: "/workspace/outclaw",
 				displayName: "Outclaw",
@@ -502,6 +623,13 @@ describe("browser API client integration", () => {
 			repository: {
 				id: "repo-1",
 				status: "archived",
+			},
+		});
+		await expect(restoreCodingRepository("repo-1")).resolves.toMatchObject({
+			restored: true,
+			repository: {
+				id: "repo-1",
+				status: "active",
 			},
 		});
 		await expect(
@@ -527,6 +655,16 @@ describe("browser API client integration", () => {
 			message: "test commit",
 		});
 		await expect(
+			fetchGitHistory({
+				repositoryId: "repo-1",
+				cursor: "30",
+				limit: 15,
+			}),
+		).resolves.toMatchObject({
+			commits: [{ sha: "def456" }],
+			nextCursor: "45",
+		});
+		await expect(
 			uploadPromptImages([new File(["abc"], "cat.png", { type: "image/png" })]),
 		).resolves.toEqual([
 			{ path: "/tmp/outclaw/cat.png", mediaType: "image/png" },
@@ -538,17 +676,22 @@ describe("browser API client integration", () => {
 			"cron:list:agent-railly",
 			"cron:history:agent-railly:daily:3:200:mock:cron-session-2",
 			"cron:set:agent-railly:cron/daily.yaml:false",
-			"coding:list:3:200:code-session-1:codex:repo-1:sdk-active",
+			"coding:list:3:200:code-session-1:codex:repo-1:sdk-active:archived",
 			"coding:get:codex:code-session-1",
 			"coding:delete:codex:code-session-1",
+			"coding:archive:codex:code-session-1",
+			"coding:restore:codex:code-session-1",
 			"coding:stop:codex:code-session-1",
 			"repo:list:true",
 			"repo:get:repo-1",
+			"repo:workspace-files:repo-1",
 			"repo:register:/workspace/outclaw:Outclaw",
 			"repo:archive:repo-1",
+			"repo:restore:repo-1",
 			"file:agent-railly:notes/today.md",
 			"diff:src/index.ts",
 			"commit:abc123",
+			"history:repo-1:30:15",
 			"upload:image/png:97,98,99",
 		]);
 	});
@@ -570,6 +713,9 @@ describe("browser API client integration", () => {
 				throw new Error("Path is required");
 			},
 			readGitCommit: async (sha) => {
+				throw new Error(`Unknown commit: ${sha}`);
+			},
+			readGitCommitStats: async (sha) => {
 				throw new Error(`Unknown commit: ${sha}`);
 			},
 			setAgentCronEnabled: async () => {

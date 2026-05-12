@@ -1,6 +1,9 @@
-import { Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Archive, RotateCcw, Trash2 } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { formatLastActive } from "./format-last-active.ts";
+
+type SessionItemActionIcon = "archive" | "restore" | "trash";
+type SessionItemActionTone = "danger" | "neutral";
 
 interface SessionItemProps {
 	title: string;
@@ -9,6 +12,15 @@ interface SessionItemProps {
 	onSelect: () => void;
 	onRename: (title: string) => void;
 	onDelete: () => void;
+	actionAriaLabel?: string;
+	actionConfirmBody?: ReactNode;
+	actionConfirmLabel?: string;
+	actionConfirmSubtitle?: string;
+	actionConfirmTitle?: string;
+	actionIcon?: SessionItemActionIcon;
+	actionLabel?: string;
+	actionRequiresConfirmation?: boolean;
+	actionTone?: SessionItemActionTone;
 }
 
 export function SessionItem({
@@ -18,17 +30,49 @@ export function SessionItem({
 	onSelect,
 	onRename,
 	onDelete,
+	actionAriaLabel,
+	actionConfirmBody,
+	actionConfirmLabel,
+	actionConfirmSubtitle = "This can't be undone",
+	actionConfirmTitle,
+	actionIcon = "trash",
+	actionLabel = "Delete",
+	actionRequiresConfirmation = true,
+	actionTone = "danger",
 }: SessionItemProps) {
 	const titleInputRef = useRef<HTMLInputElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
 	const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
 	const [draftTitle, setDraftTitle] = useState(title);
 	const [editing, setEditing] = useState(false);
-	const [confirmingDelete, setConfirmingDelete] = useState(false);
+	const [confirmingAction, setConfirmingAction] = useState(false);
 	const [menuPosition, setMenuPosition] = useState<{
 		x: number;
 		y: number;
 	} | null>(null);
+	const ActionIcon =
+		actionIcon === "archive"
+			? Archive
+			: actionIcon === "restore"
+				? RotateCcw
+				: Trash2;
+	const resolvedActionAriaLabel =
+		actionAriaLabel ?? `${actionLabel} session ${title}`;
+	const resolvedActionConfirmTitle =
+		actionConfirmTitle ?? `${actionLabel} session`;
+	const resolvedActionConfirmLabel = actionConfirmLabel ?? actionLabel;
+	const actionTextClass =
+		actionTone === "danger"
+			? "text-danger hover:text-danger"
+			: "text-dark-500 hover:text-dark-100";
+	const actionIconClass =
+		actionTone === "danger"
+			? "border-danger/40 bg-danger/10 text-danger"
+			: "border-dark-700 bg-dark-900 text-dark-300";
+	const actionConfirmButtonClass =
+		actionTone === "danger"
+			? "border-danger/40 bg-danger/15 text-danger hover:bg-danger/25"
+			: "border-dark-700 bg-dark-800 text-dark-100 hover:bg-dark-700";
 
 	function startInlineRename() {
 		setDraftTitle(title);
@@ -48,29 +92,33 @@ export function SessionItem({
 		setDraftTitle(title);
 	}
 
-	function handleDelete() {
+	function handleAction() {
 		setMenuPosition(null);
-		setConfirmingDelete(true);
-	}
-
-	function confirmDelete() {
-		setConfirmingDelete(false);
+		if (actionRequiresConfirmation) {
+			setConfirmingAction(true);
+			return;
+		}
 		onDelete();
 	}
 
-	function cancelDelete() {
-		setConfirmingDelete(false);
+	function confirmAction() {
+		setConfirmingAction(false);
+		onDelete();
+	}
+
+	function cancelAction() {
+		setConfirmingAction(false);
 	}
 
 	useEffect(() => {
-		if (!confirmingDelete) {
+		if (!confirmingAction) {
 			return;
 		}
 
 		function onKeyDown(event: KeyboardEvent) {
 			if (event.key === "Escape") {
 				event.preventDefault();
-				setConfirmingDelete(false);
+				setConfirmingAction(false);
 			}
 		}
 
@@ -83,7 +131,7 @@ export function SessionItem({
 			window.removeEventListener("keydown", onKeyDown);
 			window.cancelAnimationFrame(frameId);
 		};
-	}, [confirmingDelete]);
+	}, [confirmingAction]);
 
 	useEffect(() => {
 		if (!menuPosition) {
@@ -210,69 +258,75 @@ export function SessionItem({
 						</div>
 						<button
 							type="button"
-							aria-label={`Delete session ${title}`}
+							aria-label={resolvedActionAriaLabel}
 							onClick={(event) => {
 								event.preventDefault();
 								event.stopPropagation();
-								handleDelete();
+								handleAction();
 							}}
-							className="font-mono-ui hidden w-8 shrink-0 text-right text-[18px] leading-none text-dark-500 transition-colors hover:text-danger group-hover:block"
+							className={`hidden h-6 w-6 shrink-0 items-center justify-center transition-colors group-hover:flex ${actionTextClass}`}
 						>
-							×
+							<ActionIcon size={14} />
 						</button>
 					</div>
 				</>
 			)}
 
-			{confirmingDelete && (
+			{confirmingAction && (
 				<div
 					className="fixed inset-0 z-50 flex items-center justify-center bg-dark-950/80 px-4 py-6 backdrop-blur-sm"
 					onPointerDown={(event) => {
 						if (event.target === event.currentTarget) {
-							cancelDelete();
+							cancelAction();
 						}
 					}}
 				>
 					<div
 						role="dialog"
-						aria-label="Delete session"
+						aria-label={resolvedActionConfirmTitle}
 						aria-modal="true"
 						className="w-full max-w-sm overflow-hidden rounded-2xl border border-dark-800 bg-dark-950 shadow-2xl shadow-black/50"
 					>
 						<div className="flex items-center gap-3 bg-dark-900/40 px-4 py-3">
-							<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-danger/40 bg-danger/10 text-danger">
-								<Trash2 size={14} />
+							<div
+								className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${actionIconClass}`}
+							>
+								<ActionIcon size={14} />
 							</div>
 							<div className="min-w-0">
 								<div className="font-display text-[13px] font-semibold uppercase tracking-[0.22em] text-dark-50">
-									Delete session
+									{resolvedActionConfirmTitle}
 								</div>
 								<div className="font-mono-ui text-[10px] uppercase tracking-[0.16em] text-dark-500">
-									This can't be undone
+									{actionConfirmSubtitle}
 								</div>
 							</div>
 						</div>
 						<div className="px-4 py-4 text-sm leading-6 text-dark-300">
-							Permanently delete session{" "}
-							<span className="font-medium text-dark-50">
-								&ldquo;{title}&rdquo;
-							</span>
+							{actionConfirmBody ?? (
+								<>
+									Permanently delete session{" "}
+									<span className="font-medium text-dark-50">
+										&ldquo;{title}&rdquo;
+									</span>
+								</>
+							)}
 						</div>
 						<div className="flex items-center justify-end gap-2 bg-dark-900/40 px-4 py-3">
 							<button
 								ref={cancelButtonRef}
 								type="button"
-								onClick={cancelDelete}
+								onClick={cancelAction}
 								className="rounded-lg border border-dark-700 bg-dark-950 px-3 py-1.5 text-sm text-dark-200 transition-colors hover:border-dark-500 hover:text-dark-50"
 							>
 								Cancel
 							</button>
 							<button
 								type="button"
-								onClick={confirmDelete}
-								className="rounded-lg border border-danger/40 bg-danger/15 px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/25"
+								onClick={confirmAction}
+								className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${actionConfirmButtonClass}`}
 							>
-								Delete
+								{resolvedActionConfirmLabel}
 							</button>
 						</div>
 					</div>
@@ -297,10 +351,10 @@ export function SessionItem({
 					</button>
 					<button
 						type="button"
-						onClick={handleDelete}
-						className="block w-full px-3 py-2 text-left text-sm text-danger transition-colors hover:bg-dark-800/70"
+						onClick={handleAction}
+						className={`block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-dark-800/70 ${actionTextClass}`}
 					>
-						Delete
+						{actionLabel}
 					</button>
 				</div>
 			)}

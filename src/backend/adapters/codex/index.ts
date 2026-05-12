@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
 import {
+	type CodingSessionEvent,
 	extractError,
 	type Facade,
 	type FacadeEvent,
-	type ImageRef,
 	type ProviderModelInfo,
+	type ProviderSkillInfo,
 	type RunParams,
 } from "../../../common/protocol.ts";
 import {
@@ -19,6 +20,8 @@ import {
 import type {
 	CodexAppServerClient,
 	CodexModelListResponse,
+	CodexSkillMetadata,
+	CodexSkillsListResult,
 	CodexThreadResumeResult,
 	CodexThreadStartResult,
 	CodexTurnStartResult,
@@ -29,6 +32,8 @@ interface CodexAdapterOptions {
 	client?: CodexAppServerClient;
 	appServer?: CodexAppServerClientOptions;
 }
+
+const DEFAULT_CODEX_REASONING_SUMMARY = "auto";
 
 export class CodexAdapter implements Facade {
 	readonly providerId = "codex";
@@ -83,7 +88,26 @@ export class CodexAdapter implements Facade {
 		return models;
 	}
 
-	async readCodingSessionEvents(sessionId: string): Promise<FacadeEvent[]> {
+	async listProviderSkills(params: {
+		cwd: string;
+		forceReload?: boolean;
+	}): Promise<ProviderSkillInfo[]> {
+		const client = await this.loadClient();
+		await client.initialize();
+		const skills = await requestCodexSkills(client, params);
+		return skills
+			.filter((skill) => skill.enabled)
+			.sort(compareCodexSkillPriority)
+			.map((skill) => ({
+				name: skill.name,
+				description: getCodexSkillDescription(skill),
+				scope: skill.scope,
+			}));
+	}
+
+	async readCodingSessionEvents(
+		sessionId: string,
+	): Promise<CodingSessionEvent[]> {
 		const client = await this.loadClient();
 		await client.initialize();
 		const thread = await client.request<CodexThreadResumeResult>(
@@ -126,9 +150,10 @@ export class CodexAdapter implements Facade {
 				sessionId: threadId,
 			};
 
+			const input = await buildUserInput(client, params);
 			const turnResult = await client.request<CodexTurnStartResult>(
 				"turn/start",
-				buildTurnStartParams(threadId, params),
+				buildTurnStartParams(threadId, params, input),
 			);
 			turnId = turnResult.turn.id;
 
@@ -227,10 +252,12 @@ function buildThreadResumeParams(params: RunParams): Record<string, unknown> {
 function buildTurnStartParams(
 	threadId: string,
 	params: RunParams,
+	input: CodexUserInput[],
 ): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
 		threadId,
-		input: buildUserInput(params.prompt, params.images),
+		input,
+		summary: DEFAULT_CODEX_REASONING_SUMMARY,
 	};
 
 	if (params.model && isCodexCompatibleModel(params.model)) {
@@ -253,10 +280,13 @@ function isCodexCompatibleModel(model: string): boolean {
 	return model.startsWith("gpt-") || model.startsWith("codex");
 }
 
-function buildUserInput(prompt: string, images?: ImageRef[]): CodexUserInput[] {
+async function buildUserInput(
+	client: CodexAppServerClient,
+	params: RunParams,
+): Promise<CodexUserInput[]> {
 	const input: CodexUserInput[] = [];
 
-	for (const image of images ?? []) {
+	for (const image of params.images ?? []) {
 		input.push({
 			type: "localImage",
 			path: image.path,
@@ -265,9 +295,115 @@ function buildUserInput(prompt: string, images?: ImageRef[]): CodexUserInput[] {
 
 	input.push({
 		type: "text",
-		text: prompt,
+		text: params.prompt,
 		text_elements: [],
 	});
 
+	input.push(...(await resolveSkillInputs(client, params)));
+
 	return input;
+}
+
+async function resolveSkillInputs(
+	client: CodexAppServerClient,
+	params: RunParams,
+): Promise<CodexUserInput[]> {
+	const skillNames = extractExplicitCodexSkillNames(params.prompt);
+	if (skillNames.length === 0 || !params.cwd) {
+		return [];
+	}
+
+	try {
+		const skills = await requestCodexSkills(client, { cwd: params.cwd });
+		const inputs: CodexUserInput[] = [];
+		for (const skillName of skillNames) {
+			const skill = findPreferredCodexSkillByName(skills, skillName);
+			if (!skill) {
+				continue;
+			}
+			inputs.push({
+				type: "skill",
+				name: skill.name,
+				path: skill.path,
+			});
+		}
+		return inputs;
+	} catch {
+		return [];
+	}
+}
+
+async function requestCodexSkills(
+	client: CodexAppServerClient,
+	params: { cwd: string; forceReload?: boolean },
+): Promise<CodexSkillMetadata[]> {
+	const result = await client.request<CodexSkillsListResult>("skills/list", {
+		cwds: [params.cwd],
+		...(params.forceReload ? { forceReload: true } : {}),
+	});
+	return (
+		result.data.find((entry) => entry.cwd === params.cwd)?.skills ??
+		result.data[0]?.skills ??
+		[]
+	);
+}
+
+function extractExplicitCodexSkillNames(text: string): string[] {
+	const names: string[] = [];
+	const seen = new Set<string>();
+	for (const match of text.matchAll(/(^|\s)\$([A-Za-z0-9_-]+)/g)) {
+		const name = match[2];
+		if (!name) {
+			continue;
+		}
+		const key = name.toLowerCase();
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		names.push(name);
+	}
+	return names;
+}
+
+function findPreferredCodexSkillByName(
+	skills: CodexSkillMetadata[],
+	name: string,
+): CodexSkillMetadata | undefined {
+	const key = name.toLowerCase();
+	return skills
+		.filter((skill) => skill.enabled && skill.name.toLowerCase() === key)
+		.sort(compareCodexSkillPriority)[0];
+}
+
+function compareCodexSkillPriority(
+	left: Pick<CodexSkillMetadata, "name" | "path" | "scope">,
+	right: Pick<CodexSkillMetadata, "name" | "path" | "scope">,
+): number {
+	const priority: Record<CodexSkillMetadata["scope"], number> = {
+		repo: 0,
+		user: 1,
+		system: 2,
+		admin: 3,
+	};
+	const scopeDelta = priority[left.scope] - priority[right.scope];
+	if (scopeDelta !== 0) {
+		return scopeDelta;
+	}
+	const nameDelta = left.name.localeCompare(right.name);
+	return nameDelta !== 0 ? nameDelta : left.path.localeCompare(right.path);
+}
+
+function getCodexSkillDescription(
+	skill: Pick<
+		CodexSkillMetadata,
+		"description" | "interface" | "shortDescription"
+	>,
+): string {
+	return (
+		skill.interface?.shortDescription ??
+		skill.shortDescription ??
+		skill.description ??
+		""
+	);
 }

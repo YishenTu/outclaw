@@ -1,4 +1,5 @@
 import type {
+	CodingSessionEvent,
 	DisplayMessage,
 	Facade,
 	FacadeEvent,
@@ -17,7 +18,9 @@ export class MockFacade implements Facade {
 	textChunks: string[] | undefined;
 	historyMessages: DisplayMessage[] = [];
 	historyError: Error | undefined;
-	readCodingSessionEvents?: (sessionId: string) => Promise<FacadeEvent[]>;
+	readCodingSessionEvents?: (
+		sessionId: string,
+	) => Promise<CodingSessionEvent[]>;
 
 	async readHistory(): Promise<DisplayMessage[]> {
 		if (this.historyError) {

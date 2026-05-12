@@ -1,8 +1,9 @@
 import {
+	type CodingSessionEvent,
 	extractError,
 	type Facade,
-	type FacadeEvent,
 	type ProviderModelInfo,
+	type ProviderSkillInfo,
 } from "../../common/protocol.ts";
 import { createRuntimeController } from "../application/create-runtime-controller.ts";
 import { SessionService } from "../application/session-service.ts";
@@ -10,7 +11,7 @@ import { RuntimeState } from "../application/state/runtime-state.ts";
 import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import type { CodingRepositoryStore } from "./coding-repository-store.ts";
 import { type CodingRuntime, createCodingRuntime } from "./coding-runtime.ts";
-import type { CodingSessionEventRecorder } from "./coding-session-event-store.ts";
+import type { CodingSessionEventRecorder } from "./coding-session-event-hub.ts";
 import type { CodingSessionStore } from "./coding-session-store.ts";
 import { CODING_STORAGE_OWNER_ID } from "./coding-session-store.ts";
 
@@ -25,10 +26,14 @@ interface CreateCodingServiceOptions {
 export interface CodingService {
 	readonly runtime: CodingRuntime;
 	listModels(): Promise<ProviderModelInfo[]>;
+	listSkills(params: {
+		cwd: string;
+		forceReload?: boolean;
+	}): Promise<ProviderSkillInfo[]>;
 	rehydrateSessionEvents(params: {
 		providerId: string;
 		sdkSessionId: string;
-	}): Promise<FacadeEvent[]>;
+	}): Promise<CodingSessionEvent[]>;
 	stop(): Promise<void>;
 }
 
@@ -55,6 +60,9 @@ export function createCodingService(
 		runtime,
 		async listModels() {
 			return (await opts.facade.listModels?.()) ?? [];
+		},
+		async listSkills(params) {
+			return (await opts.facade.listProviderSkills?.(params)) ?? [];
 		},
 		async rehydrateSessionEvents(params) {
 			if (params.providerId !== opts.facade.providerId) {

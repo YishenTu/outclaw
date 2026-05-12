@@ -14,7 +14,7 @@ import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
 import {
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
-	CodingSessionEventStore,
+	CodingSessionEventHub,
 	CodingSessionStore,
 	createCodingService,
 } from "./runtime/coding/index.ts";
@@ -94,7 +94,7 @@ function startMultiAgentDaemon(
 	});
 	const codingSessions = new CodingSessionStore(layout.dbPath);
 	const codingRepositories = new CodingRepositoryStore(layout.dbPath);
-	const codingEvents = new CodingSessionEventStore(layout.dbPath);
+	const codingEvents = new CodingSessionEventHub();
 	const codingFacade = new CodexAdapter();
 	const codingService = createCodingService({
 		facade: codingFacade,
@@ -179,6 +179,7 @@ function startMultiAgentDaemon(
 					codingService.runtime,
 				),
 				listModels: () => codingService.listModels(),
+				listSkills: (params) => codingService.listSkills(params),
 				rehydrateSessionEvents: (params) =>
 					codingService.rehydrateSessionEvents(params),
 			},
@@ -275,9 +276,6 @@ function startMultiAgentDaemon(
 			await supervisor.stop();
 			botManager.stop();
 			await codingService.stop();
-			// Dispose the Codex adapter before closing SQLite stores so any final
-			// facade events recorded during dispose can still append. After this,
-			// no more append/append-on-finally paths can fire.
 			await codingFacade.dispose();
 			codingEvents.close();
 			codingSessions.close();

@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listWorkspaceFiles } from "../../../../src/runtime/browser/files/list-workspace-files.ts";
+import {
+	listRepositoryWorkspaceFiles,
+	listWorkspaceFiles,
+} from "../../../../src/runtime/browser/files/list-workspace-files.ts";
 
 function makeTempRoot(prefix: string): { root: string; cleanup: () => void } {
 	const root = mkdtempSync(join(tmpdir(), prefix));
@@ -102,6 +105,30 @@ describe("listWorkspaceFiles", () => {
 			const entries = await listWorkspaceFiles(root, { limit: 2 });
 
 			expect(entries).toHaveLength(2);
+		} finally {
+			cleanup();
+		}
+	});
+
+	test("repository workspace files ignore only git metadata", async () => {
+		const { root, cleanup } = makeTempRoot("outclaw-repo-files-");
+		try {
+			mkdirSync(join(root, ".git"));
+			writeFileSync(join(root, ".git", "HEAD"), "");
+			writeFileSync(join(root, ".DS_Store"), "");
+			mkdirSync(join(root, "node_modules"));
+			writeFileSync(join(root, "node_modules", "package.js"), "");
+			writeFileSync(join(root, ".gitignore"), "");
+			writeFileSync(join(root, "README.md"), "");
+
+			const entries = await listRepositoryWorkspaceFiles(root);
+
+			expect(entries).toEqual([
+				{ kind: "file", path: ".gitignore" },
+				{ kind: "directory", path: "node_modules" },
+				{ kind: "file", path: "node_modules/package.js" },
+				{ kind: "file", path: "README.md" },
+			]);
 		} finally {
 			cleanup();
 		}

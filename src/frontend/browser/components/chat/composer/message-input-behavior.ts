@@ -1,14 +1,23 @@
 import type { CommandEntry } from "../../../stores/slash-commands.ts";
 
-export function isSlashAutocompleteInput(value: string): boolean {
-	return value.startsWith("/") && !value.includes(" ") && !value.includes("\n");
+export function isSlashAutocompleteInput(
+	value: string,
+	triggerChars: readonly string[] = ["/"],
+): boolean {
+	return (
+		value.length > 0 &&
+		triggerChars.includes(value[0] ?? "") &&
+		!value.includes(" ") &&
+		!value.includes("\n")
+	);
 }
 
 export function filterSlashCommands(
 	value: string,
 	commands: CommandEntry[],
+	triggerChars: readonly string[] = ["/"],
 ): CommandEntry[] {
-	if (!isSlashAutocompleteInput(value)) {
+	if (!isSlashAutocompleteInput(value, triggerChars)) {
 		return [];
 	}
 
@@ -16,6 +25,21 @@ export function filterSlashCommands(
 	return commands.filter((command) =>
 		command.name.toLowerCase().startsWith(filter),
 	);
+}
+
+export function shouldShowSlashCommandMenu(params: {
+	filteredCommandCount: number;
+	hasEmptyMessage: boolean;
+	isTriggerActive: boolean;
+	showMentionMenu: boolean;
+}): boolean {
+	if (params.showMentionMenu) {
+		return false;
+	}
+	if (params.filteredCommandCount > 0) {
+		return true;
+	}
+	return params.isTriggerActive && params.hasEmptyMessage;
 }
 
 export function resolveRuntimePopupItemCount(

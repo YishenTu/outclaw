@@ -142,6 +142,19 @@ export class CodingRepositoryStore {
 			.run({ $id: id, $now: now });
 	}
 
+	restore(id: string, timestamp?: number) {
+		const now = timestamp ?? Date.now();
+		this.db
+			.query(
+				`UPDATE coding_repositories
+				 SET status = 'active',
+				     archived_at = NULL,
+				     last_active = $now
+				 WHERE id = $id`,
+			)
+			.run({ $id: id, $now: now });
+	}
+
 	get(id: string): CodingRepositoryRecord | undefined {
 		return mapCodingRepositoryRow(
 			this.db
@@ -269,6 +282,6 @@ function mapRequiredCodingRepositoryRow(
 		status: row.status,
 		createdAt: row.created_at,
 		lastActive: row.last_active,
-		archivedAt: row.archived_at ?? undefined,
+		...(row.archived_at !== null ? { archivedAt: row.archived_at } : {}),
 	};
 }

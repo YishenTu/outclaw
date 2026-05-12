@@ -1,10 +1,43 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
+import {
+	resolveFocusedCodingRepository,
+	resolveFocusedCodingSession,
+} from "../../../src/frontend/browser/coding/coding-data.ts";
 import { CodingSessionView } from "../../../src/frontend/browser/coding/coding-session-view.tsx";
+import {
+	CODING_STORAGE_KEY,
+	useCodingStore,
+} from "../../../src/frontend/browser/coding/coding-store.ts";
 import { CodingTabBar } from "../../../src/frontend/browser/coding/coding-tab-bar.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
 describe("browser coding center", () => {
+	beforeEach(() => {
+		useCodingStore.setState({
+			appMode: "chat",
+			focusedRepositoryId: undefined,
+			focusedSession: undefined,
+			openTabs: [],
+			repositories: [],
+			sessionsByRepository: {},
+			nextCursorByRepository: {},
+			searchByRepository: {},
+			archivedSessions: [],
+			archivedNextCursor: undefined,
+			archivedSearchState: undefined,
+			repositoriesLoaded: false,
+			codingModels: [],
+			codingModelsLoaded: false,
+			selectedModelId: undefined,
+			selectedEffort: undefined,
+			fastTierEnabled: false,
+		});
+		if (typeof globalThis.localStorage !== "undefined") {
+			globalThis.localStorage.removeItem(CODING_STORAGE_KEY);
+		}
+	});
+
 	test("keeps the code-mode tab strip at the same fixed height as chat mode", () => {
 		const html = renderToStaticMarkup(
 			<CodingTabBar
@@ -52,5 +85,48 @@ describe("browser coding center", () => {
 
 		expect(html).toContain('placeholder="Type a message..."');
 		expect(html).not.toContain("paste/drop an image");
+	});
+
+	test("resolves a focused archived session and repository for middle-panel rendering", () => {
+		const repositories = [
+			{
+				id: "repo-1",
+				rootCwd: "/repo",
+				displayName: "outclaw",
+				source: "manual" as const,
+				status: "archived" as const,
+				createdAt: 1,
+				lastActive: 1,
+				archivedAt: 2,
+			},
+		];
+		const archivedSession = {
+			providerId: "codex",
+			sdkSessionId: "archived-session-1",
+			repositoryId: "repo-1",
+			title: "Archived work",
+			model: "gpt-5.5",
+			lastActive: 1,
+			cwd: "/repo",
+			lifecycleStatus: "archived" as const,
+			runStatus: "idle" as const,
+			createdAt: 1,
+			source: "code",
+			tag: "code" as const,
+		};
+
+		expect(resolveFocusedCodingRepository(repositories, "repo-1")).toEqual(
+			repositories[0],
+		);
+		expect(
+			resolveFocusedCodingSession({
+				sessions: [],
+				archivedSessions: [archivedSession],
+				focusedSession: {
+					providerId: "codex",
+					sdkSessionId: "archived-session-1",
+				},
+			}),
+		).toEqual(archivedSession);
 	});
 });

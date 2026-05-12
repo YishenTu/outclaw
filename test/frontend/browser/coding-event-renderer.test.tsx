@@ -57,9 +57,10 @@ describe("CodingEventView command grouping", () => {
 		// The command text appears twice per card: once truncated in the header
 		// preview and once wrapped in the body's "input" section.
 		expect(occurrences(html, "ls -la")).toBe(2);
-		// And the completed-state markers should be present.
-		expect(html).toContain("exit 0");
+		// The completed-state output should be present, but the header no
+		// longer surfaces an exit/duration meta.
 		expect(html).toContain("stdout line");
+		expect(html).not.toContain("exit 0");
 		expect(html).not.toContain("running…");
 	});
 
@@ -193,7 +194,6 @@ describe("CodingEventView command grouping", () => {
 		];
 
 		const html = renderToStaticMarkup(<CodingEventView events={events} />);
-		expect(html).toContain("exit 1");
 		expect(html).toContain("text-danger");
 	});
 
@@ -434,6 +434,104 @@ describe("CodingEventView command grouping", () => {
 		expect(html).toContain("completed");
 	});
 
+	test("renders an update_plan tool_call with explanation and step statuses", () => {
+		const planArgs = JSON.stringify({
+			explanation:
+				"Aligning the coding browser flow with the desired archived-session contract before editing.",
+			plan: [
+				{
+					step: "Inspect current archived session selection, session rendering, and resume flow plus existing tests",
+					status: "in_progress",
+				},
+				{
+					step: "Add failing tests for archived-session open vs auto-restore-on-send behavior",
+					status: "pending",
+				},
+				{
+					step: "Implement the browser/store/session-view changes at the right ownership seam",
+					status: "pending",
+				},
+				{
+					step: "Run targeted tests and bun run check if feasible",
+					status: "pending",
+				},
+			],
+		});
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, {
+				type: "tool_call_started",
+				callId: "plan-1",
+				toolKind: "update_plan",
+				details: [{ label: "arguments", value: planArgs }],
+				sessionId: "session-1",
+			}),
+			streamItem(2, {
+				type: "tool_call_completed",
+				callId: "plan-1",
+				toolKind: "update_plan",
+				status: "completed",
+				details: [{ label: "output", value: "Plan updated" }],
+				sessionId: "session-1",
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+		expect(html).toContain("update_plan");
+		expect(html).toContain(
+			"Aligning the coding browser flow with the desired archived-session contract before editing.",
+		);
+		expect(html).toContain(
+			"Inspect current archived session selection, session rendering, and resume flow plus existing tests",
+		);
+		expect(html).toContain(
+			"Add failing tests for archived-session open vs auto-restore-on-send behavior",
+		);
+		// Status is encoded in the icon + color/italic styling, not as raw text.
+		// The in-progress step should render with the amber italic emphasis used
+		// by the reference TodoWrite renderer.
+		expect(html).toMatch(
+			/text-amber-400[^"]*italic[^>]*>\s*Inspect current archived session/,
+		);
+		// No raw status words or uppercase pills leak into the rendered card.
+		expect(html).not.toContain("in_progress");
+		expect(html).not.toMatch(/>PENDING</);
+		expect(html).not.toMatch(/>IN_PROGRESS</);
+		expect(html).not.toMatch(/>COMPLETED</);
+		// The "Plan updated" output and the raw JSON arguments blob must not leak
+		// into the rendered card — the specialized renderer replaces both.
+		expect(html).not.toContain("Plan updated");
+		expect(html).not.toContain('"explanation"');
+		// One paired block, not two separate cards.
+		expect(occurrences(html, "update_plan")).toBeGreaterThanOrEqual(1);
+	});
+
+	test("renders an update_plan completed step with check icon and dimmed text", () => {
+		const planArgs = JSON.stringify({
+			plan: [
+				{ step: "Wire the renderer", status: "completed" },
+				{ step: "Match the reference styling", status: "in_progress" },
+			],
+		});
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, {
+				type: "tool_call_started",
+				callId: "plan-2",
+				toolKind: "update_plan",
+				details: [{ label: "arguments", value: planArgs }],
+				sessionId: "session-1",
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+		// Completed step uses the CheckCircle2 icon (rendered as lucide-circle-check).
+		expect(html).toContain("lucide-circle-check");
+		// Completed step text is dimmed but readable — no strikethrough; the icon
+		// alone signals completion.
+		expect(html).not.toContain("line-through");
+		expect(html).toContain("Wire the renderer");
+		expect(html).toContain("Match the reference styling");
+	});
+
 	test("renders a generic tool_call block for unknown tool kinds", () => {
 		const events: CodingSessionEventStreamItem[] = [
 			streamItem(1, {
@@ -506,6 +604,70 @@ describe("CodingEventView command grouping", () => {
 		expect(html).not.toContain("inputTokens");
 	});
 
+	test("does not render persisted write_stdin or custom_tool_call_output noise", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, {
+				type: "command_execution_started",
+				callId: "call-1",
+				command: "bun run check",
+				sessionId: "session-1",
+			}),
+			streamItem(2, {
+				type: "command_execution_output",
+				callId: "call-1",
+				output: "streamed line\n",
+				sessionId: "session-1",
+			}),
+			streamItem(3, {
+				type: "tool_call_started",
+				callId: "poll-1",
+				toolKind: "write_stdin",
+				details: [
+					{
+						label: "arguments",
+						value:
+							'{"session_id":2404,"chars":"","max_output_tokens":12000,"yield_time_ms":1000}',
+					},
+				],
+				sessionId: "session-1",
+			}),
+			streamItem(4, {
+				type: "tool_call_completed",
+				callId: "poll-1",
+				toolKind: "write_stdin",
+				details: [{ label: "output", value: "poll output" }],
+				sessionId: "session-1",
+			}),
+			streamItem(5, {
+				type: "tool_call_completed",
+				callId: "patch-1",
+				toolKind: "custom_tool_call_output",
+				details: [
+					{
+						label: "output",
+						value: "Success. Updated the following files:\nM /tmp/a.ts\n",
+					},
+				],
+				sessionId: "session-1",
+			}),
+			streamItem(6, {
+				type: "command_execution_completed",
+				callId: "call-1",
+				exitCode: 0,
+				sessionId: "session-1",
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(html).toContain("bun run check");
+		expect(html).toContain("streamed line");
+		expect(html).not.toContain("write_stdin");
+		expect(html).not.toContain("custom_tool_call_output");
+		expect(html).not.toContain("Success. Updated the following files");
+		expect(html).not.toContain("poll output");
+	});
+
 	test("renders a file change inside a collapsible details element", () => {
 		const events: CodingSessionEventStreamItem[] = [
 			streamItem(1, {
@@ -527,7 +689,7 @@ describe("CodingEventView command grouping", () => {
 		expect(html).toContain("<summary");
 	});
 
-	test("done attaches a chat-mode utility-bar footer to the assistant text", () => {
+	test("done shows completed-work duration and keeps final-result copy affordance", () => {
 		const events: CodingSessionEventStreamItem[] = [
 			streamItem(1, { type: "user_prompt", text: "go" }),
 			streamItem(2, { type: "text", text: "done thinking", sessionId: "s" }),
@@ -536,10 +698,73 @@ describe("CodingEventView command grouping", () => {
 
 		const html = renderToStaticMarkup(<CodingEventView events={events} />);
 		// The freeform "Turn complete" status line is gone in favor of the chat
-		// utility bar (duration label + copy affordance).
+		// final-result copy affordance and the completed-work duration header.
 		expect(html).not.toContain("Turn complete");
-		expect(html).toContain("2s");
+		expect(html).toContain("Works for 2s");
 		expect(html).toContain("Copy final result");
+	});
+
+	test("collapses completed turn work behind a duration header before the final result", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, { type: "user_prompt", text: "fix it" }),
+			streamItem(2, {
+				type: "text",
+				text: "I will inspect first.",
+				sessionId: "s",
+			}),
+			streamItem(3, {
+				type: "command_execution_started",
+				callId: "call-1",
+				command: "bun test",
+				sessionId: "s",
+			}),
+			streamItem(4, {
+				type: "command_execution_completed",
+				callId: "call-1",
+				exitCode: 0,
+				output: "all tests passed",
+				sessionId: "s",
+			}),
+			streamItem(5, {
+				type: "text",
+				text: "Final result.",
+				sessionId: "s",
+			}),
+			streamItem(6, { type: "done", sessionId: "s", durationMs: 683_000 }),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+		const workHeaderIndex = html.indexOf("Works for 11m23s");
+		const finalIndex = html.indexOf("Final result.");
+
+		expect(workHeaderIndex).toBeGreaterThan(-1);
+		expect(finalIndex).toBeGreaterThan(workHeaderIndex);
+		expect(html).toContain("I will inspect first.");
+		expect(html).toContain("bun test");
+		expect(html).toContain("all tests passed");
+	});
+
+	test("keeps in-flight turn output expanded without a completed-work header", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, { type: "user_prompt", text: "fix it" }),
+			streamItem(2, {
+				type: "text",
+				text: "I will inspect first.",
+				sessionId: "s",
+			}),
+			streamItem(3, {
+				type: "command_execution_started",
+				callId: "call-1",
+				command: "bun test",
+				sessionId: "s",
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(html).not.toContain("Works for");
+		expect(html).toContain("I will inspect first.");
+		expect(html).toContain("bun test");
 	});
 });
 

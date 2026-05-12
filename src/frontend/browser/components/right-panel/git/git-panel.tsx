@@ -1,11 +1,11 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactNode, UIEvent } from "react";
 import type {
-	BrowserGitGraphCommit,
+	BrowserGitHistoryCommit,
 	BrowserGitInitializedResponse,
 	BrowserGitStatusResponse,
 } from "../../../../../common/protocol.ts";
-import { GitGraph } from "./git-graph.tsx";
+import { GitCommitHistory } from "./git-commit-history.tsx";
 import { gitPanelFileToneClass } from "./git-status-tone.ts";
 import { GitUninitializedCard } from "./git-uninitialized-card.tsx";
 
@@ -15,18 +15,23 @@ const GIT_PANEL_META_CLASS =
 	"font-mono-ui flex shrink-0 items-center gap-2 text-xs tabular-nums";
 const GIT_PANEL_TOGGLE_CLASS =
 	"flex items-center justify-end text-dark-500 transition-colors hover:text-dark-100";
+const GIT_HISTORY_LOAD_MORE_THRESHOLD_PX = 120;
 
 interface GitPanelProps {
-	graphCollapsed?: boolean;
+	historyCollapsed?: boolean;
 	onCommit?: () => void;
 	onInitialize?: () => Promise<void>;
-	onOpenCommit?: (commit: BrowserGitGraphCommit) => void;
+	onLoadMoreHistory?: () => void;
+	onOpenCommit?: (commit: BrowserGitHistoryCommit) => void;
+	repositoryId?: string;
 	status: BrowserGitStatusResponse | null;
+	historyLoadError?: string | null;
+	historyLoadingMore?: boolean;
 	loading: boolean;
 	error: string | null;
 	onOpenDiff: (path: string) => void;
 	onSelectCommit?: (sha: string | null) => void;
-	onToggleGraphCollapsed?: () => void;
+	onToggleHistoryCollapsed?: () => void;
 	selectedCommitSha?: string | null;
 }
 
@@ -54,11 +59,13 @@ function GitFileLineCounts({
 function GitPanelSection({
 	action,
 	collapsed = false,
+	onScroll,
 	title,
 	children,
 }: {
 	action?: ReactNode;
 	collapsed?: boolean;
+	onScroll?: (event: UIEvent<HTMLDivElement>) => void;
 	title: string;
 	children: ReactNode;
 }) {
@@ -79,7 +86,10 @@ function GitPanelSection({
 				{action}
 			</div>
 			{collapsed ? null : (
-				<div className="scrollbar-none min-h-0 flex-1 overflow-y-auto">
+				<div
+					className="scrollbar-none min-h-0 flex-1 overflow-y-auto"
+					onScroll={onScroll}
+				>
 					{children}
 				</div>
 			)}
@@ -89,6 +99,29 @@ function GitPanelSection({
 
 function formatGitBranch(status: BrowserGitInitializedResponse): string {
 	return status.branch ? `Branch ${status.branch}` : "Detached HEAD";
+}
+
+export function shouldLoadMoreGitHistory({
+	clientHeight,
+	hasMore,
+	loading,
+	scrollHeight,
+	scrollTop,
+}: {
+	clientHeight: number;
+	hasMore: boolean;
+	loading: boolean;
+	scrollHeight: number;
+	scrollTop: number;
+}): boolean {
+	if (!hasMore || loading) {
+		return false;
+	}
+
+	return (
+		scrollHeight - (scrollTop + clientHeight) <=
+		GIT_HISTORY_LOAD_MORE_THRESHOLD_PX
+	);
 }
 
 function formatGitSummary(
@@ -137,16 +170,20 @@ export function GitPanelHeader({
 }
 
 export function GitPanel({
-	graphCollapsed = false,
+	historyCollapsed = false,
+	historyLoadError = null,
+	historyLoadingMore = false,
 	onCommit,
 	onInitialize,
+	onLoadMoreHistory,
 	onOpenCommit,
+	repositoryId,
 	status,
 	loading,
 	error,
 	onOpenDiff,
 	onSelectCommit,
-	onToggleGraphCollapsed,
+	onToggleHistoryCollapsed,
 	selectedCommitSha = null,
 }: GitPanelProps) {
 	if (loading) {
@@ -170,6 +207,25 @@ export function GitPanel({
 				onInitialize={onInitialize ?? (async () => {})}
 			/>
 		);
+	}
+
+	function handleHistoryScroll(event: UIEvent<HTMLDivElement>) {
+		if (
+			historyCollapsed ||
+			!onLoadMoreHistory ||
+			!status?.initialized ||
+			!shouldLoadMoreGitHistory({
+				clientHeight: event.currentTarget.clientHeight,
+				hasMore: Boolean(status.history.nextCursor),
+				loading: historyLoadingMore,
+				scrollHeight: event.currentTarget.scrollHeight,
+				scrollTop: event.currentTarget.scrollTop,
+			})
+		) {
+			return;
+		}
+
+		onLoadMoreHistory();
 	}
 
 	return (
@@ -202,19 +258,22 @@ export function GitPanel({
 				</GitPanelSection>
 
 				<GitPanelSection
-					title="Git graph"
-					collapsed={graphCollapsed}
+					title="Commit history"
+					collapsed={historyCollapsed}
+					onScroll={handleHistoryScroll}
 					action={
 						<div className="flex w-8 shrink-0 justify-end">
 							<button
 								type="button"
-								onClick={onToggleGraphCollapsed}
+								onClick={onToggleHistoryCollapsed}
 								aria-label={
-									graphCollapsed ? "Expand git graph" : "Collapse git graph"
+									historyCollapsed
+										? "Expand commit history"
+										: "Collapse commit history"
 								}
 								className={GIT_PANEL_TOGGLE_CLASS}
 							>
-								{graphCollapsed ? (
+								{historyCollapsed ? (
 									<ChevronUp size={14} />
 								) : (
 									<ChevronDown size={14} />
@@ -223,11 +282,13 @@ export function GitPanel({
 						</div>
 					}
 				>
-					<GitGraph
-						currentBranch={status.branch}
-						graph={status.graph}
+					<GitCommitHistory
+						history={status.history}
+						loadError={historyLoadError}
+						loadingMore={historyLoadingMore}
 						onOpenCommit={onOpenCommit}
 						onSelectCommit={onSelectCommit}
+						repositoryId={repositoryId}
 						selectedCommitSha={selectedCommitSha}
 					/>
 				</GitPanelSection>

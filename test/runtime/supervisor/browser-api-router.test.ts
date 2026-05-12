@@ -10,6 +10,53 @@ import {
 } from "../../../src/runtime/supervisor/browser-api-router.ts";
 
 describe("handleBrowserApiRequest", () => {
+	test("routes git history paging requests with repository scope", async () => {
+		const calls: string[] = [];
+		const browserApi = {
+			readGitHistory: async (params?: {
+				repositoryId?: string;
+				cursor?: string;
+				limit?: number;
+			}) => {
+				calls.push(
+					`history:${params?.repositoryId ?? "default"}:${params?.cursor ?? "none"}:${params?.limit ?? "none"}`,
+				);
+				return {
+					commits: [
+						{
+							sha: "abc123",
+							commit: {
+								author: {
+									name: "Test User",
+									date: "2026-05-12T00:00:00.000Z",
+								},
+								message: "Older commit",
+							},
+							parents: [],
+						},
+					],
+					nextCursor: "45",
+				};
+			},
+		} as unknown as BrowserApi;
+
+		const url = new URL(
+			"http://localhost/api/git/history?repositoryId=repo-1&cursor=30&limit=15",
+		);
+		const response = await handleBrowserApiRequest(
+			new Request(url),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toMatchObject({
+			commits: [{ sha: "abc123" }],
+			nextCursor: "45",
+		});
+		expect(calls).toEqual(["history:repo-1:30:15"]);
+	});
+
 	test("routes coding repository list, register, detail, and archive requests", async () => {
 		const calls: string[] = [];
 		const browserApi = {
@@ -77,6 +124,21 @@ describe("handleBrowserApiRequest", () => {
 					},
 				};
 			},
+			restoreCodingRepository: async (repositoryId: string) => {
+				calls.push(`repo:restore:${repositoryId}`);
+				return {
+					restored: true,
+					repository: {
+						id: repositoryId,
+						rootCwd: "/workspace/outclaw",
+						displayName: "outclaw",
+						source: "manual",
+						status: "active",
+						createdAt: 10,
+						lastActive: 50,
+					},
+				};
+			},
 		} as unknown as BrowserApi;
 
 		const listUrl = new URL(
@@ -140,12 +202,28 @@ describe("handleBrowserApiRequest", () => {
 			archived: true,
 			repository: { status: "archived" },
 		});
+		const restoreUrl = new URL(
+			"http://localhost/api/coding/repositories/repo-1/restore",
+		);
+		await expect(
+			(
+				await handleBrowserApiRequest(
+					new Request(restoreUrl, { method: "POST" }),
+					restoreUrl,
+					browserApi,
+				)
+			).json(),
+		).resolves.toMatchObject({
+			restored: true,
+			repository: { status: "active" },
+		});
 
 		expect(calls).toEqual([
 			"repo:list:true",
 			"repo:register:/workspace/outclaw:Outclaw:manual",
 			"repo:get:repo-1",
 			"repo:archive:repo-1",
+			"repo:restore:repo-1",
 		]);
 	});
 
@@ -286,6 +364,7 @@ describe("handleBrowserApiRequest", () => {
 					limit: number;
 					cursor?: { lastActive: number; sdkSessionId: string };
 					linkedChatSessionId?: string;
+					lifecycleStatus?: "open" | "archived";
 					providerId?: string;
 					repositoryId?: string;
 			  }
@@ -315,7 +394,7 @@ describe("handleBrowserApiRequest", () => {
 			},
 		} as unknown as BrowserApi;
 		const url = new URL(
-			"http://localhost/api/coding/sessions?limit=5&cursorLastActive=20&cursorSdkSessionId=code-1&providerId=codex&repositoryId=repo-1&linkedChatSessionId=chat-1",
+			"http://localhost/api/coding/sessions?limit=5&cursorLastActive=20&cursorSdkSessionId=code-1&providerId=codex&repositoryId=repo-1&linkedChatSessionId=chat-1&lifecycleStatus=archived",
 		);
 
 		const response = await handleBrowserApiRequest(
@@ -349,6 +428,7 @@ describe("handleBrowserApiRequest", () => {
 				sdkSessionId: "code-1",
 			},
 			linkedChatSessionId: "chat-1",
+			lifecycleStatus: "archived",
 			providerId: "codex",
 			repositoryId: "repo-1",
 		});
@@ -442,6 +522,97 @@ describe("handleBrowserApiRequest", () => {
 			providerId: "codex",
 			sdkSessionId: "code-1",
 		});
+	});
+
+	test("routes coding session archive and restore requests by provider session identity", async () => {
+		const calls: string[] = [];
+		const browserApi = {
+			archiveCodingSession: async (
+				providerId: string,
+				sdkSessionId: string,
+			) => {
+				calls.push(`archive:${providerId}:${sdkSessionId}`);
+				return {
+					archived: true,
+					session: {
+						providerId,
+						sdkSessionId,
+						title: "Archived code",
+						model: "gpt-5.5",
+						lastActive: 30,
+						cwd: "/workspace/outclaw",
+						lifecycleStatus: "archived",
+						runStatus: "idle",
+						createdAt: 10,
+						source: "code",
+						tag: "code",
+					},
+				};
+			},
+			restoreCodingSession: async (
+				providerId: string,
+				sdkSessionId: string,
+			) => {
+				calls.push(`restore:${providerId}:${sdkSessionId}`);
+				return {
+					restored: true,
+					session: {
+						providerId,
+						sdkSessionId,
+						title: "Restored code",
+						model: "gpt-5.5",
+						lastActive: 40,
+						cwd: "/workspace/outclaw",
+						lifecycleStatus: "open",
+						runStatus: "idle",
+						createdAt: 10,
+						source: "code",
+						tag: "code",
+					},
+				};
+			},
+		} as unknown as BrowserApi;
+
+		const archiveUrl = new URL(
+			"http://localhost/api/coding/sessions/codex/code-1/archive",
+		);
+		await expect(
+			(
+				await handleBrowserApiRequest(
+					new Request(archiveUrl, { method: "POST" }),
+					archiveUrl,
+					browserApi,
+				)
+			).json(),
+		).resolves.toMatchObject({
+			archived: true,
+			session: {
+				providerId: "codex",
+				sdkSessionId: "code-1",
+				lifecycleStatus: "archived",
+			},
+		});
+
+		const restoreUrl = new URL(
+			"http://localhost/api/coding/sessions/codex/code-1/restore",
+		);
+		await expect(
+			(
+				await handleBrowserApiRequest(
+					new Request(restoreUrl, { method: "POST" }),
+					restoreUrl,
+					browserApi,
+				)
+			).json(),
+		).resolves.toMatchObject({
+			restored: true,
+			session: {
+				providerId: "codex",
+				sdkSessionId: "code-1",
+				lifecycleStatus: "open",
+			},
+		});
+		expect(calls).toEqual(["archive:codex:code-1", "restore:codex:code-1"]);
 	});
 
 	test("routes GET /api/coding/models to listCodingModels", async () => {

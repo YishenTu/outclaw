@@ -1,4 +1,5 @@
 import type {
+	CodingSessionEvent,
 	FacadeEvent,
 	FileChange,
 	FileChangeKind,
@@ -30,6 +31,7 @@ export async function* normalizeCodexTurnNotifications(
 	const rawCommandStarts = new Set<string>();
 	const rawCommandOutputs = new Map<string, string>();
 	const rawToolKindsByCallId = new Map<string, string>();
+	const suppressedToolCallIds = new Set<string>();
 	const completedCommands = new Set<string>();
 
 	for await (const notification of options.notifications) {
@@ -70,6 +72,7 @@ export async function* normalizeCodexTurnNotifications(
 					rawCommandStarts,
 					rawCommandOutputs,
 					rawToolKindsByCallId,
+					suppressedToolCallIds,
 				);
 				for (const event of events) {
 					yield event;
@@ -82,6 +85,10 @@ export async function* normalizeCodexTurnNotifications(
 				);
 				if (finalAssistantMessageId) {
 					finalAssistantMessageIds.add(finalAssistantMessageId);
+				}
+				const callId = readItemCallId(notification.params);
+				if (callId && suppressedToolCallIds.has(callId)) {
+					break;
 				}
 				const event = readItemStarted(notification.params, options.sessionId);
 				if (event) {
@@ -121,6 +128,10 @@ export async function* normalizeCodexTurnNotifications(
 					return;
 				}
 				const callId = readItemCallId(notification.params);
+				if (callId && suppressedToolCallIds.has(callId)) {
+					suppressedToolCallIds.delete(callId);
+					break;
+				}
 				const rawOutput = callId ? rawCommandOutputs.get(callId) : undefined;
 				const event = readItemCompleted(
 					notification.params,
@@ -203,16 +214,16 @@ export async function* normalizeCodexTurnNotifications(
 export function normalizeCodexJsonlEvents(
 	content: string,
 	options: { sessionId: string },
-): FacadeEvent[] {
-	const events: FacadeEvent[] = [];
+): CodingSessionEvent[] {
+	const events: CodingSessionEvent[] = [];
 	const commandCallIds = new Set<string>();
 	const toolKindsByCallId = new Map<string, string>();
+	const terminalCommandCallIds = new Map<string, string>();
+	const writeStdinParentCallIds = new Map<string, string>();
+	const runningCommandCallIds = new Set<string>();
 
-	for (const line of content.split("\n")) {
-		if (!line.trim()) {
-			continue;
-		}
-		const row = asRecord(JSON.parse(line));
+	for (const parsedLine of parseCodexJsonlRows(content)) {
+		const row = asRecord(parsedLine);
 		const payload = asRecord(row?.payload);
 		if (!row || !payload) {
 			continue;
@@ -224,11 +235,18 @@ export function normalizeCodexJsonlEvents(
 		if (rowType === "response_item") {
 			switch (payloadType) {
 				case "message": {
-					if (payload.role !== "assistant") {
-						break;
-					}
 					const text = readContentText(payload.content);
-					if (text) {
+					const userPromptText =
+						payload.role === "user"
+							? normalizeCodexJsonlUserPromptText(text)
+							: "";
+					if (payload.role === "user" && userPromptText) {
+						events.push({
+							type: "user_prompt",
+							text: userPromptText,
+							sessionId: options.sessionId,
+						});
+					} else if (payload.role === "assistant" && text) {
 						events.push({
 							type: "text",
 							text,
@@ -262,6 +280,20 @@ export function normalizeCodexJsonlEvents(
 						}
 						break;
 					}
+					if (name === "write_stdin") {
+						const callId =
+							typeof payload.call_id === "string" ? payload.call_id : undefined;
+						const args = parseJsonObject(payload.arguments);
+						const terminalSessionId = readTerminalSessionIdArgument(args);
+						if (callId && terminalSessionId) {
+							const parentCallId =
+								terminalCommandCallIds.get(terminalSessionId);
+							if (parentCallId) {
+								writeStdinParentCallIds.set(callId, parentCallId);
+							}
+						}
+						break;
+					}
 					for (const event of readRawGenericToolStarted(
 						payload,
 						options.sessionId,
@@ -280,12 +312,62 @@ export function normalizeCodexJsonlEvents(
 						break;
 					}
 					if (commandCallIds.has(callId)) {
+						const commandResult = readCommandToolResult(payload.output);
+						if (commandResult.status === "running") {
+							runningCommandCallIds.add(callId);
+							if (commandResult.terminalSessionId) {
+								terminalCommandCallIds.set(
+									commandResult.terminalSessionId,
+									callId,
+								);
+							}
+							if (commandResult.output) {
+								events.push({
+									type: "command_execution_output",
+									callId,
+									output: commandResult.output,
+									sessionId: options.sessionId,
+								});
+							}
+							break;
+						}
+						runningCommandCallIds.delete(callId);
 						events.push({
 							type: "command_execution_completed",
 							callId,
-							output: normalizeFunctionOutput(payload.output),
+							...(commandResult.exitCode !== undefined
+								? { exitCode: commandResult.exitCode }
+								: {}),
+							...(commandResult.output !== undefined
+								? { output: commandResult.output }
+								: {}),
 							sessionId: options.sessionId,
 						});
+						break;
+					}
+					const writeStdinParentCallId = writeStdinParentCallIds.get(callId);
+					if (writeStdinParentCallId) {
+						const commandResult = readCommandToolResult(payload.output);
+						if (commandResult.output) {
+							events.push({
+								type: "command_execution_output",
+								callId: writeStdinParentCallId,
+								output: commandResult.output,
+								sessionId: options.sessionId,
+							});
+						}
+						if (commandResult.status === "completed") {
+							runningCommandCallIds.delete(writeStdinParentCallId);
+							events.push({
+								type: "command_execution_completed",
+								callId: writeStdinParentCallId,
+								...(commandResult.exitCode !== undefined
+									? { exitCode: commandResult.exitCode }
+									: {}),
+								sessionId: options.sessionId,
+							});
+							writeStdinParentCallIds.delete(callId);
+						}
 						break;
 					}
 					const toolKind = toolKindsByCallId.get(callId);
@@ -321,9 +403,17 @@ export function normalizeCodexJsonlEvents(
 					break;
 				}
 				case "custom_tool_call_output": {
-					if (payload.name === "apply_patch") {
+					// The codex responses API does not echo `name` on the output
+					// side — match by call_id instead. If the matching started
+					// event was suppressed (e.g. apply_patch), the output is an
+					// orphan and would render as a bare "Success. Updated …"
+					// card with no header context; drop it.
+					const callId =
+						typeof payload.call_id === "string" ? payload.call_id : undefined;
+					if (!callId || !toolKindsByCallId.has(callId)) {
 						break;
 					}
+					toolKindsByCallId.delete(callId);
 					for (const event of readRawGenericToolCompleted(
 						payload,
 						options.sessionId,
@@ -360,7 +450,45 @@ export function normalizeCodexJsonlEvents(
 		}
 	}
 
+	for (const callId of runningCommandCallIds) {
+		events.push({
+			type: "command_execution_completed",
+			callId,
+			sessionId: options.sessionId,
+		});
+	}
+
 	return events;
+}
+
+function* parseCodexJsonlRows(content: string): Iterable<unknown> {
+	const lines = content.split("\n");
+	const lastNonEmptyLineIndex = findLastNonEmptyLineIndex(lines);
+	const mayHaveTrailingPartialRow = !content.endsWith("\n");
+
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? "";
+		if (!line.trim()) {
+			continue;
+		}
+		try {
+			yield JSON.parse(line);
+		} catch (error) {
+			if (mayHaveTrailingPartialRow && index === lastNonEmptyLineIndex) {
+				return;
+			}
+			throw error;
+		}
+	}
+}
+
+function findLastNonEmptyLineIndex(lines: string[]): number {
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		if (lines[index]?.trim()) {
+			return index;
+		}
+	}
+	return -1;
 }
 
 function readTurnFailureMessage(
@@ -470,6 +598,7 @@ function readRawResponseItemCompleted(
 	rawCommandStarts: Set<string>,
 	rawCommandOutputs: Map<string, string>,
 	rawToolKindsByCallId: Map<string, string>,
+	suppressedToolCallIds: Set<string>,
 ): FacadeEvent[] {
 	const item = asRecord(asRecord(params)?.item);
 	const itemType = typeof item?.type === "string" ? item.type : undefined;
@@ -487,6 +616,14 @@ function readRawResponseItemCompleted(
 			rawCommandStarts.add(event.callId);
 			return [event];
 		}
+		if (name === "write_stdin") {
+			const callId =
+				typeof item.call_id === "string" ? item.call_id : undefined;
+			if (callId) {
+				suppressedToolCallIds.add(callId);
+			}
+			return [];
+		}
 		const events = readRawGenericToolStarted(item, sessionId);
 		for (const event of events) {
 			if (event.type === "tool_call_started") {
@@ -499,6 +636,10 @@ function readRawResponseItemCompleted(
 	if (itemType === "function_call_output") {
 		const callId = typeof item.call_id === "string" ? item.call_id : undefined;
 		if (!callId) {
+			return [];
+		}
+		if (suppressedToolCallIds.has(callId)) {
+			suppressedToolCallIds.delete(callId);
 			return [];
 		}
 		const output = normalizeFunctionOutput(item.output);
@@ -524,15 +665,37 @@ function readRawResponseItemCompleted(
 
 	if (itemType === "custom_tool_call") {
 		if (item.name === "apply_patch") {
+			const callId =
+				typeof item.call_id === "string" ? item.call_id : undefined;
+			if (callId) {
+				suppressedToolCallIds.add(callId);
+			}
 			return [];
 		}
-		return readRawGenericToolStarted(item, sessionId);
+		const events = readRawGenericToolStarted(item, sessionId);
+		for (const event of events) {
+			if (event.type === "tool_call_started") {
+				rawToolKindsByCallId.set(event.callId, event.toolKind);
+			}
+		}
+		return events;
 	}
 
 	if (itemType === "custom_tool_call_output") {
-		if (item.name === "apply_patch") {
+		// The codex responses API does not echo `name` on the output side —
+		// match by call_id instead. If the matching started event was
+		// suppressed (e.g. apply_patch), the output is an orphan and would
+		// render as a bare "Success. Updated …" card with no header context;
+		// drop it.
+		const callId = typeof item.call_id === "string" ? item.call_id : undefined;
+		if (callId && suppressedToolCallIds.has(callId)) {
+			suppressedToolCallIds.delete(callId);
 			return [];
 		}
+		if (!callId || !rawToolKindsByCallId.has(callId)) {
+			return [];
+		}
+		rawToolKindsByCallId.delete(callId);
 		return readRawGenericToolCompleted(item, sessionId);
 	}
 
@@ -641,7 +804,11 @@ function readCommandExecutionOutputDelta(
 
 function readItemCallId(params: unknown): string | undefined {
 	const item = asRecord(asRecord(params)?.item);
-	return typeof item?.id === "string" ? item.id : undefined;
+	return typeof item?.id === "string"
+		? item.id
+		: typeof item?.call_id === "string"
+			? item.call_id
+			: undefined;
 }
 
 function readContentText(value: unknown): string {
@@ -654,6 +821,31 @@ function readContentText(value: unknown): string {
 			return typeof record?.text === "string" ? record.text : "";
 		})
 		.join("");
+}
+
+function normalizeCodexJsonlUserPromptText(text: string): string {
+	const trimmedStart = text.trimStart();
+	if (!isCodexSessionBootstrapText(trimmedStart)) {
+		return text;
+	}
+
+	const environmentEnd = trimmedStart.indexOf("</environment_context>");
+	if (environmentEnd === -1) {
+		return "";
+	}
+
+	return trimmedStart
+		.slice(environmentEnd + "</environment_context>".length)
+		.trim();
+}
+
+function isCodexSessionBootstrapText(text: string): boolean {
+	return (
+		text.startsWith("# AGENTS.md instructions for ") &&
+		text.includes("\n<INSTRUCTIONS>") &&
+		text.includes("\n</INSTRUCTIONS>") &&
+		text.includes("<environment_context>")
+	);
 }
 
 function readReasoningText(item: Record<string, unknown>): string {
@@ -816,6 +1008,48 @@ function extractCommandOutput(value: string): string {
 		return value;
 	}
 	return value.slice(markerIndex + outputMarker.length);
+}
+
+function readCommandToolResult(value: unknown): {
+	output: string;
+	status: "completed" | "running";
+	exitCode?: number;
+	terminalSessionId?: string;
+} {
+	const output = normalizeFunctionOutput(value);
+	if (typeof value !== "string") {
+		return { output, status: "completed" };
+	}
+	const exitMatch = value.match(/\nProcess exited with code (-?\d+)\n/);
+	const runningMatch = value.match(
+		/\nProcess running with session ID ([^\n]+)\n/,
+	);
+	return {
+		output,
+		status: exitMatch ? "completed" : runningMatch ? "running" : "completed",
+		...(exitMatch
+			? { exitCode: Number.parseInt(exitMatch[1] as string, 10) }
+			: {}),
+		...(runningMatch
+			? { terminalSessionId: (runningMatch[1] as string).trim() }
+			: {}),
+	};
+}
+
+function readTerminalSessionIdArgument(
+	args: Record<string, unknown> | undefined,
+): string | undefined {
+	if (!args) {
+		return undefined;
+	}
+	const value = args.session_id ?? args.sessionId;
+	if (typeof value === "string" && value) {
+		return value;
+	}
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return String(value);
+	}
+	return undefined;
 }
 
 function readRawGenericToolDetails(item: Record<string, unknown>): {

@@ -7,19 +7,26 @@ import type {
 	BrowserCodingRepositoryCloneResponse,
 	BrowserCodingRepositoryDetail,
 	BrowserCodingRepositoryListResponse,
+	BrowserCodingRepositoryRestoreResponse,
+	BrowserCodingSessionArchiveResponse,
 	BrowserCodingSessionDeleteResponse,
 	BrowserCodingSessionDetail,
+	BrowserCodingSessionLifecycleStatus,
 	BrowserCodingSessionPageResponse,
+	BrowserCodingSessionRestoreResponse,
 	BrowserCodingSessionResumeResponse,
 	BrowserCodingSessionStartResponse,
 	BrowserCodingSessionStopResponse,
+	BrowserCodingSkillsResponse,
 	BrowserConfigResponse,
 	BrowserCronEntry,
 	BrowserCronHistoryCursor,
 	BrowserCronHistoryResponse,
 	BrowserFileResponse,
 	BrowserGitCommitResponse,
+	BrowserGitCommitStats,
 	BrowserGitDiffResponse,
+	BrowserGitHistory,
 	BrowserGitStatusResponse,
 	BrowserGraphResponse,
 	BrowserImageUploadResponse,
@@ -117,6 +124,7 @@ export async function fetchCodingSessions(params: {
 	limit: number;
 	cursor?: SessionCursor;
 	linkedChatSessionId?: string;
+	lifecycleStatus?: BrowserCodingSessionLifecycleStatus;
 	providerId?: string;
 	query?: string;
 	repositoryId?: string;
@@ -136,6 +144,9 @@ export async function fetchCodingSessions(params: {
 	if (params.linkedChatSessionId) {
 		url.searchParams.set("linkedChatSessionId", params.linkedChatSessionId);
 	}
+	if (params.lifecycleStatus) {
+		url.searchParams.set("lifecycleStatus", params.lifecycleStatus);
+	}
 	if (params.query?.trim()) {
 		url.searchParams.set("query", params.query.trim());
 	}
@@ -153,6 +164,20 @@ export async function fetchCodingSession(
 	);
 }
 
+export async function archiveCodingSession(
+	providerId: string,
+	sdkSessionId: string,
+): Promise<BrowserCodingSessionArchiveResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}/archive`,
+			{
+				method: "POST",
+			},
+		),
+	);
+}
+
 export async function deleteCodingSession(
 	providerId: string,
 	sdkSessionId: string,
@@ -162,6 +187,20 @@ export async function deleteCodingSession(
 			`/api/coding/sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}`,
 			{
 				method: "DELETE",
+			},
+		),
+	);
+}
+
+export async function restoreCodingSession(
+	providerId: string,
+	sdkSessionId: string,
+): Promise<BrowserCodingSessionRestoreResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}/restore`,
+			{
+				method: "POST",
 			},
 		),
 	);
@@ -243,6 +282,20 @@ export async function stopCodingSession(params: {
 
 export async function fetchCodingModels(): Promise<BrowserCodingModelsResponse> {
 	return parseJsonResponse(await fetch("/api/coding/models"));
+}
+
+export async function fetchCodingRepositorySkills(
+	repositoryId: string,
+	params: { forceReload?: boolean } = {},
+): Promise<BrowserCodingSkillsResponse> {
+	const url = new URL(
+		`/api/coding/repositories/${encodeURIComponent(repositoryId)}/skills`,
+		window.location.origin,
+	);
+	if (params.forceReload) {
+		url.searchParams.set("forceReload", "true");
+	}
+	return parseJsonResponse(await fetch(url));
 }
 
 export interface CodingSessionEventStreamItem {
@@ -391,6 +444,19 @@ export async function archiveCodingRepository(
 	);
 }
 
+export async function restoreCodingRepository(
+	repositoryId: string,
+): Promise<BrowserCodingRepositoryRestoreResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/repositories/${encodeURIComponent(repositoryId)}/restore`,
+			{
+				method: "POST",
+			},
+		),
+	);
+}
+
 export async function fetchRuntimeLatency(
 	signal?: AbortSignal,
 ): Promise<BrowserLatencyResponse> {
@@ -436,6 +502,16 @@ export async function fetchCodingRepositoryTree(
 	return parseJsonResponse(
 		await fetch(
 			`/api/coding/repositories/${encodeURIComponent(repositoryId)}/tree`,
+		),
+	);
+}
+
+export async function fetchCodingRepositoryWorkspaceFiles(
+	repositoryId: string,
+): Promise<WorkspaceFileEntry[]> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/repositories/${encodeURIComponent(repositoryId)}/workspace-files`,
 		),
 	);
 }
@@ -698,6 +774,24 @@ export async function fetchGitStatus(params?: {
 	return parseJsonResponse(await fetch(url));
 }
 
+export async function fetchGitHistory(params?: {
+	repositoryId?: string;
+	cursor?: string;
+	limit?: number;
+}): Promise<BrowserGitHistory> {
+	const url = appendRepositoryIdParam(
+		new URL("/api/git/history", window.location.origin),
+		params,
+	);
+	if (params?.cursor) {
+		url.searchParams.set("cursor", params.cursor);
+	}
+	if (params?.limit !== undefined) {
+		url.searchParams.set("limit", String(params.limit));
+	}
+	return parseJsonResponse(await fetch(url));
+}
+
 export async function initGitRepo(params?: {
 	repositoryId?: string;
 }): Promise<BrowserGitStatusResponse> {
@@ -730,6 +824,18 @@ export async function fetchGitCommit(
 ): Promise<BrowserGitCommitResponse> {
 	const url = appendRepositoryIdParam(
 		new URL("/api/git/commit", window.location.origin),
+		params,
+	);
+	url.searchParams.set("sha", sha);
+	return parseJsonResponse(await fetch(url));
+}
+
+export async function fetchGitCommitStats(
+	sha: string,
+	params?: { repositoryId?: string },
+): Promise<BrowserGitCommitStats> {
+	const url = appendRepositoryIdParam(
+		new URL("/api/git/commit/stats", window.location.origin),
 		params,
 	);
 	url.searchParams.set("sha", sha);

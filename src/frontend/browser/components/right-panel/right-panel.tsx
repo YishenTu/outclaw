@@ -6,7 +6,7 @@ import {
 	Inbox,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BrowserGitGraphCommit } from "../../../../common/protocol.ts";
+import type { BrowserGitHistoryCommit } from "../../../../common/protocol.ts";
 import { requestConfigRestart } from "../../commands/config-save-restart.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import {
@@ -155,11 +155,11 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const setRightPanelSplitRatio = useLayoutStore(
 		(state) => state.setRightPanelSplitRatio,
 	);
-	const rightGitGraphCollapsed = useLayoutStore(
-		(state) => state.rightGitGraphCollapsed,
+	const rightGitHistoryCollapsed = useLayoutStore(
+		(state) => state.rightGitHistoryCollapsed,
 	);
-	const setRightGitGraphCollapsed = useLayoutStore(
-		(state) => state.setRightGitGraphCollapsed,
+	const setRightGitHistoryCollapsed = useLayoutStore(
+		(state) => state.setRightGitHistoryCollapsed,
 	);
 	const rightTerminalCollapsed = useLayoutStore(
 		(state) => state.rightTerminalCollapsed,
@@ -230,7 +230,14 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		gitRevision,
 		treeRevision,
 	});
-	const { gitError, gitLoading, gitStatus } = useGitStatusLoader({
+	const {
+		gitError,
+		gitHistoryLoadError,
+		gitHistoryLoadingMore,
+		gitLoading,
+		gitStatus,
+		loadMoreGitHistory,
+	} = useGitStatusLoader({
 		activeUpperTab,
 		gitRevision,
 	});
@@ -299,7 +306,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	);
 
 	const handleOpenCommit = useCallback(
-		(commit: BrowserGitGraphCommit) => {
+		(commit: BrowserGitHistoryCommit) => {
 			openDoc({
 				type: "git-commit",
 				id: `git-commit:${commit.sha}`,
@@ -638,17 +645,20 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		if (tab === "git") {
 			return (
 				<GitPanel
-					graphCollapsed={rightGitGraphCollapsed}
+					historyCollapsed={rightGitHistoryCollapsed}
 					onCommit={handleCommit}
 					onInitialize={handleInitialize}
 					onOpenCommit={handleOpenCommit}
+					onLoadMoreHistory={loadMoreGitHistory}
 					status={gitStatus}
+					historyLoadError={gitHistoryLoadError}
+					historyLoadingMore={gitHistoryLoadingMore}
 					loading={gitLoading}
 					error={gitError}
 					onOpenDiff={handleOpenDiff}
 					onSelectCommit={setSelectedGitCommitSha}
-					onToggleGraphCollapsed={() =>
-						setRightGitGraphCollapsed(!rightGitGraphCollapsed)
+					onToggleHistoryCollapsed={() =>
+						setRightGitHistoryCollapsed(!rightGitHistoryCollapsed)
 					}
 					selectedCommitSha={selectedGitCommitSha}
 				/>

@@ -5,23 +5,27 @@ interface SlashCommandMenuProps {
 	commands: CommandEntry[];
 	selectedIndex: number;
 	onSelect: (command: CommandEntry) => void;
+	emptyMessage?: string;
 }
 
 export function SlashCommandMenu({
 	commands,
 	selectedIndex,
 	onSelect,
+	emptyMessage,
 }: SlashCommandMenuProps) {
 	return (
 		<DropupMenu
 			items={commands}
 			selectedIndex={selectedIndex}
 			onSelect={onSelect}
+			emptyMessage={emptyMessage}
 			itemKey={(command) => command.name}
 			renderItem={(command) => (
 				<>
 					<span className="shrink-0 font-semibold text-dark-100">
-						/{command.name}
+						{command.displayPrefix ?? "/"}
+						{command.name}
 					</span>
 					<span className="min-w-0 truncate text-dark-400">
 						{command.description}

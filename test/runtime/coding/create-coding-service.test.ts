@@ -2,11 +2,15 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { FacadeEvent, RunParams } from "../../../src/common/protocol.ts";
+import type {
+	CodingSessionEvent,
+	FacadeEvent,
+	RunParams,
+} from "../../../src/common/protocol.ts";
 import {
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
-	CodingSessionEventStore,
+	CodingSessionEventHub,
 	CodingSessionStore,
 	createCodingService,
 } from "../../../src/runtime/coding/index.ts";
@@ -30,7 +34,7 @@ function makeHarness(facade?: MockFacade): Harness {
 	});
 	const codingSessions = new CodingSessionStore(dbPath);
 	const codingRepositories = new CodingRepositoryStore(dbPath);
-	const codingEvents = new CodingSessionEventStore(dbPath);
+	const codingEvents = new CodingSessionEventHub();
 	const codingFacade = facade ?? new SessionInitializingFacade();
 	const codingService = createCodingService({
 		facade: codingFacade,
@@ -136,7 +140,8 @@ describe("createCodingService", () => {
 	test("rehydrateSessionEvents delegates to the coding facade for the active provider", async () => {
 		const facade = new MockFacade();
 		facade.providerId = "codex";
-		const rehydrated: FacadeEvent[] = [
+		const rehydrated: CodingSessionEvent[] = [
+			{ type: "user_prompt", text: "look at jsonl", sessionId: "codex-1" },
 			{ type: "thinking", text: "from jsonl", sessionId: "codex-1" },
 			{ type: "text", text: "done", sessionId: "codex-1" },
 		];

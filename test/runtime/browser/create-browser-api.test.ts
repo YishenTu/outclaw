@@ -12,11 +12,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CodingSessionEvent } from "../../../src/common/protocol.ts";
 import { createBrowserApi } from "../../../src/runtime/browser/create-browser-api.ts";
 import {
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
-	CodingSessionEventStore,
+	CodingSessionEventHub,
 	CodingSessionStore,
 } from "../../../src/runtime/coding/index.ts";
 import { SessionStore } from "../../../src/runtime/persistence/session-store/session-store.ts";
@@ -450,6 +451,103 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("archives and restores coding sessions through the daemon coding store", async () => {
+		const root = createTempDir("outclaw-browser-coding-session-archive-api-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		store.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-archive",
+			title: "Archive me",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-archive",
+			cwd: join(root, "workspace"),
+			runStatus: "idle",
+			timestamp: 100,
+		});
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			codingSessions: codingStore,
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.archiveCodingSession("codex", "code-archive"),
+		).resolves.toMatchObject({
+			archived: true,
+			session: {
+				providerId: "codex",
+				sdkSessionId: "code-archive",
+				lifecycleStatus: "archived",
+			},
+		});
+		expect(store.get("codex", "code-archive")).toBeDefined();
+		await expect(api.listCodingSessions({ limit: 10 })).resolves.toEqual({
+			sessions: [],
+		});
+		await expect(
+			api.listCodingSessions({
+				limit: 10,
+				lifecycleStatus: "archived",
+			}),
+		).resolves.toMatchObject({
+			sessions: [
+				{
+					sdkSessionId: "code-archive",
+					lifecycleStatus: "archived",
+				},
+			],
+		});
+
+		await expect(
+			api.restoreCodingSession("codex", "code-archive"),
+		).resolves.toMatchObject({
+			restored: true,
+			session: {
+				providerId: "codex",
+				sdkSessionId: "code-archive",
+				lifecycleStatus: "open",
+			},
+		});
+		await expect(api.listCodingSessions({ limit: 10 })).resolves.toMatchObject({
+			sessions: [
+				{
+					sdkSessionId: "code-archive",
+					lifecycleStatus: "open",
+				},
+			],
+		});
+
+		codingStore.close();
+		store.close();
+	});
+
 	test("manages coding repositories through the browser API", async () => {
 		const root = createTempDir("outclaw-browser-coding-repos-api-");
 		cleanupPaths.push(root);
@@ -514,6 +612,22 @@ describe("createBrowserApi", () => {
 				{
 					id: registered.id,
 					status: "archived",
+				},
+			],
+		});
+		await expect(api.restoreCodingRepository(registered.id)).resolves.toEqual({
+			restored: true,
+			repository: {
+				...registered,
+				status: "active",
+				lastActive: expect.any(Number),
+			},
+		});
+		await expect(api.listCodingRepositories()).resolves.toMatchObject({
+			repositories: [
+				{
+					id: registered.id,
+					status: "active",
 				},
 			],
 		});
@@ -882,6 +996,96 @@ describe("createBrowserApi", () => {
 		]);
 	});
 
+	test("auto-restores an archived coding session before resuming it", async () => {
+		const root = createTempDir("outclaw-browser-coding-resume-archived-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		const calls: Array<{
+			providerId: string;
+			sdkSessionId: string;
+			prompt: string;
+		}> = [];
+
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "archived-thread-1",
+			title: "Archived work",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "archived-thread-1",
+			cwd: join(root, "workspace"),
+			lifecycleStatus: "archived",
+			runStatus: "idle",
+			timestamp: 100,
+		});
+
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt() {
+					throw new Error("start should not be called");
+				},
+				async resumePrompt(params) {
+					calls.push({
+						providerId: params.providerId ?? "",
+						sdkSessionId: params.sdkSessionId,
+						prompt: params.prompt,
+					});
+					return {
+						status: "accepted",
+						providerId: params.providerId ?? "codex",
+						sdkSessionId: params.sdkSessionId,
+					};
+				},
+				stopPrompt: unusedStopPrompt,
+			},
+			codingSessions: codingStore,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		expect(
+			codingStore.getDetail("codex", "archived-thread-1")?.lifecycleStatus,
+		).toBe("archived");
+
+		await expect(
+			api.resumeCodingSession({
+				providerId: "codex",
+				sdkSessionId: "archived-thread-1",
+				prompt: "follow up",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "archived-thread-1",
+		});
+
+		expect(calls).toEqual([
+			{
+				providerId: "codex",
+				sdkSessionId: "archived-thread-1",
+				prompt: "follow up",
+			},
+		]);
+		expect(
+			codingStore.getDetail("codex", "archived-thread-1")?.lifecycleStatus,
+		).toBe("open");
+
+		codingStore.close();
+		sessionStore.close();
+	});
+
 	test("stops a coding session by provider session identity", async () => {
 		const root = createTempDir("outclaw-browser-coding-stop-");
 		cleanupPaths.push(root);
@@ -1047,6 +1251,142 @@ describe("createBrowserApi", () => {
 		});
 	});
 
+	test("lists coding repository skills from the coding service", async () => {
+		const root = createTempDir("outclaw-browser-coding-skills-");
+		cleanupPaths.push(root);
+		const repositories = new CodingRepositoryStore(join(root, "coding.sqlite"));
+		const repository = repositories.register({
+			rootCwd: join(root, "repo"),
+			displayName: "repo",
+			source: "manual",
+		});
+		const calls: Array<{ cwd: string; forceReload?: boolean }> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt() {
+					throw new Error("not called");
+				},
+				async resumePrompt() {
+					throw new Error("not called");
+				},
+				stopPrompt: unusedStopPrompt,
+				async listSkills(params) {
+					calls.push(params);
+					return [
+						{
+							name: "review",
+							description: "Review the branch",
+							scope: "repo",
+						},
+					];
+				},
+			},
+			codingRepositories: repositories,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.listCodingRepositorySkills(repository.id, { forceReload: true }),
+		).resolves.toEqual({
+			skills: [
+				{
+					name: "review",
+					description: "Review the branch",
+					scope: "repo",
+				},
+			],
+		});
+		expect(calls).toEqual([{ cwd: repository.rootCwd, forceReload: true }]);
+
+		repositories.close();
+	});
+
+	test("lists coding repository workspace files from the repository root", async () => {
+		const root = createTempDir("outclaw-browser-coding-workspace-files-");
+		cleanupPaths.push(root);
+		const repositories = new CodingRepositoryStore(join(root, "coding.sqlite"));
+		const repositoryRoot = join(root, "repo");
+		mkdirSync(join(root, "agents", "railly"), { recursive: true });
+		mkdirSync(join(repositoryRoot, ".git"), { recursive: true });
+		mkdirSync(join(repositoryRoot, "src"), { recursive: true });
+		mkdirSync(join(repositoryRoot, "node_modules"), { recursive: true });
+		writeFileSync(
+			join(repositoryRoot, ".git", "HEAD"),
+			"ref: refs/heads/main\n",
+		);
+		writeFileSync(join(repositoryRoot, ".DS_Store"), "");
+		writeFileSync(join(root, "agents", "railly", "AGENTS.md"), "# Agent\n");
+		writeFileSync(join(repositoryRoot, "README.md"), "# Repository\n");
+		writeFileSync(join(repositoryRoot, "src", "index.ts"), "export {};\n");
+		writeFileSync(
+			join(repositoryRoot, "node_modules", "dependency.js"),
+			"module.exports = {};\n",
+		);
+		const repository = repositories.register({
+			rootCwd: repositoryRoot,
+			displayName: "repo",
+			source: "manual",
+		});
+		const api = createBrowserApi({
+			agents: [],
+			codingRepositories: repositories,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.listCodingRepositoryWorkspaceFiles(repository.id),
+		).resolves.toEqual([
+			{ kind: "directory", path: "node_modules" },
+			{ kind: "file", path: "node_modules/dependency.js" },
+			{ kind: "file", path: "README.md" },
+			{ kind: "directory", path: "src" },
+			{ kind: "file", path: "src/index.ts" },
+		]);
+
+		repositories.close();
+	});
+
+	test("rejects coding repository skills when the coding service has no skill catalog", async () => {
+		const root = createTempDir("outclaw-browser-coding-skills-missing-");
+		cleanupPaths.push(root);
+		const repositories = new CodingRepositoryStore(join(root, "coding.sqlite"));
+		const repository = repositories.register({
+			rootCwd: join(root, "repo"),
+			displayName: "repo",
+			source: "manual",
+		});
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt() {
+					throw new Error("not called");
+				},
+				async resumePrompt() {
+					throw new Error("not called");
+				},
+				stopPrompt: unusedStopPrompt,
+			},
+			codingRepositories: repositories,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(api.listCodingRepositorySkills(repository.id)).rejects.toThrow(
+			"Coding skill catalog is not configured",
+		);
+
+		repositories.close();
+	});
+
 	test("opens a coding-session event stream that replays then follows", async () => {
 		const root = createTempDir("outclaw-browser-coding-events-");
 		cleanupPaths.push(root);
@@ -1056,7 +1396,7 @@ describe("createBrowserApi", () => {
 			agentId: CODING_STORAGE_OWNER_ID,
 		});
 		const codingSessions = new CodingSessionStore(dbPath);
-		const events = new CodingSessionEventStore(dbPath);
+		const events = new CodingSessionEventHub();
 
 		sessionStore.upsert({
 			providerId: "codex",
@@ -1074,14 +1414,22 @@ describe("createBrowserApi", () => {
 			runStatus: "running",
 			timestamp: 10,
 		});
-		events.append({
-			providerId: "codex",
-			sdkSessionId: "codex-1",
-			event: { type: "text", text: "a", sessionId: "codex-1" },
-		});
-
 		const api = createBrowserApi({
 			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async () => [
+					{ type: "text", text: "a", sessionId: "codex-1" },
+				],
+			},
 			codingEvents: events,
 			codingSessions,
 			getRememberedAgentId: () => undefined,
@@ -1124,7 +1472,7 @@ describe("createBrowserApi", () => {
 		sessionStore.close();
 	});
 
-	test("seeds an empty coding-session event stream from provider rehydration before following", async () => {
+	test("reads coding-session history from provider rehydration before following live events", async () => {
 		const root = createTempDir("outclaw-browser-coding-event-seed-");
 		cleanupPaths.push(root);
 		const dbPath = join(root, "db.sqlite");
@@ -1133,7 +1481,7 @@ describe("createBrowserApi", () => {
 			agentId: CODING_STORAGE_OWNER_ID,
 		});
 		const codingSessions = new CodingSessionStore(dbPath);
-		const events = new CodingSessionEventStore(dbPath);
+		const events = new CodingSessionEventHub();
 
 		sessionStore.upsert({
 			providerId: "codex",
@@ -1171,6 +1519,11 @@ describe("createBrowserApi", () => {
 				rehydrateSessionEvents: async (params) => {
 					rehydrateCalls.push(params);
 					return [
+						{
+							type: "user_prompt",
+							text: "inspect jsonl",
+							sessionId: "codex-1",
+						},
 						{
 							type: "thinking",
 							text: "from jsonl",
@@ -1206,22 +1559,33 @@ describe("createBrowserApi", () => {
 		const first = await iterator.next();
 		const second = await iterator.next();
 		const third = await iterator.next();
+		const fourth = await iterator.next();
 		expect(rehydrateCalls).toEqual([
 			{ providerId: "codex", sdkSessionId: "codex-1" },
 		]);
 		expect(first.value?.sequence).toBe(1);
 		expect(first.value?.event).toEqual({
+			type: "user_prompt",
+			text: "inspect jsonl",
+			sessionId: "codex-1",
+		});
+		expect(second.value?.event).toEqual({
 			type: "thinking",
 			text: "from jsonl",
 			sessionId: "codex-1",
 		});
-		expect(second.value?.event).toEqual({
+		expect(third.value?.event).toEqual({
 			type: "command_execution_completed",
 			callId: "call-1",
 			output: "tool result\n",
 			sessionId: "codex-1",
 		});
-		expect(third.value?.sequence).toBe(3);
+		expect(fourth.value?.sequence).toBe(4);
+		expect(fourth.value?.event).toEqual({
+			type: "text",
+			text: "final",
+			sessionId: "codex-1",
+		});
 
 		const live = iterator.next();
 		events.append({
@@ -1229,9 +1593,9 @@ describe("createBrowserApi", () => {
 			sdkSessionId: "codex-1",
 			event: { type: "text", text: "live", sessionId: "codex-1" },
 		});
-		const fourth = await live;
-		expect(fourth.value?.sequence).toBe(4);
-		expect(fourth.value?.event).toEqual({
+		const fifth = await live;
+		expect(fifth.value?.sequence).toBe(5);
+		expect(fifth.value?.event).toEqual({
 			type: "text",
 			text: "live",
 			sessionId: "codex-1",
@@ -1245,8 +1609,8 @@ describe("createBrowserApi", () => {
 		sessionStore.close();
 	});
 
-	test("backfills provider content when the coding-session event stream only has runtime metadata", async () => {
-		const root = createTempDir("outclaw-browser-coding-event-backfill-");
+	test("buffers live coding-session events while provider history is loading", async () => {
+		const root = createTempDir("outclaw-browser-coding-event-buffer-");
 		cleanupPaths.push(root);
 		const dbPath = join(root, "db.sqlite");
 
@@ -1254,7 +1618,7 @@ describe("createBrowserApi", () => {
 			agentId: CODING_STORAGE_OWNER_ID,
 		});
 		const codingSessions = new CodingSessionStore(dbPath);
-		const events = new CodingSessionEventStore(dbPath);
+		const events = new CodingSessionEventHub();
 
 		sessionStore.upsert({
 			providerId: "codex",
@@ -1272,17 +1636,333 @@ describe("createBrowserApi", () => {
 			runStatus: "idle",
 			timestamp: 10,
 		});
-		events.append({
-			providerId: "codex",
-			sdkSessionId: "codex-1",
-			event: { type: "session_initialized", sessionId: "codex-1" },
+		const rehydrateCalls: Array<{
+			providerId: string;
+			sdkSessionId: string;
+		}> = [];
+		let resolveHistory: (events: CodingSessionEvent[]) => void = () => {};
+		const history = new Promise<CodingSessionEvent[]>((resolve) => {
+			resolveHistory = resolve;
 		});
-		events.append({
-			providerId: "codex",
-			sdkSessionId: "codex-1",
-			event: { type: "user_prompt", text: "go" },
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async (params) => {
+					rehydrateCalls.push(params);
+					return history;
+				},
+			},
+			codingEvents: events,
+			codingSessions,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
 		});
 
+		const controller = new AbortController();
+		const iterator = api
+			.openCodingSessionEventStream({
+				providerId: "codex",
+				sdkSessionId: "codex-1",
+				signal: controller.signal,
+			})
+			[Symbol.asyncIterator]();
+
+		const firstFromStream = iterator.next();
+		await Promise.resolve();
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "text", text: "live", sessionId: "codex-1" },
+			timestamp: 20,
+		});
+		resolveHistory([{ type: "text", text: "history", sessionId: "codex-1" }]);
+
+		const first = await firstFromStream;
+		expect(rehydrateCalls).toEqual([
+			{ providerId: "codex", sdkSessionId: "codex-1" },
+		]);
+		expect(first.value?.sequence).toBe(1);
+		expect(first.value?.event).toEqual({
+			type: "text",
+			text: "history",
+			sessionId: "codex-1",
+		});
+		const second = await iterator.next();
+		expect(second.value?.sequence).toBe(2);
+		expect(second.value?.createdAt).toBe(20);
+		expect(second.value?.event).toEqual({
+			type: "text",
+			text: "live",
+			sessionId: "codex-1",
+		});
+
+		controller.abort();
+		await iterator.next();
+
+		events.close();
+		codingSessions.close();
+		sessionStore.close();
+	});
+
+	test("does not duplicate buffered live events already present in provider history", async () => {
+		const root = createTempDir("outclaw-browser-coding-event-dedupe-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingSessions = new CodingSessionStore(dbPath);
+		const events = new CodingSessionEventHub();
+
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			title: "demo",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 10,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			cwd: root,
+			runStatus: "running",
+			timestamp: 10,
+		});
+
+		let resolveHistory: (events: CodingSessionEvent[]) => void = () => {};
+		const history = new Promise<CodingSessionEvent[]>((resolve) => {
+			resolveHistory = resolve;
+		});
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async () => history,
+			},
+			codingEvents: events,
+			codingSessions,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const controller = new AbortController();
+		const iterator = api
+			.openCodingSessionEventStream({
+				providerId: "codex",
+				sdkSessionId: "codex-1",
+				signal: controller.signal,
+			})
+			[Symbol.asyncIterator]();
+
+		const firstFromStream = iterator.next();
+		await Promise.resolve();
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "text", text: "same", sessionId: "codex-1" },
+			timestamp: 20,
+		});
+		resolveHistory([{ type: "text", text: "same", sessionId: "codex-1" }]);
+
+		const first = await firstFromStream;
+		expect(first.value?.event).toEqual({
+			type: "text",
+			text: "same",
+			sessionId: "codex-1",
+		});
+
+		const secondFromStream = iterator.next();
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "text", text: "after", sessionId: "codex-1" },
+		});
+		const second = await secondFromStream;
+		expect(second.value?.sequence).toBe(2);
+		expect(second.value?.event).toEqual({
+			type: "text",
+			text: "after",
+			sessionId: "codex-1",
+		});
+
+		controller.abort();
+		await iterator.next();
+
+		events.close();
+		codingSessions.close();
+		sessionStore.close();
+	});
+
+	test("keeps a buffered live event when the same payload only appears earlier in provider history", async () => {
+		const root = createTempDir("outclaw-browser-coding-event-dedupe-earlier-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingSessions = new CodingSessionStore(dbPath);
+		const events = new CodingSessionEventHub();
+
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			title: "demo",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 10,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			cwd: root,
+			runStatus: "running",
+			timestamp: 10,
+		});
+
+		let resolveHistory: (events: CodingSessionEvent[]) => void = () => {};
+		const history = new Promise<CodingSessionEvent[]>((resolve) => {
+			resolveHistory = resolve;
+		});
+		const repeatedEvent: CodingSessionEvent = {
+			type: "user_prompt",
+			text: "go on",
+			sessionId: "codex-1",
+		};
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async () => history,
+			},
+			codingEvents: events,
+			codingSessions,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const controller = new AbortController();
+		const iterator = api
+			.openCodingSessionEventStream({
+				providerId: "codex",
+				sdkSessionId: "codex-1",
+				signal: controller.signal,
+			})
+			[Symbol.asyncIterator]();
+
+		const firstFromStream = iterator.next();
+		await Promise.resolve();
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: repeatedEvent,
+			timestamp: 20,
+		});
+		resolveHistory([
+			repeatedEvent,
+			{ type: "text", text: "history suffix", sessionId: "codex-1" },
+		]);
+
+		const first = await firstFromStream;
+		const second = await iterator.next();
+		expect(first.value?.event).toEqual(repeatedEvent);
+		expect(second.value?.event).toEqual({
+			type: "text",
+			text: "history suffix",
+			sessionId: "codex-1",
+		});
+
+		const thirdFromStream = iterator.next();
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "text", text: "after", sessionId: "codex-1" },
+			timestamp: 30,
+		});
+		const third = await thirdFromStream;
+		expect(third.value?.sequence).toBe(3);
+		expect(third.value?.createdAt).toBe(20);
+		expect(third.value?.event).toEqual(repeatedEvent);
+
+		const fourth = await iterator.next();
+		expect(fourth.value?.sequence).toBe(4);
+		expect(fourth.value?.createdAt).toBe(30);
+		expect(fourth.value?.event).toEqual({
+			type: "text",
+			text: "after",
+			sessionId: "codex-1",
+		});
+
+		controller.abort();
+		await iterator.next();
+
+		events.close();
+		codingSessions.close();
+		sessionStore.close();
+	});
+
+	test("honors sinceSequence across provider history and live coding-session events", async () => {
+		const root = createTempDir("outclaw-browser-coding-event-cursor-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingSessions = new CodingSessionStore(dbPath);
+		const events = new CodingSessionEventHub();
+
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			title: "demo",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 10,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			cwd: root,
+			runStatus: "idle",
+			timestamp: 10,
+		});
 		const rehydrateCalls: Array<{
 			providerId: string;
 			sdkSessionId: string;
@@ -1302,18 +1982,9 @@ describe("createBrowserApi", () => {
 				rehydrateSessionEvents: async (params) => {
 					rehydrateCalls.push(params);
 					return [
-						{
-							type: "thinking",
-							text: "inspect jsonl",
-							sessionId: "codex-1",
-						},
-						{
-							type: "command_execution_completed",
-							callId: "call-1",
-							output: "tool result\n",
-							sessionId: "codex-1",
-						},
-						{ type: "text", text: "done", sessionId: "codex-1" },
+						{ type: "text", text: "one", sessionId: "codex-1" },
+						{ type: "text", text: "two", sessionId: "codex-1" },
+						{ type: "text", text: "three", sessionId: "codex-1" },
 					];
 				},
 			},
@@ -1330,6 +2001,7 @@ describe("createBrowserApi", () => {
 			.openCodingSessionEventStream({
 				providerId: "codex",
 				sdkSessionId: "codex-1",
+				sinceSequence: 2,
 				signal: controller.signal,
 			})
 			[Symbol.asyncIterator]();
@@ -1338,129 +2010,24 @@ describe("createBrowserApi", () => {
 		expect(rehydrateCalls).toEqual([
 			{ providerId: "codex", sdkSessionId: "codex-1" },
 		]);
-		expect(first.value?.sequence).toBe(1);
+		expect(first.value?.sequence).toBe(3);
 		expect(first.value?.event).toEqual({
-			type: "session_initialized",
-			sessionId: "codex-1",
-		});
-
-		const second = await iterator.next();
-		const third = await iterator.next();
-		const fourth = await iterator.next();
-		const fifth = await iterator.next();
-		expect(second.value?.event).toEqual({ type: "user_prompt", text: "go" });
-		expect(third.value?.sequence).toBe(3);
-		expect(third.value?.event).toEqual({
-			type: "thinking",
-			text: "inspect jsonl",
-			sessionId: "codex-1",
-		});
-		expect(fourth.value?.event).toEqual({
-			type: "command_execution_completed",
-			callId: "call-1",
-			output: "tool result\n",
-			sessionId: "codex-1",
-		});
-		expect(fifth.value?.event).toEqual({
 			type: "text",
-			text: "done",
+			text: "three",
 			sessionId: "codex-1",
 		});
 
-		controller.abort();
-		await iterator.next();
-
-		events.close();
-		codingSessions.close();
-		sessionStore.close();
-	});
-
-	test("does not rehydrate a coding-session event stream that already has provider content", async () => {
-		const root = createTempDir("outclaw-browser-coding-event-no-dup-");
-		cleanupPaths.push(root);
-		const dbPath = join(root, "db.sqlite");
-
-		const sessionStore = new SessionStore(dbPath, {
-			agentId: CODING_STORAGE_OWNER_ID,
-		});
-		const codingSessions = new CodingSessionStore(dbPath);
-		const events = new CodingSessionEventStore(dbPath);
-
-		sessionStore.upsert({
-			providerId: "codex",
-			sdkSessionId: "codex-1",
-			title: "demo",
-			model: "gpt-5.5",
-			source: "code",
-			tag: "code",
-			timestamp: 10,
-		});
-		codingSessions.upsert({
-			providerId: "codex",
-			sdkSessionId: "codex-1",
-			cwd: root,
-			runStatus: "idle",
-			timestamp: 10,
-		});
+		const secondFromStream = iterator.next();
 		events.append({
 			providerId: "codex",
 			sdkSessionId: "codex-1",
-			event: { type: "session_initialized", sessionId: "codex-1" },
+			event: { type: "text", text: "live", sessionId: "codex-1" },
 		});
-		events.append({
-			providerId: "codex",
-			sdkSessionId: "codex-1",
-			event: { type: "text", text: "already streamed", sessionId: "codex-1" },
-		});
-
-		const rehydrateCalls: Array<{
-			providerId: string;
-			sdkSessionId: string;
-		}> = [];
-		const api = createBrowserApi({
-			agents: [],
-			coding: {
-				startPrompt: async () => ({
-					status: "rejected",
-					message: "unused",
-				}),
-				resumePrompt: async () => ({
-					status: "rejected",
-					message: "unused",
-				}),
-				stopPrompt: unusedStopPrompt,
-				rehydrateSessionEvents: async (params) => {
-					rehydrateCalls.push(params);
-					return [{ type: "text", text: "from jsonl", sessionId: "codex-1" }];
-				},
-			},
-			codingEvents: events,
-			codingSessions,
-			getRememberedAgentId: () => undefined,
-			gitRoot: root,
-			homeDir: root,
-			storesByAgent: new Map(),
-		});
-
-		const controller = new AbortController();
-		const iterator = api
-			.openCodingSessionEventStream({
-				providerId: "codex",
-				sdkSessionId: "codex-1",
-				signal: controller.signal,
-			})
-			[Symbol.asyncIterator]();
-
-		const first = await iterator.next();
-		const second = await iterator.next();
-		expect(rehydrateCalls).toEqual([]);
-		expect(first.value?.event).toEqual({
-			type: "session_initialized",
-			sessionId: "codex-1",
-		});
+		const second = await secondFromStream;
+		expect(second.value?.sequence).toBe(4);
 		expect(second.value?.event).toEqual({
 			type: "text",
-			text: "already streamed",
+			text: "live",
 			sessionId: "codex-1",
 		});
 
@@ -2701,7 +3268,7 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
-	test("reads git status with structured commit graph data", async () => {
+	test("reads git status with structured commit history data", async () => {
 		const root = createTempDir("outclaw-browser-git-");
 		cleanupPaths.push(root);
 
@@ -2752,7 +3319,7 @@ describe("createBrowserApi", () => {
 				throw new Error("expected initialized git status");
 			}
 			expect(status.branch).toBe("main");
-			const secondCommit = status.graph.commits.find(
+			const secondCommit = status.history.commits.find(
 				(commit) => commit.commit.message === "Second commit",
 			);
 			expect(secondCommit).toBeDefined();
@@ -2760,17 +3327,11 @@ describe("createBrowserApi", () => {
 			expect(secondCommit?.parents.length).toBe(1);
 			expect(secondCommit?.parents[0]?.sha.length).toBeGreaterThan(0);
 
-			const initialCommit = status.graph.commits.find(
+			const initialCommit = status.history.commits.find(
 				(commit) => commit.commit.message === "Initial commit",
 			);
 			expect(initialCommit).toBeDefined();
 			expect(initialCommit?.parents).toEqual([]);
-
-			const mainHead = status.graph.branchHeads.find(
-				(head) => head.name === "main",
-			);
-			expect(mainHead).toBeDefined();
-			expect(mainHead?.commit.sha.length).toBeGreaterThan(0);
 		} finally {
 			store?.close();
 			restoreProcessEnvValue("GIT_AUTHOR_NAME", previousGitAuthorName);
@@ -2778,6 +3339,64 @@ describe("createBrowserApi", () => {
 			restoreProcessEnvValue("GIT_COMMITTER_NAME", previousGitCommitterName);
 			restoreProcessEnvValue("GIT_COMMITTER_EMAIL", previousGitCommitterEmail);
 		}
+	});
+
+	test("pages git commit history after the status history window", async () => {
+		const root = createTempDir("outclaw-browser-git-history-pages-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		runGit(root, ["init", "--initial-branch=main"]);
+		runGit(root, ["config", "user.email", "test@example.com"]);
+		runGit(root, ["config", "user.name", "Test User"]);
+		for (let index = 1; index <= 35; index += 1) {
+			writeFileSync(join(root, "history.txt"), `${index}\n`);
+			runGit(root, ["add", "history.txt"]);
+			runGit(root, [
+				"commit",
+				"-m",
+				`Commit ${String(index).padStart(2, "0")}`,
+			]);
+		}
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		const status = await api.readGitStatus();
+		if (!status.initialized) {
+			throw new Error("expected initialized git status");
+		}
+		expect(status.history.commits).toHaveLength(30);
+		expect(status.history.commits[0]?.commit.message).toBe("Commit 35");
+		expect(status.history.commits[29]?.commit.message).toBe("Commit 06");
+		expect(status.history.nextCursor).toBe("30");
+
+		const olderHistory = await api.readGitHistory({
+			cursor: status.history.nextCursor,
+		});
+		expect(olderHistory.commits.map((commit) => commit.commit.message)).toEqual(
+			["Commit 05", "Commit 04", "Commit 03", "Commit 02", "Commit 01"],
+		);
+		expect(olderHistory.nextCursor).toBeUndefined();
+
+		store.close();
 	});
 
 	test("reads full commit details and patch by sha", async () => {
@@ -2839,6 +3458,78 @@ describe("createBrowserApi", () => {
 		});
 		await expect(api.readGitDiff("../outside.md")).rejects.toThrow(
 			"Path escapes agent home",
+		);
+
+		store.close();
+	});
+
+	test("reads commit stats with per-file additions, deletions, and status", async () => {
+		const root = createTempDir("outclaw-browser-git-commit-stats-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		runGit(root, ["init", "--initial-branch=main"]);
+		runGit(root, ["config", "user.email", "test@example.com"]);
+		runGit(root, ["config", "user.name", "Test User"]);
+		writeFileSync(join(root, "keep.txt"), "alpha\nbeta\n");
+		writeFileSync(join(root, "drop.txt"), "to-be-deleted\n");
+		runGit(root, ["add", "keep.txt", "drop.txt"]);
+		runGit(root, ["commit", "-m", "Initial commit"]);
+		writeFileSync(join(root, "keep.txt"), "alpha\nbeta\ngamma\n");
+		writeFileSync(join(root, "fresh.txt"), "new\nfile\n");
+		runGit(root, ["rm", "drop.txt"]);
+		runGit(root, ["add", "keep.txt", "fresh.txt"]);
+		runGit(root, ["commit", "-m", "Second commit"]);
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		const sha = runGit(root, ["rev-parse", "HEAD"]).trim();
+		const stats = await api.readGitCommitStats(sha);
+		expect(stats.sha).toBe(sha);
+		expect(stats.totalAdditions).toBe(3);
+		expect(stats.totalDeletions).toBe(1);
+		expect(stats.files).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					path: "keep.txt",
+					change: "modified",
+					additions: 1,
+					deletions: 0,
+					binary: false,
+				}),
+				expect.objectContaining({
+					path: "fresh.txt",
+					change: "added",
+					additions: 2,
+					deletions: 0,
+					binary: false,
+				}),
+				expect.objectContaining({
+					path: "drop.txt",
+					change: "deleted",
+					additions: 0,
+					deletions: 1,
+					binary: false,
+				}),
+			]),
 		);
 
 		store.close();

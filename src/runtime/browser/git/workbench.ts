@@ -2,12 +2,14 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type {
 	BrowserFileGitChange,
+	BrowserGitCommitFileChangeType,
+	BrowserGitCommitFileStat,
 	BrowserGitCommitResponse,
+	BrowserGitCommitStats,
 	BrowserGitDiffResponse,
 	BrowserGitFileStatus,
-	BrowserGitGraph,
-	BrowserGitGraphBranchHead,
-	BrowserGitGraphCommit,
+	BrowserGitHistory,
+	BrowserGitHistoryCommit,
 	BrowserGitInitializedResponse,
 	BrowserGitStatusResponse,
 	BrowserTreeEntryGitStatus,
@@ -20,7 +22,8 @@ import {
 	toRelativePath,
 } from "../paths/path-safety.ts";
 
-const MAX_GIT_GRAPH_COMMITS = 30;
+const MAX_GIT_HISTORY_COMMITS = 30;
+const MAX_GIT_HISTORY_PAGE_SIZE = 100;
 const MAX_GIT_NUMSTAT_PATHS_PER_BATCH = 200;
 
 export function normalizeGitPaths(paths: readonly string[]): string[] {
@@ -44,7 +47,7 @@ export function readGitStatus(
 	return parseGitStatus(
 		output,
 		gitRoot,
-		readGitGraphData(gitRoot),
+		readGitHistory(gitRoot),
 		ignoredGitPaths,
 	);
 }
@@ -91,6 +94,179 @@ export function readGitDiff(
 		path: relativePath,
 		diff,
 	};
+}
+
+export function readGitCommitStats(
+	root: string,
+	sha: string,
+): BrowserGitCommitStats {
+	const resolvedSha = resolveGitCommitSha(root, sha);
+	const parentSha = readFirstParentSha(root, resolvedSha);
+	const numstatArgs: string[] =
+		parentSha === undefined
+			? ["show", "-z", "--numstat", "--format=", resolvedSha]
+			: ["diff", "-z", "--numstat", parentSha, resolvedSha];
+	const nameStatusArgs: string[] =
+		parentSha === undefined
+			? ["show", "-z", "--name-status", "--format=", resolvedSha]
+			: ["diff", "-z", "--name-status", parentSha, resolvedSha];
+
+	const numstatOutput = runGit(root, numstatArgs, false);
+	const nameStatusOutput = runGit(root, nameStatusArgs, false);
+
+	const numstatByPath = parseGitNumstatZ(numstatOutput);
+	const statusByPath = parseGitNameStatusZ(nameStatusOutput);
+
+	const files: BrowserGitCommitFileStat[] = [];
+	let totalAdditions = 0;
+	let totalDeletions = 0;
+	for (const [path, status] of statusByPath) {
+		const stat = numstatByPath.get(path) ?? {
+			additions: 0,
+			deletions: 0,
+			binary: false,
+		};
+		files.push({
+			path,
+			change: status.change,
+			renamedFrom: status.renamedFrom,
+			additions: stat.additions,
+			deletions: stat.deletions,
+			binary: stat.binary,
+		});
+		totalAdditions += stat.additions;
+		totalDeletions += stat.deletions;
+	}
+
+	return {
+		sha: resolvedSha,
+		files,
+		totalAdditions,
+		totalDeletions,
+	};
+}
+
+function readFirstParentSha(root: string, sha: string): string | undefined {
+	const parents = runGit(
+		root,
+		["show", "--no-patch", "--format=%P", sha],
+		false,
+	)
+		.trim()
+		.split(/\s+/)
+		.filter((part) => part !== "");
+	return parents[0];
+}
+
+interface GitNumstatEntry {
+	additions: number;
+	deletions: number;
+	binary: boolean;
+}
+
+function parseGitNumstatZ(output: string): Map<string, GitNumstatEntry> {
+	const result = new Map<string, GitNumstatEntry>();
+	const fields = output.split("\0");
+	let index = 0;
+	while (index < fields.length) {
+		const head = fields[index];
+		if (head === undefined || head === "") {
+			index += 1;
+			continue;
+		}
+		const parts = head.split("\t");
+		if (parts.length < 3) {
+			index += 1;
+			continue;
+		}
+		const [addedRaw, deletedRaw, inlinePath] = parts;
+		if (addedRaw === undefined || deletedRaw === undefined) {
+			index += 1;
+			continue;
+		}
+		const additions = addedRaw === "-" ? 0 : Number.parseInt(addedRaw, 10);
+		const deletions = deletedRaw === "-" ? 0 : Number.parseInt(deletedRaw, 10);
+		const binary = addedRaw === "-" || deletedRaw === "-";
+		const entry: GitNumstatEntry = {
+			additions: Number.isFinite(additions) ? additions : 0,
+			deletions: Number.isFinite(deletions) ? deletions : 0,
+			binary,
+		};
+		if (inlinePath !== undefined && inlinePath !== "") {
+			result.set(inlinePath, entry);
+			index += 1;
+			continue;
+		}
+		const newPath = fields[index + 2];
+		if (newPath !== undefined && newPath !== "") {
+			result.set(newPath, entry);
+		}
+		index += 3;
+	}
+	return result;
+}
+
+interface GitNameStatusEntry {
+	change: BrowserGitCommitFileChangeType;
+	renamedFrom?: string;
+}
+
+function parseGitNameStatusZ(output: string): Map<string, GitNameStatusEntry> {
+	const result = new Map<string, GitNameStatusEntry>();
+	const fields = output.split("\0");
+	let index = 0;
+	while (index < fields.length) {
+		const head = fields[index];
+		if (head === undefined || head === "") {
+			index += 1;
+			continue;
+		}
+		const code = head[0];
+		const change = mapGitStatusCode(code);
+		if (change === undefined) {
+			index += 1;
+			continue;
+		}
+		if (code === "R" || code === "C") {
+			const oldPath = fields[index + 1];
+			const newPath = fields[index + 2];
+			if (newPath !== undefined && newPath !== "") {
+				result.set(newPath, {
+					change,
+					renamedFrom: oldPath,
+				});
+			}
+			index += 3;
+			continue;
+		}
+		const path = fields[index + 1];
+		if (path !== undefined && path !== "") {
+			result.set(path, { change });
+		}
+		index += 2;
+	}
+	return result;
+}
+
+function mapGitStatusCode(
+	code: string | undefined,
+): BrowserGitCommitFileChangeType | undefined {
+	switch (code) {
+		case "A":
+			return "added";
+		case "M":
+			return "modified";
+		case "D":
+			return "deleted";
+		case "R":
+			return "renamed";
+		case "C":
+			return "copied";
+		case "T":
+			return "type-changed";
+		default:
+			return undefined;
+	}
 }
 
 export function readGitCommit(
@@ -299,7 +475,7 @@ function resolveGitCommitSha(root: string, sha: string): string {
 function parseGitStatus(
 	output: string,
 	root: string,
-	graph: BrowserGitGraph,
+	history: BrowserGitHistory,
 	ignoredGitPaths: readonly string[],
 ): BrowserGitInitializedResponse {
 	const lines = output
@@ -325,7 +501,7 @@ function parseGitStatus(
 		ahead,
 		behind,
 		clean: files.length === 0,
-		graph,
+		history,
 		files: files.map((file) => ({
 			...file,
 			...(lineCounts.get(file.path) ?? { additions: 0, deletions: 0 }),
@@ -625,20 +801,59 @@ function isIgnoredGitPath(
 	);
 }
 
-function readGitGraphData(root: string): BrowserGitGraph {
+export function readGitHistory(
+	root: string,
+	options: { cursor?: string; limit?: number } = {},
+): BrowserGitHistory {
+	const limit = normalizeGitHistoryLimit(options.limit);
+	const offset = parseGitHistoryCursor(options.cursor);
+	const commits = readGitHistoryCommits(root, {
+		limit: limit + 1,
+		offset,
+	});
 	return {
-		commits: readGitGraphCommits(root),
-		branchHeads: readGitGraphBranchHeads(root),
+		commits: commits.slice(0, limit),
+		...(commits.length > limit ? { nextCursor: String(offset + limit) } : {}),
 	};
 }
 
-function readGitGraphCommits(root: string): BrowserGitGraphCommit[] {
+function normalizeGitHistoryLimit(limit: number | undefined): number {
+	if (limit === undefined) {
+		return MAX_GIT_HISTORY_COMMITS;
+	}
+	if (!Number.isInteger(limit) || limit <= 0) {
+		throw new Error("Invalid git history limit");
+	}
+	return Math.min(limit, MAX_GIT_HISTORY_PAGE_SIZE);
+}
+
+function parseGitHistoryCursor(cursor: string | undefined): number {
+	if (cursor === undefined || cursor === "") {
+		return 0;
+	}
+	if (!/^\d+$/.test(cursor)) {
+		throw new Error("Invalid git history cursor");
+	}
+	const offset = Number.parseInt(cursor, 10);
+	if (!Number.isSafeInteger(offset)) {
+		throw new Error("Invalid git history cursor");
+	}
+	return offset;
+}
+
+function readGitHistoryCommits(
+	root: string,
+	options: { limit: number; offset: number },
+): BrowserGitHistoryCommit[] {
 	const result = Bun.spawnSync(
 		[
 			"git",
 			"log",
-			"--all",
-			`-${MAX_GIT_GRAPH_COMMITS}`,
+			"--branches",
+			"--tags",
+			"--remotes",
+			`--max-count=${options.limit}`,
+			`--skip=${options.offset}`,
 			"--format=%H%x1f%P%x1f%an%x1f%aI%x1f%s",
 			"--no-color",
 		],
@@ -658,13 +873,15 @@ function readGitGraphCommits(root: string): BrowserGitGraphCommit[] {
 		.trimEnd()
 		.split(/\r?\n/)
 		.filter((line) => line !== "")
-		.map((line) => parseGitGraphCommitLine(line))
-		.filter((commit): commit is BrowserGitGraphCommit => commit !== undefined);
+		.map((line) => parseGitHistoryCommitLine(line))
+		.filter(
+			(commit): commit is BrowserGitHistoryCommit => commit !== undefined,
+		);
 }
 
-function parseGitGraphCommitLine(
+function parseGitHistoryCommitLine(
 	line: string,
-): BrowserGitGraphCommit | undefined {
+): BrowserGitHistoryCommit | undefined {
 	const [sha, parentsValue, authorName, authorDate, message] =
 		line.split("\x1f");
 	if (
@@ -693,47 +910,6 @@ function parseGitGraphCommitLine(
 					sha,
 				})) ?? [],
 	};
-}
-
-function readGitGraphBranchHeads(root: string): BrowserGitGraphBranchHead[] {
-	const result = Bun.spawnSync(
-		[
-			"git",
-			"for-each-ref",
-			"refs/heads",
-			"--format=%(refname:short)\t%(objectname)",
-		],
-		{
-			cwd: root,
-			env: gitProcessEnv(),
-			stderr: "pipe",
-			stdout: "pipe",
-		},
-	);
-	if (result.exitCode !== 0) {
-		return [];
-	}
-
-	return result.stdout
-		.toString()
-		.trimEnd()
-		.split(/\r?\n/)
-		.filter((line) => line !== "")
-		.map((line): BrowserGitGraphBranchHead | undefined => {
-			const [name, sha] = line.split("\t");
-			if (!name || !sha) {
-				return undefined;
-			}
-			return {
-				name,
-				commit: {
-					sha,
-				},
-			};
-		})
-		.filter(
-			(branch): branch is BrowserGitGraphBranchHead => branch !== undefined,
-		);
 }
 
 function toAgentTreeGitChanges(

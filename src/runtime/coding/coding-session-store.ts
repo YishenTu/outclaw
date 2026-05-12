@@ -246,6 +246,24 @@ export class CodingSessionStore {
 			});
 	}
 
+	archive(providerId: string, sdkSessionId: string, timestamp?: number) {
+		this.updateLifecycleStatus({
+			providerId,
+			sdkSessionId,
+			lifecycleStatus: "archived",
+			timestamp,
+		});
+	}
+
+	restore(providerId: string, sdkSessionId: string, timestamp?: number) {
+		this.updateLifecycleStatus({
+			providerId,
+			sdkSessionId,
+			lifecycleStatus: "open",
+			timestamp,
+		});
+	}
+
 	rename(providerId: string, sdkSessionId: string, title: string) {
 		this.db
 			.query(
@@ -268,6 +286,7 @@ export class CodingSessionStore {
 			cursor?: SessionCursor;
 			linkedChatSessionId?: string;
 			limit?: number;
+			lifecycleStatus?: CodingSessionLifecycleStatus;
 			providerId?: string;
 			query?: string;
 			repositoryId?: string;
@@ -277,8 +296,10 @@ export class CodingSessionStore {
 		const conditions = ["c.agent_id = $agentId"];
 		const params: Record<string, string | number> = {
 			$agentId: this.storageOwnerId,
+			$lifecycleStatus: options.lifecycleStatus ?? "open",
 			$limit: limit,
 		};
+		conditions.push("c.lifecycle_status = $lifecycleStatus");
 
 		if (options.providerId) {
 			conditions.push("c.provider_id = $providerId");
@@ -485,6 +506,31 @@ export class CodingSessionStore {
 
 	close() {
 		closeSqliteDatabase(this.db, this.dbFileKey);
+	}
+
+	private updateLifecycleStatus(params: {
+		providerId: string;
+		sdkSessionId: string;
+		lifecycleStatus: CodingSessionLifecycleStatus;
+		timestamp?: number;
+	}) {
+		const now = params.timestamp ?? Date.now();
+		this.db
+			.query(
+				`UPDATE coding_sessions
+				 SET lifecycle_status = $lifecycleStatus,
+				     last_active = $now
+				 WHERE agent_id = $agentId
+				   AND provider_id = $providerId
+				   AND sdk_session_id = $sdkSessionId`,
+			)
+			.run({
+				$agentId: this.storageOwnerId,
+				$providerId: params.providerId,
+				$sdkSessionId: params.sdkSessionId,
+				$lifecycleStatus: params.lifecycleStatus,
+				$now: now,
+			});
 	}
 
 	private updateRunStatus(params: {

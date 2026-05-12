@@ -1,4 +1,13 @@
-import { Bot, FileEdit, Globe, Terminal, Wrench } from "lucide-react";
+import {
+	Bot,
+	CheckCircle2,
+	Circle,
+	FileEdit,
+	Globe,
+	ListChecks,
+	Terminal,
+	Wrench,
+} from "lucide-react";
 import type { DisplayChatMessage } from "../../../common/protocol.ts";
 import { Message } from "../components/chat/message.tsx";
 import { ThinkingBlock } from "../components/chat/thinking-block.tsx";
@@ -88,10 +97,9 @@ function groupEvents(
 	events: CodingSessionEventStreamItem[],
 ): CodingEventGroup[] {
 	const groups: CodingEventGroup[] = [];
-	let currentText:
-		| { key: string; chunks: string[]; turnFooter?: TurnFooter }
-		| undefined;
+	let currentText: { key: string; chunks: string[] } | undefined;
 	let currentThinking: { key: string; chunks: string[] } | undefined;
+	let currentTurnWorkStartIndex = 0;
 	const toolEntriesByCallId = new Map<string, ToolEntry>();
 
 	const recordToolEvent = (
@@ -147,14 +155,10 @@ function groupEvents(
 		}
 		const text = currentText.chunks.join("");
 		const key = currentText.key;
-		const footer = currentText.turnFooter;
 		groups.push({
 			key,
 			render: () => (
-				<Message
-					message={assistantMessage(text, footer)}
-					showUtilityBar={footer !== undefined}
-				/>
+				<Message message={assistantMessage(text)} showUtilityBar={false} />
 			),
 		});
 		currentText = undefined;
@@ -193,6 +197,7 @@ function groupEvents(
 					/>
 				),
 			});
+			currentTurnWorkStartIndex = groups.length;
 			continue;
 		}
 
@@ -230,11 +235,29 @@ function groupEvents(
 				typeof event.durationMs === "number" ? event.durationMs : undefined;
 			const footer: TurnFooter = {
 				timestamp: item.createdAt,
-				...(durationMs !== undefined ? { durationMs } : {}),
 			};
+			const workGroups = groups.slice(currentTurnWorkStartIndex);
+			if (workGroups.length > 0 || durationMs !== undefined) {
+				groups.splice(currentTurnWorkStartIndex, workGroups.length, {
+					key: `completed-work-${item.sequence}`,
+					render: () => (
+						<CompletedWorkDisclosure
+							durationMs={durationMs}
+							groups={workGroups}
+						/>
+					),
+				});
+			}
 			if (currentText) {
-				currentText.turnFooter = footer;
-				flushText();
+				const text = currentText.chunks.join("");
+				const key = currentText.key;
+				groups.push({
+					key,
+					render: () => (
+						<Message message={assistantMessage(text, footer)} showUtilityBar />
+					),
+				});
+				currentText = undefined;
 			} else {
 				groups.push({
 					key: `done-${item.sequence}`,
@@ -243,6 +266,7 @@ function groupEvents(
 					),
 				});
 			}
+			currentTurnWorkStartIndex = groups.length;
 			continue;
 		}
 
@@ -251,7 +275,14 @@ function groupEvents(
 		// - image: runtime-extracted from assistant text; the path itself already
 		//   appears in the message, and we have no endpoint serving arbitrary
 		//   local files for inline preview.
-		if (type === "usage_updated" || type === "image") {
+		// - write_stdin/custom_tool_call_output: transport noise from older or
+		//   partially-normalized Codex event logs; substantive command/file data
+		//   is projected elsewhere and these rows only duplicate or distract.
+		if (
+			type === "usage_updated" ||
+			type === "image" ||
+			isHiddenToolNoiseEvent(event)
+		) {
 			continue;
 		}
 
@@ -289,14 +320,6 @@ function groupEvents(
 		}
 
 		if (type === "session_initialized") {
-			groups.push({
-				key: `init-${item.sequence}`,
-				render: () => (
-					<div className="text-xs uppercase tracking-wide text-dark-500">
-						Session started: {item.sdkSessionId}
-					</div>
-				),
-			});
 			continue;
 		}
 
@@ -350,6 +373,58 @@ interface ToolEntry {
 	sequence: number;
 }
 
+function CompletedWorkDisclosure({
+	durationMs,
+	groups,
+}: {
+	durationMs?: number;
+	groups: CodingEventGroup[];
+}) {
+	const durationLabel = formatWorkDuration(durationMs);
+	const summary = durationLabel ? `Works for ${durationLabel}` : "Work details";
+
+	return (
+		<details>
+			<summary className="font-mono-ui cursor-pointer list-none border-b border-dark-500 px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-dark-500 transition-colors hover:text-dark-300 [&::-webkit-details-marker]:hidden">
+				<span className="tabular-nums">{summary}</span>
+			</summary>
+			<div className="mt-2 flex flex-col gap-3">
+				{groups.length > 0 ? (
+					groups.map((group) => <div key={group.key}>{group.render()}</div>)
+				) : (
+					<div className="font-mono-ui px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-dark-600">
+						No intermediate output
+					</div>
+				)}
+			</div>
+		</details>
+	);
+}
+
+function formatWorkDuration(
+	durationMs: number | undefined,
+): string | undefined {
+	if (durationMs === undefined || durationMs < 0) {
+		return undefined;
+	}
+
+	const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+	const seconds = totalSeconds % 60;
+	const totalMinutes = Math.floor(totalSeconds / 60);
+	const minutes = totalMinutes % 60;
+	const hours = Math.floor(totalMinutes / 60);
+
+	if (hours > 0) {
+		return `${hours}h${String(minutes).padStart(2, "0")}m${String(seconds).padStart(2, "0")}s`;
+	}
+
+	if (totalMinutes > 0) {
+		return `${totalMinutes}m${String(seconds).padStart(2, "0")}s`;
+	}
+
+	return `${seconds}s`;
+}
+
 function toolCategoryFor(
 	type: string | undefined,
 ): { category: ToolCategory; isStart: boolean } | undefined {
@@ -373,6 +448,17 @@ function toolCategoryFor(
 		default:
 			return undefined;
 	}
+}
+
+function isHiddenToolNoiseEvent(event: FacadeLike): boolean {
+	const type = event.type;
+	if (type !== "tool_call_started" && type !== "tool_call_completed") {
+		return false;
+	}
+	return (
+		event.toolKind === "write_stdin" ||
+		event.toolKind === "custom_tool_call_output"
+	);
 }
 
 function renderToolEntry(entry: ToolEntry): React.ReactNode {
@@ -409,10 +495,11 @@ function ToolFrame({
 	iconColorClass: string;
 	label: React.ReactNode;
 	detail?: React.ReactNode;
-	meta: React.ReactNode;
+	meta?: React.ReactNode;
 	isFailure?: boolean;
 	children: React.ReactNode;
 }) {
+	const dividerColor = isFailure ? "border-danger/40" : "border-dark-800";
 	return (
 		<details
 			className={`group overflow-hidden rounded-md border text-xs leading-5 ${
@@ -431,15 +518,17 @@ function ToolFrame({
 				<span className="min-w-0 flex-1 truncate font-mono text-dark-300">
 					{detail}
 				</span>
-				<span
-					className={`ml-auto flex-shrink-0 text-[10px] uppercase tracking-wide ${
-						isFailure ? "text-danger" : "text-dark-500"
-					}`}
-				>
-					{meta}
-				</span>
+				{meta !== undefined && meta !== null && meta !== "" && (
+					<span
+						className={`ml-auto flex-shrink-0 text-[10px] uppercase tracking-wide ${
+							isFailure ? "text-danger" : "text-dark-500"
+						}`}
+					>
+						{meta}
+					</span>
+				)}
 			</summary>
-			<div className="border-t border-dark-800/60 bg-dark-950/40">
+			<div className={`border-t ${dividerColor} bg-dark-950/40`}>
 				{children}
 			</div>
 		</details>
@@ -519,7 +608,6 @@ function renderCommand(entry: ToolEntry): React.ReactNode {
 		(entry.completed?.command as string | undefined) ??
 		"<unknown command>";
 	const exitCode = entry.completed?.exitCode as number | undefined;
-	const durationMs = entry.completed?.durationMs as number | undefined;
 	const streamedOutput = entry.outputs?.join("") ?? "";
 	const output =
 		typeof entry.completed?.output === "string"
@@ -528,11 +616,7 @@ function renderCommand(entry: ToolEntry): React.ReactNode {
 	const isPending = !entry.completed;
 	const isFailure =
 		!isPending && typeof exitCode === "number" && exitCode !== 0;
-	const meta = isPending
-		? "running…"
-		: `exit ${exitCode ?? "?"}${
-				durationMs !== undefined ? ` · ${durationMs}ms` : ""
-			}`;
+	const meta = isPending ? "running…" : undefined;
 
 	return (
 		<ToolFrame
@@ -611,6 +695,9 @@ function renderGenericTool(entry: ToolEntry): React.ReactNode {
 		"tool";
 	if (toolKind === "collabAgentToolCall") {
 		return renderSubagent(entry);
+	}
+	if (toolKind === "update_plan") {
+		return renderUpdatePlan(entry);
 	}
 	const isPending = !entry.completed;
 	const status =
@@ -715,6 +802,175 @@ function asPayloadRecord(value: unknown): Record<string, unknown> | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const record = value as Record<string, unknown>;
 	return Object.keys(record).length === 0 ? undefined : record;
+}
+
+interface UpdatePlanStep {
+	step: string;
+	status: string;
+}
+
+function renderUpdatePlan(entry: ToolEntry): React.ReactNode {
+	// Codex delivers `update_plan` as a function_call whose `arguments` field
+	// is a JSON-encoded `{ explanation, plan }` payload, flattened by the
+	// normalizer into a single detail entry. The completion side only carries
+	// a "Plan updated" acknowledgement — drop it in favor of the structured
+	// step list.
+	const args =
+		readUpdatePlanArguments(entry.started) ??
+		readUpdatePlanArguments(entry.completed);
+	const explanation = args?.explanation;
+	const steps = args?.steps ?? [];
+	const isPending = !entry.completed;
+	const summary = explanation
+		? truncate(explanation, 96)
+		: steps.length > 0
+			? `${steps.length} step${steps.length === 1 ? "" : "s"}`
+			: "update_plan";
+	const meta = isPending
+		? "updating…"
+		: steps.length > 0
+			? planProgressLabel(steps)
+			: undefined;
+	const hasBody = !!explanation || steps.length > 0;
+
+	return (
+		<ToolFrame
+			icon={ListChecks}
+			iconColorClass="text-sky-400"
+			label="update_plan"
+			detail={summary}
+			meta={meta}
+		>
+			<ToolBody>
+				{explanation && (
+					<ToolSection label="description">
+						<div className="whitespace-pre-wrap break-words text-dark-100">
+							{explanation}
+						</div>
+					</ToolSection>
+				)}
+				{steps.length > 0 && (
+					<ToolSection label="steps">
+						<ul className="flex flex-col gap-1">
+							{withStableKeys(steps.map((step) => step.step)).map(
+								({ key }, index) => {
+									const step = steps[index];
+									if (!step) return null;
+									return <PlanStepRow key={key} step={step} />;
+								},
+							)}
+						</ul>
+					</ToolSection>
+				)}
+				{!hasBody && (
+					<ToolEmpty>{isPending ? "updating…" : "(no plan)"}</ToolEmpty>
+				)}
+			</ToolBody>
+		</ToolFrame>
+	);
+}
+
+function PlanStepRow({ step }: { step: UpdatePlanStep }) {
+	const { Icon, iconClass, textClass } = planStepStyle(step.status);
+	return (
+		<li className="flex items-center gap-2">
+			<Icon className={`h-3.5 w-3.5 flex-shrink-0 ${iconClass}`} />
+			<span className={`whitespace-pre-wrap break-words ${textClass}`}>
+				{step.step}
+			</span>
+		</li>
+	);
+}
+
+function planStepStyle(status: string): {
+	Icon: React.ComponentType<{ className?: string }>;
+	iconClass: string;
+	textClass: string;
+} {
+	switch (status) {
+		case "completed":
+			return {
+				Icon: CheckCircle2,
+				iconClass: "text-emerald-500/60",
+				textClass: "text-dark-500",
+			};
+		case "in_progress":
+			return {
+				Icon: Circle,
+				iconClass: "text-amber-400",
+				textClass: "text-amber-400/70 italic",
+			};
+		case "failed":
+		case "blocked":
+			return {
+				Icon: Circle,
+				iconClass: "text-rose-400",
+				textClass: "text-rose-300",
+			};
+		default:
+			return {
+				Icon: Circle,
+				iconClass: "text-dark-500",
+				textClass: "text-dark-200",
+			};
+	}
+}
+
+function readUpdatePlanArguments(
+	event: FacadeLike | undefined,
+): { explanation?: string; steps: UpdatePlanStep[] } | undefined {
+	if (!event) {
+		return undefined;
+	}
+	const fromDetails = readToolDetails(event.details).find(
+		(detail) => detail.label === "arguments",
+	);
+	const raw = fromDetails?.value;
+	if (typeof raw !== "string" || raw.length === 0) {
+		return undefined;
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return undefined;
+	}
+	if (!parsed || typeof parsed !== "object") {
+		return undefined;
+	}
+	const record = parsed as Record<string, unknown>;
+	const explanation =
+		typeof record.explanation === "string" ? record.explanation : undefined;
+	const steps = Array.isArray(record.plan)
+		? record.plan
+				.map((entry): UpdatePlanStep | undefined => {
+					if (!entry || typeof entry !== "object") {
+						return undefined;
+					}
+					const stepRecord = entry as Record<string, unknown>;
+					const stepText =
+						typeof stepRecord.step === "string" ? stepRecord.step : undefined;
+					const status =
+						typeof stepRecord.status === "string"
+							? stepRecord.status
+							: undefined;
+					if (!stepText || !status) {
+						return undefined;
+					}
+					return { step: stepText, status };
+				})
+				.filter((step): step is UpdatePlanStep => step !== undefined)
+		: [];
+	if (!explanation && steps.length === 0) {
+		return undefined;
+	}
+	return { ...(explanation ? { explanation } : {}), steps };
+}
+
+function planProgressLabel(steps: UpdatePlanStep[]): string | undefined {
+	if (steps.length === 0) return undefined;
+	const completed = steps.filter((step) => step.status === "completed").length;
+	return `${completed}/${steps.length} done`;
 }
 
 interface SubagentState {

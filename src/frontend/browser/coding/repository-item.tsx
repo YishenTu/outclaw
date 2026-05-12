@@ -1,4 +1,10 @@
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import {
+	Archive,
+	ChevronDown,
+	ChevronRight,
+	MoreHorizontal,
+	Search,
+} from "lucide-react";
 import { type Ref, useEffect, useRef, useState } from "react";
 import type {
 	BrowserCodingSessionSummary,
@@ -6,26 +12,29 @@ import type {
 } from "../../../common/protocol.ts";
 import { SessionItem } from "../components/agent-sidebar/session-item.tsx";
 
+interface RepositorySearchState {
+	query: string;
+	sessions: BrowserCodingSessionSummary[];
+	nextCursor?: SessionCursor;
+}
+
 interface RepositoryItemProps {
 	repository: { id: string; displayName: string };
 	isExpanded: boolean;
 	focusedSession?: { providerId: string; sdkSessionId: string };
 	sessions: BrowserCodingSessionSummary[];
 	nextCursor?: SessionCursor;
-	searchState?: {
-		query: string;
-		sessions: BrowserCodingSessionSummary[];
-		nextCursor?: SessionCursor;
-	};
+	searchState?: RepositorySearchState;
 	onToggle: () => void;
 	onSelectRepository: () => void;
 	onNewSession: () => void;
+	onArchiveRepository: () => void;
 	onSelectSession: (session: BrowserCodingSessionSummary) => void;
 	onRenameSession: (
 		session: BrowserCodingSessionSummary,
 		title: string,
 	) => void;
-	onDeleteSession: (session: BrowserCodingSessionSummary) => void;
+	onArchiveSession: (session: BrowserCodingSessionSummary) => void;
 	onLoadMore: () => void;
 	onSearch: (query: string) => void;
 	onLoadMoreSearch: (query: string) => void;
@@ -42,9 +51,10 @@ export function RepositoryItem({
 	onToggle,
 	onSelectRepository,
 	onNewSession,
+	onArchiveRepository,
 	onSelectSession,
 	onRenameSession,
-	onDeleteSession,
+	onArchiveSession,
 	onLoadMore,
 	onSearch,
 	onLoadMoreSearch,
@@ -54,7 +64,9 @@ export function RepositoryItem({
 		() => (searchState?.query.trim() ?? "") !== "",
 	);
 	const [draftSearch, setDraftSearch] = useState(searchState?.query ?? "");
+	const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
 	const loadMoreRef = useRef<HTMLDivElement | null>(null);
+	const actionsMenuRef = useRef<HTMLDivElement | null>(null);
 	const effectiveSearchQuery = draftSearch.trim();
 	const searchActive = searchOpen && effectiveSearchQuery !== "";
 	const visibleSearchResults =
@@ -74,6 +86,10 @@ export function RepositoryItem({
 			return;
 		}
 		setSearchOpen(true);
+	}
+
+	function closeActionsMenu() {
+		setActionsMenuOpen(false);
 	}
 
 	useEffect(() => {
@@ -97,6 +113,39 @@ export function RepositoryItem({
 		}, 150);
 		return () => clearTimeout(timer);
 	}, [draftSearch, onClearSearch, onSearch, searchOpen]);
+
+	useEffect(() => {
+		if (!actionsMenuOpen) {
+			return;
+		}
+
+		function closeMenu() {
+			setActionsMenuOpen(false);
+		}
+
+		function handlePointerDown(event: PointerEvent) {
+			if (actionsMenuRef.current?.contains(event.target as Node)) {
+				return;
+			}
+			closeMenu();
+		}
+
+		function handleKeyDown(event: KeyboardEvent) {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				closeMenu();
+			}
+		}
+
+		document.addEventListener("pointerdown", handlePointerDown);
+		window.addEventListener("blur", closeMenu);
+		window.addEventListener("keydown", handleKeyDown);
+		return () => {
+			document.removeEventListener("pointerdown", handlePointerDown);
+			window.removeEventListener("blur", closeMenu);
+			window.removeEventListener("keydown", handleKeyDown);
+		};
+	}, [actionsMenuOpen]);
 
 	useEffect(() => {
 		const cursor = searchActive ? searchState?.nextCursor : nextCursor;
@@ -128,19 +177,35 @@ export function RepositoryItem({
 		searchState?.nextCursor,
 	]);
 
-	function renderSession(session: BrowserCodingSessionSummary) {
+	function renderOpenSession(session: BrowserCodingSessionSummary) {
+		const title = session.title || session.sdkSessionId;
 		return (
 			<SessionItem
 				key={`${session.providerId}:${session.sdkSessionId}`}
-				title={session.title || session.sdkSessionId}
+				title={title}
 				lastActive={session.lastActive}
 				isActive={
 					focusedSession?.providerId === session.providerId &&
 					focusedSession.sdkSessionId === session.sdkSessionId
 				}
 				onSelect={() => onSelectSession(session)}
-				onRename={(title) => onRenameSession(session, title)}
-				onDelete={() => onDeleteSession(session)}
+				onRename={(nextTitle) => onRenameSession(session, nextTitle)}
+				onDelete={() => onArchiveSession(session)}
+				actionAriaLabel={`Archive session ${title}`}
+				actionConfirmBody={
+					<>
+						Archive session{" "}
+						<span className="font-medium text-dark-50">
+							&ldquo;{title}&rdquo;
+						</span>
+					</>
+				}
+				actionConfirmLabel="Archive"
+				actionConfirmSubtitle="Can be restored"
+				actionConfirmTitle="Archive session"
+				actionIcon="archive"
+				actionLabel="Archive"
+				actionTone="neutral"
 			/>
 		);
 	}
@@ -151,7 +216,7 @@ export function RepositoryItem({
 				role="treeitem"
 				aria-expanded={isExpanded}
 				tabIndex={-1}
-				className="flex items-center gap-2 rounded px-2 py-1 text-sm text-dark-500 transition-colors hover:text-dark-300"
+				className="group relative flex items-center gap-2 rounded px-2 py-1 text-sm text-dark-500 transition-colors hover:text-dark-300"
 				style={{ paddingLeft: "12px" }}
 			>
 				<button
@@ -171,24 +236,70 @@ export function RepositoryItem({
 						{repository.displayName}
 					</div>
 				</button>
-				<div className="flex w-14 shrink-0 items-center justify-end gap-2">
-					<button
-						type="button"
-						aria-label={
-							searchOpen
-								? `Close session search for ${repository.displayName}`
-								: `Search sessions for ${repository.displayName}`
-						}
-						onClick={toggleSearch}
-						className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
-					>
-						<Search size={14} />
-					</button>
+				<div
+					className={`absolute inset-y-0 right-2 z-10 flex items-center gap-1 rounded bg-dark-950/95 pl-1 transition-opacity ${
+						actionsMenuOpen
+							? "pointer-events-auto opacity-100"
+							: "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+					}`}
+				>
+					<div ref={actionsMenuRef} className="relative flex items-center">
+						<button
+							type="button"
+							aria-label={`Open repository actions for ${repository.displayName}`}
+							aria-haspopup="menu"
+							aria-expanded={actionsMenuOpen}
+							onClick={() => setActionsMenuOpen((current) => !current)}
+							className="flex h-5 w-5 items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
+						>
+							<MoreHorizontal size={13} />
+						</button>
+						{actionsMenuOpen && (
+							<div
+								role="menu"
+								aria-label={`Repository actions for ${repository.displayName}`}
+								className="absolute right-0 top-full z-30 mt-1 min-w-[11rem] overflow-hidden rounded-[16px] border border-dark-800 bg-dark-900 shadow-lg"
+							>
+								<button
+									type="button"
+									role="menuitem"
+									aria-label={
+										searchOpen
+											? `Close session search for ${repository.displayName}`
+											: `Search sessions for ${repository.displayName}`
+									}
+									onClick={() => {
+										closeActionsMenu();
+										toggleSearch();
+									}}
+									className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-dark-300 transition-colors hover:bg-dark-800/70 hover:text-dark-100"
+								>
+									<Search size={14} className="shrink-0" />
+									<span>
+										{searchOpen ? "Close session search" : "Search sessions"}
+									</span>
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									aria-label={`Archive repository ${repository.displayName}`}
+									onClick={() => {
+										closeActionsMenu();
+										onArchiveRepository();
+									}}
+									className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-dark-300 transition-colors hover:bg-dark-800/70 hover:text-dark-100"
+								>
+									<Archive size={14} className="shrink-0" />
+									<span>Archive repository</span>
+								</button>
+							</div>
+						)}
+					</div>
 					<button
 						type="button"
 						aria-label={`Start new session in ${repository.displayName}`}
 						onClick={onNewSession}
-						className="font-mono-ui flex items-center justify-end text-[18px] leading-none text-dark-500 transition-colors hover:text-dark-100"
+						className="font-mono-ui flex h-5 w-5 items-center justify-center text-[17px] leading-none text-dark-500 transition-colors hover:text-dark-100"
 					>
 						+
 					</button>
@@ -209,12 +320,12 @@ export function RepositoryItem({
 					)}
 					{searchActive ? (
 						visibleSearchResults.length === 0 ? (
-							<div className="border border-dashed border-dark-800 px-3 py-1.5 text-sm text-dark-500">
+							<div className="px-3 py-1.5 text-sm text-dark-500">
 								No matching sessions.
 							</div>
 						) : (
 							<>
-								{visibleSearchResults.map(renderSession)}
+								{visibleSearchResults.map(renderOpenSession)}
 								{searchState?.nextCursor && (
 									<LoadMoreButton
 										containerRef={loadMoreRef}
@@ -225,12 +336,12 @@ export function RepositoryItem({
 							</>
 						)
 					) : sessions.length === 0 ? (
-						<div className="border border-dashed border-dark-800 px-3 py-1.5 text-sm text-dark-500">
+						<div className="px-3 py-1.5 text-sm text-dark-500">
 							No sessions yet for this project.
 						</div>
 					) : (
 						<>
-							{sessions.map(renderSession)}
+							{sessions.map(renderOpenSession)}
 							{nextCursor && (
 								<LoadMoreButton
 									containerRef={loadMoreRef}

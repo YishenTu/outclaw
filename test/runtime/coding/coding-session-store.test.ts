@@ -37,6 +37,7 @@ function insertCodingSession(
 		timestamp: number;
 		cwd?: string;
 		linkedChatSessionId?: string;
+		lifecycleStatus?: "open" | "archived";
 		runStatus?: "idle" | "running" | "failed";
 		repositoryId?: string;
 	},
@@ -55,6 +56,7 @@ function insertCodingSession(
 		sdkSessionId: params.id,
 		cwd: params.cwd ?? "/workspace/outclaw",
 		linkedChatSessionId: params.linkedChatSessionId,
+		lifecycleStatus: params.lifecycleStatus,
 		repositoryId: params.repositoryId,
 		runStatus: params.runStatus ?? "running",
 		timestamp: params.timestamp,
@@ -383,6 +385,61 @@ describe("CodingSessionStore", () => {
 		expect(codingSessions.get("codex", "code-status")).toBeUndefined();
 		expect(sessions.get("codex", "code-status")).toBeUndefined();
 
+		codingSessions.close();
+		sessions.close();
+	});
+
+	test("archives sessions out of the default list and restores them", () => {
+		const { sessions, codingSessions, repositories } = createStores();
+		const repo = repositories.register({
+			rootCwd: mkdtempSync(join(tmpdir(), "outclaw-code-archive-repo-")),
+			source: "manual",
+			timestamp: 5,
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-open",
+			title: "Open task",
+			timestamp: 20,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-archived",
+			title: "Archived task",
+			timestamp: 10,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+
+		codingSessions.archive("codex", "code-archived", 30);
+
+		expect(codingSessions.getDetail("codex", "code-archived")).toMatchObject({
+			lifecycleStatus: "archived",
+			lastActive: 30,
+		});
+		expect(
+			codingSessions
+				.list({ repositoryId: repo.id })
+				.sessions.map((session) => session.sdkSessionId),
+		).toEqual(["code-open"]);
+		expect(
+			codingSessions
+				.list({
+					repositoryId: repo.id,
+					lifecycleStatus: "archived",
+				})
+				.sessions.map((session) => session.sdkSessionId),
+		).toEqual(["code-archived"]);
+
+		codingSessions.restore("codex", "code-archived", 40);
+
+		expect(
+			codingSessions
+				.list({ repositoryId: repo.id })
+				.sessions.map((session) => session.sdkSessionId),
+		).toEqual(["code-archived", "code-open"]);
+
+		repositories.close();
 		codingSessions.close();
 		sessions.close();
 	});

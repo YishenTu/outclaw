@@ -3,23 +3,30 @@ import type {
 	BrowserCodingRepositorySummary,
 	BrowserCodingSessionSummary,
 	UsageInfo,
+	WorkspaceFileEntry,
 } from "../../../common/protocol.ts";
 import { MessageInput } from "../components/chat/composer/message-input.tsx";
 import { ThinkingIndicator } from "../components/chat/thinking-indicator.tsx";
 import {
 	type CodingSessionEventStreamItem,
+	fetchCodingRepositorySkills,
+	fetchCodingRepositoryWorkspaceFiles,
 	openCodingSessionEventStream,
 	resumeCodingSession,
 	startCodingSession,
 	stopCodingSession,
 } from "../lib/api.ts";
 import { useContextUsageStore } from "../stores/context-usage.ts";
+import type { CommandEntry } from "../stores/slash-commands.ts";
 import {
 	CodingEventView,
 	isCodingTurnInFlight,
 } from "./coding-event-renderer.tsx";
 import { CodingModelSelector } from "./coding-model-selector.tsx";
+import { buildCodingSkillCommands } from "./coding-skill-commands.ts";
 import { useCodingStore } from "./coding-store.ts";
+
+const EMPTY_MENTION_FILES: WorkspaceFileEntry[] = [];
 
 interface CodingSessionViewProps {
 	repository: BrowserCodingRepositorySummary | undefined;
@@ -120,6 +127,101 @@ function readUsageFromEvent(event: unknown): UsageInfo | undefined {
 	return undefined;
 }
 
+type CodingSkillCommandStatus = "loading" | "ready" | "error";
+
+interface CodingSkillCommandCatalog {
+	commands: CommandEntry[];
+	emptyMessage: string;
+}
+
+function useCodingSkillCommands(
+	repositoryId: string,
+): CodingSkillCommandCatalog {
+	const [commands, setCommands] = useState<CommandEntry[]>([]);
+	const [status, setStatus] = useState<CodingSkillCommandStatus>("loading");
+
+	useEffect(() => {
+		let cancelled = false;
+		setCommands([]);
+		setStatus("loading");
+		void fetchCodingRepositorySkills(repositoryId)
+			.then((response) => {
+				if (!cancelled) {
+					setCommands(buildCodingSkillCommands(response.skills));
+					setStatus("ready");
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setCommands([]);
+					setStatus("error");
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [repositoryId]);
+
+	return {
+		commands,
+		emptyMessage: resolveCodingSkillEmptyMessage(status, commands.length),
+	};
+}
+
+function resolveCodingSkillEmptyMessage(
+	status: CodingSkillCommandStatus,
+	commandCount: number,
+): string {
+	if (status === "loading") {
+		return "Loading coding skills...";
+	}
+	if (status === "error") {
+		return "Unable to load coding skills";
+	}
+	return commandCount === 0
+		? "No coding skills found"
+		: "No matching coding skills";
+}
+
+function useCodingRepositoryMentionFiles(repositoryId: string): {
+	files: WorkspaceFileEntry[];
+	requestFiles: () => void;
+} {
+	const [entry, setEntry] = useState<
+		{ repositoryId: string; files: WorkspaceFileEntry[] } | undefined
+	>();
+	const [loadingRepositoryId, setLoadingRepositoryId] = useState<
+		string | undefined
+	>();
+	const requestFiles = useCallback(() => {
+		if (entry?.repositoryId === repositoryId) {
+			return;
+		}
+		if (loadingRepositoryId === repositoryId) {
+			return;
+		}
+		setLoadingRepositoryId(repositoryId);
+		void fetchCodingRepositoryWorkspaceFiles(repositoryId)
+			.then((files) => {
+				setEntry({ repositoryId, files });
+			})
+			.catch(() => {
+				setEntry({ repositoryId, files: EMPTY_MENTION_FILES });
+			})
+			.finally(() => {
+				setLoadingRepositoryId((current) =>
+					current === repositoryId ? undefined : current,
+				);
+			});
+	}, [entry?.repositoryId, loadingRepositoryId, repositoryId]);
+
+	return {
+		files:
+			entry?.repositoryId === repositoryId ? entry.files : EMPTY_MENTION_FILES,
+		requestFiles,
+	};
+}
+
 function NewSessionPanel({
 	repository,
 	onStarted,
@@ -138,6 +240,8 @@ function NewSessionPanel({
 	const setFastTierEnabled = useCodingStore(
 		(state) => state.setFastTierEnabled,
 	);
+	const skillCatalog = useCodingSkillCommands(repository.id);
+	const mentionFiles = useCodingRepositoryMentionFiles(repository.id);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | undefined>();
 
@@ -190,25 +294,14 @@ function NewSessionPanel({
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-dark-950">
 			<HeaderBar leading={repository.displayName} title="New session" />
-			<div className="scrollbar-none flex-1 overflow-y-auto overflow-x-hidden">
-				<div className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
-					<div className="border border-dashed border-dark-800 px-6 py-5 text-center">
-						<div className="font-mono-ui text-[12px] uppercase tracking-[0.18em] text-dark-500">
-							{repository.displayName}
-						</div>
-						<div className="mt-2 font-mono text-[11px] text-dark-500">
-							{repository.rootCwd}
-						</div>
-						<div className="mt-4 text-sm text-dark-400">
-							Send a prompt below to start a coding session in this repository.
-						</div>
-					</div>
-					{error && (
+			<div className="scrollbar-none flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
+				{error && (
+					<div className="mx-auto w-full max-w-4xl px-4 pt-4">
 						<div className="border-b border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
 							{error}
 						</div>
-					)}
-				</div>
+					</div>
+				)}
 			</div>
 			<MessageInput
 				onSend={onSend}
@@ -219,6 +312,11 @@ function NewSessionPanel({
 				disabled={submitting}
 				interruptible={false}
 				attachmentsEnabled={false}
+				commandEntries={skillCatalog.commands}
+				commandMenuEmptyMessage={skillCatalog.emptyMessage}
+				commandTriggerChars={["/", "$"]}
+				fileMentionEntries={mentionFiles.files}
+				onFileMentionEntriesRequested={mentionFiles.requestFiles}
 				modelSelectorSlot={
 					<CodingModelSelector
 						models={codingModels}
@@ -254,6 +352,8 @@ function ActiveSessionPanel({
 	const setFastTierEnabled = useCodingStore(
 		(state) => state.setFastTierEnabled,
 	);
+	const skillCatalog = useCodingSkillCommands(repository.id);
+	const mentionFiles = useCodingRepositoryMentionFiles(repository.id);
 	const [events, setEvents] = useState<CodingSessionEventStreamItem[]>([]);
 	const [streamError, setStreamError] = useState<string | undefined>();
 	const [submitting, setSubmitting] = useState(false);
@@ -410,6 +510,11 @@ function ActiveSessionPanel({
 				onInterrupt={onInterrupt}
 				sessionKey={usageSessionKey}
 				attachmentsEnabled={false}
+				commandEntries={skillCatalog.commands}
+				commandMenuEmptyMessage={skillCatalog.emptyMessage}
+				commandTriggerChars={["/", "$"]}
+				fileMentionEntries={mentionFiles.files}
+				onFileMentionEntriesRequested={mentionFiles.requestFiles}
 				modelSelectorSlot={
 					<CodingModelSelector
 						models={codingModels}

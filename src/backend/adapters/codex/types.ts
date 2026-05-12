@@ -53,7 +53,42 @@ export type CodexUserInput =
 	| {
 			type: "localImage";
 			path: string;
+	  }
+	| {
+			type: "skill";
+			name: string;
+			path: string;
 	  };
+
+export type CodexSkillScope = "user" | "repo" | "system" | "admin";
+
+export interface CodexSkillInterface {
+	displayName?: string;
+	shortDescription?: string;
+}
+
+export interface CodexSkillMetadata {
+	name: string;
+	description?: string;
+	shortDescription?: string;
+	interface?: CodexSkillInterface;
+	path: string;
+	scope: CodexSkillScope;
+	enabled: boolean;
+}
+
+export interface CodexSkillListEntry {
+	cwd: string;
+	skills: CodexSkillMetadata[];
+	errors?: Array<{
+		message: string;
+		path: string;
+	}>;
+}
+
+export interface CodexSkillsListResult {
+	data: CodexSkillListEntry[];
+}
 
 export interface CodexThreadTokenUsage {
 	total: CodexTokenUsageBreakdown;

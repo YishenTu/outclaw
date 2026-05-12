@@ -8,7 +8,7 @@ import { createBrowserApi } from "../../../src/runtime/browser/create-browser-ap
 import {
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
-	CodingSessionEventStore,
+	CodingSessionEventHub,
 	CodingSessionStore,
 	createCodingService,
 } from "../../../src/runtime/coding/index.ts";
@@ -1276,7 +1276,7 @@ describe("createSupervisor", () => {
 		});
 		const codingSessions = new CodingSessionStore(dbPath);
 		const codingRepositories = new CodingRepositoryStore(dbPath);
-		const codingEvents = new CodingSessionEventStore(dbPath);
+		const codingEvents = new CodingSessionEventHub();
 		store.upsert({
 			providerId: "mock",
 			sdkSessionId: "chat-session-123",

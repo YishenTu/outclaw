@@ -35,7 +35,7 @@ describe("layout store", () => {
 
 		store.getState().setLeftCollapsed(true);
 		store.getState().setRightCollapsed(true);
-		store.getState().setRightGitGraphCollapsed(true);
+		store.getState().setRightGitHistoryCollapsed(true);
 		store.getState().setRightTerminalCollapsed(true);
 		store.getState().setSidebarWidth(312);
 		store.getState().setInspectorWidth(418);
@@ -48,7 +48,7 @@ describe("layout store", () => {
 		const rehydratedStore = createLayoutStore(storage);
 		expect(rehydratedStore.getState().leftCollapsed).toBe(true);
 		expect(rehydratedStore.getState().rightCollapsed).toBe(true);
-		expect(rehydratedStore.getState().rightGitGraphCollapsed).toBe(true);
+		expect(rehydratedStore.getState().rightGitHistoryCollapsed).toBe(true);
 		expect(rehydratedStore.getState().rightTerminalCollapsed).toBe(true);
 		expect(rehydratedStore.getState().sidebarWidth).toBe(312);
 		expect(rehydratedStore.getState().inspectorWidth).toBe(418);
@@ -61,9 +61,9 @@ describe("layout store", () => {
 			[BROWSER_LAYOUT_STORAGE_KEY]: JSON.stringify({
 				state: {
 					inspectorWidth: 9999,
+					rightGitHistoryCollapsed: "yes",
 					rightPanelUpperTab: "missing",
 					rightPanelSplitRatio: 99,
-					rightGitGraphCollapsed: "yes",
 					sidebarWidth: -10,
 				},
 				version: 1,
@@ -74,7 +74,7 @@ describe("layout store", () => {
 
 		expect(store.getState().leftCollapsed).toBe(false);
 		expect(store.getState().rightCollapsed).toBe(false);
-		expect(store.getState().rightGitGraphCollapsed).toBe(false);
+		expect(store.getState().rightGitHistoryCollapsed).toBe(false);
 		expect(store.getState().rightTerminalCollapsed).toBe(false);
 		expect(store.getState().sidebarWidth).toBe(MIN_SIDEBAR_WIDTH);
 		expect(store.getState().inspectorWidth).toBe(MAX_INSPECTOR_WIDTH);
@@ -101,13 +101,28 @@ describe("layout store", () => {
 		expect(store.getState().rightPanelUpperTab).toBe("cron");
 	});
 
+	test("migrates the legacy git graph collapse payload into commit history collapse", () => {
+		const storage = createMemoryStorage({
+			[BROWSER_LAYOUT_STORAGE_KEY]: JSON.stringify({
+				state: {
+					rightGitGraphCollapsed: true,
+				},
+				version: 1,
+			}),
+		});
+
+		const store = createLayoutStore(storage);
+
+		expect(store.getState().rightGitHistoryCollapsed).toBe(true);
+	});
+
 	test("resetLayout restores the persisted browser layout defaults", () => {
 		const storage = createMemoryStorage();
 		const store = createLayoutStore(storage);
 
 		store.getState().setLeftCollapsed(true);
 		store.getState().setRightCollapsed(true);
-		store.getState().setRightGitGraphCollapsed(true);
+		store.getState().setRightGitHistoryCollapsed(true);
 		store.getState().setRightTerminalCollapsed(true);
 		store.getState().setSidebarWidth(312);
 		store.getState().setInspectorWidth(418);
@@ -118,7 +133,7 @@ describe("layout store", () => {
 		const rehydratedStore = createLayoutStore(storage);
 		expect(rehydratedStore.getState().leftCollapsed).toBe(false);
 		expect(rehydratedStore.getState().rightCollapsed).toBe(false);
-		expect(rehydratedStore.getState().rightGitGraphCollapsed).toBe(false);
+		expect(rehydratedStore.getState().rightGitHistoryCollapsed).toBe(false);
 		expect(rehydratedStore.getState().rightTerminalCollapsed).toBe(false);
 		expect(rehydratedStore.getState().sidebarWidth).toBe(DEFAULT_SIDEBAR_WIDTH);
 		expect(rehydratedStore.getState().inspectorWidth).toBe(

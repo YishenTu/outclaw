@@ -19,8 +19,6 @@ const MATH_PACKAGES = new Set(["katex", "rehype-katex", "remark-math"]);
 
 const TERMINAL_PACKAGES = new Set(["@xterm/addon-fit", "@xterm/xterm"]);
 
-const GIT_PACKAGES = new Set(["commit-graph"]);
-
 export function extractNodeModulePackageName(id: string): string | undefined {
 	const normalized = id.replaceAll("\\", "/");
 	const nodeModulesMarker = "/node_modules/";
@@ -62,10 +60,6 @@ export function manualChunkForBrowserModule(id: string): string | undefined {
 
 	if (TERMINAL_PACKAGES.has(packageName)) {
 		return "vendor-terminal";
-	}
-
-	if (GIT_PACKAGES.has(packageName)) {
-		return "vendor-git";
 	}
 
 	return undefined;

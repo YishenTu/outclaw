@@ -13,7 +13,7 @@ import {
 	visibleEffortLevelsForModel,
 } from "../../../src/frontend/browser/components/chat/model-selector.tsx";
 import { FileTree } from "../../../src/frontend/browser/components/right-panel/file-tree.tsx";
-import { GitGraph } from "../../../src/frontend/browser/components/right-panel/git/git-graph.tsx";
+import { GitCommitHistory } from "../../../src/frontend/browser/components/right-panel/git/git-commit-history.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
@@ -142,12 +142,9 @@ describe("browser component helpers", () => {
 		expect(html).not.toContain("text-brand");
 	});
 
-	test("renders an empty git graph without invoking commit graph layout", () => {
+	test("renders an empty commit history without graph layout", () => {
 		const html = renderToStaticMarkup(
-			<GitGraph
-				currentBranch="main"
-				graph={{ commits: [], branchHeads: [] }}
-			/>,
+			<GitCommitHistory history={{ commits: [] }} />,
 		);
 
 		expect(html).toContain("No commit history yet.");

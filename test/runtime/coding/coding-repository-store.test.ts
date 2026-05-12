@@ -76,4 +76,40 @@ describe("CodingRepositoryStore", () => {
 
 		repositories.close();
 	});
+
+	test("restores archived repositories without changing their identity", () => {
+		const { repositories } = createStore();
+		const root = mkdtempSync(join(tmpdir(), "outclaw-restored-repo-"));
+		const repository = repositories.register({
+			displayName: "Outclaw",
+			rootCwd: root,
+			source: "manual",
+			timestamp: 10,
+		});
+
+		repositories.archive(repository.id, 20);
+		expect(repositories.list()).toEqual([]);
+		expect(repositories.get(repository.id)).toMatchObject({
+			id: repository.id,
+			status: "archived",
+			archivedAt: 20,
+		});
+
+		repositories.restore(repository.id, 30);
+
+		expect(repositories.get(repository.id)).toMatchObject({
+			id: repository.id,
+			status: "active",
+			lastActive: 30,
+		});
+		expect(repositories.get(repository.id)).not.toHaveProperty("archivedAt");
+		expect(repositories.list()).toMatchObject([
+			{
+				id: repository.id,
+				status: "active",
+			},
+		]);
+
+		repositories.close();
+	});
 });

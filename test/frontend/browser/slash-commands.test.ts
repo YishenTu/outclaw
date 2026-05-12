@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { createElement } from "react";
 import { listSlashCommands } from "../../../src/common/commands.ts";
+import { buildCodingSkillCommands } from "../../../src/frontend/browser/coding/coding-skill-commands.ts";
+import { filterSlashCommands } from "../../../src/frontend/browser/components/chat/composer/message-input-behavior.ts";
+import { SlashCommandMenu } from "../../../src/frontend/browser/components/chat/slash-command-menu.tsx";
+// @ts-expect-error react-dom is installed in the browser workspace.
+import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 import { buildSlashCommands } from "../../../src/frontend/browser/stores/slash-commands.ts";
 
 describe("buildSlashCommands", () => {
@@ -52,5 +58,58 @@ describe("buildSlashCommands", () => {
 				transport: "runtime",
 			},
 		]);
+	});
+});
+
+describe("buildCodingSkillCommands", () => {
+	test("builds Codex skill entries with dollar insertion without chat builtins", () => {
+		const commands = buildCodingSkillCommands([
+			{ name: "review", description: "Review changes", scope: "repo" },
+			{ name: "commit", description: "Create commit", scope: "user" },
+		]);
+
+		expect(commands).toEqual([
+			{
+				name: "commit",
+				description: "Create commit",
+				source: "skill",
+				transport: "prompt",
+				displayPrefix: "$",
+				insertPrefix: "$",
+			},
+			{
+				name: "review",
+				description: "Review changes",
+				source: "skill",
+				transport: "prompt",
+				displayPrefix: "$",
+				insertPrefix: "$",
+			},
+		]);
+		expect(commands.some((entry) => entry.name === "agent")).toBe(false);
+	});
+
+	test("matches code-mode skills from slash or dollar triggers", () => {
+		const commands = buildCodingSkillCommands([
+			{ name: "review", description: "Review changes", scope: "repo" },
+		]);
+
+		expect(filterSlashCommands("/re", commands, ["/", "$"])).toEqual(commands);
+		expect(filterSlashCommands("$re", commands, ["/", "$"])).toEqual(commands);
+	});
+});
+
+describe("SlashCommandMenu", () => {
+	test("renders an empty state for async command catalogs", () => {
+		const html = renderToStaticMarkup(
+			createElement(SlashCommandMenu, {
+				commands: [],
+				selectedIndex: 0,
+				onSelect: () => {},
+				emptyMessage: "Loading coding skills...",
+			}),
+		);
+
+		expect(html).toContain("Loading coding skills...");
 	});
 });

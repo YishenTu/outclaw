@@ -23,14 +23,11 @@ export {
 	createCodingRuntime,
 } from "./coding-runtime.ts";
 export {
-	type CodingSessionEvent,
+	CodingSessionEventHub,
 	type CodingSessionEventRecorder,
-	CodingSessionEventStore,
 	type CodingSessionEventSubscriber,
-	type CodingUserPromptEvent,
-	replayThenFollowCodingSessionEvents,
 	type StoredCodingSessionEvent,
-} from "./coding-session-event-store.ts";
+} from "./coding-session-event-hub.ts";
 export {
 	CODING_STORAGE_OWNER_ID,
 	type CodingSessionDetail,

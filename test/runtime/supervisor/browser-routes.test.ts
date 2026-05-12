@@ -116,6 +116,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async () => ({
+					sha: "abc1234",
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitStatus: async () => ({
 					initialized: true,
 					root: "/tmp/.outclaw",
@@ -123,7 +129,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: { commits: [], branchHeads: [] },
+					history: { commits: [] },
 					files: [],
 				}),
 				initGitRepo: async () => ({
@@ -201,6 +207,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async () => ({
+					sha: "abc1234",
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitStatus: async () => ({
 					initialized: true,
 					root: "/tmp/.outclaw",
@@ -208,7 +220,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: { commits: [], branchHeads: [] },
+					history: { commits: [] },
 					files: [],
 				}),
 				initGitRepo: async () => ({
@@ -345,6 +357,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async () => ({
+					sha: "abc1234",
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitStatus: async () => ({
 					initialized: true,
 					root: "/tmp/.outclaw",
@@ -352,7 +370,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: { commits: [], branchHeads: [] },
+					history: { commits: [] },
 					files: [],
 				}),
 				initGitRepo: async () => ({
@@ -480,6 +498,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async () => ({
+					sha: "abc1234",
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitStatus: async () => ({
 					initialized: true,
 					root: "/tmp/.outclaw",
@@ -487,7 +511,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: { commits: [], branchHeads: [] },
+					history: { commits: [] },
 					files: [],
 				}),
 				initGitRepo: async () => ({
@@ -554,6 +578,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async () => ({
+					sha: "abc1234",
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitStatus: async () => ({
 					initialized: true,
 					root: "/tmp/.outclaw",
@@ -561,7 +591,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: { commits: [], branchHeads: [] },
+					history: { commits: [] },
 					files: [],
 				}),
 				initGitRepo: async () => ({
@@ -646,6 +676,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async () => ({
+					sha: "abc1234",
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitStatus: async () => ({
 					initialized: true,
 					root: "/tmp/.outclaw",
@@ -653,7 +689,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: { commits: [], branchHeads: [] },
+					history: { commits: [] },
 					files: [],
 				}),
 				initGitRepo: async () => ({
@@ -731,6 +767,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async () => ({
+					sha: "abc1234",
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitStatus: async () => ({
 					initialized: false,
 					root: "/tmp/.outclaw",
@@ -744,7 +786,7 @@ describe("createSupervisor browser routes", () => {
 						ahead: 0,
 						behind: 0,
 						clean: true,
-						graph: { commits: [], branchHeads: [] },
+						history: { commits: [] },
 						files: [],
 					};
 				},
@@ -772,7 +814,7 @@ describe("createSupervisor browser routes", () => {
 			ahead: 0,
 			behind: 0,
 			clean: true,
-			graph: { commits: [], branchHeads: [] },
+			history: { commits: [] },
 			files: [],
 		});
 	});
@@ -830,6 +872,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async () => ({
+					sha: "abc1234",
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitStatus: async () => ({
 					initialized: true,
 					root: "/tmp/.outclaw",
@@ -837,7 +885,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: { commits: [], branchHeads: [] },
+					history: { commits: [] },
 					files: [],
 				}),
 				initGitRepo: async () => ({
@@ -919,6 +967,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async () => ({
+					sha: "abc1234",
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitStatus: async () => ({
 					initialized: true,
 					root: "/tmp/.outclaw",
@@ -926,7 +980,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: { commits: [], branchHeads: [] },
+					history: { commits: [] },
 					files: [],
 				}),
 				initGitRepo: async () => ({
@@ -1012,6 +1066,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async (sha) => ({
+					sha,
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitDiff: async () => ({
 					path: "config.json",
 					diff: "",
@@ -1023,7 +1083,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: { commits: [], branchHeads: [] },
+					history: { commits: [] },
 					files: [],
 				}),
 				initGitRepo: async () => ({
@@ -1061,6 +1121,110 @@ describe("createSupervisor browser routes", () => {
 		await expect(response.json()).resolves.toEqual({
 			images: [{ path: "/tmp/upload-0.png", mediaType: "image/png" }],
 		});
+	});
+
+	test("serves coding repository skills over HTTP", async () => {
+		const calls: Array<{
+			repositoryId: string;
+			forceReload?: boolean;
+		}> = [];
+		const supervisor = createSupervisor({
+			agents: [
+				createAgentRuntime({
+					agentId: "agent-railly",
+					name: "railly",
+					facade: new MockFacade(),
+				}),
+			],
+			browserApi: {
+				getAgentTerminalCwd: () => undefined,
+				initGitRepo: async () => ({
+					initialized: false,
+					root: "/tmp/.outclaw",
+				}),
+				listAgentCron: async () => [],
+				listAgentTree: async () => [],
+				listAgents: () => ({
+					activeAgentId: "agent-railly",
+					agents: [],
+				}),
+				listCodingRepositorySkills: async (repositoryId, params) => {
+					calls.push({ repositoryId, forceReload: params?.forceReload });
+					return {
+						skills: [
+							{
+								name: "review",
+								description: "Review changes",
+								scope: "repo",
+							},
+						],
+					};
+				},
+				readAgentFile: async () => ({
+					path: "AGENTS.md",
+					kind: "text",
+					content: "# Agent\n",
+					truncated: false,
+				}),
+				readConfigFile: async () =>
+					createConfigResponse('{\n\t"port": 4000\n}\n'),
+				readGitCommit: async () => ({
+					sha: "abc1234",
+					author: {
+						name: "Test User",
+						email: "test@example.com",
+						date: "2026-04-18T00:00:00.000Z",
+					},
+					message: "Second commit",
+					parents: [{ sha: "def5678" }],
+					diff: "diff --git a/README.md b/README.md",
+				}),
+				readGitCommitStats: async () => ({
+					sha: "abc1234",
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
+				readGitDiff: async () => ({
+					path: "config.json",
+					diff: "diff --git a/config.json b/config.json",
+				}),
+				readGitStatus: async () => ({
+					initialized: true,
+					root: "/tmp/.outclaw",
+					branch: "main",
+					ahead: 0,
+					behind: 0,
+					clean: true,
+					history: { commits: [] },
+					files: [],
+				}),
+				setAgentCronEnabled: async () => {
+					throw new Error("Not implemented");
+				},
+				writeConfigFile: async () => {
+					throw new Error("Not implemented");
+				},
+			},
+			port: 0,
+		});
+		cleanup = () => supervisor.stop();
+
+		const response = await fetch(
+			`http://localhost:${supervisor.port}/api/coding/repositories/repo-1/skills?forceReload=true`,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			skills: [
+				{
+					name: "review",
+					description: "Review changes",
+					scope: "repo",
+				},
+			],
+		});
+		expect(calls).toEqual([{ repositoryId: "repo-1", forceReload: true }]);
 	});
 
 	test("serves browser git commit details over HTTP", async () => {
@@ -1102,6 +1266,12 @@ describe("createSupervisor browser routes", () => {
 					parents: [{ sha: "def5678" }],
 					diff: "diff --git a/README.md b/README.md",
 				}),
+				readGitCommitStats: async (sha) => ({
+					sha,
+					files: [],
+					totalAdditions: 0,
+					totalDeletions: 0,
+				}),
 				readGitDiff: async () => ({
 					path: "config.json",
 					diff: "",
@@ -1113,7 +1283,7 @@ describe("createSupervisor browser routes", () => {
 					ahead: 0,
 					behind: 0,
 					clean: true,
-					graph: { commits: [], branchHeads: [] },
+					history: { commits: [] },
 					files: [],
 				}),
 				initGitRepo: async () => ({

@@ -96,14 +96,6 @@ describe("manualChunkForBrowserModule", () => {
 		).toBe("vendor-terminal");
 	});
 
-	test("splits git graph packages", () => {
-		expect(
-			manualChunkForBrowserModule(
-				"/Users/test/outclaw/node_modules/commit-graph/dist/index.js",
-			),
-		).toBe("vendor-git");
-	});
-
 	test("leaves unmatched packages and app modules on the default chunking path", () => {
 		expect(
 			manualChunkForBrowserModule(

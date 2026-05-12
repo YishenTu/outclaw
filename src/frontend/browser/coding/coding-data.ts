@@ -1,12 +1,18 @@
 import { useCallback, useEffect } from "react";
-import type { BrowserCodingRepositorySummary } from "../../../common/protocol.ts";
+import type {
+	BrowserCodingRepositorySummary,
+	BrowserCodingSessionSummary,
+} from "../../../common/protocol.ts";
 import {
-	deleteCodingSession,
+	archiveCodingRepository,
+	archiveCodingSession,
 	fetchCodingModels,
 	fetchCodingRepositories,
 	fetchCodingSession,
 	fetchCodingSessions,
 	renameCodingSession,
+	restoreCodingRepository,
+	restoreCodingSession,
 } from "../lib/api.ts";
 import type { CodingTab } from "./coding-store.ts";
 import {
@@ -26,6 +32,43 @@ function describeTabTitle(session: {
 	return session.title?.trim() || session.sdkSessionId;
 }
 
+export function resolveFocusedCodingRepository(
+	repositories: BrowserCodingRepositorySummary[],
+	focusedRepositoryId: string | undefined,
+): BrowserCodingRepositorySummary | undefined {
+	if (!focusedRepositoryId) {
+		return undefined;
+	}
+	return repositories.find((entry) => entry.id === focusedRepositoryId);
+}
+
+export function resolveFocusedCodingSession(params: {
+	archivedSessions: BrowserCodingSessionSummary[];
+	focusedSession:
+		| {
+				providerId: string;
+				sdkSessionId: string;
+		  }
+		| undefined;
+	sessions: BrowserCodingSessionSummary[];
+}): BrowserCodingSessionSummary | undefined {
+	if (!params.focusedSession) {
+		return undefined;
+	}
+	return (
+		params.sessions.find(
+			(entry) =>
+				entry.providerId === params.focusedSession?.providerId &&
+				entry.sdkSessionId === params.focusedSession?.sdkSessionId,
+		) ??
+		params.archivedSessions.find(
+			(entry) =>
+				entry.providerId === params.focusedSession?.providerId &&
+				entry.sdkSessionId === params.focusedSession?.sdkSessionId,
+		)
+	);
+}
+
 /**
  * Loads repositories and the sessions for the focused repository, and exposes
  * the handlers the sidebar/center components need to manipulate selection and
@@ -40,6 +83,7 @@ export function useCodingData() {
 	const sessionsByRepository = useCodingStore(
 		(state) => state.sessionsByRepository,
 	);
+	const archivedSessions = useCodingStore((state) => state.archivedSessions);
 	const focusedRepositoryId = useCodingStore(
 		(state) => state.focusedRepositoryId,
 	);
@@ -53,8 +97,15 @@ export function useCodingData() {
 	);
 	const setFocusedSession = useCodingStore((state) => state.setFocusedSession);
 	const upsertSession = useCodingStore((state) => state.upsertSession);
+	const upsertArchivedSession = useCodingStore(
+		(state) => state.upsertArchivedSession,
+	);
 	const removeSession = useCodingStore((state) => state.removeSession);
+	const removeArchivedSession = useCodingStore(
+		(state) => state.removeArchivedSession,
+	);
 	const renameSession = useCodingStore((state) => state.renameSession);
+	const updateRepository = useCodingStore((state) => state.updateRepository);
 	const openTab = useCodingStore((state) => state.openTab);
 	const closeTab = useCodingStore((state) => state.closeTab);
 	const updateTabTitle = useCodingStore((state) => state.updateTabTitle);
@@ -65,7 +116,7 @@ export function useCodingData() {
 	const setCodingModels = useCodingStore((state) => state.setCodingModels);
 
 	useEffect(() => {
-		void fetchCodingRepositories()
+		void fetchCodingRepositories({ includeArchived: true })
 			.then((result) => {
 				setRepositories(result.repositories);
 			})
@@ -110,19 +161,24 @@ export function useCodingData() {
 			});
 	}, [focusedRepositoryId, sessionsByRepository, setRepositorySessions]);
 
-	const repository = repositories.find(
-		(entry) => entry.id === focusedRepositoryId,
+	const activeRepositories = repositories.filter(
+		(entry) => entry.status === "active",
+	);
+	const archivedRepositories = repositories.filter(
+		(entry) => entry.status === "archived",
+	);
+	const repository = resolveFocusedCodingRepository(
+		repositories,
+		focusedRepositoryId,
 	);
 	const sessions = focusedRepositoryId
 		? (sessionsByRepository[focusedRepositoryId] ?? [])
 		: [];
-	const session = focusedSession
-		? sessions.find(
-				(entry) =>
-					entry.providerId === focusedSession.providerId &&
-					entry.sdkSessionId === focusedSession.sdkSessionId,
-			)
-		: undefined;
+	const session = resolveFocusedCodingSession({
+		archivedSessions,
+		focusedSession,
+		sessions,
+	});
 
 	const handleSelectRepository = useCallback(
 		(repositoryId: string) => {
@@ -135,14 +191,12 @@ export function useCodingData() {
 	);
 
 	const handleSelectSession = useCallback(
-		(
-			repositoryId: string,
-			selected: {
-				providerId: string;
-				sdkSessionId: string;
-				title?: string;
-			},
-		) => {
+		(repositoryId: string, selected: BrowserCodingSessionSummary) => {
+			if (selected.lifecycleStatus === "archived") {
+				// Archived search results do not live in the repository's open-session
+				// slice, so cache the chosen summary before focusing its tab.
+				upsertArchivedSession(selected);
+			}
 			openTab({
 				providerId: selected.providerId,
 				sdkSessionId: selected.sdkSessionId,
@@ -153,7 +207,7 @@ export function useCodingData() {
 				}),
 			});
 		},
-		[openTab],
+		[openTab, upsertArchivedSession],
 	);
 
 	const handleSelectTab = useCallback(
@@ -255,20 +309,74 @@ export function useCodingData() {
 		[renameSession],
 	);
 
-	const handleDeleteSession = useCallback(
+	const handleArchiveSession = useCallback(
 		async (
 			repositoryId: string,
 			target: { providerId: string; sdkSessionId: string },
 		) => {
+			let archived: Awaited<ReturnType<typeof archiveCodingSession>>;
 			try {
-				await deleteCodingSession(target.providerId, target.sdkSessionId);
+				archived = await archiveCodingSession(
+					target.providerId,
+					target.sdkSessionId,
+				);
 			} catch (error) {
-				console.warn("Failed to delete coding session", error);
+				console.warn("Failed to archive coding session", error);
 				return;
 			}
 			removeSession(repositoryId, target.providerId, target.sdkSessionId);
+			upsertArchivedSession(archived.session);
 		},
-		[removeSession],
+		[removeSession, upsertArchivedSession],
+	);
+
+	const handleRestoreSession = useCallback(
+		async (
+			repositoryId: string,
+			target: { providerId: string; sdkSessionId: string },
+		) => {
+			let restored: Awaited<ReturnType<typeof restoreCodingSession>>;
+			try {
+				restored = await restoreCodingSession(
+					target.providerId,
+					target.sdkSessionId,
+				);
+			} catch (error) {
+				console.warn("Failed to restore coding session", error);
+				return;
+			}
+			removeArchivedSession(target.providerId, target.sdkSessionId);
+			upsertSession(
+				restored.session.repositoryId ?? repositoryId,
+				restored.session,
+			);
+		},
+		[removeArchivedSession, upsertSession],
+	);
+
+	const handleArchiveRepository = useCallback(
+		async (repositoryId: string) => {
+			try {
+				const result = await archiveCodingRepository(repositoryId);
+				updateRepository(result.repository);
+			} catch (error) {
+				console.warn("Failed to archive coding repository", error);
+			}
+		},
+		[updateRepository],
+	);
+
+	const handleRestoreRepository = useCallback(
+		async (repositoryId: string) => {
+			try {
+				const result = await restoreCodingRepository(repositoryId);
+				updateRepository(result.repository);
+				setFocusedRepository(result.repository.id);
+			} catch (error) {
+				console.warn("Failed to restore coding repository", error);
+			}
+		},
+		[setFocusedRepository, updateRepository],
 	);
 
 	const handleCreateRepository = useCallback(
@@ -327,18 +435,23 @@ export function useCodingData() {
 		focusedSession,
 		focusedTab,
 		handleAddTab,
+		handleArchiveRepository,
+		handleArchiveSession,
 		handleCloseTab,
 		handleCreateRepository,
-		handleDeleteSession,
 		handleNewSessionForRepository,
 		handleOpenFile,
 		handleRenameSession,
+		handleRestoreRepository,
+		handleRestoreSession,
 		handleSelectRepository,
 		handleSelectSession,
 		handleSelectTab,
 		handleSessionStarted,
 		openTabs,
-		repositories,
+		archivedRepositories,
+		archivedSessions,
+		repositories: activeRepositories,
 		repositoriesLoaded,
 		repository,
 		session,

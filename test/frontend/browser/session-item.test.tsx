@@ -24,7 +24,7 @@ describe("SessionItem", () => {
 		expect(html).toContain("Daily planning");
 		expect(html).toContain('aria-label="Delete session Daily planning"');
 		expect(html).toContain("2m");
-		expect(html).toContain("group-hover:block");
+		expect(html).toContain("group-hover:flex");
 		expect(html).toContain("opacity-0");
 		expect(html).not.toContain("bg-dark-100");
 	});

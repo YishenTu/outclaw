@@ -1,11 +1,8 @@
 import type { EffortLevel } from "../../common/commands.ts";
-import type { FacadeEvent } from "../../common/protocol.ts";
+import type { CodingSessionEvent, FacadeEvent } from "../../common/protocol.ts";
 import type { PromptExecution } from "../application/prompt-execution/prompt-dispatcher.ts";
 import type { DetachedPromptStartResult } from "../application/runtime-controller.ts";
-import type {
-	CodingSessionEvent,
-	CodingSessionEventRecorder,
-} from "./coding-session-event-store.ts";
+import type { CodingSessionEventRecorder } from "./coding-session-event-hub.ts";
 import type {
 	CodingSessionRecord,
 	CodingSessionRefResolution,

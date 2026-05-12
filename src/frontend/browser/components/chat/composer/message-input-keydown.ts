@@ -88,6 +88,10 @@ export function handleMessageInputKeydown(
 
 	if (state.showSlashMenu && event.key === "ArrowDown") {
 		event.preventDefault();
+		if (state.filteredCommandCount === 0) {
+			actions.setSelectedIndex(0);
+			return true;
+		}
 		actions.setSelectedIndex(
 			Math.min(state.selectedIndex + 1, state.filteredCommandCount - 1),
 		);

@@ -28,9 +28,6 @@ function createRecordingEventLog(): CodingSessionEventRecorder & {
 			recorded.push(stored);
 			return stored;
 		},
-		list() {
-			return [];
-		},
 		subscribe() {
 			return () => {};
 		},

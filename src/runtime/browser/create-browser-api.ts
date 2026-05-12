@@ -10,22 +10,29 @@ import type {
 	BrowserCodingRepositoryCloneResponse,
 	BrowserCodingRepositoryDetail,
 	BrowserCodingRepositoryListResponse,
+	BrowserCodingRepositoryRestoreResponse,
 	BrowserCodingRepositorySource,
 	BrowserCodingRepositorySummary,
+	BrowserCodingSessionArchiveResponse,
 	BrowserCodingSessionDeleteResponse,
 	BrowserCodingSessionDetail,
+	BrowserCodingSessionLifecycleStatus,
 	BrowserCodingSessionPageResponse,
+	BrowserCodingSessionRestoreResponse,
 	BrowserCodingSessionResumeResponse,
 	BrowserCodingSessionStartResponse,
 	BrowserCodingSessionStopResponse,
 	BrowserCodingSessionSummary,
+	BrowserCodingSkillsResponse,
 	BrowserConfigResponse,
 	BrowserCronEntry,
 	BrowserCronHistoryCursor,
 	BrowserCronHistoryResponse,
 	BrowserFileResponse,
 	BrowserGitCommitResponse,
+	BrowserGitCommitStats,
 	BrowserGitDiffResponse,
+	BrowserGitHistory,
 	BrowserGitStatusResponse,
 	BrowserGraphResponse,
 	BrowserInboxArchiveResponse,
@@ -36,10 +43,11 @@ import type {
 	BrowserSessionPageResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
-	FacadeEvent,
+	CodingSessionEvent,
 	ImageMediaType,
 	ImageRef,
 	ProviderModelInfo,
+	ProviderSkillInfo,
 	SessionCursor,
 	TranscriptTurn,
 	WorkspaceFileEntry,
@@ -54,10 +62,7 @@ import type {
 	CodingSessionStore,
 	StoredCodingSessionEvent,
 } from "../coding/index.ts";
-import {
-	createGitCloner,
-	replayThenFollowCodingSessionEvents,
-} from "../coding/index.ts";
+import { createGitCloner } from "../coding/index.ts";
 import {
 	readStoredAgentConfig,
 	writeStoredAgentConfig,
@@ -78,7 +83,10 @@ import { BROWSER_CONFIG_SCHEMA } from "./config/schema.ts";
 import { listCronRunsForJob } from "./cron/history.ts";
 import { listCronEntries, setCronEnabled } from "./cron/workbench.ts";
 import { buildAgentGraph } from "./files/build-graph.ts";
-import { listWorkspaceFiles } from "./files/list-workspace-files.ts";
+import {
+	listRepositoryWorkspaceFiles,
+	listWorkspaceFiles,
+} from "./files/list-workspace-files.ts";
 import { readBrowserFile } from "./files/read-browser-file.ts";
 import { listTreeEntries } from "./files/tree-workbench.ts";
 import { writeBrowserFile } from "./files/write-browser-file.ts";
@@ -87,8 +95,10 @@ import {
 	normalizeGitPaths,
 	readAgentFileGitChange,
 	readAgentTreeGitStatuses,
+	readGitCommitStats as readGitCommitStatsWorkbench,
 	readGitCommit as readGitCommitWorkbench,
 	readGitDiff as readGitDiffWorkbench,
+	readGitHistory as readGitHistoryWorkbench,
 	readGitStatus as readGitStatusWorkbench,
 } from "./git/workbench.ts";
 import {
@@ -109,10 +119,14 @@ import {
 export interface BrowserCodingService
 	extends Pick<CodingRuntime, "startPrompt" | "resumePrompt" | "stopPrompt"> {
 	listModels?(): Promise<ProviderModelInfo[]>;
+	listSkills?(params: {
+		cwd: string;
+		forceReload?: boolean;
+	}): Promise<ProviderSkillInfo[]>;
 	rehydrateSessionEvents?(params: {
 		providerId: string;
 		sdkSessionId: string;
-	}): Promise<FacadeEvent[]>;
+	}): Promise<CodingSessionEvent[]>;
 }
 
 interface CreateBrowserApiOptions {
@@ -169,6 +183,7 @@ export interface BrowserApi {
 		limit: number;
 		cursor?: SessionCursor;
 		linkedChatSessionId?: string;
+		lifecycleStatus?: BrowserCodingSessionLifecycleStatus;
 		providerId?: string;
 		query?: string;
 		repositoryId?: string;
@@ -193,15 +208,26 @@ export interface BrowserApi {
 	archiveCodingRepository(
 		repositoryId: string,
 	): Promise<BrowserCodingRepositoryArchiveResponse>;
+	restoreCodingRepository(
+		repositoryId: string,
+	): Promise<BrowserCodingRepositoryRestoreResponse>;
 	pickCodingRepositoryFolder(): Promise<BrowserCodingFolderPickerResponse>;
 	getCodingSession(
 		providerId: string,
 		sdkSessionId: string,
 	): Promise<BrowserCodingSessionDetail>;
+	archiveCodingSession(
+		providerId: string,
+		sdkSessionId: string,
+	): Promise<BrowserCodingSessionArchiveResponse>;
 	deleteCodingSession(
 		providerId: string,
 		sdkSessionId: string,
 	): Promise<BrowserCodingSessionDeleteResponse>;
+	restoreCodingSession(
+		providerId: string,
+		sdkSessionId: string,
+	): Promise<BrowserCodingSessionRestoreResponse>;
 	renameCodingSession(
 		providerId: string,
 		sdkSessionId: string,
@@ -239,6 +265,10 @@ export interface BrowserApi {
 		sdkSessionId: string;
 	}): Promise<BrowserCodingSessionStopResponse>;
 	listCodingModels(): Promise<BrowserCodingModelsResponse>;
+	listCodingRepositorySkills(
+		repositoryId: string,
+		params?: { forceReload?: boolean },
+	): Promise<BrowserCodingSkillsResponse>;
 	openCodingSessionEventStream(params: {
 		providerId: string;
 		sdkSessionId: string;
@@ -248,6 +278,9 @@ export interface BrowserApi {
 	listAgentTree(agentId: string): Promise<BrowserTreeEntry[]>;
 	listAgentGraph(agentId: string): Promise<BrowserGraphResponse>;
 	listAgentWorkspaceFiles(agentId: string): Promise<WorkspaceFileEntry[]>;
+	listCodingRepositoryWorkspaceFiles(
+		repositoryId: string,
+	): Promise<WorkspaceFileEntry[]>;
 	listCodingRepositoryTree(repositoryId: string): Promise<BrowserTreeEntry[]>;
 	getCodingRepositoryCwd(repositoryId: string): string | undefined;
 	readConfigFile(): Promise<BrowserConfigResponse>;
@@ -275,10 +308,19 @@ export interface BrowserApi {
 		sha: string,
 		params?: { repositoryId?: string },
 	): Promise<BrowserGitCommitResponse>;
+	readGitCommitStats(
+		sha: string,
+		params?: { repositoryId?: string },
+	): Promise<BrowserGitCommitStats>;
 	readGitDiff(
 		path: string,
 		params?: { repositoryId?: string },
 	): Promise<BrowserGitDiffResponse>;
+	readGitHistory(params?: {
+		repositoryId?: string;
+		cursor?: string;
+		limit?: number;
+	}): Promise<BrowserGitHistory>;
 	readGitStatus(params?: {
 		repositoryId?: string;
 	}): Promise<BrowserGitStatusResponse>;
@@ -398,6 +440,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				cursor: params.cursor,
 				linkedChatSessionId: params.linkedChatSessionId,
 				limit: params.limit,
+				lifecycleStatus: params.lifecycleStatus,
 				providerId: params.providerId,
 				...(query ? { query } : {}),
 				repositoryId: params.repositoryId,
@@ -481,6 +524,20 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				repository: toBrowserCodingRepositorySummary(repository),
 			};
 		},
+		async restoreCodingRepository(repositoryId) {
+			if (!options.codingRepositories) {
+				throw new Error("Coding repository API is not configured");
+			}
+			options.codingRepositories.restore(repositoryId);
+			const repository = options.codingRepositories.get(repositoryId);
+			if (!repository) {
+				throw new Error(`Unknown coding repository: ${repositoryId}`);
+			}
+			return {
+				restored: true,
+				repository: toBrowserCodingRepositorySummary(repository),
+			};
+		},
 		async getCodingSession(providerId, sdkSessionId) {
 			const session = options.codingSessions?.getDetail(
 				providerId,
@@ -492,6 +549,31 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				);
 			}
 			return toBrowserCodingSessionSummary(session);
+		},
+		async archiveCodingSession(providerId, sdkSessionId) {
+			const store = options.codingSessions;
+			if (!store) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			const session = store.getDetail(providerId, sdkSessionId);
+			if (!session) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			store.archive(providerId, sdkSessionId);
+			const archived = store.getDetail(providerId, sdkSessionId);
+			if (!archived) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			return {
+				archived: true,
+				session: toBrowserCodingSessionSummary(archived),
+			};
 		},
 		async deleteCodingSession(providerId, sdkSessionId) {
 			const store = options.codingSessions;
@@ -511,6 +593,31 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				deleted: true,
 				providerId,
 				sdkSessionId,
+			};
+		},
+		async restoreCodingSession(providerId, sdkSessionId) {
+			const store = options.codingSessions;
+			if (!store) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			const session = store.getDetail(providerId, sdkSessionId);
+			if (!session) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			store.restore(providerId, sdkSessionId);
+			const restored = store.getDetail(providerId, sdkSessionId);
+			if (!restored) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			return {
+				restored: true,
+				session: toBrowserCodingSessionSummary(restored),
 			};
 		},
 		async renameCodingSession(providerId, sdkSessionId, title) {
@@ -590,13 +697,12 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			});
 		},
 		openCodingSessionEventStream(params) {
-			const log = options.codingEvents;
-			if (!log) {
+			if (!options.coding && !options.codingEvents) {
 				return emptyAsyncIterable();
 			}
-			return rehydrateThenReplayThenFollow({
-				log,
+			return readHistoryThenFollowLiveCodingSessionEvents({
 				coding: options.coding,
+				liveEvents: options.codingEvents,
 				sessions: options.codingSessions,
 				...params,
 			});
@@ -615,6 +721,13 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					status: "rejected",
 					message: "Coding session resume requires a prompt",
 				};
+			}
+			const session = options.codingSessions?.get(
+				params.providerId,
+				params.sdkSessionId,
+			);
+			if (session?.lifecycleStatus === "archived") {
+				options.codingSessions?.restore(params.providerId, params.sdkSessionId);
 			}
 			return coding.resumePrompt({
 				providerId: params.providerId,
@@ -646,6 +759,20 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const models = await coding.listModels();
 			return { models };
 		},
+		async listCodingRepositorySkills(repositoryId, params) {
+			const repository = options.codingRepositories?.get(repositoryId);
+			if (!repository) {
+				throw new Error(`Unknown coding repository: ${repositoryId}`);
+			}
+			if (!options.coding?.listSkills) {
+				throw new Error("Coding skill catalog is not configured");
+			}
+			const skills = await options.coding.listSkills({
+				cwd: repository.rootCwd,
+				...(params?.forceReload ? { forceReload: true } : {}),
+			});
+			return { skills };
+		},
 		async archiveAgentInboxItem(agentId, relativePath) {
 			const agent = requireAgent(agentsById, agentId);
 			return await archiveInboxItem(agent.homeDir, relativePath);
@@ -674,6 +801,11 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		async listAgentWorkspaceFiles(agentId) {
 			const agent = requireAgent(agentsById, agentId);
 			return await listWorkspaceFiles(agent.homeDir);
+		},
+		async listCodingRepositoryWorkspaceFiles(repositoryId) {
+			return await listRepositoryWorkspaceFiles(
+				resolveRepositoryCwd(repositoryId),
+			);
 		},
 		async listAgentGraph(agentId) {
 			const agent = requireAgent(agentsById, agentId);
@@ -807,8 +939,17 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		async readGitCommit(sha, params) {
 			return readGitCommitWorkbench(resolveGitCwd(params), sha);
 		},
+		async readGitCommitStats(sha, params) {
+			return readGitCommitStatsWorkbench(resolveGitCwd(params), sha);
+		},
 		async readGitDiff(path, params) {
 			return readGitDiffWorkbench(resolveGitCwd(params), path);
+		},
+		async readGitHistory(params) {
+			return readGitHistoryWorkbench(resolveGitCwd(params), {
+				cursor: params?.cursor,
+				limit: params?.limit,
+			});
 		},
 		async listCodingRepositoryTree(repositoryId) {
 			const cwd = resolveRepositoryCwd(repositoryId);
@@ -935,98 +1076,163 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function* rehydrateThenReplayThenFollow(params: {
-	log: CodingSessionEventRecorder;
+async function* readHistoryThenFollowLiveCodingSessionEvents(params: {
 	coding?: BrowserCodingService;
+	liveEvents?: CodingSessionEventRecorder;
 	sessions?: CodingSessionStore;
 	providerId: string;
 	sdkSessionId: string;
 	sinceSequence?: number;
 	signal?: AbortSignal;
 }): AsyncIterable<StoredCodingSessionEvent> {
-	await seedMissingCodingSessionContent(params);
-	yield* replayThenFollowCodingSessionEvents(params.log, {
-		providerId: params.providerId,
-		sdkSessionId: params.sdkSessionId,
-		...(params.sinceSequence !== undefined
-			? { sinceSequence: params.sinceSequence }
-			: {}),
-		...(params.signal ? { signal: params.signal } : {}),
+	const signal = params.signal;
+	if (signal?.aborted) {
+		return;
+	}
+
+	const liveBuffer: StoredCodingSessionEvent[] = [];
+	let notify: () => void = () => {};
+	let waiter = new Promise<void>((resolve) => {
+		notify = resolve;
 	});
+	const onAbort = () => notify();
+	signal?.addEventListener("abort", onAbort, { once: true });
+	const unsubscribe = params.liveEvents?.subscribe(
+		{
+			providerId: params.providerId,
+			sdkSessionId: params.sdkSessionId,
+		},
+		(stored) => {
+			liveBuffer.push(stored);
+			notify();
+		},
+	);
+
+	try {
+		const history = await readCodingSessionHistory(params);
+		let overlappingBufferedEvents = countHistoryLiveEventOverlap(
+			history,
+			liveBuffer.map((live) => live.event),
+		);
+		const sinceSequence = params.sinceSequence ?? 0;
+		let nextSequence = 1;
+		const historyCreatedAt = Date.now();
+		for (const event of history) {
+			const stored = toStoredCodingSessionEvent({
+				providerId: params.providerId,
+				sdkSessionId: params.sdkSessionId,
+				sequence: nextSequence,
+				event,
+				createdAt: historyCreatedAt + nextSequence - 1,
+			});
+			nextSequence += 1;
+			if (stored.sequence > sinceSequence) {
+				yield stored;
+			}
+		}
+
+		if (nextSequence <= sinceSequence) {
+			nextSequence = sinceSequence + 1;
+		}
+
+		while (!signal?.aborted && params.liveEvents) {
+			while (liveBuffer.length > 0) {
+				const live = liveBuffer.shift();
+				if (!live) {
+					continue;
+				}
+				if (overlappingBufferedEvents > 0) {
+					overlappingBufferedEvents -= 1;
+					continue;
+				}
+				yield toStoredCodingSessionEvent({
+					providerId: params.providerId,
+					sdkSessionId: params.sdkSessionId,
+					sequence: nextSequence,
+					event: live.event,
+					createdAt: live.createdAt,
+				});
+				nextSequence += 1;
+			}
+			if (signal?.aborted) {
+				return;
+			}
+			await waiter;
+			waiter = new Promise<void>((resolve) => {
+				notify = resolve;
+			});
+		}
+	} finally {
+		unsubscribe?.();
+		signal?.removeEventListener("abort", onAbort);
+	}
 }
 
-async function seedMissingCodingSessionContent(params: {
-	log: CodingSessionEventRecorder;
+async function readCodingSessionHistory(params: {
 	coding?: BrowserCodingService;
 	sessions?: CodingSessionStore;
 	providerId: string;
 	sdkSessionId: string;
-	sinceSequence?: number;
 	signal?: AbortSignal;
-}): Promise<void> {
-	if (params.signal?.aborted || (params.sinceSequence ?? 0) > 0) {
-		return;
+}): Promise<CodingSessionEvent[]> {
+	if (
+		params.signal?.aborted ||
+		!params.coding?.rehydrateSessionEvents ||
+		(params.sessions &&
+			!params.sessions.getDetail(params.providerId, params.sdkSessionId))
+	) {
+		return [];
 	}
-	if (!params.coding?.rehydrateSessionEvents || !params.sessions) {
-		return;
-	}
-	if (!params.sessions.getDetail(params.providerId, params.sdkSessionId)) {
-		return;
-	}
-	const existing = params.log.list({
+	return params.coding.rehydrateSessionEvents({
 		providerId: params.providerId,
 		sdkSessionId: params.sdkSessionId,
 	});
-	if (hasContentBearingCodingSessionEvent(existing)) {
-		return;
-	}
-	const rehydrated = await params.coding.rehydrateSessionEvents({
-		providerId: params.providerId,
-		sdkSessionId: params.sdkSessionId,
-	});
-	if (params.signal?.aborted) {
-		return;
-	}
-	const latest = params.log.list({
-		providerId: params.providerId,
-		sdkSessionId: params.sdkSessionId,
-	});
-	if (hasContentBearingCodingSessionEvent(latest)) {
-		return;
-	}
-	for (const event of rehydrated) {
-		params.log.append({
-			providerId: params.providerId,
-			sdkSessionId: params.sdkSessionId,
-			event,
-		});
-	}
 }
 
-function hasContentBearingCodingSessionEvent(
-	events: StoredCodingSessionEvent[],
-): boolean {
-	return events.some((stored) => {
-		switch (stored.event.type) {
-			case "text":
-			case "image":
-			case "thinking":
-			case "error":
-			case "command_execution_started":
-			case "command_execution_output":
-			case "command_execution_completed":
-			case "file_change_applied":
-			case "subagent_tool_started":
-			case "subagent_tool_completed":
-			case "web_search_started":
-			case "web_search_completed":
-			case "tool_call_started":
-			case "tool_call_completed":
-				return true;
-			default:
-				return false;
+function toStoredCodingSessionEvent(params: {
+	providerId: string;
+	sdkSessionId: string;
+	sequence: number;
+	event: CodingSessionEvent;
+	createdAt: number;
+}): StoredCodingSessionEvent {
+	return {
+		providerId: params.providerId,
+		sdkSessionId: params.sdkSessionId,
+		sequence: params.sequence,
+		event: params.event,
+		createdAt: params.createdAt,
+	};
+}
+
+function countHistoryLiveEventOverlap(
+	history: CodingSessionEvent[],
+	bufferedLiveEvents: CodingSessionEvent[],
+): number {
+	const maxOverlap = Math.min(history.length, bufferedLiveEvents.length);
+	for (let count = maxOverlap; count > 0; count -= 1) {
+		let matches = true;
+		for (let index = 0; index < count; index += 1) {
+			const historyEvent = history[history.length - count + index];
+			const liveEvent = bufferedLiveEvents[index];
+			if (
+				!historyEvent ||
+				!liveEvent ||
+				codingSessionEventKey(historyEvent) !== codingSessionEventKey(liveEvent)
+			) {
+				matches = false;
+				break;
+			}
 		}
-	});
+		if (matches) {
+			return count;
+		}
+	}
+	return 0;
+}
+
+function codingSessionEventKey(event: CodingSessionEvent): string {
+	return JSON.stringify(event);
 }
 
 // biome-ignore lint/correctness/useYield: intentionally yields nothing

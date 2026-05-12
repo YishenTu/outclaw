@@ -5,7 +5,7 @@ import { toRelativePath } from "../paths/path-safety.ts";
 
 export const DEFAULT_WORKSPACE_FILE_LIMIT = 2000;
 
-const IGNORED_NAMES = new Set([
+const CHAT_WORKSPACE_IGNORED_NAMES = new Set([
 	".git",
 	".DS_Store",
 	".obsidian",
@@ -22,6 +22,8 @@ const IGNORED_NAMES = new Set([
 	"node_modules",
 ]);
 
+const REPOSITORY_WORKSPACE_IGNORED_NAMES = new Set([".git", ".DS_Store"]);
+
 interface ListWorkspaceFilesOptions {
 	limit?: number;
 }
@@ -30,9 +32,32 @@ export async function listWorkspaceFiles(
 	rootDir: string,
 	options: ListWorkspaceFilesOptions = {},
 ): Promise<WorkspaceFileEntry[]> {
+	return await listWorkspaceFilesWithIgnoredNames(
+		rootDir,
+		CHAT_WORKSPACE_IGNORED_NAMES,
+		options,
+	);
+}
+
+export async function listRepositoryWorkspaceFiles(
+	rootDir: string,
+	options: ListWorkspaceFilesOptions = {},
+): Promise<WorkspaceFileEntry[]> {
+	return await listWorkspaceFilesWithIgnoredNames(
+		rootDir,
+		REPOSITORY_WORKSPACE_IGNORED_NAMES,
+		options,
+	);
+}
+
+async function listWorkspaceFilesWithIgnoredNames(
+	rootDir: string,
+	ignoredNames: ReadonlySet<string>,
+	options: ListWorkspaceFilesOptions,
+): Promise<WorkspaceFileEntry[]> {
 	const entries: WorkspaceFileEntry[] = [];
 	const limit = normalizeLimit(options.limit);
-	await walkDirectory(rootDir, rootDir, entries, limit);
+	await walkDirectory(rootDir, rootDir, entries, limit, ignoredNames);
 	entries.sort((left, right) => left.path.localeCompare(right.path));
 	return entries;
 }
@@ -42,6 +67,7 @@ async function walkDirectory(
 	currentDir: string,
 	collector: WorkspaceFileEntry[],
 	limit: number,
+	ignoredNames: ReadonlySet<string>,
 ): Promise<void> {
 	if (collector.length >= limit) {
 		return;
@@ -53,7 +79,7 @@ async function walkDirectory(
 		if (collector.length >= limit) {
 			return;
 		}
-		if (IGNORED_NAMES.has(dirent.name)) {
+		if (ignoredNames.has(dirent.name)) {
 			continue;
 		}
 
@@ -61,7 +87,13 @@ async function walkDirectory(
 		const path = toRelativePath(rootDir, absolutePath);
 		if (dirent.isDirectory()) {
 			collector.push({ kind: "directory", path });
-			await walkDirectory(rootDir, absolutePath, collector, limit);
+			await walkDirectory(
+				rootDir,
+				absolutePath,
+				collector,
+				limit,
+				ignoredNames,
+			);
 			continue;
 		}
 		if (dirent.isFile()) {

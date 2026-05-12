@@ -11,6 +11,14 @@ import type {
 import type { FacadeEvent } from "../../../src/common/protocol.ts";
 
 interface FakeCodexAppServerClientOptions {
+	skills?: Array<{
+		description?: string;
+		enabled?: boolean;
+		name: string;
+		path: string;
+		scope?: string;
+		shortDescription?: string;
+	}>;
 	threadPath?: string | null;
 }
 
@@ -70,6 +78,23 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 			} as T;
 		}
 
+		if (method === "skills/list") {
+			return {
+				data: [
+					{
+						cwd:
+							typeof params === "object" &&
+							params !== null &&
+							Array.isArray((params as { cwds?: unknown }).cwds)
+								? ((params as { cwds: string[] }).cwds[0] ?? "/work/repo")
+								: "/work/repo",
+						errors: [],
+						skills: this.options.skills ?? [],
+					},
+				],
+			} as T;
+		}
+
 		throw new Error(`Unexpected request: ${method}`);
 	}
 
@@ -100,6 +125,45 @@ async function collectEvents(
 }
 
 describe("CodexAdapter", () => {
+	test("lists enabled Codex skills through the provider skill catalog", async () => {
+		const client = new FakeCodexAppServerClient([], {
+			skills: [
+				{
+					name: "review",
+					path: "/work/repo/.codex/skills/review/SKILL.md",
+					scope: "repo",
+					enabled: true,
+					shortDescription: "Review the current changes",
+					description: "Long review description",
+				},
+				{
+					name: "disabled",
+					path: "/home/me/.codex/skills/disabled/SKILL.md",
+					scope: "user",
+					enabled: false,
+					description: "Hidden skill",
+				},
+			],
+		});
+		const adapter = new CodexAdapter({ client });
+
+		await expect(
+			adapter.listProviderSkills({ cwd: "/work/repo" }),
+		).resolves.toEqual([
+			{
+				name: "review",
+				description: "Review the current changes",
+				scope: "repo",
+			},
+		]);
+		expect(client.requests).toEqual([
+			{
+				method: "skills/list",
+				params: { cwds: ["/work/repo"] },
+			},
+		]);
+	});
+
 	test("streams a simple app-server turn through the Facade contract", async () => {
 		const client = new FakeCodexAppServerClient([
 			{
@@ -161,6 +225,7 @@ describe("CodexAdapter", () => {
 					input: [{ type: "text", text: "say hello", text_elements: [] }],
 					model: "gpt-5.5",
 					effort: "high",
+					summary: "auto",
 				},
 			},
 		]);
@@ -177,6 +242,67 @@ describe("CodexAdapter", () => {
 				durationMs: 31,
 			},
 		]);
+	});
+
+	test("resolves explicit $skill prompts into Codex skill inputs", async () => {
+		const client = new FakeCodexAppServerClient(
+			[
+				{
+					method: "turn/completed",
+					params: {
+						threadId: "codex-thread-123",
+						turn: {
+							id: "turn-1",
+							durationMs: 31,
+							status: "completed",
+						},
+					},
+				},
+			],
+			{
+				skills: [
+					{
+						name: "review",
+						path: "/work/repo/.codex/skills/review/SKILL.md",
+						scope: "repo",
+						enabled: true,
+						description: "Review changes",
+					},
+				],
+			},
+		);
+		const adapter = new CodexAdapter({ client });
+
+		await collectEvents(
+			adapter.run({
+				prompt: "$review inspect this branch",
+				cwd: "/work/repo",
+			}),
+		);
+
+		expect(client.requests).toContainEqual({
+			method: "skills/list",
+			params: { cwds: ["/work/repo"] },
+		});
+		expect(client.requests).toContainEqual({
+			method: "turn/start",
+			params: {
+				threadId: "codex-thread-123",
+				input: [
+					{
+						type: "text",
+						text: "$review inspect this branch",
+						text_elements: [],
+					},
+					{
+						type: "skill",
+						name: "review",
+						path: "/work/repo/.codex/skills/review/SKILL.md",
+					},
+				],
+				summary: "auto",
+			},
+		});
 	});
 
 	test("requests raw events when resuming a Codex thread", async () => {
@@ -504,6 +630,36 @@ describe("CodexAdapter", () => {
 			{
 				type: "response_item",
 				payload: {
+					type: "message",
+					role: "user",
+					content: [
+						{
+							type: "input_text",
+							text: [
+								"# AGENTS.md instructions for /work/repo",
+								"",
+								"<INSTRUCTIONS>",
+								"Use tabs.",
+								"</INSTRUCTIONS>",
+								"<environment_context>",
+								"  <cwd>/work/repo</cwd>",
+								"</environment_context>",
+							].join("\n"),
+						},
+					],
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "user",
+					content: [{ type: "input_text", text: "fix the tests" }],
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
 					type: "reasoning",
 					summary: [],
 					content: [{ type: "reasoning_text", text: "inspect files" }],
@@ -577,6 +733,11 @@ describe("CodexAdapter", () => {
 			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-123" }),
 		).toEqual([
 			{
+				type: "user_prompt",
+				text: "fix the tests",
+				sessionId: "codex-thread-123",
+			},
+			{
 				type: "thinking",
 				text: "inspect files",
 				sessionId: "codex-thread-123",
@@ -591,6 +752,7 @@ describe("CodexAdapter", () => {
 			{
 				type: "command_execution_completed",
 				callId: "call_ls",
+				exitCode: 0,
 				output: "package.json\nsrc\n",
 				sessionId: "codex-thread-123",
 			},
@@ -621,6 +783,386 @@ describe("CodexAdapter", () => {
 		]);
 	});
 
+	test("ignores a trailing partial Codex JSONL row during active transcript reads", () => {
+		const completeRow = JSON.stringify({
+			type: "response_item",
+			payload: {
+				type: "message",
+				role: "assistant",
+				content: [{ type: "output_text", text: "completed output" }],
+			},
+		});
+		const jsonl = `${completeRow}\n{"type":"response_item","payload":{"type":"message"`;
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-x" }),
+		).toEqual([
+			{
+				type: "text",
+				text: "completed output",
+				sessionId: "codex-thread-x",
+			},
+		]);
+	});
+
+	test("throws on malformed Codex JSONL rows before the active trailing row", () => {
+		const completeRow = JSON.stringify({
+			type: "response_item",
+			payload: {
+				type: "message",
+				role: "assistant",
+				content: [{ type: "output_text", text: "completed output" }],
+			},
+		});
+		const jsonl = `${completeRow}\n{"type":"response_item"\n${completeRow}\n`;
+
+		expect(() =>
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-x" }),
+		).toThrow(SyntaxError);
+	});
+
+	test("hides the apply_patch custom_tool_call_output even when the output item omits the tool name", () => {
+		// Codex emits `custom_tool_call_output` items without a `name` field
+		// (only `call_id` and `output` round-trip from the responses API). The
+		// matching `custom_tool_call` (started) IS named "apply_patch" and is
+		// already suppressed, so the orphan output must be suppressed too —
+		// otherwise it surfaces as a generic tool_call_completed card.
+		const jsonl = [
+			{
+				type: "response_item",
+				payload: {
+					type: "custom_tool_call",
+					name: "apply_patch",
+					call_id: "call_patch_1",
+					input: "*** Begin Patch\n*** End Patch\n",
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "custom_tool_call_output",
+					call_id: "call_patch_1",
+					output:
+						'{"output":"Success. Updated the following files:\\nM /tmp/a.ts\\n","metadata":{"exit_code":0,"duration_seconds":0.0}}',
+				},
+			},
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n");
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-x" }),
+		).toEqual([]);
+	});
+
+	test("hides the apply_patch custom_tool_call_output from live raw response items too", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "rawResponseItem/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					item: {
+						type: "custom_tool_call",
+						name: "apply_patch",
+						call_id: "call_patch_live",
+						input: "*** Begin Patch\n*** End Patch\n",
+					},
+				},
+			},
+			{
+				method: "rawResponseItem/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					item: {
+						// Real codex shape: no `name` on the output side.
+						type: "custom_tool_call_output",
+						call_id: "call_patch_live",
+						output:
+							'{"output":"Success. Updated the following files:\\nM /tmp/a.ts\\n","metadata":{"exit_code":0,"duration_seconds":0.0}}',
+					},
+				},
+			},
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 5, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({ prompt: "edit a file", cwd: "/work/repo" }),
+		);
+
+		// Only the session lifecycle markers should appear — no tool card for
+		// the suppressed apply_patch call.
+		expect(events).toEqual([
+			{ type: "session_initialized", sessionId: "codex-thread-123" },
+			{ type: "done", sessionId: "codex-thread-123", durationMs: 5 },
+		]);
+	});
+
+	test("suppresses apply_patch output when live notifications also emit generic item/completed noise", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "rawResponseItem/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					item: {
+						type: "custom_tool_call",
+						name: "apply_patch",
+						call_id: "call_patch_live",
+						input: "*** Begin Patch\n*** End Patch\n",
+					},
+				},
+			},
+			{
+				method: "item/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					item: {
+						type: "custom_tool_call_output",
+						id: "call_patch_live",
+						status: "completed",
+						output:
+							'{"output":"Success. Updated the following files:\\nM /tmp/a.ts\\n","metadata":{"exit_code":0,"duration_seconds":0.0}}',
+					},
+				},
+			},
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 5, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({ prompt: "edit a file", cwd: "/work/repo" }),
+		);
+
+		expect(events).toEqual([
+			{ type: "session_initialized", sessionId: "codex-thread-123" },
+			{ type: "done", sessionId: "codex-thread-123", durationMs: 5 },
+		]);
+	});
+
+	test("suppresses live write_stdin transport noise while keeping the command execution stream", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "rawResponseItem/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					item: {
+						type: "function_call",
+						name: "exec_command",
+						call_id: "call_cmd",
+						arguments: JSON.stringify({
+							cmd: "bun run check",
+							workdir: "/work/repo",
+						}),
+					},
+				},
+			},
+			{
+				method: "item/commandExecution/outputDelta",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					itemId: "call_cmd",
+					delta: "streamed output\n",
+				},
+			},
+			{
+				method: "rawResponseItem/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					item: {
+						type: "function_call",
+						name: "write_stdin",
+						call_id: "call_poll",
+						arguments: JSON.stringify({
+							session_id: 2404,
+							chars: "",
+							max_output_tokens: 8000,
+							yield_time_ms: 1000,
+						}),
+					},
+				},
+			},
+			{
+				method: "rawResponseItem/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					item: {
+						type: "function_call_output",
+						call_id: "call_poll",
+						output:
+							"Chunk ID: abc\nWall time: 1.0000 seconds\nProcess running with session ID 2404\nOriginal token count: 2\nOutput:\nshadow output\n",
+					},
+				},
+			},
+			{
+				method: "item/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					item: {
+						type: "commandExecution",
+						id: "call_cmd",
+						exitCode: 0,
+						durationMs: 12,
+						aggregatedOutput: "streamed output\n",
+					},
+				},
+			},
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 12, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({ prompt: "run checks", cwd: "/work/repo" }),
+		);
+
+		expect(events).toEqual([
+			{ type: "session_initialized", sessionId: "codex-thread-123" },
+			{
+				type: "command_execution_started",
+				callId: "call_cmd",
+				command: "bun run check",
+				cwd: "/work/repo",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "command_execution_output",
+				callId: "call_cmd",
+				output: "streamed output\n",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "command_execution_completed",
+				callId: "call_cmd",
+				exitCode: 0,
+				durationMs: 12,
+				output: "streamed output\n",
+				sessionId: "codex-thread-123",
+			},
+			{ type: "done", sessionId: "codex-thread-123", durationMs: 12 },
+		]);
+	});
+
+	test("maps long-running exec_command JSONL polling into command output instead of write_stdin tool cards", () => {
+		const jsonl = [
+			{
+				type: "response_item",
+				payload: {
+					type: "function_call",
+					name: "exec_command",
+					call_id: "call_cmd",
+					arguments: JSON.stringify({
+						cmd: "bun run check",
+						workdir: "/work/repo",
+					}),
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "function_call_output",
+					call_id: "call_cmd",
+					output:
+						"Chunk ID: aaa\nWall time: 0.0000 seconds\nProcess running with session ID 2404\nOriginal token count: 3\nOutput:\n$ bun run check\n",
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "function_call",
+					name: "write_stdin",
+					call_id: "call_poll",
+					arguments: JSON.stringify({
+						session_id: 2404,
+						chars: "",
+						max_output_tokens: 8000,
+						yield_time_ms: 1000,
+					}),
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "function_call_output",
+					call_id: "call_poll",
+					output:
+						"Chunk ID: bbb\nWall time: 1.0000 seconds\nProcess exited with code 0\nOriginal token count: 2\nOutput:\nall good\n",
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "assistant",
+					content: [{ type: "output_text", text: "Done." }],
+					phase: "final_answer",
+				},
+			},
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n");
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-123" }),
+		).toEqual([
+			{
+				type: "command_execution_started",
+				callId: "call_cmd",
+				command: "bun run check",
+				cwd: "/work/repo",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "command_execution_output",
+				callId: "call_cmd",
+				output: "$ bun run check\n",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "command_execution_output",
+				callId: "call_cmd",
+				output: "all good\n",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "command_execution_completed",
+				callId: "call_cmd",
+				exitCode: 0,
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "text",
+				text: "Done.",
+				sessionId: "codex-thread-123",
+			},
+		]);
+	});
+
 	test("reads normalized coding events from a resumed thread JSONL transcript", async () => {
 		const root = mkdtempSync(join(tmpdir(), "outclaw-codex-jsonl-"));
 		try {
@@ -628,6 +1170,14 @@ describe("CodexAdapter", () => {
 			writeFileSync(
 				transcriptPath,
 				[
+					{
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "user",
+							content: [{ type: "input_text", text: "check status" }],
+						},
+					},
 					{
 						type: "response_item",
 						payload: {
@@ -656,6 +1206,11 @@ describe("CodexAdapter", () => {
 			await expect(
 				adapter.readCodingSessionEvents("codex-thread-123"),
 			).resolves.toEqual([
+				{
+					type: "user_prompt",
+					text: "check status",
+					sessionId: "codex-thread-123",
+				},
 				{
 					type: "thinking",
 					text: "check cwd",

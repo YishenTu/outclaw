@@ -10,6 +10,8 @@ export interface CommandEntry {
 	description: string;
 	source: "builtin" | "skill";
 	transport: SlashCommandTransport;
+	displayPrefix?: string;
+	insertPrefix?: string;
 }
 
 export interface SlashCommandsState {

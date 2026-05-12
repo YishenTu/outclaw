@@ -22,6 +22,7 @@ type AlwaysRequired =
 	| "readAgentFile"
 	| "readConfigFile"
 	| "readGitCommit"
+	| "readGitCommitStats"
 	| "readGitDiff"
 	| "readGitStatus"
 	| "setAgentCronEnabled"
@@ -83,6 +84,19 @@ export async function handleBrowserApiRequest(
 			);
 		}
 
+		if (url.pathname === "/api/git/history") {
+			if (!browserApi.readGitHistory) {
+				return jsonError("Git history API is not configured", 404);
+			}
+			const historyParams = readGitHistoryParams(url);
+			if (historyParams.status === "invalid") {
+				return jsonError(historyParams.message, 400);
+			}
+			return Response.json(
+				await browserApi.readGitHistory(historyParams.value),
+			);
+		}
+
 		if (url.pathname === "/api/git/init") {
 			if (req.method !== "POST") {
 				return jsonError("Method not allowed", 405);
@@ -109,6 +123,16 @@ export async function handleBrowserApiRequest(
 			}
 			return Response.json(
 				await browserApi.readGitCommit(sha, readRepositoryIdParams(url)),
+			);
+		}
+
+		if (url.pathname === "/api/git/commit/stats") {
+			const sha = url.searchParams.get("sha");
+			if (!sha) {
+				return jsonError("Missing sha query parameter", 400);
+			}
+			return Response.json(
+				await browserApi.readGitCommitStats(sha, readRepositoryIdParams(url)),
 			);
 		}
 
@@ -317,7 +341,7 @@ export async function handleBrowserApiRequest(
 		}
 
 		const codingRepositoriesMatch = url.pathname.match(
-			/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive|tree|files))?)?$/,
+			/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive|restore|tree|workspace-files|files|skills))?)?$/,
 		);
 		if (codingRepositoriesMatch) {
 			const [, encodedRepositoryId, action] = codingRepositoriesMatch;
@@ -383,6 +407,18 @@ export async function handleBrowserApiRequest(
 				);
 			}
 
+			if (action === "restore") {
+				if (req.method !== "POST") {
+					return jsonError("Method not allowed", 405);
+				}
+				if (!browserApi.restoreCodingRepository) {
+					return jsonError("Coding repository API is not configured", 404);
+				}
+				return Response.json(
+					await browserApi.restoreCodingRepository(repositoryId),
+				);
+			}
+
 			if (action === "tree") {
 				if (req.method !== "GET") {
 					return jsonError("Method not allowed", 405);
@@ -392,6 +428,18 @@ export async function handleBrowserApiRequest(
 				}
 				return Response.json(
 					await browserApi.listCodingRepositoryTree(repositoryId),
+				);
+			}
+
+			if (action === "workspace-files") {
+				if (req.method !== "GET") {
+					return jsonError("Method not allowed", 405);
+				}
+				if (!browserApi.listCodingRepositoryWorkspaceFiles) {
+					return jsonError("Coding repository API is not configured", 404);
+				}
+				return Response.json(
+					await browserApi.listCodingRepositoryWorkspaceFiles(repositoryId),
 				);
 			}
 
@@ -431,6 +479,23 @@ export async function handleBrowserApiRequest(
 				);
 			}
 
+			if (action === "skills") {
+				if (req.method !== "GET") {
+					return jsonError("Method not allowed", 405);
+				}
+				if (!browserApi.listCodingRepositorySkills) {
+					return jsonError(
+						"Coding repository skill API is not configured",
+						404,
+					);
+				}
+				return Response.json(
+					await browserApi.listCodingRepositorySkills(repositoryId, {
+						forceReload: url.searchParams.get("forceReload") === "true",
+					}),
+				);
+			}
+
 			if (req.method !== "GET") {
 				return jsonError("Method not allowed", 405);
 			}
@@ -441,7 +506,7 @@ export async function handleBrowserApiRequest(
 		}
 
 		const codingSessionsMatch = url.pathname.match(
-			/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(resume|events|stop))?)?$/,
+			/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(archive|restore|resume|events|stop))?)?$/,
 		);
 		if (codingSessionsMatch) {
 			const [, encodedProviderId, encodedSdkSessionId, action] =
@@ -450,6 +515,28 @@ export async function handleBrowserApiRequest(
 			if (encodedProviderId && encodedSdkSessionId) {
 				const providerId = decodeURIComponent(encodedProviderId);
 				const sdkSessionId = decodeURIComponent(encodedSdkSessionId);
+				if (action === "archive") {
+					if (req.method !== "POST") {
+						return jsonError("Method not allowed", 405);
+					}
+					if (!browserApi.archiveCodingSession) {
+						return jsonError("Coding session API is not configured", 404);
+					}
+					return Response.json(
+						await browserApi.archiveCodingSession(providerId, sdkSessionId),
+					);
+				}
+				if (action === "restore") {
+					if (req.method !== "POST") {
+						return jsonError("Method not allowed", 405);
+					}
+					if (!browserApi.restoreCodingSession) {
+						return jsonError("Coding session API is not configured", 404);
+					}
+					return Response.json(
+						await browserApi.restoreCodingSession(providerId, sdkSessionId),
+					);
+				}
 				if (action === "events") {
 					if (req.method !== "GET") {
 						return jsonError("Method not allowed", 405);
@@ -684,6 +771,14 @@ export async function handleBrowserApiRequest(
 			}
 			const linkedChatSessionId =
 				url.searchParams.get("linkedChatSessionId") ?? undefined;
+			const lifecycleStatusParam = url.searchParams.get("lifecycleStatus");
+			if (
+				lifecycleStatusParam !== null &&
+				lifecycleStatusParam !== "open" &&
+				lifecycleStatusParam !== "archived"
+			) {
+				return jsonError("Invalid coding session lifecycle status", 400);
+			}
 			const queryParam = url.searchParams.get("query");
 			const searchQuery = queryParam
 				? validateSessionSearchQuery(queryParam)
@@ -699,6 +794,9 @@ export async function handleBrowserApiRequest(
 					cursor,
 					limit,
 					linkedChatSessionId,
+					...(lifecycleStatusParam
+						? { lifecycleStatus: lifecycleStatusParam }
+						: {}),
 					providerId: url.searchParams.get("providerId") ?? undefined,
 					...(normalizedQuery ? { query: normalizedQuery } : {}),
 					repositoryId: url.searchParams.get("repositoryId") ?? undefined,
@@ -886,6 +984,40 @@ function readRepositoryIdParams(
 		return undefined;
 	}
 	return { repositoryId };
+}
+
+function readGitHistoryParams(url: URL):
+	| {
+			status: "valid";
+			value: { repositoryId?: string; cursor?: string; limit?: number };
+	  }
+	| { status: "invalid"; message: string } {
+	const repositoryParams = readRepositoryIdParams(url) ?? {};
+	const cursor = url.searchParams.get("cursor");
+	if (cursor !== null && cursor !== "" && !/^\d+$/.test(cursor)) {
+		return { status: "invalid", message: "Invalid git history cursor" };
+	}
+
+	const limitParam = url.searchParams.get("limit");
+	let limit: number | undefined;
+	if (limitParam !== null) {
+		if (!/^\d+$/.test(limitParam)) {
+			return { status: "invalid", message: "Invalid git history limit" };
+		}
+		limit = Number.parseInt(limitParam, 10);
+		if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
+			return { status: "invalid", message: "Invalid git history limit" };
+		}
+	}
+
+	return {
+		status: "valid",
+		value: {
+			...repositoryParams,
+			...(cursor ? { cursor } : {}),
+			...(limit !== undefined ? { limit } : {}),
+		},
+	};
 }
 
 async function readUploadedImages(req: Request) {

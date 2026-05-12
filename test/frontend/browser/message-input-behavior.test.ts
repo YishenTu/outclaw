@@ -4,6 +4,7 @@ import {
 	filterSlashCommands,
 	isSlashAutocompleteInput,
 	resolveRuntimePopupItemCount,
+	shouldShowSlashCommandMenu,
 } from "../../../src/frontend/browser/components/chat/composer/message-input-behavior.ts";
 
 const COMMANDS = [
@@ -77,6 +78,25 @@ describe("browser message input behavior", () => {
 		).toBe(1);
 		expect(resolveRuntimePopupItemCount({ kind: "status" })).toBe(0);
 		expect(resolveRuntimePopupItemCount(null)).toBe(0);
+	});
+
+	test("opens the command menu for an empty async catalog when an empty message is configured", () => {
+		expect(
+			shouldShowSlashCommandMenu({
+				filteredCommandCount: 0,
+				hasEmptyMessage: true,
+				isTriggerActive: true,
+				showMentionMenu: false,
+			}),
+		).toBe(true);
+		expect(
+			shouldShowSlashCommandMenu({
+				filteredCommandCount: 0,
+				hasEmptyMessage: false,
+				isTriggerActive: true,
+				showMentionMenu: false,
+			}),
+		).toBe(false);
 	});
 
 	test("allows submission only with text or images while enabled", () => {

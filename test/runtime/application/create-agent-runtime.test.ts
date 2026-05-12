@@ -11,7 +11,7 @@ import { createAgentRuntime } from "../../../src/runtime/application/create-agen
 import {
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
-	CodingSessionEventStore,
+	CodingSessionEventHub,
 	CodingSessionStore,
 	createCodingService,
 } from "../../../src/runtime/coding/index.ts";
@@ -443,9 +443,7 @@ describe("createAgentRuntime", () => {
 		const codingRepositories = new CodingRepositoryStore(TEST_DB, {
 			journalMode: "DELETE",
 		});
-		const codingEvents = new CodingSessionEventStore(TEST_DB, {
-			journalMode: "DELETE",
-		});
+		const codingEvents = new CodingSessionEventHub();
 		const codingService = createCodingService({
 			facade: codingFacade,
 			repositories: codingRepositories,

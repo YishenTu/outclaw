@@ -25,30 +25,40 @@ function session(
 
 const REPOSITORY = { id: "repo-1", displayName: "Outclaw" };
 const NOOP = () => {};
+const ACTIONS = {
+	onToggle: NOOP,
+	onSelectRepository: NOOP,
+	onNewSession: NOOP,
+	onArchiveRepository: NOOP,
+	onSelectSession: NOOP,
+	onRenameSession: NOOP,
+	onArchiveSession: NOOP,
+	onLoadMore: NOOP,
+	onSearch: NOOP,
+	onLoadMoreSearch: NOOP,
+	onClearSearch: NOOP,
+};
 
 describe("RepositoryItem", () => {
-	test("renders the repository row with chevron, search and plus affordances", () => {
+	test("renders the repository row with a secondary actions trigger and plus affordance", () => {
 		const html = renderToStaticMarkup(
 			<RepositoryItem
 				repository={REPOSITORY}
 				isExpanded={false}
 				sessions={[]}
-				onToggle={NOOP}
-				onSelectRepository={NOOP}
-				onNewSession={NOOP}
-				onSelectSession={NOOP}
-				onRenameSession={NOOP}
-				onDeleteSession={NOOP}
-				onLoadMore={NOOP}
-				onSearch={NOOP}
-				onLoadMoreSearch={NOOP}
-				onClearSearch={NOOP}
+				{...ACTIONS}
 			/>,
 		);
 		expect(html).toContain("Outclaw");
-		expect(html).toContain('aria-label="Search sessions for Outclaw"');
+		expect(html).toContain('aria-label="Open repository actions for Outclaw"');
+		expect(html).toContain("lucide-ellipsis");
 		expect(html).toContain('aria-label="Start new session in Outclaw"');
+		expect(html).toContain("group-hover:pointer-events-auto");
+		expect(html).toContain("group-hover:opacity-100");
+		expect(html).toContain("absolute inset-y-0 right-2");
 		expect(html).toContain('aria-expanded="false"');
+		expect(html).not.toContain('aria-label="Search sessions for Outclaw"');
+		expect(html).not.toContain('aria-label="Archive repository Outclaw"');
 	});
 
 	test("renders sessions with the shared SessionItem when expanded and marks active", () => {
@@ -69,22 +79,13 @@ describe("RepositoryItem", () => {
 					sdkSessionId: focused.sdkSessionId,
 				}}
 				sessions={[focused, other]}
-				onToggle={NOOP}
-				onSelectRepository={NOOP}
-				onNewSession={NOOP}
-				onSelectSession={NOOP}
-				onRenameSession={NOOP}
-				onDeleteSession={NOOP}
-				onLoadMore={NOOP}
-				onSearch={NOOP}
-				onLoadMoreSearch={NOOP}
-				onClearSearch={NOOP}
+				{...ACTIONS}
 			/>,
 		);
 		expect(html).toContain("Active work");
 		expect(html).toContain("Older work");
-		expect(html).toContain('aria-label="Delete session Active work"');
-		expect(html).toContain('aria-label="Delete session Older work"');
+		expect(html).toContain('aria-label="Archive session Active work"');
+		expect(html).toContain('aria-label="Archive session Older work"');
 		expect(html).toContain("bg-dark-100");
 	});
 
@@ -94,16 +95,7 @@ describe("RepositoryItem", () => {
 				repository={REPOSITORY}
 				isExpanded={true}
 				sessions={[]}
-				onToggle={NOOP}
-				onSelectRepository={NOOP}
-				onNewSession={NOOP}
-				onSelectSession={NOOP}
-				onRenameSession={NOOP}
-				onDeleteSession={NOOP}
-				onLoadMore={NOOP}
-				onSearch={NOOP}
-				onLoadMoreSearch={NOOP}
-				onClearSearch={NOOP}
+				{...ACTIONS}
 			/>,
 		);
 		expect(html).toContain("No sessions yet for this project.");
@@ -121,21 +113,25 @@ describe("RepositoryItem", () => {
 					sessions: [match],
 					nextCursor: { lastActive: 1, sdkSessionId: "sdk-next" },
 				}}
-				onToggle={NOOP}
-				onSelectRepository={NOOP}
-				onNewSession={NOOP}
-				onSelectSession={NOOP}
-				onRenameSession={NOOP}
-				onDeleteSession={NOOP}
-				onLoadMore={NOOP}
-				onSearch={NOOP}
-				onLoadMoreSearch={NOOP}
-				onClearSearch={NOOP}
+				{...ACTIONS}
 			/>,
 		);
 		expect(html).toContain('placeholder="Search sessions"');
 		expect(html).toContain("Auth work");
 		expect(html).toContain("Load more results");
-		expect(html).toContain('aria-label="Close session search for Outclaw"');
+		expect(html).toContain('aria-label="Open repository actions for Outclaw"');
+		expect(html).not.toContain('aria-label="Close session search for Outclaw"');
+	});
+	test("does not render an inline archived-session subtree", () => {
+		const html = renderToStaticMarkup(
+			<RepositoryItem
+				repository={REPOSITORY}
+				isExpanded={true}
+				sessions={[]}
+				{...ACTIONS}
+			/>,
+		);
+		expect(html).not.toContain("Archived sessions");
+		expect(html).not.toContain('placeholder="Search archived sessions"');
 	});
 });
