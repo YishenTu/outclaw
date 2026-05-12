@@ -132,4 +132,31 @@ describe("createCodingService", () => {
 		// not throw, since errors are surfaced through the result payload.
 		await expect(inFlight).resolves.toMatchObject({ status: "rejected" });
 	});
+
+	test("rehydrateSessionEvents delegates to the coding facade for the active provider", async () => {
+		const facade = new MockFacade();
+		facade.providerId = "codex";
+		const rehydrated: FacadeEvent[] = [
+			{ type: "thinking", text: "from jsonl", sessionId: "codex-1" },
+			{ type: "text", text: "done", sessionId: "codex-1" },
+		];
+		facade.readCodingSessionEvents = async (sessionId: string) => {
+			expect(sessionId).toBe("codex-1");
+			return rehydrated;
+		};
+		const { codingService } = makeHarness(facade);
+
+		await expect(
+			codingService.rehydrateSessionEvents({
+				providerId: "codex",
+				sdkSessionId: "codex-1",
+			}),
+		).resolves.toEqual(rehydrated);
+		await expect(
+			codingService.rehydrateSessionEvents({
+				providerId: "claude",
+				sdkSessionId: "codex-1",
+			}),
+		).resolves.toEqual([]);
+	});
 });

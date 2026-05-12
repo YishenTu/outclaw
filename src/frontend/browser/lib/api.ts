@@ -4,6 +4,7 @@ import type {
 	BrowserCodingFolderPickerResponse,
 	BrowserCodingModelsResponse,
 	BrowserCodingRepositoryArchiveResponse,
+	BrowserCodingRepositoryCloneResponse,
 	BrowserCodingRepositoryDetail,
 	BrowserCodingRepositoryListResponse,
 	BrowserCodingSessionDeleteResponse,
@@ -11,6 +12,7 @@ import type {
 	BrowserCodingSessionPageResponse,
 	BrowserCodingSessionResumeResponse,
 	BrowserCodingSessionStartResponse,
+	BrowserCodingSessionStopResponse,
 	BrowserConfigResponse,
 	BrowserCronEntry,
 	BrowserCronHistoryCursor,
@@ -225,6 +227,20 @@ export async function resumeCodingSession(params: {
 	);
 }
 
+export async function stopCodingSession(params: {
+	providerId: string;
+	sdkSessionId: string;
+}): Promise<BrowserCodingSessionStopResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/sessions/${encodeURIComponent(params.providerId)}/${encodeURIComponent(params.sdkSessionId)}/stop`,
+			{
+				method: "POST",
+			},
+		),
+	);
+}
+
 export async function fetchCodingModels(): Promise<BrowserCodingModelsResponse> {
 	return parseJsonResponse(await fetch("/api/coding/models"));
 }
@@ -337,6 +353,22 @@ export async function registerCodingRepository(params: {
 }): Promise<BrowserCodingRepositoryDetail> {
 	return parseJsonResponse(
 		await fetch("/api/coding/repositories", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+			},
+			body: JSON.stringify(params),
+		}),
+	);
+}
+
+export async function cloneCodingRepository(params: {
+	remoteUrl: string;
+	parentDir: string;
+	displayName?: string;
+}): Promise<BrowserCodingRepositoryCloneResponse> {
+	return parseJsonResponse(
+		await fetch("/api/coding/repositories/clone", {
 			method: "POST",
 			headers: {
 				"content-type": "application/json",

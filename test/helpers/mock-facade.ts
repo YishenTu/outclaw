@@ -17,6 +17,7 @@ export class MockFacade implements Facade {
 	textChunks: string[] | undefined;
 	historyMessages: DisplayMessage[] = [];
 	historyError: Error | undefined;
+	readCodingSessionEvents?: (sessionId: string) => Promise<FacadeEvent[]>;
 
 	async readHistory(): Promise<DisplayMessage[]> {
 		if (this.historyError) {

@@ -19,6 +19,7 @@ import {
 	fetchSidebarSummary,
 	initGitRepo,
 	registerCodingRepository,
+	stopCodingSession,
 	updateAgentCronEnabled,
 	updateConfigFile,
 	uploadPromptImages,
@@ -186,6 +187,14 @@ describe("browser API client integration", () => {
 					deleted: true,
 					providerId,
 					sdkSessionId,
+				};
+			},
+			stopCodingSession: async (params) => {
+				calls.push(`coding:stop:${params.providerId}:${params.sdkSessionId}`);
+				return {
+					status: "accepted",
+					providerId: params.providerId,
+					sdkSessionId: params.sdkSessionId,
 				};
 			},
 			listCodingRepositories: async (params) => {
@@ -463,6 +472,16 @@ describe("browser API client integration", () => {
 			sdkSessionId: "code-session-1",
 		});
 		await expect(
+			stopCodingSession({
+				providerId: "codex",
+				sdkSessionId: "code-session-1",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "code-session-1",
+		});
+		await expect(
 			fetchCodingRepositories({ includeArchived: true }),
 		).resolves.toMatchObject({
 			repositories: [{ id: "repo-1" }],
@@ -522,6 +541,7 @@ describe("browser API client integration", () => {
 			"coding:list:3:200:code-session-1:codex:repo-1:sdk-active",
 			"coding:get:codex:code-session-1",
 			"coding:delete:codex:code-session-1",
+			"coding:stop:codex:code-session-1",
 			"repo:list:true",
 			"repo:get:repo-1",
 			"repo:register:/workspace/outclaw:Outclaw",

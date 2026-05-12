@@ -1,16 +1,9 @@
-import {
-	ChevronDown,
-	ChevronUp,
-	FolderTree,
-	GitBranch,
-	PanelRightOpen,
-} from "lucide-react";
+import { ChevronDown, FolderTree, GitBranch } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
 	BrowserGitStatusResponse,
 	BrowserTreeEntry,
 } from "../../../common/protocol.ts";
-import { ActiveTabUnderline } from "../components/active-tab-underline.tsx";
 import {
 	FileTree,
 	FileTreeHeader,
@@ -21,6 +14,10 @@ import {
 	applyRightPanelResizeBodyStyles,
 	calculateRightPanelSplitRatio,
 } from "../components/right-panel/right-panel-resize-behavior.ts";
+import {
+	RightPanelSplitShell,
+	RightPanelTabBar,
+} from "../components/right-panel/right-panel-shell.tsx";
 import { TerminalPanel } from "../components/right-panel/terminal/terminal-panel.tsx";
 import { TerminalTabs } from "../components/right-panel/terminal/terminal-tabs.tsx";
 import {
@@ -328,144 +325,78 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 
 	return (
 		<div className="flex h-full flex-col bg-dark-950">
-			<div className="flex h-12 items-stretch gap-2 border-b border-dark-800 px-3">
-				{onCollapse ? (
-					<button
-						type="button"
-						onClick={onCollapse}
-						className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
-						aria-label="Collapse right sidebar"
-					>
-						<PanelRightOpen size={15} />
-					</button>
-				) : null}
-				<div className="flex min-w-0 flex-1 items-stretch gap-2">
-					{(["files", "git"] as const).map((tab) => (
-						<div
-							key={tab}
-							className={`font-mono-ui relative flex shrink-0 items-center pt-px text-[11px] uppercase tracking-[0.12em] transition-colors ${
-								activeTab === tab
-									? "text-dark-50"
-									: "text-dark-500 hover:text-dark-200"
-							}`}
-						>
-							{activeTab === tab ? <ActiveTabUnderline /> : null}
+			<RightPanelTabBar
+				activeTab={activeTab}
+				tabs={(["files", "git"] as const).map((tab) => ({
+					id: tab,
+					label: TAB_LABELS[tab],
+					icon: getTabIcon(tab, 14),
+				}))}
+				onCollapse={onCollapse}
+				onSelectTab={setActiveTab}
+			/>
+
+			<RightPanelSplitShell
+				contentRef={contentRef}
+				upperHeight={upperHeight}
+				lowerHeight={lowerHeight}
+				lowerCollapsed={rightTerminalCollapsed}
+				isResizing={isResizing}
+				onResizeMouseDown={handleResizeMouseDown}
+				onExpandLower={() => setRightTerminalCollapsed(false)}
+				upperContent={renderUpperContent()}
+				lowerHeader={
+					<TerminalTabs
+						activeTerminalId={activeTerminalId}
+						activeTab={activeTerminalTab}
+						canRunCommand={false}
+						leadingContent={
 							<button
 								type="button"
-								onClick={() => setActiveTab(tab)}
-								className="flex h-full items-center gap-1.5 pl-2 pr-3"
-							>
-								{getTabIcon(tab, 14)}
-								<span>{TAB_LABELS[tab]}</span>
-							</button>
-						</div>
-					))}
-				</div>
-			</div>
-
-			<div
-				ref={contentRef}
-				className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
-			>
-				<div
-					style={{
-						height: rightTerminalCollapsed ? undefined : upperHeight,
-					}}
-					className={`min-h-0 overflow-hidden ${
-						isResizing ? "" : "transition-[height] duration-200"
-					} ${rightTerminalCollapsed ? "flex-1" : ""}`}
-				>
-					<div className="h-full min-h-0 overflow-hidden">
-						{renderUpperContent()}
-					</div>
-				</div>
-
-				{rightTerminalCollapsed ? (
-					<div className="border-t border-dark-800 px-4 py-3">
-						<div className="flex items-center gap-2">
-							<button
-								type="button"
-								onClick={() => setRightTerminalCollapsed(false)}
+								onClick={() => setRightTerminalCollapsed(true)}
 								className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
-								aria-label="Expand terminal panel"
+								aria-label="Collapse terminal panel"
 							>
-								<ChevronUp size={14} />
+								<ChevronDown size={14} />
 							</button>
-							<span className="font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-								Terminal
-							</span>
-						</div>
-					</div>
-				) : (
-					<>
-						<button
-							type="button"
-							aria-label="Resize right panel split"
-							onMouseDown={handleResizeMouseDown}
-							className="relative h-1 shrink-0 cursor-row-resize transition-colors hover:bg-dark-600"
-						>
-							<div className="absolute inset-x-0 top-0 h-px bg-dark-800" />
-						</button>
-
-						<div
-							style={{ height: lowerHeight }}
-							className={`flex min-h-0 flex-col overflow-hidden ${
-								isResizing ? "" : "transition-[height] duration-200"
-							}`}
-						>
-							<TerminalTabs
-								activeTerminalId={activeTerminalId}
-								activeTab={activeTerminalTab}
-								canRunCommand={false}
-								leadingContent={
-									<button
-										type="button"
-										onClick={() => setRightTerminalCollapsed(true)}
-										className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
-										aria-label="Collapse terminal panel"
-									>
-										<ChevronDown size={14} />
-									</button>
-								}
-								onCloseTerminal={(terminalId) => {
-									if (focusedRepositoryId) {
-										closeTerminal(focusedRepositoryId, terminalId);
-									}
-								}}
-								onCreateTerminal={() => {
-									if (focusedRepositoryId) {
-										createTerminal(focusedRepositoryId);
-									}
-								}}
-								onRenameTerminal={(terminalId, name) => {
-									if (focusedRepositoryId) {
-										renameTerminal(focusedRepositoryId, terminalId, name);
-									}
-								}}
-								onRunCommand={() => {}}
-								onSelectRun={() => {}}
-								onSelectTerminal={(terminalId) => {
-									if (focusedRepositoryId) {
-										setActiveTerminal(focusedRepositoryId, terminalId);
-									}
-								}}
-								terminals={terminals}
-							/>
-							<div className="min-h-0 flex-1 overflow-hidden">
-								{focusedRepositoryId ? (
-									<TerminalPanel
-										agentId={focusedRepositoryId}
-										repositoryId={focusedRepositoryId}
-										active={activeTerminalTab === "terminal"}
-									/>
-								) : (
-									noRepoState
-								)}
-							</div>
-						</div>
-					</>
-				)}
-			</div>
+						}
+						onCloseTerminal={(terminalId) => {
+							if (focusedRepositoryId) {
+								closeTerminal(focusedRepositoryId, terminalId);
+							}
+						}}
+						onCreateTerminal={() => {
+							if (focusedRepositoryId) {
+								createTerminal(focusedRepositoryId);
+							}
+						}}
+						onRenameTerminal={(terminalId, name) => {
+							if (focusedRepositoryId) {
+								renameTerminal(focusedRepositoryId, terminalId, name);
+							}
+						}}
+						onRunCommand={() => {}}
+						onSelectRun={() => {}}
+						onSelectTerminal={(terminalId) => {
+							if (focusedRepositoryId) {
+								setActiveTerminal(focusedRepositoryId, terminalId);
+							}
+						}}
+						terminals={terminals}
+					/>
+				}
+				lowerContent={
+					focusedRepositoryId ? (
+						<TerminalPanel
+							agentId={focusedRepositoryId}
+							repositoryId={focusedRepositoryId}
+							active={activeTerminalTab === "terminal"}
+						/>
+					) : (
+						noRepoState
+					)
+				}
+			/>
 		</div>
 	);
 }

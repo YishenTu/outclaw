@@ -32,4 +32,25 @@ describe("browser coding center", () => {
 		expect(html).toContain('class="flex min-h-0 flex-1 flex-col bg-dark-950"');
 		expect(html).not.toContain('class="flex h-full flex-col bg-dark-950"');
 	});
+
+	test("renders the coding composer as text-only because coding APIs do not accept images", () => {
+		const html = renderToStaticMarkup(
+			<CodingSessionView
+				repository={{
+					id: "repo-1",
+					rootCwd: "/repo",
+					displayName: "outclaw",
+					source: "manual",
+					status: "active",
+					createdAt: 1,
+					lastActive: 1,
+				}}
+				session={undefined}
+				onSessionStarted={() => {}}
+			/>,
+		);
+
+		expect(html).toContain('placeholder="Type a message..."');
+		expect(html).not.toContain("paste/drop an image");
+	});
 });

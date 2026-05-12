@@ -7,6 +7,7 @@ import type {
 	BrowserCodingFolderPickerResponse,
 	BrowserCodingModelsResponse,
 	BrowserCodingRepositoryArchiveResponse,
+	BrowserCodingRepositoryCloneResponse,
 	BrowserCodingRepositoryDetail,
 	BrowserCodingRepositoryListResponse,
 	BrowserCodingRepositorySource,
@@ -16,6 +17,7 @@ import type {
 	BrowserCodingSessionPageResponse,
 	BrowserCodingSessionResumeResponse,
 	BrowserCodingSessionStartResponse,
+	BrowserCodingSessionStopResponse,
 	BrowserCodingSessionSummary,
 	BrowserConfigResponse,
 	BrowserCronEntry,
@@ -34,6 +36,7 @@ import type {
 	BrowserSessionPageResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
+	FacadeEvent,
 	ImageMediaType,
 	ImageRef,
 	ProviderModelInfo,
@@ -42,6 +45,7 @@ import type {
 	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
 import type {
+	CodingCloner,
 	CodingRepositoryRecord,
 	CodingRepositoryStore,
 	CodingRuntime,
@@ -50,7 +54,10 @@ import type {
 	CodingSessionStore,
 	StoredCodingSessionEvent,
 } from "../coding/index.ts";
-import { replayThenFollowCodingSessionEvents } from "../coding/index.ts";
+import {
+	createGitCloner,
+	replayThenFollowCodingSessionEvents,
+} from "../coding/index.ts";
 import {
 	readStoredAgentConfig,
 	writeStoredAgentConfig,
@@ -95,17 +102,22 @@ import {
 	resolveWritablePathWithinRoot,
 } from "./paths/path-safety.ts";
 
-// The browser API only needs the start/resume slice of the coding runtime,
+// The browser API only needs the start/resume/stop slice of the coding runtime,
 // plus an optional model catalog supplied by the surrounding CodingService.
 // Accept the full CodingRuntime slice directly so production wiring and tests
 // share one source of truth for method signatures.
 export interface BrowserCodingService
-	extends Pick<CodingRuntime, "startPrompt" | "resumePrompt"> {
+	extends Pick<CodingRuntime, "startPrompt" | "resumePrompt" | "stopPrompt"> {
 	listModels?(): Promise<ProviderModelInfo[]>;
+	rehydrateSessionEvents?(params: {
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<FacadeEvent[]>;
 }
 
 interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
+	cloneCodingRepository?: CodingCloner;
 	coding?: BrowserCodingService;
 	codingEvents?: CodingSessionEventRecorder;
 	codingRepositories?: CodingRepositoryStore;
@@ -173,6 +185,11 @@ export interface BrowserApi {
 		rootCwd: string;
 		source?: Extract<BrowserCodingRepositorySource, "manual" | "clone">;
 	}): Promise<BrowserCodingRepositoryDetail>;
+	cloneCodingRepository(params: {
+		remoteUrl: string;
+		parentDir: string;
+		displayName?: string;
+	}): Promise<BrowserCodingRepositoryCloneResponse>;
 	archiveCodingRepository(
 		repositoryId: string,
 	): Promise<BrowserCodingRepositoryArchiveResponse>;
@@ -217,6 +234,10 @@ export interface BrowserApi {
 		effort?: EffortLevel;
 		serviceTier?: string;
 	}): Promise<BrowserCodingSessionResumeResponse>;
+	stopCodingSession(params: {
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<BrowserCodingSessionStopResponse>;
 	listCodingModels(): Promise<BrowserCodingModelsResponse>;
 	openCodingSessionEventStream(params: {
 		providerId: string;
@@ -283,6 +304,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 	const ignoredGitPaths = normalizeGitPaths(options.ignoredGitPaths ?? []);
 	const pickCodingFolder =
 		options.pickCodingFolder ?? createNativeFolderPicker();
+	const cloneRepository = options.cloneCodingRepository ?? createGitCloner();
 
 	function resolveRepositoryCwd(repositoryId: string): string {
 		const repository = options.codingRepositories?.get(repositoryId);
@@ -416,6 +438,32 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				}),
 			);
 		},
+		async cloneCodingRepository(params) {
+			if (!options.codingRepositories) {
+				throw new Error("Coding repository API is not configured");
+			}
+			const result = await cloneRepository({
+				remoteUrl: params.remoteUrl,
+				parentDir: params.parentDir,
+				...(params.displayName !== undefined
+					? { displayName: params.displayName }
+					: {}),
+			});
+			if (result.status === "failed") {
+				return { status: "failed", message: result.message };
+			}
+			return {
+				status: "cloned",
+				repository: toBrowserCodingRepositorySummary(
+					options.codingRepositories.register({
+						displayName: params.displayName ?? result.displayName,
+						remoteUrl: params.remoteUrl,
+						rootCwd: result.rootCwd,
+						source: "clone",
+					}),
+				),
+			};
+		},
 		async pickCodingRepositoryFolder() {
 			return await pickCodingFolder();
 		},
@@ -546,13 +594,11 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			if (!log) {
 				return emptyAsyncIterable();
 			}
-			return replayThenFollowCodingSessionEvents(log, {
-				providerId: params.providerId,
-				sdkSessionId: params.sdkSessionId,
-				...(params.sinceSequence !== undefined
-					? { sinceSequence: params.sinceSequence }
-					: {}),
-				...(params.signal ? { signal: params.signal } : {}),
+			return rehydrateThenReplayThenFollow({
+				log,
+				coding: options.coding,
+				sessions: options.codingSessions,
+				...params,
 			});
 		},
 		async resumeCodingSession(params) {
@@ -577,6 +623,19 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				...(params.model ? { model: params.model } : {}),
 				...(params.effort ? { effort: params.effort } : {}),
 				...(params.serviceTier ? { serviceTier: params.serviceTier } : {}),
+			});
+		},
+		async stopCodingSession(params) {
+			const coding = options.coding;
+			if (!coding) {
+				return {
+					status: "rejected",
+					message: "Coding service is not configured",
+				};
+			}
+			return coding.stopPrompt({
+				providerId: params.providerId,
+				sdkSessionId: params.sdkSessionId,
 			});
 		},
 		async listCodingModels() {
@@ -874,6 +933,100 @@ function canonicalizeForCompare(path: string): string {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function* rehydrateThenReplayThenFollow(params: {
+	log: CodingSessionEventRecorder;
+	coding?: BrowserCodingService;
+	sessions?: CodingSessionStore;
+	providerId: string;
+	sdkSessionId: string;
+	sinceSequence?: number;
+	signal?: AbortSignal;
+}): AsyncIterable<StoredCodingSessionEvent> {
+	await seedMissingCodingSessionContent(params);
+	yield* replayThenFollowCodingSessionEvents(params.log, {
+		providerId: params.providerId,
+		sdkSessionId: params.sdkSessionId,
+		...(params.sinceSequence !== undefined
+			? { sinceSequence: params.sinceSequence }
+			: {}),
+		...(params.signal ? { signal: params.signal } : {}),
+	});
+}
+
+async function seedMissingCodingSessionContent(params: {
+	log: CodingSessionEventRecorder;
+	coding?: BrowserCodingService;
+	sessions?: CodingSessionStore;
+	providerId: string;
+	sdkSessionId: string;
+	sinceSequence?: number;
+	signal?: AbortSignal;
+}): Promise<void> {
+	if (params.signal?.aborted || (params.sinceSequence ?? 0) > 0) {
+		return;
+	}
+	if (!params.coding?.rehydrateSessionEvents || !params.sessions) {
+		return;
+	}
+	if (!params.sessions.getDetail(params.providerId, params.sdkSessionId)) {
+		return;
+	}
+	const existing = params.log.list({
+		providerId: params.providerId,
+		sdkSessionId: params.sdkSessionId,
+	});
+	if (hasContentBearingCodingSessionEvent(existing)) {
+		return;
+	}
+	const rehydrated = await params.coding.rehydrateSessionEvents({
+		providerId: params.providerId,
+		sdkSessionId: params.sdkSessionId,
+	});
+	if (params.signal?.aborted) {
+		return;
+	}
+	const latest = params.log.list({
+		providerId: params.providerId,
+		sdkSessionId: params.sdkSessionId,
+	});
+	if (hasContentBearingCodingSessionEvent(latest)) {
+		return;
+	}
+	for (const event of rehydrated) {
+		params.log.append({
+			providerId: params.providerId,
+			sdkSessionId: params.sdkSessionId,
+			event,
+		});
+	}
+}
+
+function hasContentBearingCodingSessionEvent(
+	events: StoredCodingSessionEvent[],
+): boolean {
+	return events.some((stored) => {
+		switch (stored.event.type) {
+			case "text":
+			case "image":
+			case "thinking":
+			case "error":
+			case "command_execution_started":
+			case "command_execution_output":
+			case "command_execution_completed":
+			case "file_change_applied":
+			case "subagent_tool_started":
+			case "subagent_tool_completed":
+			case "web_search_started":
+			case "web_search_completed":
+			case "tool_call_started":
+			case "tool_call_completed":
+				return true;
+			default:
+				return false;
+		}
+	});
 }
 
 // biome-ignore lint/correctness/useYield: intentionally yields nothing

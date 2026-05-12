@@ -19,4 +19,20 @@ describe("browser message input", () => {
 			"scrollbar-none h-full w-full resize-none bg-transparent px-2 pt-1 text-sm text-dark-100 placeholder:text-dark-500",
 		);
 	});
+
+	test("can render a text-only composer for surfaces that cannot submit images", () => {
+		const html = renderToStaticMarkup(
+			<MessageInput
+				onSend={() => false}
+				model={null}
+				effort={null}
+				onModelChange={() => false}
+				onEffortChange={() => false}
+				attachmentsEnabled={false}
+			/>,
+		);
+
+		expect(html).toContain('placeholder="Type a message..."');
+		expect(html).not.toContain("paste/drop an image");
+	});
 });

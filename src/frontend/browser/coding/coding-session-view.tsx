@@ -11,6 +11,7 @@ import {
 	openCodingSessionEventStream,
 	resumeCodingSession,
 	startCodingSession,
+	stopCodingSession,
 } from "../lib/api.ts";
 import { useContextUsageStore } from "../stores/context-usage.ts";
 import {
@@ -217,6 +218,7 @@ function NewSessionPanel({
 				onEffortChange={() => false}
 				disabled={submitting}
 				interruptible={false}
+				attachmentsEnabled={false}
 				modelSelectorSlot={
 					<CodingModelSelector
 						models={codingModels}
@@ -351,11 +353,29 @@ function ActiveSessionPanel({
 		],
 	);
 
+	const onInterrupt = useCallback((): boolean => {
+		setResumeError(undefined);
+		void stopCodingSession({
+			providerId: session.providerId,
+			sdkSessionId: session.sdkSessionId,
+		})
+			.then((result) => {
+				if (result.status === "rejected") {
+					setResumeError(result.message);
+				}
+			})
+			.catch((err) => {
+				setResumeError(err instanceof Error ? err.message : String(err));
+			});
+		return true;
+	}, [session.providerId, session.sdkSessionId]);
+
 	const title = session.title || session.sdkSessionId;
-	// Derive turn state from the live event log instead of the cached session
-	// summary so the spinner hides as soon as a `done`/`error` event arrives,
-	// even before the session record is refreshed.
-	const isRunning = isCodingTurnInFlight(events);
+	// Prefer the live event log so the spinner hides as soon as a terminal event
+	// arrives. Use the cached runStatus only before replay delivers any events.
+	const isRunning =
+		isCodingTurnInFlight(events) ||
+		(events.length === 0 && session.runStatus === "running");
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-dark-950">
@@ -387,7 +407,9 @@ function ActiveSessionPanel({
 				onEffortChange={() => false}
 				disabled={submitting}
 				interruptible={isRunning}
+				onInterrupt={onInterrupt}
 				sessionKey={usageSessionKey}
+				attachmentsEnabled={false}
 				modelSelectorSlot={
 					<CodingModelSelector
 						models={codingModels}

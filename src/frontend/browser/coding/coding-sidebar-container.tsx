@@ -14,6 +14,7 @@ export function CodingSidebarContainer({
 		handleCreateRepository,
 		handleDeleteSession,
 		handleNewSessionForRepository,
+		handleRenameSession,
 		handleSelectRepository,
 		handleSelectSession,
 		repositories,
@@ -33,6 +34,7 @@ export function CodingSidebarContainer({
 				onCreateRepository={handleCreateRepository}
 				onNewSession={handleNewSessionForRepository}
 				onDeleteSession={handleDeleteSession}
+				onRenameSession={handleRenameSession}
 				{...(onCollapse ? { onCollapse } : {})}
 			/>
 			{!repositoriesLoaded && (

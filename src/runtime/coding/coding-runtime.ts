@@ -43,6 +43,17 @@ export type CodePromptStartResult =
 			message: string;
 	  };
 
+export type CodePromptStopResult =
+	| {
+			status: "accepted";
+			providerId: string;
+			sdkSessionId: string;
+	  }
+	| {
+			status: "rejected";
+			message: string;
+	  };
+
 export interface CodingSessionRecorder {
 	resolveRef(params: {
 		providerId?: string;
@@ -81,6 +92,8 @@ interface CodingRuntimeOptions {
 }
 
 export class CodingRuntime {
+	private activeTurns = new Map<string, { abort: () => boolean }>();
+
 	constructor(private readonly options: CodingRuntimeOptions) {}
 
 	startPrompt(params: CodePromptRequest): Promise<CodePromptStartResult> {
@@ -99,6 +112,7 @@ export class CodingRuntime {
 				resolve(result);
 			};
 		});
+		let abortActiveTurn: (() => boolean) | undefined;
 
 		const detachedResult = this.options.runDetachedPrompt({
 			cwd: params.cwd,
@@ -123,6 +137,9 @@ export class CodingRuntime {
 						type: "user_prompt",
 						text: params.prompt,
 					});
+					if (abortActiveTurn) {
+						this.trackActiveTurn(event.sessionId, abortActiveTurn);
+					}
 					settleStart({
 						status: "accepted",
 						providerId: this.options.providerId,
@@ -147,6 +164,7 @@ export class CodingRuntime {
 						repositoryId,
 						linkedChatSessionId,
 					);
+					this.forgetActiveTurn(inFlightSessionId);
 					return;
 				}
 				if (event.type === "error" && inFlightSessionId) {
@@ -157,6 +175,7 @@ export class CodingRuntime {
 						linkedChatSessionId,
 						event.message,
 					);
+					this.forgetActiveTurn(inFlightSessionId);
 					return;
 				}
 				if (event.type === "error" && !settled) {
@@ -180,6 +199,11 @@ export class CodingRuntime {
 		});
 		if (detachedResult.status === "rejected") {
 			settleStart(detachedResult);
+		} else {
+			abortActiveTurn = detachedResult.abort;
+			for (const sessionId of initializedSessionIds) {
+				this.trackActiveTurn(sessionId, abortActiveTurn);
+			}
 		}
 		return start;
 	}
@@ -218,11 +242,6 @@ export class CodingRuntime {
 			};
 		}
 
-		this.recordEvent(params.sdkSessionId, {
-			type: "user_prompt",
-			text: params.prompt,
-		});
-
 		const detachedResult = this.options.runDetachedPrompt({
 			cwd: session.cwd,
 			includeRuntimeSystemPrompt: false,
@@ -245,6 +264,7 @@ export class CodingRuntime {
 						session.repositoryId,
 						session.linkedChatSessionId,
 					);
+					this.forgetActiveTurn(params.sdkSessionId);
 					return;
 				}
 				if (
@@ -258,6 +278,7 @@ export class CodingRuntime {
 						session.linkedChatSessionId,
 						event.message,
 					);
+					this.forgetActiveTurn(params.sdkSessionId);
 				}
 			},
 			prompt: params.prompt,
@@ -270,6 +291,11 @@ export class CodingRuntime {
 			return detachedResult;
 		}
 
+		this.trackActiveTurn(params.sdkSessionId, detachedResult.abort);
+		this.recordEvent(params.sdkSessionId, {
+			type: "user_prompt",
+			text: params.prompt,
+		});
 		this.options.codingSessions?.markRunning?.({
 			providerId: session.providerId,
 			sdkSessionId: params.sdkSessionId,
@@ -278,6 +304,40 @@ export class CodingRuntime {
 			status: "accepted",
 			providerId: session.providerId,
 			sdkSessionId: params.sdkSessionId,
+		};
+	}
+
+	stopPrompt(params: {
+		providerId?: string;
+		sdkSessionId: string;
+	}): CodePromptStopResult {
+		if (params.providerId && params.providerId !== this.options.providerId) {
+			return {
+				status: "rejected",
+				message: `Coding provider mismatch: ${params.providerId}`,
+			};
+		}
+
+		const target = this.resolveStopTarget(params);
+		if (target.status === "rejected") {
+			return target;
+		}
+
+		const key = activeTurnKey(target.providerId, target.sdkSessionId);
+		const activeTurn = this.activeTurns.get(key);
+		if (!activeTurn?.abort()) {
+			this.activeTurns.delete(key);
+			return {
+				status: "rejected",
+				message: `Coding session is not running: ${target.providerId}/${target.sdkSessionId}`,
+			};
+		}
+
+		this.activeTurns.delete(key);
+		return {
+			status: "accepted",
+			providerId: target.providerId,
+			sdkSessionId: target.sdkSessionId,
 		};
 	}
 
@@ -308,6 +368,37 @@ export class CodingRuntime {
 			message: params.providerId
 				? `Unknown coding session: ${params.providerId}/${params.sdkSessionId}`
 				: `Unknown coding session: ${params.sdkSessionId}`,
+		};
+	}
+
+	private resolveStopTarget(params: {
+		providerId?: string;
+		sdkSessionId: string;
+	}):
+		| { status: "resolved"; providerId: string; sdkSessionId: string }
+		| { status: "rejected"; message: string } {
+		if (!this.options.codingSessions) {
+			return {
+				status: "resolved",
+				providerId: this.options.providerId,
+				sdkSessionId: params.sdkSessionId,
+			};
+		}
+
+		const resolution = this.resolveSessionRef(params);
+		if (resolution.status === "rejected") {
+			return resolution;
+		}
+		if (resolution.session.providerId !== this.options.providerId) {
+			return {
+				status: "rejected",
+				message: `Coding provider mismatch: ${resolution.session.providerId}`,
+			};
+		}
+		return {
+			status: "resolved",
+			providerId: resolution.session.providerId,
+			sdkSessionId: resolution.session.sdkSessionId,
 		};
 	}
 
@@ -367,6 +458,16 @@ export class CodingRuntime {
 		});
 	}
 
+	private trackActiveTurn(sessionId: string, abort: () => boolean) {
+		this.activeTurns.set(activeTurnKey(this.options.providerId, sessionId), {
+			abort,
+		});
+	}
+
+	private forgetActiveTurn(sessionId: string) {
+		this.activeTurns.delete(activeTurnKey(this.options.providerId, sessionId));
+	}
+
 	private markFailed(
 		cwd: string,
 		sessionId: string,
@@ -410,4 +511,8 @@ function firstValue<T>(values: Iterable<T>): T | undefined {
 		return value;
 	}
 	return undefined;
+}
+
+function activeTurnKey(providerId: string, sdkSessionId: string): string {
+	return `${providerId}\0${sdkSessionId}`;
 }

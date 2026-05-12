@@ -12,7 +12,7 @@ import type { RuntimeExecutionCoordinator } from "./runtime-execution-coordinato
 import type { RuntimeState } from "./state/runtime-state.ts";
 
 export type DetachedPromptStartResult =
-	| { status: "accepted"; ocSessionId: string }
+	| { status: "accepted"; ocSessionId: string; abort: () => boolean }
 	| { status: "rejected"; message: string };
 
 interface RuntimeControllerOptions {
@@ -247,6 +247,7 @@ export class RuntimeController {
 		return {
 			status: "accepted",
 			ocSessionId: result.ocSessionId,
+			abort: result.abort,
 		};
 	}
 }

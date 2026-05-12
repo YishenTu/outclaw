@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from "react";
 import {
 	DEFAULT_EFFORT,
 	DEFAULT_MODEL,
@@ -11,6 +10,10 @@ import {
 	type ModelAlias,
 	modelAliasForModel,
 } from "../../../../common/models.ts";
+import {
+	formatEffortLabel,
+	SelectorDropdown,
+} from "./model-selector-controls.tsx";
 
 const EFFORT_MENU_LEVELS: readonly EffortLevel[] = [
 	"max",
@@ -19,14 +22,6 @@ const EFFORT_MENU_LEVELS: readonly EffortLevel[] = [
 	"medium",
 	"low",
 ];
-
-const EFFORT_LABELS: Record<EffortLevel, string> = {
-	low: "Low",
-	medium: "Medium",
-	high: "High",
-	xhigh: "XHigh",
-	max: "Max",
-};
 
 const MODEL_LABELS: Record<ModelAlias, string> = {
 	opus: "Opus",
@@ -44,10 +39,6 @@ export function resolveCurrentModelAlias(model: string | null): ModelAlias {
 
 export function resolveCurrentEffort(effort: string | null): EffortLevel {
 	return effort && isEffortLevel(effort) ? effort : DEFAULT_EFFORT;
-}
-
-export function formatEffortLabel(effort: EffortLevel): string {
-	return EFFORT_LABELS[effort];
 }
 
 export function visibleEffortLevelsForModel(
@@ -71,109 +62,37 @@ export function ModelSelector({
 	onModelChange,
 	onEffortChange,
 }: ModelSelectorProps) {
-	const [modelOpen, setModelOpen] = useState(false);
-	const [effortOpen, setEffortOpen] = useState(false);
-	const modelRef = useRef<HTMLDivElement | null>(null);
-	const effortRef = useRef<HTMLDivElement | null>(null);
 	const currentModel = resolveCurrentModelAlias(model);
 	const currentEffort = resolveCurrentEffort(effort);
 	const visibleEffortLevels = visibleEffortLevelsForModel(currentModel);
 
-	useEffect(() => {
-		function handlePointerDown(event: MouseEvent) {
-			if (
-				modelRef.current &&
-				!modelRef.current.contains(event.target as Node)
-			) {
-				setModelOpen(false);
-			}
-			if (
-				effortRef.current &&
-				!effortRef.current.contains(event.target as Node)
-			) {
-				setEffortOpen(false);
-			}
-		}
-
-		document.addEventListener("mousedown", handlePointerDown);
-		return () => {
-			document.removeEventListener("mousedown", handlePointerDown);
-		};
-	}, []);
-
 	return (
 		<div className="flex items-center gap-1.5">
-			<div ref={modelRef} className="relative">
-				<button
-					type="button"
-					disabled={disabled}
-					onClick={() => {
-						setModelOpen((current) => !current);
-						setEffortOpen(false);
-					}}
-					className="flex items-center rounded px-2 py-0.5 text-xs text-dark-400 transition-colors hover:text-dark-200 disabled:cursor-not-allowed disabled:opacity-40"
-				>
-					<span>{MODEL_LABELS[currentModel]}</span>
-				</button>
-				{modelOpen && (
-					<div className="absolute bottom-full left-0 z-50 mb-2 min-w-[7rem] overflow-hidden rounded-[16px] border border-dark-800 bg-dark-900 shadow-lg">
-						{MODEL_ALIAS_LIST.map((alias) => (
-							<button
-								key={alias}
-								type="button"
-								onClick={() => {
-									if (onModelChange(alias)) {
-										setModelOpen(false);
-									}
-								}}
-								className={`block w-full px-3 py-2 text-left text-sm transition-colors ${
-									alias === currentModel
-										? "bg-dark-800 text-dark-100"
-										: "text-dark-300 hover:bg-dark-800/70"
-								}`}
-							>
-								{MODEL_LABELS[alias]}
-							</button>
-						))}
-					</div>
-				)}
-			</div>
+			<SelectorDropdown
+				label={MODEL_LABELS[currentModel]}
+				items={MODEL_ALIAS_LIST.map((alias) => ({
+					id: alias,
+					label: MODEL_LABELS[alias],
+				}))}
+				selectedId={currentModel}
+				disabled={disabled}
+				minWidthClassName="min-w-[7rem]"
+				onSelect={(item) => onModelChange(item.id as ModelAlias)}
+			/>
 
-			<div ref={effortRef} className="relative">
-				<button
-					type="button"
-					disabled={disabled}
-					onClick={() => {
-						setEffortOpen((current) => !current);
-						setModelOpen(false);
-					}}
-					className="flex items-center rounded px-2 py-0.5 text-xs text-dark-400 transition-colors hover:text-dark-200 disabled:cursor-not-allowed disabled:opacity-40"
-				>
-					<span>Thinking: {formatEffortLabel(currentEffort)}</span>
-				</button>
-				{effortOpen && (
-					<div className="absolute bottom-full left-0 z-50 mb-2 min-w-[8.5rem] overflow-hidden rounded-[16px] border border-dark-800 bg-dark-900 shadow-lg">
-						{visibleEffortLevels.map((level) => (
-							<button
-								key={level}
-								type="button"
-								onClick={() => {
-									if (onEffortChange(level)) {
-										setEffortOpen(false);
-									}
-								}}
-								className={`block w-full px-3 py-2 text-left text-sm transition-colors ${
-									level === currentEffort
-										? "bg-dark-800 text-dark-100"
-										: "text-dark-300 hover:bg-dark-800/70"
-								}`}
-							>
-								{formatEffortLabel(level)}
-							</button>
-						))}
-					</div>
-				)}
-			</div>
+			<SelectorDropdown
+				label={`Thinking: ${formatEffortLabel(currentEffort)}`}
+				items={visibleEffortLevels.map((level) => ({
+					id: level,
+					label: formatEffortLabel(level),
+				}))}
+				selectedId={currentEffort}
+				disabled={disabled}
+				minWidthClassName="min-w-[8.5rem]"
+				onSelect={(item) => onEffortChange(item.id as EffortLevel)}
+			/>
 		</div>
 	);
 }
+
+export { formatEffortLabel };

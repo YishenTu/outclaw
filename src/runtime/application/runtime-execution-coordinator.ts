@@ -248,7 +248,7 @@ export class RuntimeExecutionCoordinator {
 
 	enqueueDetachedPrompt(
 		task: PromptExecution,
-	): { ocSessionId: string } | undefined {
+	): { ocSessionId: string; abort: () => boolean } | undefined {
 		if (this.shuttingDown) {
 			return undefined;
 		}
@@ -262,7 +262,12 @@ export class RuntimeExecutionCoordinator {
 		const queued = lane.queue.enqueue(() =>
 			this.runPromptInLane(lane, task, context),
 		);
-		return queued ? { ocSessionId: context.ocSessionId } : undefined;
+		return queued
+			? {
+					ocSessionId: context.ocSessionId,
+					abort: () => this.abortLaneRun(lane),
+				}
+			: undefined;
 	}
 
 	setRolloverNoticeHandler(
@@ -431,6 +436,14 @@ export class RuntimeExecutionCoordinator {
 		};
 		this.lanes.set(key, lane);
 		return lane;
+	}
+
+	private abortLaneRun(lane: ExecutionLane): boolean {
+		if (!lane.activeAbort || lane.activeAbort.signal.aborted) {
+			return false;
+		}
+		lane.activeAbort.abort();
+		return true;
 	}
 
 	private isLaneVisible(

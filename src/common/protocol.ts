@@ -181,6 +181,13 @@ export interface CommandExecutionCompletedEvent {
 	sessionId?: string;
 }
 
+export interface CommandExecutionOutputEvent {
+	type: "command_execution_output";
+	callId: string;
+	output: string;
+	sessionId?: string;
+}
+
 export type FileChangeKind = "add" | "update" | "delete" | "move";
 
 export interface FileChange {
@@ -194,6 +201,86 @@ export interface FileChangeAppliedEvent {
 	type: "file_change_applied";
 	callId: string;
 	changes: FileChange[];
+	sessionId?: string;
+}
+
+export interface ToolCallDetail {
+	label: string;
+	value: string;
+}
+
+export interface SubagentToolAgentState {
+	agentId: string;
+	status?: string;
+	message?: string;
+}
+
+export interface SubagentToolStartedEvent {
+	type: "subagent_tool_started";
+	callId: string;
+	operation: string;
+	prompt?: string;
+	model?: string;
+	reasoningEffort?: string;
+	targetIds: string[];
+	agentStates: SubagentToolAgentState[];
+	sessionId?: string;
+}
+
+export interface SubagentToolCompletedEvent {
+	type: "subagent_tool_completed";
+	callId: string;
+	operation: string;
+	status?: string;
+	prompt?: string;
+	model?: string;
+	reasoningEffort?: string;
+	targetIds: string[];
+	agentStates: SubagentToolAgentState[];
+	sessionId?: string;
+}
+
+/**
+ * Web-search tool invocation. `query` may be missing on the started event
+ * (Codex emits an empty placeholder before the search resolves) and is
+ * populated on the completed event along with the optional `queries` list.
+ */
+export interface WebSearchStartedEvent {
+	type: "web_search_started";
+	callId: string;
+	query?: string;
+	sessionId?: string;
+}
+
+export interface WebSearchCompletedEvent {
+	type: "web_search_completed";
+	callId: string;
+	query?: string;
+	queries?: string[];
+	sessionId?: string;
+}
+
+/**
+ * Generic catch-all for tool invocations the adapter does not recognize. This
+ * keeps unknown or future tool kinds visible in the transcript instead of
+ * silently dropping them. Provider adapters project available data into
+ * display-oriented fields; runtime/frontend code must not parse provider-native
+ * payload objects.
+ */
+export interface ToolCallStartedEvent {
+	type: "tool_call_started";
+	callId: string;
+	toolKind: string;
+	details?: ToolCallDetail[];
+	sessionId?: string;
+}
+
+export interface ToolCallCompletedEvent {
+	type: "tool_call_completed";
+	callId: string;
+	toolKind: string;
+	status?: string;
+	details?: ToolCallDetail[];
 	sessionId?: string;
 }
 
@@ -570,6 +657,9 @@ export type BrowserCodingSessionStartResponse =
 export type BrowserCodingSessionResumeResponse =
 	BrowserCodingSessionStartResponse;
 
+export type BrowserCodingSessionStopResponse =
+	BrowserCodingSessionStartResponse;
+
 export interface BrowserCodingModel {
 	id: string;
 	model: string;
@@ -611,6 +701,10 @@ export interface BrowserCodingRepositoryArchiveResponse {
 	archived: true;
 	repository: BrowserCodingRepositorySummary;
 }
+
+export type BrowserCodingRepositoryCloneResponse =
+	| { status: "cloned"; repository: BrowserCodingRepositoryDetail }
+	| { status: "failed"; message: string };
 
 export type BrowserCodingFolderPickerResponse =
 	| { status: "selected"; path: string }
@@ -912,8 +1006,15 @@ export type ServerEvent =
 	| DoneEvent
 	| UsageUpdatedEvent
 	| CommandExecutionStartedEvent
+	| CommandExecutionOutputEvent
 	| CommandExecutionCompletedEvent
 	| FileChangeAppliedEvent
+	| SubagentToolStartedEvent
+	| SubagentToolCompletedEvent
+	| WebSearchStartedEvent
+	| WebSearchCompletedEvent
+	| ToolCallStartedEvent
+	| ToolCallCompletedEvent
 	| UserPromptEvent
 	| SessionClearedEvent
 	| ModelChangedEvent
@@ -961,8 +1062,15 @@ export type FacadeEvent =
 	| DoneEvent
 	| UsageUpdatedEvent
 	| CommandExecutionStartedEvent
+	| CommandExecutionOutputEvent
 	| CommandExecutionCompletedEvent
 	| FileChangeAppliedEvent
+	| SubagentToolStartedEvent
+	| SubagentToolCompletedEvent
+	| WebSearchStartedEvent
+	| WebSearchCompletedEvent
+	| ToolCallStartedEvent
+	| ToolCallCompletedEvent
 	| CompactingStartedEvent
 	| CompactingFinishedEvent;
 
@@ -1028,6 +1136,13 @@ export interface Facade {
 	readHistory?(sessionId: string): Promise<DisplayMessage[]>;
 	readReplay?(sessionId: string): Promise<DisplayMessage[]>;
 	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;
+	/**
+	 * Provider-owned rehydration hook for coding-session event logs. Adapters
+	 * project provider-native persisted artifacts into the same FacadeEvent
+	 * shapes used by live streaming; runtime/frontend code must not parse
+	 * provider transcript formats directly.
+	 */
+	readCodingSessionEvents?(sessionId: string): Promise<FacadeEvent[]>;
 	getSkills?(cwd?: string): Promise<SkillInfo[]>;
 	/**
 	 * List provider-side models the runtime can offer to the user. Coding

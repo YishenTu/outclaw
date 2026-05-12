@@ -4,7 +4,7 @@ import {
 	createBrowserSessionRef,
 	createSessionKey,
 } from "../sessions/session.ts";
-import { useChatStore } from "../stores/chat.ts";
+import { hasActiveChatTurn, useChatStore } from "../stores/chat.ts";
 import { useContextUsageStore } from "../stores/context-usage.ts";
 import { useRuntimeStore } from "../stores/runtime.ts";
 import { useSessionsStore } from "../stores/sessions.ts";
@@ -78,6 +78,9 @@ export function applyBrowserChatEvent(
 			const sessionKey = createSessionKey(
 				createBrowserSessionRef(agentId, providerId, event.sdkSessionId),
 			);
+			if (!canApplyActiveTurnEvent(sessionKey)) {
+				return true;
+			}
 			useChatStore.getState().restoreStreamingState(sessionKey, {
 				images: event.images,
 				text: event.text,
@@ -119,12 +122,15 @@ export function applyBrowserChatEvent(
 			if (!agentId) {
 				return true;
 			}
-			useChatStore
-				.getState()
-				.appendThinking(
-					options.routeObservedSessionKey(agentId, event.sessionId),
-					event.text,
-				);
+			const sessionKey = routeActiveTurnEvent(
+				agentId,
+				event.sessionId,
+				options,
+			);
+			if (!sessionKey) {
+				return true;
+			}
+			useChatStore.getState().appendThinking(sessionKey, event.text);
 			return true;
 		}
 		case "text": {
@@ -132,12 +138,15 @@ export function applyBrowserChatEvent(
 			if (!agentId) {
 				return true;
 			}
-			useChatStore
-				.getState()
-				.appendText(
-					options.routeObservedSessionKey(agentId, event.sessionId),
-					event.text,
-				);
+			const sessionKey = routeActiveTurnEvent(
+				agentId,
+				event.sessionId,
+				options,
+			);
+			if (!sessionKey) {
+				return true;
+			}
+			useChatStore.getState().appendText(sessionKey, event.text);
 			return true;
 		}
 		case "image": {
@@ -145,19 +154,22 @@ export function applyBrowserChatEvent(
 			if (!agentId) {
 				return true;
 			}
-			useChatStore
-				.getState()
-				.appendImage(
-					options.routeObservedSessionKey(agentId, event.sessionId),
-					{
-						kind: "managed",
-						path: event.path,
-						mediaType:
-							event.mediaType ??
-							inferImageMediaTypeFromPath(event.path) ??
-							"image/png",
-					},
-				);
+			const sessionKey = routeActiveTurnEvent(
+				agentId,
+				event.sessionId,
+				options,
+			);
+			if (!sessionKey) {
+				return true;
+			}
+			useChatStore.getState().appendImage(sessionKey, {
+				kind: "managed",
+				path: event.path,
+				mediaType:
+					event.mediaType ??
+					inferImageMediaTypeFromPath(event.path) ??
+					"image/png",
+			});
 			return true;
 		}
 		case "compacting_started": {
@@ -165,12 +177,15 @@ export function applyBrowserChatEvent(
 			if (!agentId) {
 				return true;
 			}
-			useChatStore
-				.getState()
-				.setCompacting(
-					options.routeObservedSessionKey(agentId, event.sessionId),
-					true,
-				);
+			const sessionKey = routeActiveTurnEvent(
+				agentId,
+				event.sessionId,
+				options,
+			);
+			if (!sessionKey) {
+				return true;
+			}
+			useChatStore.getState().setCompacting(sessionKey, true);
 			return true;
 		}
 		case "compacting_finished": {
@@ -178,11 +193,15 @@ export function applyBrowserChatEvent(
 			if (!agentId) {
 				return true;
 			}
-			useChatStore
-				.getState()
-				.finishCompacting(
-					options.routeObservedSessionKey(agentId, event.sessionId),
-				);
+			const sessionKey = routeActiveTurnEvent(
+				agentId,
+				event.sessionId,
+				options,
+			);
+			if (!sessionKey) {
+				return true;
+			}
+			useChatStore.getState().finishCompacting(sessionKey);
 			return true;
 		}
 		case "done": {
@@ -260,4 +279,24 @@ export function inferImageMediaTypeFromPath(
 		return "image/webp";
 	}
 	return undefined;
+}
+
+function routeActiveTurnEvent(
+	agentId: string,
+	observedSessionId: string | undefined,
+	options: Pick<BrowserChatEventHandlerOptions, "routeObservedSessionKey">,
+): SessionKey | undefined {
+	const sessionKey = options.routeObservedSessionKey(
+		agentId,
+		observedSessionId,
+	);
+	return canApplyActiveTurnEvent(sessionKey) ? sessionKey : undefined;
+}
+
+function canApplyActiveTurnEvent(sessionKey: SessionKey): boolean {
+	const session = useChatStore.getState().getSession(sessionKey);
+	if (session) {
+		return hasActiveChatTurn(session);
+	}
+	return useRuntimeStore.getState().running;
 }

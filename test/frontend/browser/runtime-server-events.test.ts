@@ -14,7 +14,10 @@ import {
 } from "../../../src/frontend/browser/sessions/session.ts";
 import { useAgentFilesStore } from "../../../src/frontend/browser/stores/agent-files.ts";
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
-import { useChatStore } from "../../../src/frontend/browser/stores/chat.ts";
+import {
+	hasActiveChatTurn,
+	useChatStore,
+} from "../../../src/frontend/browser/stores/chat.ts";
 import { useContextUsageStore } from "../../../src/frontend/browser/stores/context-usage.ts";
 import { useRightPanelRefreshStore } from "../../../src/frontend/browser/stores/right-panel-refresh.ts";
 import { useRuntimeStore } from "../../../src/frontend/browser/stores/runtime.ts";
@@ -1240,6 +1243,95 @@ describe("browser runtime server events", () => {
 		expect(calls).toEqual([
 			"live:complete:agent-railly:mock:sdk-active",
 			"sidebar:refresh",
+		]);
+	});
+
+	test("ignores late background output after the chat turn has completed", () => {
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+			sessionId: "sdk-active",
+		});
+		const { options } = createHandlerOptions();
+
+		handleBrowserServerEvent(
+			{
+				type: "user_prompt",
+				source: "browser",
+				prompt: "run background command",
+				sessionId: "sdk-active",
+			},
+			options,
+		);
+		handleBrowserServerEvent(
+			{ type: "text", text: "Command is running.", sessionId: "sdk-active" },
+			options,
+		);
+		handleBrowserServerEvent(
+			{ type: "done", sessionId: "sdk-active", durationMs: 1 },
+			options,
+		);
+		handleBrowserServerEvent(
+			{
+				type: "runtime_status",
+				agentName: "railly",
+				providerId: "mock",
+				model: "opus",
+				effort: "medium",
+				running: false,
+				sessionId: "sdk-active",
+			},
+			options,
+		);
+
+		handleBrowserServerEvent(
+			{ type: "text", text: "late background output", sessionId: "sdk-active" },
+			options,
+		);
+		handleBrowserServerEvent(
+			{
+				type: "streaming_sync",
+				sdkSessionId: "sdk-active",
+				text: "late sync output",
+				thinking: "",
+				images: [],
+			},
+			options,
+		);
+
+		const session = useChatStore
+			.getState()
+			.getSession("agent-railly:mock:sdk-active");
+		expect(session?.streamingText).toBe("");
+		expect(session?.isStreaming).toBe(false);
+		expect(session?.isThinking).toBe(false);
+		expect(session ? hasActiveChatTurn(session) : true).toBe(false);
+		expect(session?.messages).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "run background command",
+				timestamp: expect.any(Number),
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Command is running.",
+				timestamp: expect.any(Number),
+				assistantTurn: {
+					source: "user",
+					startedAt: expect.any(Number),
+					durationMs: expect.any(Number),
+				},
+			},
 		]);
 	});
 

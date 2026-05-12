@@ -25,6 +25,13 @@ function createTempDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));
 }
 
+function unusedStopPrompt() {
+	return {
+		status: "rejected" as const,
+		message: "unused",
+	};
+}
+
 describe("createBrowserApi", () => {
 	const cleanupPaths: string[] = [];
 
@@ -515,6 +522,125 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("clones a coding repository and registers it through the browser API", async () => {
+		const root = createTempDir("outclaw-browser-coding-clone-api-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		const parentDir = join(root, "checkouts");
+		mkdirSync(agentHomeDir, { recursive: true });
+		mkdirSync(parentDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const repositories = new CodingRepositoryStore(dbPath);
+
+		const cloneCalls: Array<{ remoteUrl: string; parentDir: string }> = [];
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			cloneCodingRepository: async ({ remoteUrl, parentDir: dir }) => {
+				cloneCalls.push({ remoteUrl, parentDir: dir });
+				const cloned = join(dir, "outclaw");
+				mkdirSync(cloned, { recursive: true });
+				return {
+					status: "cloned",
+					rootCwd: cloned,
+					displayName: "outclaw",
+				};
+			},
+			codingRepositories: repositories,
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		const response = await api.cloneCodingRepository({
+			remoteUrl: "https://example.com/foo/outclaw.git",
+			parentDir,
+		});
+
+		expect(cloneCalls).toEqual([
+			{
+				remoteUrl: "https://example.com/foo/outclaw.git",
+				parentDir,
+			},
+		]);
+		expect(response).toMatchObject({
+			status: "cloned",
+			repository: {
+				displayName: "outclaw",
+				rootCwd: realpathSync(join(parentDir, "outclaw")),
+				remoteUrl: "https://example.com/foo/outclaw.git",
+				source: "clone",
+				status: "active",
+			},
+		});
+		await expect(api.listCodingRepositories()).resolves.toMatchObject({
+			repositories: [{ source: "clone" }],
+		});
+
+		repositories.close();
+		store.close();
+	});
+
+	test("propagates clone failures without touching the repository store", async () => {
+		const root = createTempDir("outclaw-browser-coding-clone-fail-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const repositories = new CodingRepositoryStore(dbPath);
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			cloneCodingRepository: async () => ({
+				status: "failed",
+				message: "fatal: repository not found",
+			}),
+			codingRepositories: repositories,
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.cloneCodingRepository({
+				remoteUrl: "https://example.com/foo/missing.git",
+				parentDir: "/tmp/parent",
+			}),
+		).resolves.toEqual({
+			status: "failed",
+			message: "fatal: repository not found",
+		});
+		await expect(api.listCodingRepositories()).resolves.toEqual({
+			repositories: [],
+		});
+
+		repositories.close();
+		store.close();
+	});
+
 	test("starts a coding session through the daemon coding service by repository id", async () => {
 		const root = createTempDir("outclaw-browser-coding-start-");
 		cleanupPaths.push(root);
@@ -543,6 +669,7 @@ describe("createBrowserApi", () => {
 				async resumePrompt() {
 					throw new Error("resume should not be called");
 				},
+				stopPrompt: unusedStopPrompt,
 			},
 			codingRepositories: repositories,
 			getRememberedAgentId: () => undefined,
@@ -598,6 +725,7 @@ describe("createBrowserApi", () => {
 				async resumePrompt() {
 					throw new Error("resume should not be called");
 				},
+				stopPrompt: unusedStopPrompt,
 			},
 			codingRepositories: repositories,
 			getRememberedAgentId: () => undefined,
@@ -650,6 +778,7 @@ describe("createBrowserApi", () => {
 				async resumePrompt() {
 					throw new Error("resume should not be called");
 				},
+				stopPrompt: unusedStopPrompt,
 			},
 			codingRepositories: repositories,
 			getRememberedAgentId: () => undefined,
@@ -682,6 +811,7 @@ describe("createBrowserApi", () => {
 				async resumePrompt() {
 					throw new Error("should not be called");
 				},
+				stopPrompt: unusedStopPrompt,
 			},
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
@@ -724,6 +854,7 @@ describe("createBrowserApi", () => {
 						sdkSessionId: params.sdkSessionId,
 					};
 				},
+				stopPrompt: unusedStopPrompt,
 			},
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
@@ -747,6 +878,58 @@ describe("createBrowserApi", () => {
 				providerId: "codex",
 				sdkSessionId: "codex-thread-1",
 				prompt: "follow up",
+			},
+		]);
+	});
+
+	test("stops a coding session by provider session identity", async () => {
+		const root = createTempDir("outclaw-browser-coding-stop-");
+		cleanupPaths.push(root);
+		const calls: Array<{
+			providerId: string;
+			sdkSessionId: string;
+		}> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt() {
+					throw new Error("start should not be called");
+				},
+				async resumePrompt() {
+					throw new Error("resume should not be called");
+				},
+				stopPrompt(params) {
+					calls.push({
+						providerId: params.providerId ?? "",
+						sdkSessionId: params.sdkSessionId,
+					});
+					return {
+						status: "accepted",
+						providerId: params.providerId ?? "codex",
+						sdkSessionId: params.sdkSessionId,
+					};
+				},
+			},
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.stopCodingSession({
+				providerId: "codex",
+				sdkSessionId: "codex-thread-1",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
+		});
+		expect(calls).toEqual([
+			{
+				providerId: "codex",
+				sdkSessionId: "codex-thread-1",
 			},
 		]);
 	});
@@ -785,6 +968,7 @@ describe("createBrowserApi", () => {
 						sdkSessionId: params.sdkSessionId,
 					};
 				},
+				stopPrompt: unusedStopPrompt,
 			},
 			codingRepositories: repositories,
 			getRememberedAgentId: () => undefined,
@@ -825,6 +1009,7 @@ describe("createBrowserApi", () => {
 				async resumePrompt() {
 					throw new Error("not called");
 				},
+				stopPrompt: unusedStopPrompt,
 				async listModels() {
 					return [
 						{
@@ -928,6 +1113,354 @@ describe("createBrowserApi", () => {
 		expect(second.value?.event).toEqual({
 			type: "text",
 			text: "b",
+			sessionId: "codex-1",
+		});
+
+		controller.abort();
+		await iterator.next();
+
+		events.close();
+		codingSessions.close();
+		sessionStore.close();
+	});
+
+	test("seeds an empty coding-session event stream from provider rehydration before following", async () => {
+		const root = createTempDir("outclaw-browser-coding-event-seed-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingSessions = new CodingSessionStore(dbPath);
+		const events = new CodingSessionEventStore(dbPath);
+
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			title: "demo",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 10,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			cwd: root,
+			runStatus: "idle",
+			timestamp: 10,
+		});
+
+		const rehydrateCalls: Array<{
+			providerId: string;
+			sdkSessionId: string;
+		}> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async (params) => {
+					rehydrateCalls.push(params);
+					return [
+						{
+							type: "thinking",
+							text: "from jsonl",
+							sessionId: "codex-1",
+						},
+						{
+							type: "command_execution_completed",
+							callId: "call-1",
+							output: "tool result\n",
+							sessionId: "codex-1",
+						},
+						{ type: "text", text: "final", sessionId: "codex-1" },
+					];
+				},
+			},
+			codingEvents: events,
+			codingSessions,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const controller = new AbortController();
+		const iterator = api
+			.openCodingSessionEventStream({
+				providerId: "codex",
+				sdkSessionId: "codex-1",
+				signal: controller.signal,
+			})
+			[Symbol.asyncIterator]();
+
+		const first = await iterator.next();
+		const second = await iterator.next();
+		const third = await iterator.next();
+		expect(rehydrateCalls).toEqual([
+			{ providerId: "codex", sdkSessionId: "codex-1" },
+		]);
+		expect(first.value?.sequence).toBe(1);
+		expect(first.value?.event).toEqual({
+			type: "thinking",
+			text: "from jsonl",
+			sessionId: "codex-1",
+		});
+		expect(second.value?.event).toEqual({
+			type: "command_execution_completed",
+			callId: "call-1",
+			output: "tool result\n",
+			sessionId: "codex-1",
+		});
+		expect(third.value?.sequence).toBe(3);
+
+		const live = iterator.next();
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "text", text: "live", sessionId: "codex-1" },
+		});
+		const fourth = await live;
+		expect(fourth.value?.sequence).toBe(4);
+		expect(fourth.value?.event).toEqual({
+			type: "text",
+			text: "live",
+			sessionId: "codex-1",
+		});
+
+		controller.abort();
+		await iterator.next();
+
+		events.close();
+		codingSessions.close();
+		sessionStore.close();
+	});
+
+	test("backfills provider content when the coding-session event stream only has runtime metadata", async () => {
+		const root = createTempDir("outclaw-browser-coding-event-backfill-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingSessions = new CodingSessionStore(dbPath);
+		const events = new CodingSessionEventStore(dbPath);
+
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			title: "demo",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 10,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			cwd: root,
+			runStatus: "idle",
+			timestamp: 10,
+		});
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "session_initialized", sessionId: "codex-1" },
+		});
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "user_prompt", text: "go" },
+		});
+
+		const rehydrateCalls: Array<{
+			providerId: string;
+			sdkSessionId: string;
+		}> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async (params) => {
+					rehydrateCalls.push(params);
+					return [
+						{
+							type: "thinking",
+							text: "inspect jsonl",
+							sessionId: "codex-1",
+						},
+						{
+							type: "command_execution_completed",
+							callId: "call-1",
+							output: "tool result\n",
+							sessionId: "codex-1",
+						},
+						{ type: "text", text: "done", sessionId: "codex-1" },
+					];
+				},
+			},
+			codingEvents: events,
+			codingSessions,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const controller = new AbortController();
+		const iterator = api
+			.openCodingSessionEventStream({
+				providerId: "codex",
+				sdkSessionId: "codex-1",
+				signal: controller.signal,
+			})
+			[Symbol.asyncIterator]();
+
+		const first = await iterator.next();
+		expect(rehydrateCalls).toEqual([
+			{ providerId: "codex", sdkSessionId: "codex-1" },
+		]);
+		expect(first.value?.sequence).toBe(1);
+		expect(first.value?.event).toEqual({
+			type: "session_initialized",
+			sessionId: "codex-1",
+		});
+
+		const second = await iterator.next();
+		const third = await iterator.next();
+		const fourth = await iterator.next();
+		const fifth = await iterator.next();
+		expect(second.value?.event).toEqual({ type: "user_prompt", text: "go" });
+		expect(third.value?.sequence).toBe(3);
+		expect(third.value?.event).toEqual({
+			type: "thinking",
+			text: "inspect jsonl",
+			sessionId: "codex-1",
+		});
+		expect(fourth.value?.event).toEqual({
+			type: "command_execution_completed",
+			callId: "call-1",
+			output: "tool result\n",
+			sessionId: "codex-1",
+		});
+		expect(fifth.value?.event).toEqual({
+			type: "text",
+			text: "done",
+			sessionId: "codex-1",
+		});
+
+		controller.abort();
+		await iterator.next();
+
+		events.close();
+		codingSessions.close();
+		sessionStore.close();
+	});
+
+	test("does not rehydrate a coding-session event stream that already has provider content", async () => {
+		const root = createTempDir("outclaw-browser-coding-event-no-dup-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingSessions = new CodingSessionStore(dbPath);
+		const events = new CodingSessionEventStore(dbPath);
+
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			title: "demo",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 10,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			cwd: root,
+			runStatus: "idle",
+			timestamp: 10,
+		});
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "session_initialized", sessionId: "codex-1" },
+		});
+		events.append({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			event: { type: "text", text: "already streamed", sessionId: "codex-1" },
+		});
+
+		const rehydrateCalls: Array<{
+			providerId: string;
+			sdkSessionId: string;
+		}> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async (params) => {
+					rehydrateCalls.push(params);
+					return [{ type: "text", text: "from jsonl", sessionId: "codex-1" }];
+				},
+			},
+			codingEvents: events,
+			codingSessions,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const controller = new AbortController();
+		const iterator = api
+			.openCodingSessionEventStream({
+				providerId: "codex",
+				sdkSessionId: "codex-1",
+				signal: controller.signal,
+			})
+			[Symbol.asyncIterator]();
+
+		const first = await iterator.next();
+		const second = await iterator.next();
+		expect(rehydrateCalls).toEqual([]);
+		expect(first.value?.event).toEqual({
+			type: "session_initialized",
+			sessionId: "codex-1",
+		});
+		expect(second.value?.event).toEqual({
+			type: "text",
+			text: "already streamed",
 			sessionId: "codex-1",
 		});
 

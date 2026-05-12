@@ -62,6 +62,8 @@ interface MessageInputProps {
 	 * the coding store instead of the chat-side runtime status event.
 	 */
 	modelSelectorSlot?: React.ReactNode;
+	attachmentsEnabled?: boolean;
+	onInterrupt?: () => boolean;
 }
 
 export function MessageInput({
@@ -77,6 +79,8 @@ export function MessageInput({
 	headerSlot,
 	compact = false,
 	modelSelectorSlot,
+	attachmentsEnabled = true,
+	onInterrupt,
 }: MessageInputProps) {
 	const { sendCommand } = useWs();
 	const [value, setValue] = useState("");
@@ -130,7 +134,9 @@ export function MessageInput({
 		});
 	}
 
-	useGlobalStopShortcut(active && interruptible, () => sendCommand("/stop"));
+	const interrupt = onInterrupt ?? (() => sendCommand("/stop"));
+
+	useGlobalStopShortcut(active && interruptible, interrupt);
 
 	useRuntimePopupShortcuts(runtimePopup, {
 		enabled: active,
@@ -183,6 +189,20 @@ export function MessageInput({
 		}
 		void requestAgentFiles(activeAgentId);
 	}, [activeAgentId, requestAgentFiles, value]);
+
+	useEffect(() => {
+		if (attachmentsEnabled) {
+			return;
+		}
+		if (draftRef.current.images.length === 0) {
+			return;
+		}
+		draftRef.current = {
+			...draftRef.current,
+			images: [],
+		};
+		setImages([]);
+	}, [attachmentsEnabled]);
 
 	function syncCursorFromTextarea() {
 		const textarea = textareaRef.current;
@@ -244,6 +264,9 @@ export function MessageInput({
 	}
 
 	async function appendFiles(files: File[]) {
+		if (!attachmentsEnabled) {
+			return;
+		}
 		const supportedFiles = filterSupportedImageFiles(files);
 		if (supportedFiles.length === 0) {
 			return;
@@ -392,6 +415,9 @@ export function MessageInput({
 							onClick={syncCursorFromTextarea}
 							onKeyUp={syncCursorFromTextarea}
 							onPaste={(event) => {
+								if (!attachmentsEnabled) {
+									return;
+								}
 								const files = filterSupportedImageFiles(
 									Array.from(event.clipboardData.files),
 								);
@@ -403,6 +429,9 @@ export function MessageInput({
 								void appendFiles(files);
 							}}
 							onDragOver={(event) => {
+								if (!attachmentsEnabled) {
+									return;
+								}
 								const files = filterSupportedImageFiles(
 									Array.from(event.dataTransfer.files),
 								);
@@ -413,6 +442,9 @@ export function MessageInput({
 								event.preventDefault();
 							}}
 							onDrop={(event) => {
+								if (!attachmentsEnabled) {
+									return;
+								}
 								event.preventDefault();
 								void appendFiles(Array.from(event.dataTransfer.files));
 							}}
@@ -444,7 +476,7 @@ export function MessageInput({
 												applySlashCommand(selectedCommand.name);
 											}
 										},
-										sendStopCommand: () => sendCommand("/stop"),
+										sendStopCommand: interrupt,
 										submitValue: () => {
 											void submitValue();
 										},
@@ -458,7 +490,11 @@ export function MessageInput({
 									},
 								);
 							}}
-							placeholder="Type a message or paste/drop an image..."
+							placeholder={
+								attachmentsEnabled
+									? "Type a message or paste/drop an image..."
+									: "Type a message..."
+							}
 							className="scrollbar-none h-full w-full resize-none bg-transparent px-2 pt-1 text-sm text-dark-100 placeholder:text-dark-500"
 						/>
 					</div>

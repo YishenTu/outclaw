@@ -30,9 +30,20 @@ export interface CodingTab {
 
 export function codingTabId(tab: {
 	providerId: string;
+	repositoryId?: string;
 	sdkSessionId: string;
 }): string {
-	return `${tab.providerId}/${tab.sdkSessionId}`;
+	return `${tab.repositoryId ?? ""}/${tab.providerId}/${tab.sdkSessionId}`;
+}
+
+export function visibleCodingTabs(
+	tabs: CodingTab[],
+	focusedRepositoryId: string | undefined,
+): CodingTab[] {
+	if (focusedRepositoryId === undefined) {
+		return [];
+	}
+	return tabs.filter((tab) => tab.repositoryId === focusedRepositoryId);
 }
 
 /**
@@ -165,7 +176,11 @@ export interface CodingState {
 		title: string,
 	): void;
 	openTab(tab: CodingTab): void;
-	closeTab(providerId: string, sdkSessionId: string): void;
+	closeTab(
+		providerId: string,
+		sdkSessionId: string,
+		repositoryId?: string,
+	): void;
 	updateTabTitle(providerId: string, sdkSessionId: string, title: string): void;
 	removeSession(
 		repositoryId: string,
@@ -217,6 +232,74 @@ function safeStorage(): StateStorage {
 	return window.localStorage;
 }
 
+/**
+ * Removes a tab and reshapes focus to honor the per-repo invariant: the focused
+ * repo always keeps at least one visible tab. If the closed tab was the last
+ * one in the focused repo we seed a fresh pending tab so the user lands on the
+ * new-session composer instead of an empty middle pane. Tabs closed in
+ * non-focused repos just disappear.
+ */
+function removeTabAndPickFocus(
+	state: Pick<
+		CodingState,
+		"openTabs" | "focusedRepositoryId" | "focusedSession"
+	>,
+	target: { providerId: string; repositoryId?: string; sdkSessionId: string },
+): Partial<CodingState> {
+	const index = state.openTabs.findIndex(
+		(entry) =>
+			entry.providerId === target.providerId &&
+			entry.sdkSessionId === target.sdkSessionId &&
+			(target.repositoryId === undefined ||
+				entry.repositoryId === target.repositoryId),
+	);
+	if (index === -1) {
+		return {};
+	}
+	const closed = state.openTabs[index];
+	if (!closed) {
+		return {};
+	}
+	const nextTabs = state.openTabs.filter((_, i) => i !== index);
+	const wasFocused =
+		state.focusedSession?.providerId === target.providerId &&
+		state.focusedSession?.sdkSessionId === target.sdkSessionId;
+	const focusedRepoId = state.focusedRepositoryId;
+	const focusedRepoNowEmpty =
+		focusedRepoId !== undefined &&
+		closed.repositoryId === focusedRepoId &&
+		!nextTabs.some((tab) => tab.repositoryId === focusedRepoId);
+	if (focusedRepoNowEmpty) {
+		const replacement = makePendingCodingTab(focusedRepoId);
+		return {
+			openTabs: [...nextTabs, replacement],
+			focusedSession: {
+				providerId: replacement.providerId,
+				sdkSessionId: replacement.sdkSessionId,
+			},
+		};
+	}
+	if (!wasFocused) {
+		return { openTabs: nextTabs };
+	}
+	const after = nextTabs
+		.slice(index)
+		.find((tab) => tab.repositoryId === closed.repositoryId);
+	const before = [...nextTabs.slice(0, index)]
+		.reverse()
+		.find((tab) => tab.repositoryId === closed.repositoryId);
+	const neighbor = after ?? before;
+	return {
+		openTabs: nextTabs,
+		focusedSession: neighbor
+			? {
+					providerId: neighbor.providerId,
+					sdkSessionId: neighbor.sdkSessionId,
+				}
+			: undefined,
+	};
+}
+
 export const useCodingStore = create<CodingState>()(
 	persist(
 		(set) => ({
@@ -239,19 +322,46 @@ export const useCodingStore = create<CodingState>()(
 				set({ appMode: mode });
 			},
 			setFocusedRepository(repositoryId) {
-				set((state) => ({
-					focusedRepositoryId: repositoryId,
-					focusedSession:
-						state.focusedSession &&
-						(repositoryId === undefined ||
-							!(state.sessionsByRepository[repositoryId] ?? []).some(
-								(session) =>
-									session.providerId === state.focusedSession?.providerId &&
-									session.sdkSessionId === state.focusedSession?.sdkSessionId,
-							))
-							? undefined
-							: state.focusedSession,
-				}));
+				set((state) => {
+					if (repositoryId === undefined) {
+						return {
+							focusedRepositoryId: undefined,
+							focusedSession: undefined,
+						};
+					}
+					const currentTab = state.focusedSession
+						? state.openTabs.find(
+								(entry) =>
+									entry.providerId === state.focusedSession?.providerId &&
+									entry.sdkSessionId === state.focusedSession?.sdkSessionId,
+							)
+						: undefined;
+					if (currentTab && currentTab.repositoryId === repositoryId) {
+						return { focusedRepositoryId: repositoryId };
+					}
+					const repoTabs = state.openTabs.filter(
+						(tab) => tab.repositoryId === repositoryId,
+					);
+					const fallback = repoTabs[repoTabs.length - 1];
+					if (fallback) {
+						return {
+							focusedRepositoryId: repositoryId,
+							focusedSession: {
+								providerId: fallback.providerId,
+								sdkSessionId: fallback.sdkSessionId,
+							},
+						};
+					}
+					const replacement = makePendingCodingTab(repositoryId);
+					return {
+						focusedRepositoryId: repositoryId,
+						openTabs: [...state.openTabs, replacement],
+						focusedSession: {
+							providerId: replacement.providerId,
+							sdkSessionId: replacement.sdkSessionId,
+						},
+					};
+				});
 			},
 			setFocusedSession(ref) {
 				set({ focusedSession: ref });
@@ -390,9 +500,16 @@ export const useCodingStore = create<CodingState>()(
 								},
 							}
 						: state.searchByRepository;
+					const nextOpenTabs = state.openTabs.map((entry) =>
+						entry.providerId === providerId &&
+						entry.sdkSessionId === sdkSessionId
+							? { ...entry, title }
+							: entry,
+					);
 					return {
 						sessionsByRepository: nextSessionsByRepository,
 						searchByRepository: nextSearchByRepository,
+						openTabs: nextOpenTabs,
 					};
 				});
 			},
@@ -419,12 +536,14 @@ export const useCodingStore = create<CodingState>()(
 					const exists = state.openTabs.some(
 						(entry) =>
 							entry.providerId === tab.providerId &&
-							entry.sdkSessionId === tab.sdkSessionId,
+							entry.sdkSessionId === tab.sdkSessionId &&
+							entry.repositoryId === tab.repositoryId,
 					);
 					const nextTabs = exists
 						? state.openTabs.map((entry) =>
 								entry.providerId === tab.providerId &&
-								entry.sdkSessionId === tab.sdkSessionId
+								entry.sdkSessionId === tab.sdkSessionId &&
+								entry.repositoryId === tab.repositoryId
 									? {
 											...entry,
 											title: tab.title,
@@ -435,6 +554,7 @@ export const useCodingStore = create<CodingState>()(
 						: [...state.openTabs, tab];
 					return {
 						openTabs: nextTabs,
+						focusedRepositoryId: tab.repositoryId,
 						focusedSession: {
 							providerId: tab.providerId,
 							sdkSessionId: tab.sdkSessionId,
@@ -442,34 +562,14 @@ export const useCodingStore = create<CodingState>()(
 					};
 				});
 			},
-			closeTab(providerId, sdkSessionId) {
-				set((state) => {
-					const index = state.openTabs.findIndex(
-						(entry) =>
-							entry.providerId === providerId &&
-							entry.sdkSessionId === sdkSessionId,
-					);
-					if (index === -1) {
-						return state;
-					}
-					const nextTabs = state.openTabs.filter((_, i) => i !== index);
-					const wasFocused =
-						state.focusedSession?.providerId === providerId &&
-						state.focusedSession?.sdkSessionId === sdkSessionId;
-					if (!wasFocused) {
-						return { openTabs: nextTabs };
-					}
-					const neighbor = nextTabs[index] ?? nextTabs[index - 1] ?? undefined;
-					return {
-						openTabs: nextTabs,
-						focusedSession: neighbor
-							? {
-									providerId: neighbor.providerId,
-									sdkSessionId: neighbor.sdkSessionId,
-								}
-							: undefined,
-					};
-				});
+			closeTab(providerId, sdkSessionId, repositoryId) {
+				set((state) =>
+					removeTabAndPickFocus(state, {
+						providerId,
+						...(repositoryId ? { repositoryId } : {}),
+						sdkSessionId,
+					}),
+				);
 			},
 			updateTabTitle(providerId, sdkSessionId, title) {
 				set((state) => ({
@@ -560,39 +660,14 @@ export const useCodingStore = create<CodingState>()(
 								),
 							}
 						: state.sessionsByRepository;
-
-					const tabIndex = state.openTabs.findIndex(
-						(entry) =>
-							entry.providerId === providerId &&
-							entry.sdkSessionId === sdkSessionId,
-					);
-					const wasFocused =
-						state.focusedSession?.providerId === providerId &&
-						state.focusedSession?.sdkSessionId === sdkSessionId;
-					if (tabIndex === -1) {
-						return {
-							sessionsByRepository: nextSessionsByRepository,
-							...(wasFocused ? { focusedSession: undefined } : {}),
-						};
-					}
-					const nextTabs = state.openTabs.filter((_, i) => i !== tabIndex);
-					if (!wasFocused) {
-						return {
-							sessionsByRepository: nextSessionsByRepository,
-							openTabs: nextTabs,
-						};
-					}
-					const neighbor =
-						nextTabs[tabIndex] ?? nextTabs[tabIndex - 1] ?? undefined;
+					const tabPatch = removeTabAndPickFocus(state, {
+						providerId,
+						repositoryId,
+						sdkSessionId,
+					});
 					return {
 						sessionsByRepository: nextSessionsByRepository,
-						openTabs: nextTabs,
-						focusedSession: neighbor
-							? {
-									providerId: neighbor.providerId,
-									sdkSessionId: neighbor.sdkSessionId,
-								}
-							: undefined,
+						...tabPatch,
 					};
 				});
 			},

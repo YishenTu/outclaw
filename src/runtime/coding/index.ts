@@ -1,4 +1,11 @@
 export {
+	type CodingCloneRequest,
+	type CodingCloneResult,
+	type CodingCloner,
+	createGitCloner,
+	deriveRepoNameFromUrl,
+} from "./coding-cloner.ts";
+export {
 	type CodingRepositoryRecord,
 	type CodingRepositorySource,
 	type CodingRepositoryStatus,
@@ -9,6 +16,7 @@ export {
 	type CodePromptRequest,
 	type CodePromptResumeRequest,
 	type CodePromptStartResult,
+	type CodePromptStopResult,
 	type CodingRepositoryRegistrar,
 	CodingRuntime,
 	type CodingSessionRecorder,

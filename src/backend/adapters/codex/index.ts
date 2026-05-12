@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import {
 	extractError,
 	type Facade,
@@ -11,7 +12,10 @@ import {
 	createCodexAppServerClient,
 } from "./app-server-client.ts";
 import { CodexNotificationQueue } from "./notification-queue.ts";
-import { normalizeCodexTurnNotifications } from "./stream-normalizer.ts";
+import {
+	normalizeCodexJsonlEvents,
+	normalizeCodexTurnNotifications,
+} from "./stream-normalizer.ts";
 import type {
 	CodexAppServerClient,
 	CodexModelListResponse,
@@ -77,6 +81,20 @@ export class CodexAdapter implements Facade {
 			cursor = response.nextCursor ?? undefined;
 		} while (cursor !== undefined);
 		return models;
+	}
+
+	async readCodingSessionEvents(sessionId: string): Promise<FacadeEvent[]> {
+		const client = await this.loadClient();
+		await client.initialize();
+		const thread = await client.request<CodexThreadResumeResult>(
+			"thread/resume",
+			{ threadId: sessionId },
+		);
+		if (!thread.thread.path) {
+			return [];
+		}
+		const content = await readFile(thread.thread.path, "utf8");
+		return normalizeCodexJsonlEvents(content, { sessionId: thread.thread.id });
 	}
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
@@ -162,7 +180,7 @@ export class CodexAdapter implements Facade {
 
 function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
-		experimentalRawEvents: false,
+		experimentalRawEvents: true,
 	};
 
 	if (params.model && isCodexCompatibleModel(params.model)) {
@@ -187,6 +205,7 @@ function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 function buildThreadResumeParams(params: RunParams): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
 		threadId: params.resume,
+		experimentalRawEvents: true,
 	};
 
 	if (params.model && isCodexCompatibleModel(params.model)) {

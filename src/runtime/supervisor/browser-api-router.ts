@@ -282,6 +282,40 @@ export async function handleBrowserApiRequest(
 			return Response.json(await browserApi.pickCodingRepositoryFolder());
 		}
 
+		if (url.pathname === "/api/coding/repositories/clone") {
+			if (req.method !== "POST") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.cloneCodingRepository) {
+				return jsonError("Coding repository API is not configured", 404);
+			}
+			const body = (await req.json().catch(() => undefined)) as
+				| {
+						displayName?: unknown;
+						parentDir?: unknown;
+						remoteUrl?: unknown;
+				  }
+				| undefined;
+			if (
+				typeof body?.remoteUrl !== "string" ||
+				body.remoteUrl.trim() === "" ||
+				typeof body.parentDir !== "string" ||
+				body.parentDir.trim() === "" ||
+				(body.displayName !== undefined && typeof body.displayName !== "string")
+			) {
+				return jsonError("Invalid coding clone request", 400);
+			}
+			return Response.json(
+				await browserApi.cloneCodingRepository({
+					remoteUrl: body.remoteUrl,
+					parentDir: body.parentDir,
+					...(body.displayName !== undefined
+						? { displayName: body.displayName }
+						: {}),
+				}),
+			);
+		}
+
 		const codingRepositoriesMatch = url.pathname.match(
 			/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive|tree|files))?)?$/,
 		);
@@ -407,7 +441,7 @@ export async function handleBrowserApiRequest(
 		}
 
 		const codingSessionsMatch = url.pathname.match(
-			/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(resume|events))?)?$/,
+			/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(resume|events|stop))?)?$/,
 		);
 		if (codingSessionsMatch) {
 			const [, encodedProviderId, encodedSdkSessionId, action] =
@@ -494,6 +528,20 @@ export async function handleBrowserApiRequest(
 							...(serviceTierOverride.value
 								? { serviceTier: serviceTierOverride.value }
 								: {}),
+						}),
+					);
+				}
+				if (action === "stop") {
+					if (req.method !== "POST") {
+						return jsonError("Method not allowed", 405);
+					}
+					if (!browserApi.stopCodingSession) {
+						return jsonError("Coding session API is not configured", 404);
+					}
+					return Response.json(
+						await browserApi.stopCodingSession({
+							providerId,
+							sdkSessionId,
 						}),
 					);
 				}

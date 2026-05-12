@@ -1,3 +1,4 @@
+import { Bot, FileEdit, Globe, Terminal, Wrench } from "lucide-react";
 import type { DisplayChatMessage } from "../../../common/protocol.ts";
 import { Message } from "../components/chat/message.tsx";
 import { ThinkingBlock } from "../components/chat/thinking-block.tsx";
@@ -91,14 +92,54 @@ function groupEvents(
 		| { key: string; chunks: string[]; turnFooter?: TurnFooter }
 		| undefined;
 	let currentThinking: { key: string; chunks: string[] } | undefined;
-	const commandsByCallId = new Map<
-		string,
-		{
-			started?: FacadeLike;
-			completed?: FacadeLike;
-			sequence: number;
+	const toolEntriesByCallId = new Map<string, ToolEntry>();
+
+	const recordToolEvent = (
+		callId: string,
+		category: ToolCategory,
+		event: FacadeLike,
+		isStart: boolean,
+		sequence: number,
+	): void => {
+		let entry = toolEntriesByCallId.get(callId);
+		const isNew = entry === undefined;
+		if (!entry) {
+			entry = { callId, category, sequence };
+			toolEntriesByCallId.set(callId, entry);
 		}
-	>();
+		if (isStart) entry.started = event;
+		else entry.completed = event;
+		if (isNew) {
+			// Capture the entry once; later events for the same callId mutate it
+			// in place so the render closure picks up the final state.
+			const captured = entry;
+			groups.push({
+				key: `tool-${callId}`,
+				render: () => renderToolEntry(captured),
+			});
+		}
+	};
+
+	const recordCommandOutput = (
+		callId: string,
+		output: string,
+		sequence: number,
+	): void => {
+		let entry = toolEntriesByCallId.get(callId);
+		const isNew = entry === undefined;
+		if (!entry) {
+			entry = { callId, category: "command", sequence };
+			toolEntriesByCallId.set(callId, entry);
+		}
+		entry.outputs = [...(entry.outputs ?? []), output];
+		if (isNew) {
+			const captured = entry;
+			groups.push({
+				key: `tool-${callId}`,
+				render: () => renderToolEntry(captured),
+			});
+		}
+	};
 
 	const flushText = () => {
 		if (!currentText) {
@@ -205,35 +246,37 @@ function groupEvents(
 			continue;
 		}
 
+		// Events that have no useful transcript projection in the coding view:
+		// - usage_updated: surfaced live via the ContextGauge above the composer.
+		// - image: runtime-extracted from assistant text; the path itself already
+		//   appears in the message, and we have no endpoint serving arbitrary
+		//   local files for inline preview.
+		if (type === "usage_updated" || type === "image") {
+			continue;
+		}
+
 		flushText();
 		flushThinking();
 
-		if (
-			type === "command_execution_started" ||
-			type === "command_execution_completed"
-		) {
+		if (type === "command_execution_output") {
 			const callId =
 				typeof event.callId === "string" ? event.callId : String(item.sequence);
-			let entry = commandsByCallId.get(callId);
-			const isNew = entry === undefined;
-			if (!entry) {
-				entry = { sequence: item.sequence };
-				commandsByCallId.set(callId, entry);
-			}
-			if (type === "command_execution_started") {
-				entry.started = event;
-			} else {
-				entry.completed = event;
-			}
-			if (isNew) {
-				// Capture the entry once; later events for the same callId mutate it
-				// in place so the existing render closure picks up the final state.
-				const captured = entry;
-				groups.push({
-					key: `command-${callId}`,
-					render: () => renderCommand(captured),
-				});
-			}
+			const output = typeof event.output === "string" ? event.output : "";
+			recordCommandOutput(callId, output, item.sequence);
+			continue;
+		}
+
+		const toolCategory = toolCategoryFor(type);
+		if (toolCategory) {
+			const callId =
+				typeof event.callId === "string" ? event.callId : String(item.sequence);
+			recordToolEvent(
+				callId,
+				toolCategory.category,
+				event,
+				toolCategory.isStart,
+				item.sequence,
+			);
 			continue;
 		}
 
@@ -263,7 +306,7 @@ function groupEvents(
 			groups.push({
 				key: `error-${item.sequence}`,
 				render: () => (
-					<div className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-2 text-sm text-danger">
+					<div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
 						{message}
 					</div>
 				),
@@ -275,7 +318,7 @@ function groupEvents(
 		groups.push({
 			key: `raw-${item.sequence}`,
 			render: () => (
-				<details className="rounded-xl border border-dark-800 bg-dark-900/20 px-4 py-2 text-xs text-dark-400">
+				<details className="rounded-md border border-dark-800 bg-dark-900/20 px-3 py-2 text-xs text-dark-400">
 					<summary className="cursor-pointer text-dark-300">
 						Event: {type ?? "unknown"}
 					</summary>
@@ -293,115 +336,747 @@ function groupEvents(
 	return groups;
 }
 
-function renderCommand(entry: {
+const COMMAND_OUTPUT_MAX_LINES = 20;
+const FILE_DIFF_MAX_LINES = 60;
+
+type ToolCategory = "command" | "web_search" | "tool_call" | "subagent";
+
+interface ToolEntry {
+	callId: string;
+	category: ToolCategory;
 	started?: FacadeLike;
 	completed?: FacadeLike;
-}): React.ReactNode {
-	const command =
-		(entry.started?.command as string | undefined) ??
-		(entry.completed?.command as string | undefined) ??
-		"<unknown command>";
-	const cwd = entry.started?.cwd as string | undefined;
-	const exitCode = entry.completed?.exitCode as number | undefined;
-	const durationMs = entry.completed?.durationMs as number | undefined;
-	const output =
-		typeof entry.completed?.output === "string"
-			? (entry.completed?.output as string)
-			: undefined;
-	const isPending = !entry.completed;
-	const isFailure =
-		!isPending && typeof exitCode === "number" && exitCode !== 0;
+	outputs?: string[];
+	sequence: number;
+}
 
+function toolCategoryFor(
+	type: string | undefined,
+): { category: ToolCategory; isStart: boolean } | undefined {
+	switch (type) {
+		case "command_execution_started":
+			return { category: "command", isStart: true };
+		case "command_execution_completed":
+			return { category: "command", isStart: false };
+		case "web_search_started":
+			return { category: "web_search", isStart: true };
+		case "web_search_completed":
+			return { category: "web_search", isStart: false };
+		case "tool_call_started":
+			return { category: "tool_call", isStart: true };
+		case "tool_call_completed":
+			return { category: "tool_call", isStart: false };
+		case "subagent_tool_started":
+			return { category: "subagent", isStart: true };
+		case "subagent_tool_completed":
+			return { category: "subagent", isStart: false };
+		default:
+			return undefined;
+	}
+}
+
+function renderToolEntry(entry: ToolEntry): React.ReactNode {
+	switch (entry.category) {
+		case "command":
+			return renderCommand(entry);
+		case "web_search":
+			return renderWebSearch(entry);
+		case "tool_call":
+			return renderGenericTool(entry);
+		case "subagent":
+			return renderSubagent(entry);
+	}
+}
+
+/**
+ * Shared shell for every tool block: a collapsible card with a uniform
+ * header (icon, label, truncated detail, right-aligned meta) and a body
+ * area that each renderer fills with one or more {@link ToolSection}s.
+ *
+ * Keep visual decisions here so the five renderers stay in lockstep on
+ * radius, padding, divider, and color palette.
+ */
+function ToolFrame({
+	icon: IconComp,
+	iconColorClass,
+	label,
+	detail,
+	meta,
+	isFailure,
+	children,
+}: {
+	icon: React.ComponentType<{ className?: string }>;
+	iconColorClass: string;
+	label: React.ReactNode;
+	detail?: React.ReactNode;
+	meta: React.ReactNode;
+	isFailure?: boolean;
+	children: React.ReactNode;
+}) {
 	return (
-		<div
-			className={`rounded-xl border px-4 py-3 text-xs leading-5 ${
+		<details
+			className={`group overflow-hidden rounded-md border text-xs leading-5 ${
 				isFailure
 					? "border-danger/40 bg-danger/10"
 					: "border-dark-800 bg-dark-900/30"
 			}`}
 		>
-			<div className="flex items-center gap-2 text-dark-300">
-				<span className="font-mono text-dark-200">$</span>
-				<span className="font-mono text-dark-100">{command}</span>
-				{isPending && (
-					<span className="ml-auto text-[10px] uppercase tracking-wide text-dark-500">
-						running…
+			<summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+				<IconComp
+					className={`h-3.5 w-3.5 flex-shrink-0 ${
+						isFailure ? "text-danger" : iconColorClass
+					}`}
+				/>
+				<span className="flex-shrink-0 font-mono text-dark-100">{label}</span>
+				<span className="min-w-0 flex-1 truncate font-mono text-dark-300">
+					{detail}
+				</span>
+				<span
+					className={`ml-auto flex-shrink-0 text-[10px] uppercase tracking-wide ${
+						isFailure ? "text-danger" : "text-dark-500"
+					}`}
+				>
+					{meta}
+				</span>
+			</summary>
+			<div className="border-t border-dark-800/60 bg-dark-950/40">
+				{children}
+			</div>
+		</details>
+	);
+}
+
+function ToolBody({ children }: { children: React.ReactNode }) {
+	return (
+		<div className="flex flex-col gap-2 px-3 py-2 font-mono text-[11px] leading-4 text-dark-200">
+			{children}
+		</div>
+	);
+}
+
+function ToolSection({
+	label,
+	children,
+}: {
+	label: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<div>
+			<div className="text-[10px] uppercase tracking-wide text-dark-500">
+				{label}
+			</div>
+			<div className="mt-1 space-y-2">{children}</div>
+		</div>
+	);
+}
+
+function ToolEmpty({ children }: { children: React.ReactNode }) {
+	return <div className="italic text-dark-500">{children}</div>;
+}
+
+function DetailList({ details }: { details: ToolDetailView[] }) {
+	return (
+		<div className="flex flex-col gap-1">
+			{details.map((detail) => (
+				<div key={`${detail.label}:${detail.value.slice(0, 32)}`}>
+					<span className="text-dark-500">{detail.label}: </span>
+					<span className="whitespace-pre-wrap break-words text-dark-200">
+						{detail.value}
 					</span>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function PayloadPre({ value }: { value: Record<string, unknown> }) {
+	return (
+		<pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words">
+			{JSON.stringify(value, null, 2)}
+		</pre>
+	);
+}
+
+/**
+ * Build content-derived React keys for a list of lines so that equal lines
+ * (e.g. blank ones) still get unique keys without using the array index, which
+ * Biome flags as unstable.
+ */
+function withStableKeys(lines: string[]): Array<{ key: string; line: string }> {
+	const counts = new Map<string, number>();
+	return lines.map((line) => {
+		const head = line.slice(0, 32);
+		const seen = counts.get(head) ?? 0;
+		counts.set(head, seen + 1);
+		return { key: seen === 0 ? head : `${head}#${seen}`, line };
+	});
+}
+
+function renderCommand(entry: ToolEntry): React.ReactNode {
+	const command =
+		(entry.started?.command as string | undefined) ??
+		(entry.completed?.command as string | undefined) ??
+		"<unknown command>";
+	const exitCode = entry.completed?.exitCode as number | undefined;
+	const durationMs = entry.completed?.durationMs as number | undefined;
+	const streamedOutput = entry.outputs?.join("") ?? "";
+	const output =
+		typeof entry.completed?.output === "string"
+			? (entry.completed?.output as string)
+			: streamedOutput || undefined;
+	const isPending = !entry.completed;
+	const isFailure =
+		!isPending && typeof exitCode === "number" && exitCode !== 0;
+	const meta = isPending
+		? "running…"
+		: `exit ${exitCode ?? "?"}${
+				durationMs !== undefined ? ` · ${durationMs}ms` : ""
+			}`;
+
+	return (
+		<ToolFrame
+			icon={Terminal}
+			iconColorClass="text-orange-400"
+			label="bash"
+			detail={command}
+			meta={meta}
+			isFailure={isFailure}
+		>
+			<ToolBody>
+				<ToolSection label="input">
+					<div className="whitespace-pre-wrap break-words">{command}</div>
+				</ToolSection>
+				<ToolSection label="output">
+					{renderCommandOutput(output, isPending)}
+				</ToolSection>
+			</ToolBody>
+		</ToolFrame>
+	);
+}
+
+function renderWebSearch(entry: ToolEntry): React.ReactNode {
+	const startedQuery =
+		typeof entry.started?.query === "string"
+			? (entry.started.query as string)
+			: "";
+	const completedQuery =
+		typeof entry.completed?.query === "string"
+			? (entry.completed.query as string)
+			: "";
+	const query = completedQuery || startedQuery;
+	const queries = Array.isArray(entry.completed?.queries)
+		? (entry.completed?.queries as unknown[]).filter(
+				(q): q is string => typeof q === "string",
+			)
+		: [];
+	const isPending = !entry.completed;
+	const meta = isPending ? "searching…" : "completed";
+
+	return (
+		<ToolFrame
+			icon={Globe}
+			iconColorClass="text-cyan-400"
+			label="web_search"
+			detail={query || "(query pending)"}
+			meta={meta}
+		>
+			<ToolBody>
+				{queries.length > 1 ? (
+					<ToolSection label="queries">
+						<ul className="list-disc pl-4">
+							{queries.map((q) => (
+								<li key={q}>{q}</li>
+							))}
+						</ul>
+					</ToolSection>
+				) : (
+					<ToolEmpty>
+						{isPending ? "searching…" : "(no extra detail)"}
+					</ToolEmpty>
 				)}
-				{!isPending && (
+			</ToolBody>
+		</ToolFrame>
+	);
+}
+
+function renderGenericTool(entry: ToolEntry): React.ReactNode {
+	const toolKind =
+		(typeof entry.started?.toolKind === "string"
+			? (entry.started.toolKind as string)
+			: undefined) ??
+		(typeof entry.completed?.toolKind === "string"
+			? (entry.completed.toolKind as string)
+			: undefined) ??
+		"tool";
+	if (toolKind === "collabAgentToolCall") {
+		return renderSubagent(entry);
+	}
+	const isPending = !entry.completed;
+	const status =
+		typeof entry.completed?.status === "string"
+			? (entry.completed.status as string)
+			: undefined;
+	const meta = isPending ? "running…" : (status ?? "completed");
+	const isFailure = !isPending && status === "failed";
+	const startedPayload = asPayloadRecord(entry.started?.payload);
+	const completedPayload = asPayloadRecord(entry.completed?.payload);
+	const startedDetails = readToolDetails(entry.started?.details);
+	const completedDetails = readToolDetails(entry.completed?.details);
+	const showCompletedDetails =
+		completedDetails.length > 0 &&
+		!sameToolDetails(startedDetails, completedDetails);
+	const showCompletedPayload =
+		!!completedPayload && completedPayload !== startedPayload;
+	const hasInput = startedDetails.length > 0 || !!startedPayload;
+	const hasOutput = showCompletedDetails || showCompletedPayload;
+	const headerDetail =
+		startedDetails[0]?.value ?? completedDetails[0]?.value ?? "";
+
+	return (
+		<ToolFrame
+			icon={Wrench}
+			iconColorClass="text-violet-400"
+			label={toolKind}
+			detail={headerDetail}
+			meta={meta}
+			isFailure={isFailure}
+		>
+			<ToolBody>
+				{hasInput && (
+					<ToolSection label="input">
+						{startedDetails.length > 0 && (
+							<DetailList details={startedDetails} />
+						)}
+						{startedPayload && <PayloadPre value={startedPayload} />}
+					</ToolSection>
+				)}
+				{hasOutput && (
+					<ToolSection label="output">
+						{showCompletedDetails && <DetailList details={completedDetails} />}
+						{showCompletedPayload && completedPayload && (
+							<PayloadPre value={completedPayload} />
+						)}
+					</ToolSection>
+				)}
+				{!hasInput && !hasOutput && (
+					<ToolEmpty>{isPending ? "running…" : "(no detail)"}</ToolEmpty>
+				)}
+			</ToolBody>
+		</ToolFrame>
+	);
+}
+
+interface ToolDetailView {
+	label: string;
+	value: string;
+}
+
+function readToolDetails(value: unknown): ToolDetailView[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	return value
+		.map((entry) => {
+			const record =
+				entry && typeof entry === "object"
+					? (entry as Record<string, unknown>)
+					: undefined;
+			const label =
+				typeof record?.label === "string" ? record.label : undefined;
+			const detailValue =
+				typeof record?.value === "string" ? record.value : undefined;
+			if (!label || detailValue === undefined) {
+				return undefined;
+			}
+			return { label, value: detailValue };
+		})
+		.filter((entry): entry is ToolDetailView => entry !== undefined);
+}
+
+function sameToolDetails(
+	left: ToolDetailView[],
+	right: ToolDetailView[],
+): boolean {
+	if (left.length !== right.length) {
+		return false;
+	}
+	return left.every((entry, index) => {
+		const candidate = right[index];
+		return (
+			candidate !== undefined &&
+			entry.label === candidate.label &&
+			entry.value === candidate.value
+		);
+	});
+}
+
+function asPayloadRecord(value: unknown): Record<string, unknown> | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const record = value as Record<string, unknown>;
+	return Object.keys(record).length === 0 ? undefined : record;
+}
+
+interface SubagentState {
+	status?: string;
+	message?: string;
+}
+
+function renderSubagent(entry: ToolEntry): React.ReactNode {
+	// Codex normalizes spawn / wait / send_input subagent operations into a
+	// single `collabAgentToolCall` item kind. Pull the meaningful fields out
+	// of the payload instead of dumping JSON — the substantive content is
+	// the prompt the parent sent and the message each child sent back.
+	const startedPayload = asPayloadRecord(entry.started?.payload) ?? {};
+	const completedPayload = asPayloadRecord(entry.completed?.payload) ?? {};
+	const startedTyped = readTypedSubagentFields(entry.started);
+	const completedTyped = readTypedSubagentFields(entry.completed);
+	const merged: Record<string, unknown> = {
+		...startedPayload,
+		...completedPayload,
+		...startedTyped,
+		...completedTyped,
+	};
+	const operation =
+		typeof merged.operation === "string"
+			? (merged.operation as string)
+			: typeof merged.tool === "string"
+				? (merged.tool as string)
+				: "subagent";
+	const subOp = subagentOpLabel(operation);
+	const prompt =
+		typeof merged.prompt === "string" && merged.prompt
+			? (merged.prompt as string)
+			: undefined;
+	const receiverThreadIds =
+		readStringArray(merged.targetIds) ??
+		readStringArray(merged.receiverThreadIds) ??
+		[];
+	const agentsStates = readAgentsStates(
+		merged.agentStates ?? merged.agentsStates,
+	);
+	const isPending = !entry.completed;
+	const explicitStatus =
+		typeof entry.completed?.status === "string"
+			? (entry.completed.status as string)
+			: undefined;
+	const meta = isPending
+		? "running…"
+		: (subagentOverallStatus(agentsStates) ?? explicitStatus ?? "completed");
+
+	const summary =
+		subOp === "wait"
+			? `${receiverThreadIds.length} agent${
+					receiverThreadIds.length === 1 ? "" : "s"
+				}`
+			: prompt
+				? truncate(prompt, 96)
+				: subOp;
+
+	const targetIds =
+		receiverThreadIds.length > 0 ? receiverThreadIds : [...agentsStates.keys()];
+	const hasBody = !!prompt || targetIds.length > 0;
+
+	return (
+		<ToolFrame
+			icon={Bot}
+			iconColorClass="text-indigo-400"
+			label={`subagent · ${subOp}`}
+			detail={summary}
+			meta={meta}
+		>
+			<ToolBody>
+				{prompt && (
+					<ToolSection label="prompt">
+						<div className="whitespace-pre-wrap break-words">{prompt}</div>
+					</ToolSection>
+				)}
+				{targetIds.length > 0 && (
+					<ToolSection label={subOp === "wait" ? "targets" : "spawned"}>
+						<div className="flex flex-col gap-1">
+							{targetIds.map((agentId) => {
+								const state = agentsStates.get(agentId);
+								return (
+									<SubagentRow key={agentId} agentId={agentId} state={state} />
+								);
+							})}
+						</div>
+					</ToolSection>
+				)}
+				{!hasBody && (
+					<ToolEmpty>{isPending ? "running…" : "(no detail)"}</ToolEmpty>
+				)}
+			</ToolBody>
+		</ToolFrame>
+	);
+}
+
+function SubagentRow({
+	agentId,
+	state,
+}: {
+	agentId: string;
+	state: SubagentState | undefined;
+}) {
+	return (
+		<div>
+			<div className="flex items-baseline gap-2 text-[10px] text-dark-500">
+				<span className="break-all font-mono text-dark-300">{agentId}</span>
+				{state?.status && (
 					<span
-						className={`ml-auto text-[10px] uppercase tracking-wide ${
-							isFailure ? "text-danger" : "text-dark-500"
-						}`}
+						className={`uppercase tracking-wide ${subagentStatusClass(state.status)}`}
 					>
-						exit {exitCode ?? "?"}
-						{durationMs !== undefined ? ` · ${durationMs}ms` : ""}
+						{state.status}
 					</span>
 				)}
 			</div>
-			{cwd && (
-				<div className="mt-1 text-[10px] uppercase tracking-wide text-dark-500">
-					{cwd}
+			{state?.message && (
+				<div className="mt-1 whitespace-pre-wrap break-words font-mono text-dark-200">
+					{state.message}
 				</div>
-			)}
-			{output && (
-				<pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-dark-950/60 px-2 py-2 font-mono text-[11px] leading-4 text-dark-200">
-					{output}
-				</pre>
 			)}
 		</div>
 	);
 }
 
-function renderFileChange(event: FacadeLike): React.ReactNode {
-	const changes = Array.isArray(event.changes)
-		? (event.changes as Array<{
-				path?: unknown;
-				kind?: unknown;
-				diff?: unknown;
-				movePath?: unknown;
-			}>)
-		: [];
+function subagentOpLabel(tool: string): string {
+	switch (tool) {
+		case "spawnAgent":
+			return "spawn";
+		case "wait":
+			return "wait";
+		case "sendInput":
+			return "send";
+		case "resume":
+			return "resume";
+		case "close":
+			return "close";
+		default:
+			return tool;
+	}
+}
+
+function readTypedSubagentFields(
+	event: FacadeLike | undefined,
+): Record<string, unknown> {
+	if (!event) {
+		return {};
+	}
+	const result: Record<string, unknown> = {};
+	for (const key of [
+		"operation",
+		"prompt",
+		"model",
+		"reasoningEffort",
+		"targetIds",
+		"agentStates",
+	]) {
+		if (event[key] !== undefined) {
+			result[key] = event[key];
+		}
+	}
+	return result;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) {
+		return undefined;
+	}
+	return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function readAgentsStates(value: unknown): Map<string, SubagentState> {
+	const result = new Map<string, SubagentState>();
+	if (Array.isArray(value)) {
+		for (const rawState of value) {
+			const stateRecord = asPayloadRecord(rawState);
+			if (!stateRecord) {
+				continue;
+			}
+			const agentId =
+				typeof stateRecord.agentId === "string"
+					? stateRecord.agentId
+					: undefined;
+			if (!agentId) {
+				continue;
+			}
+			const state: SubagentState = {};
+			if (typeof stateRecord.status === "string") {
+				state.status = stateRecord.status;
+			}
+			if (typeof stateRecord.message === "string") {
+				state.message = stateRecord.message;
+			}
+			result.set(agentId, state);
+		}
+		return result;
+	}
+	if (!value || typeof value !== "object") return result;
+	for (const [agentId, raw] of Object.entries(
+		value as Record<string, unknown>,
+	)) {
+		if (!raw || typeof raw !== "object") continue;
+		const record = raw as Record<string, unknown>;
+		const state: SubagentState = {};
+		if (typeof record.status === "string") state.status = record.status;
+		if (typeof record.message === "string") state.message = record.message;
+		result.set(agentId, state);
+	}
+	return result;
+}
+
+function subagentOverallStatus(
+	states: Map<string, SubagentState>,
+): string | undefined {
+	if (states.size === 0) return undefined;
+	const statuses = [...states.values()]
+		.map((s) => s.status)
+		.filter((s): s is string => typeof s === "string");
+	if (statuses.length === 0) return undefined;
+	if (statuses.some((s) => s === "failed")) return "failed";
+	if (statuses.every((s) => s === "completed")) return "completed";
+	return "running";
+}
+
+function subagentStatusClass(status: string): string {
+	switch (status) {
+		case "completed":
+			return "text-emerald-400";
+		case "failed":
+			return "text-danger";
+		case "running":
+		case "pendingInit":
+			return "text-amber-400";
+		default:
+			return "text-dark-400";
+	}
+}
+
+function truncate(text: string, max: number): string {
+	if (text.length <= max) return text;
+	return `${text.slice(0, max - 1)}…`;
+}
+
+function renderCommandOutput(
+	output: string | undefined,
+	isPending: boolean,
+): React.ReactNode {
+	if (!output) {
+		return <ToolEmpty>{isPending ? "running…" : "No output"}</ToolEmpty>;
+	}
+	const lines = output.split("\n");
+	const truncated = lines.length > COMMAND_OUTPUT_MAX_LINES;
+	const visible = withStableKeys(
+		truncated ? lines.slice(0, COMMAND_OUTPUT_MAX_LINES) : lines,
+	);
 	return (
-		<div className="rounded-xl border border-dark-800 bg-dark-900/30 px-4 py-3 text-xs leading-5">
-			<div className="text-[10px] uppercase tracking-wide text-dark-500">
-				File changes
-			</div>
-			<div className="mt-2 flex flex-col gap-2">
-				{changes.map((change) => {
-					const path = typeof change.path === "string" ? change.path : "?";
-					const kind =
-						typeof change.kind === "string" ? change.kind : "unknown";
-					const diff = typeof change.diff === "string" ? change.diff : "";
-					const movePath =
-						typeof change.movePath === "string" ? change.movePath : undefined;
-					return (
-						<div
-							key={`${kind}-${path}`}
-							className="rounded bg-dark-950/60 px-2 py-2"
-						>
-							<div className="flex items-baseline gap-2">
-								<span
-									className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${kindClass(kind)}`}
-								>
-									{kind}
-								</span>
-								<span className="font-mono text-dark-100">{path}</span>
-								{movePath && (
-									<span className="font-mono text-dark-400">→ {movePath}</span>
-								)}
-							</div>
-							{diff && (
-								<pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-4 text-dark-200">
-									{diff}
-								</pre>
-							)}
-						</div>
-					);
-				})}
-			</div>
+		<div className="max-h-72 overflow-auto">
+			{visible.map(({ key, line }) => (
+				<div key={key} className="whitespace-pre">
+					{line || " "}
+				</div>
+			))}
+			{truncated && (
+				<div className="mt-1 italic text-dark-500">
+					… {lines.length - COMMAND_OUTPUT_MAX_LINES} more lines
+				</div>
+			)}
 		</div>
 	);
+}
+
+interface FileChangeEntry {
+	path?: unknown;
+	kind?: unknown;
+	diff?: unknown;
+	movePath?: unknown;
+}
+
+function renderFileChange(event: FacadeLike): React.ReactNode {
+	const changes = Array.isArray(event.changes)
+		? (event.changes as FileChangeEntry[])
+		: [];
+	const fileWord = changes.length === 1 ? "file" : "files";
+
+	return (
+		<ToolFrame
+			icon={FileEdit}
+			iconColorClass="text-yellow-400"
+			label="file_change"
+			meta={`${changes.length} ${fileWord}`}
+		>
+			<div className="flex flex-col">
+				{changes.map((change, index) => (
+					<FileChangePanel
+						key={`${String(change.kind ?? "?")}:${String(change.path ?? index)}`}
+						change={change}
+					/>
+				))}
+			</div>
+		</ToolFrame>
+	);
+}
+
+function FileChangePanel({ change }: { change: FileChangeEntry }) {
+	const path = typeof change.path === "string" ? change.path : "?";
+	const kind = typeof change.kind === "string" ? change.kind : "unknown";
+	const diff = typeof change.diff === "string" ? change.diff : "";
+	const movePath =
+		typeof change.movePath === "string" ? change.movePath : undefined;
+	return (
+		<div className="border-b border-dark-800/40 last:border-b-0">
+			<div className="flex items-baseline gap-2 bg-dark-900/50 px-3 py-1.5">
+				<span
+					className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${kindClass(kind)}`}
+				>
+					{kind}
+				</span>
+				<span className="truncate font-mono text-dark-100">{path}</span>
+				{movePath && (
+					<span className="truncate font-mono text-dark-400">→ {movePath}</span>
+				)}
+			</div>
+			{diff && renderDiff(diff)}
+		</div>
+	);
+}
+
+function renderDiff(diff: string): React.ReactNode {
+	const lines = diff.split("\n");
+	const truncated = lines.length > FILE_DIFF_MAX_LINES;
+	const visible = withStableKeys(
+		truncated ? lines.slice(0, FILE_DIFF_MAX_LINES) : lines,
+	);
+	return (
+		<div className="max-h-72 overflow-auto bg-dark-950/40 font-mono text-[11px] leading-4">
+			{visible.map(({ key, line }) => (
+				<div key={key} className={`px-3 whitespace-pre ${diffLineClass(line)}`}>
+					{line || " "}
+				</div>
+			))}
+			{truncated && (
+				<div className="px-3 py-1 italic text-dark-500">
+					… {lines.length - FILE_DIFF_MAX_LINES} more lines
+				</div>
+			)}
+		</div>
+	);
+}
+
+function diffLineClass(line: string): string {
+	if (line.startsWith("+++") || line.startsWith("---")) {
+		return "bg-dark-900/40 text-dark-400";
+	}
+	if (line.startsWith("+")) {
+		return "bg-emerald-950/40 text-emerald-400";
+	}
+	if (line.startsWith("-")) {
+		return "bg-rose-950/40 text-rose-400";
+	}
+	if (line.startsWith("@@")) {
+		return "bg-sky-950/30 text-sky-300";
+	}
+	return "text-dark-300";
 }
 
 function kindClass(kind: string): string {

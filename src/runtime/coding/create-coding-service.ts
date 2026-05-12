@@ -1,6 +1,7 @@
 import {
 	extractError,
 	type Facade,
+	type FacadeEvent,
 	type ProviderModelInfo,
 } from "../../common/protocol.ts";
 import { createRuntimeController } from "../application/create-runtime-controller.ts";
@@ -24,6 +25,10 @@ interface CreateCodingServiceOptions {
 export interface CodingService {
 	readonly runtime: CodingRuntime;
 	listModels(): Promise<ProviderModelInfo[]>;
+	rehydrateSessionEvents(params: {
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<FacadeEvent[]>;
 	stop(): Promise<void>;
 }
 
@@ -50,6 +55,14 @@ export function createCodingService(
 		runtime,
 		async listModels() {
 			return (await opts.facade.listModels?.()) ?? [];
+		},
+		async rehydrateSessionEvents(params) {
+			if (params.providerId !== opts.facade.providerId) {
+				return [];
+			}
+			return (
+				(await opts.facade.readCodingSessionEvents?.(params.sdkSessionId)) ?? []
+			);
 		},
 		stop() {
 			if (!stopPromise) {

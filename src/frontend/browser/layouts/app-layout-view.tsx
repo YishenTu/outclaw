@@ -77,7 +77,10 @@ export function AppLayoutView({
 			)}
 			<div className="min-w-0 flex-1 overflow-hidden">
 				{isCodeMode ? (
-					<CodingCenter />
+					<CodingCenter
+						leftCollapsed={leftCollapsed}
+						onExpandLeft={onExpandLeft}
+					/>
 				) : showWelcomePage ? (
 					<WelcomePage />
 				) : (

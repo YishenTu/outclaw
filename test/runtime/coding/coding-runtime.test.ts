@@ -37,6 +37,14 @@ function createRecordingEventLog(): CodingSessionEventRecorder & {
 	};
 }
 
+function acceptedDetachedPrompt(ocSessionId: string) {
+	return {
+		status: "accepted" as const,
+		ocSessionId,
+		abort: () => false,
+	};
+}
+
 describe("CodingRuntime", () => {
 	test("starts code prompts as detached code-tagged sessions and waits for provider identity", async () => {
 		let captured: PromptExecution | undefined;
@@ -44,10 +52,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "oc-code-session",
-				};
+				return acceptedDetachedPrompt("oc-code-session");
 			},
 		});
 
@@ -113,10 +118,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "oc-code-session",
-				};
+				return acceptedDetachedPrompt("oc-code-session");
 			},
 		});
 
@@ -162,10 +164,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "oc-code-session",
-				};
+				return acceptedDetachedPrompt("oc-code-session");
 			},
 		});
 
@@ -211,10 +210,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "oc-code-session",
-				};
+				return acceptedDetachedPrompt("oc-code-session");
 			},
 		});
 
@@ -259,10 +255,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "oc-code-session",
-				};
+				return acceptedDetachedPrompt("oc-code-session");
 			},
 		});
 
@@ -310,10 +303,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "oc-code-session",
-				};
+				return acceptedDetachedPrompt("oc-code-session");
 			},
 		});
 
@@ -378,10 +368,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "codex-code",
-				};
+				return acceptedDetachedPrompt("codex-code");
 			},
 		});
 
@@ -447,10 +434,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "codex-code",
-				};
+				return acceptedDetachedPrompt("codex-code");
 			},
 		});
 
@@ -490,6 +474,124 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			sdkSessionId: "codex-code",
 		});
+	});
+
+	test("stops an active resume turn through the detached run handle", async () => {
+		let abortCount = 0;
+		let active = true;
+		const runtime = createCodingRuntime({
+			codingSessions: {
+				resolveRef({ providerId, sdkSessionId }) {
+					if (providerId !== "codex" || sdkSessionId !== "codex-code") {
+						return { status: "not_found" };
+					}
+					return {
+						status: "resolved",
+						session: {
+							storageOwnerId: "__coding__",
+							providerId,
+							sdkSessionId,
+							cwd: "/repo",
+							lifecycleStatus: "open",
+							runStatus: "idle",
+							createdAt: 1,
+							lastActive: 2,
+						},
+					};
+				},
+				upsert() {},
+				markRunning() {},
+			},
+			providerId: "codex",
+			runDetachedPrompt() {
+				return {
+					status: "accepted",
+					ocSessionId: "codex-code",
+					abort() {
+						if (!active) {
+							return false;
+						}
+						active = false;
+						abortCount += 1;
+						return true;
+					},
+				};
+			},
+		});
+
+		await expect(
+			runtime.resumePrompt({
+				providerId: "codex",
+				sdkSessionId: "codex-code",
+				prompt: "continue the fix",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-code",
+		});
+
+		expect(
+			runtime.stopPrompt({
+				providerId: "codex",
+				sdkSessionId: "codex-code",
+			}),
+		).toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-code",
+		});
+		expect(abortCount).toBe(1);
+		expect(
+			runtime.stopPrompt({
+				providerId: "codex",
+				sdkSessionId: "codex-code",
+			}),
+		).toEqual({
+			status: "rejected",
+			message: "Coding session is not running: codex/codex-code",
+		});
+	});
+
+	test("stops an active start turn after provider identity arrives", async () => {
+		let captured: PromptExecution | undefined;
+		let abortCount = 0;
+		const runtime = createCodingRuntime({
+			providerId: "codex",
+			runDetachedPrompt(task) {
+				captured = task;
+				return {
+					status: "accepted",
+					ocSessionId: "oc-code-session",
+					abort() {
+						abortCount += 1;
+						return true;
+					},
+				};
+			},
+		});
+
+		const start = runtime.startPrompt({
+			cwd: "/repo",
+			prompt: "fix the tests",
+		});
+		captured?.onEvent?.({
+			type: "session_initialized",
+			sessionId: "codex-code",
+		});
+		await start;
+
+		expect(
+			runtime.stopPrompt({
+				providerId: "codex",
+				sdkSessionId: "codex-code",
+			}),
+		).toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-code",
+		});
+		expect(abortCount).toBe(1);
 	});
 
 	test("rejects resume for provider mismatch, unknown, closed, or busy sessions", async () => {
@@ -611,10 +713,7 @@ describe("CodingRuntime", () => {
 			},
 			providerId: "codex",
 			runDetachedPrompt() {
-				return {
-					status: "accepted",
-					ocSessionId: "codex-code",
-				};
+				return acceptedDetachedPrompt("codex-code");
 			},
 		});
 
@@ -645,10 +744,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "oc-code-session",
-				};
+				return acceptedDetachedPrompt("oc-code-session");
 			},
 		});
 
@@ -733,10 +829,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "codex-code",
-				};
+				return acceptedDetachedPrompt("codex-code");
 			},
 		});
 
@@ -767,16 +860,60 @@ describe("CodingRuntime", () => {
 		expect(eventLog.recorded.map((entry) => entry.sequence)).toEqual([1, 2, 3]);
 	});
 
+	test("does not record a resume prompt event when detached execution is rejected", async () => {
+		const eventLog = createRecordingEventLog();
+		const runtime = createCodingRuntime({
+			codingEvents: eventLog,
+			codingSessions: {
+				resolveRef({ providerId, sdkSessionId }) {
+					if (providerId !== "codex" || sdkSessionId !== "codex-code") {
+						return { status: "not_found" };
+					}
+					return {
+						status: "resolved",
+						session: {
+							storageOwnerId: "__coding__",
+							providerId,
+							sdkSessionId,
+							cwd: "/repo",
+							lifecycleStatus: "open",
+							runStatus: "idle",
+							createdAt: 1,
+							lastActive: 2,
+						},
+					};
+				},
+				upsert() {},
+			},
+			providerId: "codex",
+			runDetachedPrompt() {
+				return {
+					status: "rejected",
+					message: "Runtime shutting down",
+				};
+			},
+		});
+
+		await expect(
+			runtime.resumePrompt({
+				providerId: "codex",
+				sdkSessionId: "codex-code",
+				prompt: "continue",
+			}),
+		).resolves.toEqual({
+			status: "rejected",
+			message: "Runtime shutting down",
+		});
+		expect(eventLog.recorded).toEqual([]);
+	});
+
 	test("forwards model and effort overrides on start prompts", async () => {
 		let captured: PromptExecution | undefined;
 		const runtime = createCodingRuntime({
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "oc-code-session",
-				};
+				return acceptedDetachedPrompt("oc-code-session");
 			},
 		});
 
@@ -824,10 +961,7 @@ describe("CodingRuntime", () => {
 			providerId: "codex",
 			runDetachedPrompt(task) {
 				captured = task;
-				return {
-					status: "accepted",
-					ocSessionId: "codex-code",
-				};
+				return acceptedDetachedPrompt("codex-code");
 			},
 		});
 

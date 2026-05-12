@@ -149,6 +149,97 @@ describe("handleBrowserApiRequest", () => {
 		]);
 	});
 
+	test("routes coding repository clone requests through cloneCodingRepository", async () => {
+		const cloneCalls: Array<{
+			remoteUrl: string;
+			parentDir: string;
+			displayName?: string;
+		}> = [];
+		const browserApi = {
+			cloneCodingRepository: async (params: {
+				remoteUrl: string;
+				parentDir: string;
+				displayName?: string;
+			}) => {
+				cloneCalls.push(params);
+				return {
+					status: "cloned",
+					repository: {
+						id: "repo-3",
+						rootCwd: `${params.parentDir}/outclaw`,
+						displayName: params.displayName ?? "outclaw",
+						remoteUrl: params.remoteUrl,
+						source: "clone",
+						status: "active",
+						createdAt: 50,
+						lastActive: 50,
+					},
+				} as const;
+			},
+		} as unknown as BrowserApi;
+
+		const url = new URL("http://localhost/api/coding/repositories/clone");
+		const response = await handleBrowserApiRequest(
+			new Request(url, {
+				method: "POST",
+				body: JSON.stringify({
+					remoteUrl: "https://example.com/foo/outclaw.git",
+					parentDir: "/Users/dev/projects",
+				}),
+			}),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toMatchObject({
+			status: "cloned",
+			repository: { id: "repo-3", source: "clone" },
+		});
+		expect(cloneCalls).toEqual([
+			{
+				remoteUrl: "https://example.com/foo/outclaw.git",
+				parentDir: "/Users/dev/projects",
+			},
+		]);
+	});
+
+	test("rejects clone requests missing remote URL or parent directory", async () => {
+		const browserApi = {
+			cloneCodingRepository: async () => {
+				throw new Error("should not be called");
+			},
+		} as unknown as BrowserApi;
+
+		const url = new URL("http://localhost/api/coding/repositories/clone");
+		const response = await handleBrowserApiRequest(
+			new Request(url, {
+				method: "POST",
+				body: JSON.stringify({ remoteUrl: "https://example.com/foo.git" }),
+			}),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(400);
+	});
+
+	test("rejects non-POST methods on the clone route", async () => {
+		const browserApi = {
+			cloneCodingRepository: async () => {
+				throw new Error("should not be called");
+			},
+		} as unknown as BrowserApi;
+
+		const url = new URL("http://localhost/api/coding/repositories/clone");
+		const response = await handleBrowserApiRequest(
+			new Request(url),
+			url,
+			browserApi,
+		);
+		expect(response.status).toBe(405);
+	});
+
 	test("routes the coding folder picker POST to the browser API", async () => {
 		let invocations = 0;
 		const browserApi = {
@@ -566,6 +657,47 @@ describe("handleBrowserApiRequest", () => {
 			providerId: "codex",
 			sdkSessionId: "codex-thread-1",
 			prompt: "follow up",
+		});
+	});
+
+	test("routes coding session stop requests as POST /api/coding/sessions/:provider/:id/stop", async () => {
+		let params:
+			| {
+					providerId: string;
+					sdkSessionId: string;
+			  }
+			| undefined;
+		const browserApi = {
+			stopCodingSession: async (input: typeof params) => {
+				params = input;
+				return {
+					status: "accepted" as const,
+					providerId: input?.providerId ?? "",
+					sdkSessionId: input?.sdkSessionId ?? "",
+				};
+			},
+		} as unknown as BrowserApi;
+		const url = new URL(
+			"http://localhost/api/coding/sessions/codex/codex-thread-1/stop",
+		);
+
+		const response = await handleBrowserApiRequest(
+			new Request(url, {
+				method: "POST",
+			}),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
+		});
+		expect(params).toEqual({
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
 		});
 	});
 

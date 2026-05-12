@@ -233,4 +233,35 @@ describe("RuntimeExecutionCoordinator", () => {
 
 		expect(retainedLaneCount(coordinator)).toBe(0);
 	});
+
+	test("detached prompt handles abort their own active run", async () => {
+		const state = new RuntimeState("mock");
+		const sessions = new SessionService(state);
+		const release = createDeferred();
+		let signal: AbortSignal | undefined;
+		const coordinator = new RuntimeExecutionCoordinator({
+			promptDispatcher: {
+				run: async (_task, _context, abortController) => {
+					signal = abortController.signal;
+					await release.promise;
+				},
+			} as Pick<PromptDispatcher, "run">,
+			sessions,
+			state,
+		});
+
+		const detached = coordinator.enqueueDetachedPrompt({
+			prompt: "fix tests",
+			source: "agent",
+		});
+
+		expect(detached).toMatchObject({ ocSessionId: expect.any(String) });
+		expect(detached?.abort()).toBe(true);
+		expect(signal?.aborted).toBe(true);
+
+		release.resolve();
+		await coordinator.drain();
+
+		expect(detached?.abort()).toBe(false);
+	});
 });

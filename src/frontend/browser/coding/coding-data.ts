@@ -6,6 +6,7 @@ import {
 	fetchCodingRepositories,
 	fetchCodingSession,
 	fetchCodingSessions,
+	renameCodingSession,
 } from "../lib/api.ts";
 import type { CodingTab } from "./coding-store.ts";
 import {
@@ -15,6 +16,7 @@ import {
 	makeCodingFileTab,
 	makePendingCodingTab,
 	useCodingStore,
+	visibleCodingTabs,
 } from "./coding-store.ts";
 
 function describeTabTitle(session: {
@@ -52,6 +54,7 @@ export function useCodingData() {
 	const setFocusedSession = useCodingStore((state) => state.setFocusedSession);
 	const upsertSession = useCodingStore((state) => state.upsertSession);
 	const removeSession = useCodingStore((state) => state.removeSession);
+	const renameSession = useCodingStore((state) => state.renameSession);
 	const openTab = useCodingStore((state) => state.openTab);
 	const closeTab = useCodingStore((state) => state.closeTab);
 	const updateTabTitle = useCodingStore((state) => state.updateTabTitle);
@@ -140,11 +143,6 @@ export function useCodingData() {
 				title?: string;
 			},
 		) => {
-			// Re-anchor the focused repository alongside the focused session so the
-			// right panel resolves files/git/terminal cwd for the session's repo,
-			// even when the user clicks a session under a different (expanded) repo
-			// from the one currently focused.
-			setFocusedRepository(repositoryId);
 			openTab({
 				providerId: selected.providerId,
 				sdkSessionId: selected.sdkSessionId,
@@ -155,7 +153,7 @@ export function useCodingData() {
 				}),
 			});
 		},
-		[openTab, setFocusedRepository],
+		[openTab],
 	);
 
 	const handleSelectTab = useCallback(
@@ -173,7 +171,7 @@ export function useCodingData() {
 
 	const handleCloseTab = useCallback(
 		(tab: CodingTab) => {
-			closeTab(tab.providerId, tab.sdkSessionId);
+			closeTab(tab.providerId, tab.sdkSessionId, tab.repositoryId);
 		},
 		[closeTab],
 	);
@@ -194,21 +192,26 @@ export function useCodingData() {
 			} catch (error) {
 				console.warn("Failed to fetch newly created coding session", error);
 			}
-			// If a pending tab in the same repo was the launcher, replace it so the
-			// tab count doesn't grow on every new-session submit.
-			const pending = openTabs.find(
-				(entry) =>
-					isPendingCodingTab(entry) && entry.repositoryId === repositoryId,
-			);
-			if (pending) {
-				closeTab(pending.providerId, pending.sdkSessionId);
-			}
+			// Open the real tab first so any pending tab in the same repo can be
+			// closed without tripping the min-1-tab invariant and spawning a fresh
+			// pending replacement.
 			openTab({
 				providerId: summary.providerId,
 				sdkSessionId: summary.sdkSessionId,
 				repositoryId,
 				title: resolvedTitle,
 			});
+			const pending = openTabs.find(
+				(entry) =>
+					isPendingCodingTab(entry) && entry.repositoryId === repositoryId,
+			);
+			if (pending) {
+				closeTab(
+					pending.providerId,
+					pending.sdkSessionId,
+					pending.repositoryId,
+				);
+			}
 		},
 		[closeTab, openTab, openTabs, upsertSession],
 	);
@@ -222,10 +225,34 @@ export function useCodingData() {
 
 	const handleNewSessionForRepository = useCallback(
 		(repositoryId: string) => {
-			setFocusedRepository(repositoryId);
 			openTab(makePendingCodingTab(repositoryId));
 		},
-		[openTab, setFocusedRepository],
+		[openTab],
+	);
+
+	const handleRenameSession = useCallback(
+		async (
+			repositoryId: string,
+			target: { providerId: string; sdkSessionId: string },
+			title: string,
+		) => {
+			try {
+				const renamed = await renameCodingSession(
+					target.providerId,
+					target.sdkSessionId,
+					title,
+				);
+				renameSession(
+					repositoryId,
+					target.providerId,
+					target.sdkSessionId,
+					renamed.title,
+				);
+			} catch (error) {
+				console.warn("Failed to rename coding session", error);
+			}
+		},
+		[renameSession],
 	);
 
 	const handleDeleteSession = useCallback(
@@ -254,17 +281,18 @@ export function useCodingData() {
 
 	const handleOpenFile = useCallback(
 		(params: { repositoryId: string; path: string }) => {
-			setFocusedRepository(params.repositoryId);
 			openTab(makeCodingFileTab(params.repositoryId, params.path));
 		},
-		[openTab, setFocusedRepository],
+		[openTab],
 	);
 
+	const visibleTabs = visibleCodingTabs(openTabs, focusedRepositoryId);
 	const focusedTab = focusedSession
 		? openTabs.find(
 				(entry) =>
 					entry.providerId === focusedSession.providerId &&
-					entry.sdkSessionId === focusedSession.sdkSessionId,
+					entry.sdkSessionId === focusedSession.sdkSessionId &&
+					entry.repositoryId === focusedRepositoryId,
 			)
 		: undefined;
 	const focusedFilePath =
@@ -304,6 +332,7 @@ export function useCodingData() {
 		handleDeleteSession,
 		handleNewSessionForRepository,
 		handleOpenFile,
+		handleRenameSession,
 		handleSelectRepository,
 		handleSelectSession,
 		handleSelectTab,
@@ -314,6 +343,7 @@ export function useCodingData() {
 		repository,
 		session,
 		sessionsByRepository,
+		visibleTabs,
 	};
 }
 

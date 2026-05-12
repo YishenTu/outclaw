@@ -3,29 +3,46 @@ import { GitDiffViewer } from "../components/git-diff-viewer/git-diff-viewer.tsx
 import { useCodingData } from "./coding-data.ts";
 import { CodingSessionView } from "./coding-session-view.tsx";
 import {
+	type CodingTab,
 	codingTabId,
 	isCodingDiffTab,
 	isCodingFileTab,
 } from "./coding-store.ts";
 import { CodingTabBar } from "./coding-tab-bar.tsx";
 
-export function CodingCenter() {
+interface CodingCenterProps {
+	leftCollapsed?: boolean;
+	onExpandLeft?: () => void;
+}
+
+export function CodingCenter({
+	leftCollapsed = false,
+	onExpandLeft,
+}: CodingCenterProps = {}) {
 	const {
 		focusedDiffPath,
 		focusedFilePath,
 		focusedRepositoryId,
-		focusedSession,
 		focusedTab,
 		handleAddTab,
 		handleCloseTab,
+		handleRenameSession,
 		handleSelectTab,
 		handleSessionStarted,
-		openTabs,
 		repository,
 		session,
+		visibleTabs,
 	} = useCodingData();
 
-	const activeTabId = focusedSession ? codingTabId(focusedSession) : undefined;
+	const handleRenameTab = (tab: CodingTab, title: string) => {
+		void handleRenameSession(
+			tab.repositoryId,
+			{ providerId: tab.providerId, sdkSessionId: tab.sdkSessionId },
+			title,
+		);
+	};
+
+	const activeTabId = focusedTab ? codingTabId(focusedTab) : undefined;
 	const showFilePreview =
 		focusedTab !== undefined &&
 		isCodingFileTab(focusedTab) &&
@@ -40,11 +57,14 @@ export function CodingCenter() {
 	return (
 		<div className="flex h-full min-w-0 flex-1 flex-col bg-dark-950">
 			<CodingTabBar
-				tabs={openTabs}
+				tabs={visibleTabs}
 				activeTabId={activeTabId}
+				leftCollapsed={leftCollapsed}
+				onExpandLeft={onExpandLeft}
 				onSelect={handleSelectTab}
 				onClose={handleCloseTab}
 				onAdd={handleAddTab}
+				onRename={handleRenameTab}
 				canAdd={focusedRepositoryId !== undefined}
 			/>
 			{showFilePreview ? (

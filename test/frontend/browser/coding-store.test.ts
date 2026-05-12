@@ -5,6 +5,9 @@ import type {
 } from "../../../src/common/protocol.ts";
 import {
 	CODING_STORAGE_KEY,
+	isPendingCodingTab,
+	makeCodingFileTab,
+	PENDING_CODING_PROVIDER,
 	useCodingStore,
 } from "../../../src/frontend/browser/coding/coding-store.ts";
 
@@ -46,6 +49,7 @@ describe("useCodingStore", () => {
 			appMode: "chat",
 			focusedRepositoryId: undefined,
 			focusedSession: undefined,
+			openTabs: [],
 			repositories: [],
 			sessionsByRepository: {},
 			repositoriesLoaded: false,
@@ -192,7 +196,7 @@ describe("useCodingStore", () => {
 		expect(useCodingStore.getState().selectedEffort).toBe("low");
 	});
 
-	test("removeSession clears focusedSession when no tabs remain", () => {
+	test("removeSession spawns a pending tab when it removes the focused repo's last tab", () => {
 		useCodingStore.setState({
 			focusedRepositoryId: "repo-a",
 			focusedSession: { providerId: "codex", sdkSessionId: "session-1" },
@@ -215,7 +219,281 @@ describe("useCodingStore", () => {
 
 		const state = useCodingStore.getState();
 		expect(state.sessionsByRepository["repo-a"]).toEqual([]);
-		expect(state.openTabs).toEqual([]);
-		expect(state.focusedSession).toBeUndefined();
+		expect(state.openTabs).toHaveLength(1);
+		const replacement = state.openTabs[0];
+		expect(replacement).toBeDefined();
+		if (!replacement) {
+			return;
+		}
+		expect(isPendingCodingTab(replacement)).toBe(true);
+		expect(replacement.repositoryId).toBe("repo-a");
+		expect(state.focusedSession?.providerId).toBe(PENDING_CODING_PROVIDER);
+		expect(state.focusedSession?.sdkSessionId).toBe(replacement.sdkSessionId);
+	});
+
+	test("closeTab spawns a pending replacement when closing the focused repo's last tab", () => {
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: { providerId: "codex", sdkSessionId: "session-1" },
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-1",
+					repositoryId: "repo-a",
+					title: "Session 1",
+				},
+			],
+		});
+
+		useCodingStore.getState().closeTab("codex", "session-1");
+
+		const state = useCodingStore.getState();
+		expect(state.openTabs).toHaveLength(1);
+		const replacement = state.openTabs[0];
+		if (!replacement) {
+			return;
+		}
+		expect(isPendingCodingTab(replacement)).toBe(true);
+		expect(replacement.repositoryId).toBe("repo-a");
+		expect(state.focusedSession?.providerId).toBe(PENDING_CODING_PROVIDER);
+		expect(state.focusedSession?.sdkSessionId).toBe(replacement.sdkSessionId);
+	});
+
+	test("closeTab does not spawn when closing the last tab of a non-focused repo", () => {
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: { providerId: "codex", sdkSessionId: "session-a1" },
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-a1",
+					repositoryId: "repo-a",
+					title: "Session A1",
+				},
+				{
+					providerId: "codex",
+					sdkSessionId: "session-b1",
+					repositoryId: "repo-b",
+					title: "Session B1",
+				},
+			],
+		});
+
+		useCodingStore.getState().closeTab("codex", "session-b1");
+
+		const state = useCodingStore.getState();
+		expect(state.openTabs.map((tab) => tab.sdkSessionId)).toEqual([
+			"session-a1",
+		]);
+		expect(state.focusedSession?.sdkSessionId).toBe("session-a1");
+	});
+
+	test("closeTab picks a neighbor from the same repo when closing the focused tab", () => {
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: { providerId: "codex", sdkSessionId: "session-a2" },
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-a1",
+					repositoryId: "repo-a",
+					title: "Session A1",
+				},
+				{
+					providerId: "codex",
+					sdkSessionId: "session-b1",
+					repositoryId: "repo-b",
+					title: "Session B1",
+				},
+				{
+					providerId: "codex",
+					sdkSessionId: "session-a2",
+					repositoryId: "repo-a",
+					title: "Session A2",
+				},
+			],
+		});
+
+		useCodingStore.getState().closeTab("codex", "session-a2");
+
+		const state = useCodingStore.getState();
+		expect(state.openTabs.map((tab) => tab.sdkSessionId)).toEqual([
+			"session-a1",
+			"session-b1",
+		]);
+		expect(state.focusedSession?.sdkSessionId).toBe("session-a1");
+	});
+
+	test("openTab re-anchors focusedRepositoryId to the opened tab's repo", () => {
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: undefined,
+			openTabs: [],
+		});
+
+		useCodingStore.getState().openTab({
+			providerId: "codex",
+			sdkSessionId: "session-b1",
+			repositoryId: "repo-b",
+			title: "Session B1",
+		});
+
+		const state = useCodingStore.getState();
+		expect(state.focusedRepositoryId).toBe("repo-b");
+		expect(state.focusedSession?.sdkSessionId).toBe("session-b1");
+	});
+
+	test("openTab keeps same-path file tabs separate across repositories", () => {
+		useCodingStore
+			.getState()
+			.openTab(makeCodingFileTab("repo-a", "src/index.ts"));
+		useCodingStore
+			.getState()
+			.openTab(makeCodingFileTab("repo-b", "src/index.ts"));
+
+		const state = useCodingStore.getState();
+		expect(
+			state.openTabs.map((tab) => ({
+				providerId: tab.providerId,
+				sdkSessionId: tab.sdkSessionId,
+				repositoryId: tab.repositoryId,
+			})),
+		).toEqual([
+			{
+				providerId: "__file__",
+				sdkSessionId: "src/index.ts",
+				repositoryId: "repo-a",
+			},
+			{
+				providerId: "__file__",
+				sdkSessionId: "src/index.ts",
+				repositoryId: "repo-b",
+			},
+		]);
+	});
+
+	test("setFocusedRepository moves focus to the last tab of the target repo", () => {
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: { providerId: "codex", sdkSessionId: "session-a1" },
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-a1",
+					repositoryId: "repo-a",
+					title: "Session A1",
+				},
+				{
+					providerId: "codex",
+					sdkSessionId: "session-b1",
+					repositoryId: "repo-b",
+					title: "Session B1",
+				},
+				{
+					providerId: "codex",
+					sdkSessionId: "session-b2",
+					repositoryId: "repo-b",
+					title: "Session B2",
+				},
+			],
+		});
+
+		useCodingStore.getState().setFocusedRepository("repo-b");
+
+		const state = useCodingStore.getState();
+		expect(state.focusedRepositoryId).toBe("repo-b");
+		expect(state.focusedSession?.sdkSessionId).toBe("session-b2");
+	});
+
+	test("setFocusedRepository spawns a pending tab when the target repo has no tabs", () => {
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: { providerId: "codex", sdkSessionId: "session-a1" },
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-a1",
+					repositoryId: "repo-a",
+					title: "Session A1",
+				},
+			],
+		});
+
+		useCodingStore.getState().setFocusedRepository("repo-b");
+
+		const state = useCodingStore.getState();
+		expect(state.focusedRepositoryId).toBe("repo-b");
+		const repoBTabs = state.openTabs.filter(
+			(tab) => tab.repositoryId === "repo-b",
+		);
+		expect(repoBTabs).toHaveLength(1);
+		const spawned = repoBTabs[0];
+		if (!spawned) {
+			return;
+		}
+		expect(isPendingCodingTab(spawned)).toBe(true);
+		expect(state.focusedSession?.providerId).toBe(PENDING_CODING_PROVIDER);
+		expect(state.focusedSession?.sdkSessionId).toBe(spawned.sdkSessionId);
+	});
+
+	test("renameSession updates the matching tab title alongside session data", () => {
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: { providerId: "codex", sdkSessionId: "session-1" },
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-1",
+					repositoryId: "repo-a",
+					title: "Old title",
+				},
+			],
+			sessionsByRepository: {
+				"repo-a": [
+					makeSession({
+						providerId: "codex",
+						sdkSessionId: "session-1",
+						title: "Old title",
+					}),
+				],
+			},
+		});
+
+		useCodingStore
+			.getState()
+			.renameSession("repo-a", "codex", "session-1", "New title");
+
+		const state = useCodingStore.getState();
+		expect(state.openTabs[0]?.title).toBe("New title");
+		expect(state.sessionsByRepository["repo-a"]?.[0]?.title).toBe("New title");
+	});
+
+	test("setFocusedRepository keeps the focused tab when it already belongs to the target repo", () => {
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: { providerId: "codex", sdkSessionId: "session-b1" },
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-a1",
+					repositoryId: "repo-a",
+					title: "Session A1",
+				},
+				{
+					providerId: "codex",
+					sdkSessionId: "session-b1",
+					repositoryId: "repo-b",
+					title: "Session B1",
+				},
+			],
+		});
+
+		useCodingStore.getState().setFocusedRepository("repo-b");
+
+		const state = useCodingStore.getState();
+		expect(state.focusedSession?.sdkSessionId).toBe("session-b1");
+		expect(
+			state.openTabs.filter((tab) => tab.repositoryId === "repo-b"),
+		).toHaveLength(1);
 	});
 });
