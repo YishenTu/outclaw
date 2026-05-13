@@ -343,6 +343,102 @@ describe("useCodingStore", () => {
 		expect(state.focusedSession?.sdkSessionId).toBe("session-b1");
 	});
 
+	test("openTab replaces a pending tab in the same repo when opening a real session", () => {
+		const pending = {
+			providerId: PENDING_CODING_PROVIDER,
+			sdkSessionId: "pending-repo-a",
+			repositoryId: "repo-a",
+			title: "New session",
+		};
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: {
+				providerId: "codex",
+				sdkSessionId: "session-a1",
+			},
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-a1",
+					repositoryId: "repo-a",
+					title: "Session A1",
+				},
+				pending,
+			],
+		});
+
+		useCodingStore.getState().openTab({
+			providerId: "codex",
+			sdkSessionId: "session-a2",
+			repositoryId: "repo-a",
+			title: "Session A2",
+		});
+
+		const state = useCodingStore.getState();
+		expect(
+			state.openTabs.map((tab) => ({
+				providerId: tab.providerId,
+				sdkSessionId: tab.sdkSessionId,
+				repositoryId: tab.repositoryId,
+				title: tab.title,
+			})),
+		).toEqual([
+			{
+				providerId: "codex",
+				sdkSessionId: "session-a1",
+				repositoryId: "repo-a",
+				title: "Session A1",
+			},
+			{
+				providerId: "codex",
+				sdkSessionId: "session-a2",
+				repositoryId: "repo-a",
+				title: "Session A2",
+			},
+		]);
+		expect(state.focusedSession?.sdkSessionId).toBe("session-a2");
+	});
+
+	test("openTab keeps the pending tab when the selected real session is already open", () => {
+		const pending = {
+			providerId: PENDING_CODING_PROVIDER,
+			sdkSessionId: "pending-repo-a",
+			repositoryId: "repo-a",
+			title: "New session",
+		};
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: {
+				providerId: pending.providerId,
+				sdkSessionId: pending.sdkSessionId,
+			},
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-a1",
+					repositoryId: "repo-a",
+					title: "Old title",
+				},
+				pending,
+			],
+		});
+
+		useCodingStore.getState().openTab({
+			providerId: "codex",
+			sdkSessionId: "session-a1",
+			repositoryId: "repo-a",
+			title: "Updated title",
+		});
+
+		const state = useCodingStore.getState();
+		expect(state.openTabs.map((tab) => tab.sdkSessionId)).toEqual([
+			"session-a1",
+			"pending-repo-a",
+		]);
+		expect(state.openTabs[0]?.title).toBe("Updated title");
+		expect(state.focusedSession?.sdkSessionId).toBe("session-a1");
+	});
+
 	test("openTab keeps same-path file tabs separate across repositories", () => {
 		useCodingStore
 			.getState()

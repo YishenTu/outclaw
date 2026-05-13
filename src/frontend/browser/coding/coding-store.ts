@@ -81,6 +81,12 @@ export function isCodingDiffTab(tab: { providerId: string }): boolean {
 	return tab.providerId === DIFF_CODING_PROVIDER;
 }
 
+function isRealCodingSessionTab(tab: { providerId: string }): boolean {
+	return (
+		!isPendingCodingTab(tab) && !isCodingFileTab(tab) && !isCodingDiffTab(tab)
+	);
+}
+
 export function makePendingCodingTab(repositoryId: string): CodingTab {
 	return {
 		providerId: PENDING_CODING_PROVIDER,
@@ -323,6 +329,59 @@ function removeTabAndPickFocus(
 				}
 			: undefined,
 	};
+}
+
+function findPendingTabToReplace(
+	state: Pick<CodingState, "focusedSession" | "openTabs">,
+	tab: CodingTab,
+): number {
+	if (!isRealCodingSessionTab(tab)) {
+		return -1;
+	}
+	const focusedPendingIndex = state.openTabs.findIndex(
+		(entry) =>
+			isPendingCodingTab(entry) &&
+			entry.repositoryId === tab.repositoryId &&
+			entry.providerId === state.focusedSession?.providerId &&
+			entry.sdkSessionId === state.focusedSession?.sdkSessionId,
+	);
+	if (focusedPendingIndex !== -1) {
+		return focusedPendingIndex;
+	}
+	return state.openTabs.findIndex(
+		(entry) =>
+			isPendingCodingTab(entry) && entry.repositoryId === tab.repositoryId,
+	);
+}
+
+function openCodingTab(
+	state: Pick<CodingState, "focusedSession" | "openTabs">,
+	tab: CodingTab,
+): CodingTab[] {
+	const existingIndex = state.openTabs.findIndex(
+		(entry) =>
+			entry.providerId === tab.providerId &&
+			entry.sdkSessionId === tab.sdkSessionId &&
+			entry.repositoryId === tab.repositoryId,
+	);
+	if (existingIndex !== -1) {
+		return state.openTabs.map((entry, index) =>
+			index === existingIndex
+				? {
+						...entry,
+						title: tab.title,
+						repositoryId: tab.repositoryId,
+					}
+				: entry,
+		);
+	}
+	const replacementIndex = findPendingTabToReplace(state, tab);
+	if (replacementIndex === -1) {
+		return [...state.openTabs, tab];
+	}
+	return state.openTabs.map((entry, index) =>
+		index === replacementIndex ? tab : entry,
+	);
 }
 
 export const useCodingStore = create<CodingState>()(
@@ -657,27 +716,8 @@ export const useCodingStore = create<CodingState>()(
 			},
 			openTab(tab) {
 				set((state) => {
-					const exists = state.openTabs.some(
-						(entry) =>
-							entry.providerId === tab.providerId &&
-							entry.sdkSessionId === tab.sdkSessionId &&
-							entry.repositoryId === tab.repositoryId,
-					);
-					const nextTabs = exists
-						? state.openTabs.map((entry) =>
-								entry.providerId === tab.providerId &&
-								entry.sdkSessionId === tab.sdkSessionId &&
-								entry.repositoryId === tab.repositoryId
-									? {
-											...entry,
-											title: tab.title,
-											repositoryId: tab.repositoryId,
-										}
-									: entry,
-							)
-						: [...state.openTabs, tab];
 					return {
-						openTabs: nextTabs,
+						openTabs: openCodingTab(state, tab),
 						focusedRepositoryId: tab.repositoryId,
 						focusedSession: {
 							providerId: tab.providerId,
