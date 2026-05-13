@@ -8,6 +8,16 @@ const SESSION = {
 	lastActive: Date.now() - 120_000,
 };
 
+function buttonOpeningTagWithLabel(html: string, label: string): string {
+	const labelIndex = html.indexOf(`aria-label="${label}"`);
+	expect(labelIndex).toBeGreaterThan(-1);
+	const buttonStart = html.lastIndexOf("<button", labelIndex);
+	const buttonEnd = html.indexOf(">", labelIndex);
+	expect(buttonStart).toBeGreaterThan(-1);
+	expect(buttonEnd).toBeGreaterThan(labelIndex);
+	return html.slice(buttonStart, buttonEnd);
+}
+
 describe("SessionItem", () => {
 	test("renders the session title, delete affordance, and compact activity age", () => {
 		const html = renderToStaticMarkup(
@@ -43,5 +53,41 @@ describe("SessionItem", () => {
 
 		expect(html).toContain("bg-dark-100");
 		expect(html).not.toContain("opacity-0");
+	});
+
+	test("marks only confirmed actions as dialog triggers", () => {
+		const confirmedHtml = renderToStaticMarkup(
+			<SessionItem
+				title={SESSION.title}
+				lastActive={SESSION.lastActive}
+				isActive={false}
+				onSelect={() => {}}
+				onRename={() => {}}
+				onDelete={() => {}}
+			/>,
+		);
+		const immediateHtml = renderToStaticMarkup(
+			<SessionItem
+				title={SESSION.title}
+				lastActive={SESSION.lastActive}
+				isActive={false}
+				onSelect={() => {}}
+				onRename={() => {}}
+				onDelete={() => {}}
+				actionAriaLabel="Restore session Daily planning"
+				actionLabel="Restore"
+				actionRequiresConfirmation={false}
+			/>,
+		);
+
+		expect(
+			buttonOpeningTagWithLabel(confirmedHtml, "Delete session Daily planning"),
+		).toContain('aria-haspopup="dialog"');
+		expect(
+			buttonOpeningTagWithLabel(
+				immediateHtml,
+				"Restore session Daily planning",
+			),
+		).not.toContain('aria-haspopup="dialog"');
 	});
 });

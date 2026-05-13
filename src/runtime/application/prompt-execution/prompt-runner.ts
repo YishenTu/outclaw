@@ -24,9 +24,9 @@ interface PromptRunnerOptions {
 
 interface PromptRunOptions {
 	abortController: AbortController;
-	effort: EffortLevel;
+	effort?: EffortLevel;
 	emit: (event: FacadeEvent) => void;
-	model: string;
+	model?: string;
 	ocSessionId: string;
 	resume?: string;
 	serviceTier?: string;

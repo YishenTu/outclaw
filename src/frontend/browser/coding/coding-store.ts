@@ -236,7 +236,7 @@ export interface CodingState {
 	removeArchivedSession(providerId: string, sdkSessionId: string): void;
 	updateRepository(repository: BrowserCodingRepositorySummary): void;
 	setCodingModels(models: BrowserCodingModel[]): void;
-	setSelectedModelId(modelId: string): void;
+	setSelectedModelId(modelId: string | undefined): void;
 	setSelectedEffort(effort: EffortLevel): void;
 	setFastTierEnabled(enabled: boolean): void;
 }
@@ -831,38 +831,36 @@ export const useCodingStore = create<CodingState>()(
 						return {
 							codingModels: [],
 							codingModelsLoaded: true,
+							selectedModelId: undefined,
+							selectedEffort: undefined,
 						};
 					}
 					const persistedId = state.selectedModelId;
 					const persistedStillExists =
 						persistedId !== undefined &&
 						models.some((model) => model.id === persistedId);
-					const fallback = models.find((model) => model.isDefault) ?? models[0];
-					if (!fallback) {
-						return {
-							codingModels: models,
-							codingModelsLoaded: true,
-						};
-					}
-					const selectedModelId = persistedStillExists
-						? (persistedId as string)
-						: fallback.id;
-					const selectedModel =
-						models.find((model) => model.id === selectedModelId) ?? fallback;
-					const selectedEffort = pickEffortForModel(
-						selectedModel,
-						persistedStillExists ? state.selectedEffort : undefined,
-					);
+					const selectedModel = persistedStillExists
+						? models.find((model) => model.id === persistedId)
+						: undefined;
 					return {
 						codingModels: models,
 						codingModelsLoaded: true,
-						selectedModelId,
-						selectedEffort,
+						selectedModelId: selectedModel?.id,
+						selectedEffort: selectedModel
+							? pickEffortForModel(selectedModel, state.selectedEffort)
+							: undefined,
 					};
 				});
 			},
 			setSelectedModelId(modelId) {
 				set((state) => {
+					if (modelId === undefined) {
+						return {
+							selectedModelId: undefined,
+							selectedEffort: undefined,
+							fastTierEnabled: false,
+						};
+					}
 					const model = state.codingModels.find(
 						(entry) => entry.id === modelId,
 					);

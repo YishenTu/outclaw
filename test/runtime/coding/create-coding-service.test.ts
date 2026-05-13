@@ -92,6 +92,30 @@ describe("createCodingService", () => {
 		});
 	});
 
+	test("startPrompt leaves model and effort unset when code mode has no explicit selection", async () => {
+		const { codingFacade, codingService } = makeHarness();
+		await codingService.runtime.startPrompt({
+			cwd: "/repo",
+			prompt: "use provider defaults",
+		});
+
+		expect(codingFacade.lastParams?.model).toBeUndefined();
+		expect(codingFacade.lastParams?.effort).toBeUndefined();
+	});
+
+	test("startPrompt forwards explicit code mode model and effort selections", async () => {
+		const { codingFacade, codingService } = makeHarness();
+		await codingService.runtime.startPrompt({
+			cwd: "/repo",
+			prompt: "use selected code settings",
+			model: "gpt-5.5",
+			effort: "xhigh",
+		});
+
+		expect(codingFacade.lastParams?.model).toBe("gpt-5.5");
+		expect(codingFacade.lastParams?.effort).toBe("xhigh");
+	});
+
 	test("stop() is idempotent across multiple awaiters", async () => {
 		const { codingService } = makeHarness();
 		const a = codingService.stop();

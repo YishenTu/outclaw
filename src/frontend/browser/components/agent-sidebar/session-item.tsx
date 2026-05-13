@@ -259,6 +259,9 @@ export function SessionItem({
 						<button
 							type="button"
 							aria-label={resolvedActionAriaLabel}
+							{...(actionRequiresConfirmation
+								? { "aria-haspopup": "dialog" as const }
+								: {})}
 							onClick={(event) => {
 								event.preventDefault();
 								event.stopPropagation();

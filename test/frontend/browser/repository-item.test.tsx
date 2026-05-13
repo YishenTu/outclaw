@@ -39,6 +39,16 @@ const ACTIONS = {
 	onClearSearch: NOOP,
 };
 
+function buttonOpeningTagWithLabel(html: string, label: string): string {
+	const labelIndex = html.indexOf(`aria-label="${label}"`);
+	expect(labelIndex).toBeGreaterThan(-1);
+	const buttonStart = html.lastIndexOf("<button", labelIndex);
+	const buttonEnd = html.indexOf(">", labelIndex);
+	expect(buttonStart).toBeGreaterThan(-1);
+	expect(buttonEnd).toBeGreaterThan(labelIndex);
+	return html.slice(buttonStart, buttonEnd);
+}
+
 describe("RepositoryItem", () => {
 	test("renders the repository row with a secondary actions trigger and plus affordance", () => {
 		const html = renderToStaticMarkup(
@@ -86,6 +96,9 @@ describe("RepositoryItem", () => {
 		expect(html).toContain("Older work");
 		expect(html).toContain('aria-label="Archive session Active work"');
 		expect(html).toContain('aria-label="Archive session Older work"');
+		expect(
+			buttonOpeningTagWithLabel(html, "Archive session Active work"),
+		).not.toContain('aria-haspopup="dialog"');
 		expect(html).toContain("bg-dark-100");
 	});
 

@@ -123,8 +123,7 @@ export class CodingRuntime {
 		const detachedResult = this.options.runDetachedPrompt({
 			cwd: params.cwd,
 			includeRuntimeSystemPrompt: false,
-			...(params.model ? { modelOverride: params.model } : {}),
-			...(params.effort ? { effortOverride: params.effort } : {}),
+			...codingRunSettings(params),
 			...(params.serviceTier
 				? { serviceTierOverride: params.serviceTier }
 				: {}),
@@ -253,8 +252,7 @@ export class CodingRuntime {
 		const detachedResult = this.options.runDetachedPrompt({
 			cwd: session.cwd,
 			includeRuntimeSystemPrompt: false,
-			...(params.model ? { modelOverride: params.model } : {}),
-			...(params.effort ? { effortOverride: params.effort } : {}),
+			...codingRunSettings(params),
 			...(params.serviceTier
 				? { serviceTierOverride: params.serviceTier }
 				: {}),
@@ -538,6 +536,26 @@ export function createCodingRuntime(
 	options: CodingRuntimeOptions,
 ): CodingRuntime {
 	return new CodingRuntime(options);
+}
+
+function codingRunSettings(params: {
+	model?: string;
+	effort?: EffortLevel;
+}): Pick<
+	PromptExecution,
+	| "effortOverride"
+	| "modelOverride"
+	| "useProviderDefaultEffort"
+	| "useProviderDefaultModel"
+> {
+	return {
+		...(params.model
+			? { modelOverride: params.model }
+			: { useProviderDefaultModel: true }),
+		...(params.effort
+			? { effortOverride: params.effort }
+			: { useProviderDefaultEffort: true }),
+	};
 }
 
 function readEventSessionId(event: FacadeEvent): string | undefined {

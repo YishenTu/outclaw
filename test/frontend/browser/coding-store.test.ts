@@ -177,7 +177,7 @@ describe("useCodingStore", () => {
 		});
 	});
 
-	test("setCodingModels picks the default model and resets effort to its default", () => {
+	test("setCodingModels loads provider models without selecting explicit code settings", () => {
 		useCodingStore.getState().setCodingModels([
 			{
 				id: "gpt-5.5",
@@ -203,8 +203,8 @@ describe("useCodingStore", () => {
 
 		const state = useCodingStore.getState();
 		expect(state.codingModels).toHaveLength(2);
-		expect(state.selectedModelId).toBe("gpt-5.5");
-		expect(state.selectedEffort).toBe("medium");
+		expect(state.selectedModelId).toBeUndefined();
+		expect(state.selectedEffort).toBeUndefined();
 	});
 
 	test("setSelectedModelId clamps effort to the new model's supported list", () => {

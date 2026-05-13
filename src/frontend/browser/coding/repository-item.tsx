@@ -192,19 +192,9 @@ export function RepositoryItem({
 				onRename={(nextTitle) => onRenameSession(session, nextTitle)}
 				onDelete={() => onArchiveSession(session)}
 				actionAriaLabel={`Archive session ${title}`}
-				actionConfirmBody={
-					<>
-						Archive session{" "}
-						<span className="font-medium text-dark-50">
-							&ldquo;{title}&rdquo;
-						</span>
-					</>
-				}
-				actionConfirmLabel="Archive"
-				actionConfirmSubtitle="Can be restored"
-				actionConfirmTitle="Archive session"
 				actionIcon="archive"
 				actionLabel="Archive"
+				actionRequiresConfirmation={false}
 				actionTone="neutral"
 			/>
 		);

@@ -6,6 +6,8 @@ import {
 	SelectorDropdown,
 } from "../components/chat/model-selector-controls.tsx";
 
+const PROVIDER_DEFAULT_MODEL_ID = "__provider_default__";
+
 function formatEffortLabel(value: string): string {
 	if (isEffortLevel(value)) {
 		return formatKnownEffortLabel(value);
@@ -19,7 +21,7 @@ interface CodingModelSelectorProps {
 	selectedEffort: string | undefined;
 	fastTierEnabled: boolean;
 	disabled?: boolean;
-	onSelectModel(modelId: string): void;
+	onSelectModel(modelId: string | undefined): void;
 	onSelectEffort(effort: EffortLevel): void;
 	onToggleFastTier(enabled: boolean): void;
 }
@@ -34,13 +36,14 @@ export function CodingModelSelector({
 	onSelectEffort,
 	onToggleFastTier,
 }: CodingModelSelectorProps) {
-	const selectedModel =
-		models.find((entry) => entry.id === selectedModelId) ?? models[0];
+	const selectedModel = models.find((entry) => entry.id === selectedModelId);
 	const supportedEfforts = [
 		...(selectedModel?.supportedReasoningEfforts ?? []),
 	].reverse();
-	const effortLabel = selectedEffort ? formatEffortLabel(selectedEffort) : "—";
-	const modelLabel = selectedModel?.displayName ?? "Model";
+	const effortLabel = selectedEffort
+		? formatEffortLabel(selectedEffort)
+		: "Default";
+	const modelLabel = selectedModel?.displayName ?? "Default";
 	const noModels = models.length === 0;
 	// Codex advertises a per-model `serviceTiers` array on `model/list`; if the
 	// selected model exposes a non-default tier, expose a Fast toggle. The
@@ -53,15 +56,20 @@ export function CodingModelSelector({
 		<div className="flex items-center gap-1.5">
 			<SelectorDropdown
 				label={noModels ? "No models" : modelLabel}
-				items={models.map((model) => ({
-					id: model.id,
-					label: model.displayName,
-				}))}
-				selectedId={selectedModel?.id}
+				items={[
+					{ id: PROVIDER_DEFAULT_MODEL_ID, label: "Default" },
+					...models.map((model) => ({
+						id: model.id,
+						label: model.displayName,
+					})),
+				]}
+				selectedId={selectedModel?.id ?? PROVIDER_DEFAULT_MODEL_ID}
 				disabled={disabled || noModels}
 				minWidthClassName="min-w-[7rem]"
 				onSelect={(item) => {
-					onSelectModel(item.id);
+					onSelectModel(
+						item.id === PROVIDER_DEFAULT_MODEL_ID ? undefined : item.id,
+					);
 					return true;
 				}}
 			/>

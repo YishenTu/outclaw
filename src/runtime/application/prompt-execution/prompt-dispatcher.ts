@@ -57,9 +57,19 @@ export interface PromptExecution {
 	 */
 	modelOverride?: string;
 	/**
+	 * Use the provider's configured default model for this run. Coding mode uses
+	 * this when no explicit code-mode model was selected so chat aliases never
+	 * leak into provider-owned coding defaults.
+	 */
+	useProviderDefaultModel?: boolean;
+	/**
 	 * Per-call reasoning effort override. Same rationale as `modelOverride`.
 	 */
 	effortOverride?: EffortLevel;
+	/**
+	 * Use the provider's configured default reasoning effort for this run.
+	 */
+	useProviderDefaultEffort?: boolean;
 	/**
 	 * Per-call provider service tier override. Codex uses this to switch
 	 * between standard and priority/Fast tier for a single conversation.
@@ -136,9 +146,14 @@ export class PromptDispatcher {
 			this.options.onVisibleRunStarted?.();
 		}
 
-		const storedModel = task.modelOverride ?? context.model;
-		const runModel = task.modelOverride ?? context.resolvedModel;
-		const runEffort = task.effortOverride ?? context.effort;
+		const storedModel =
+			task.modelOverride ?? (task.useProviderDefaultModel ? "" : context.model);
+		const runModel =
+			task.modelOverride ??
+			(task.useProviderDefaultModel ? undefined : context.resolvedModel);
+		const runEffort =
+			task.effortOverride ??
+			(task.useProviderDefaultEffort ? undefined : context.effort);
 
 		const emit = (event: FacadeEvent) => {
 			const visible = isVisible();
