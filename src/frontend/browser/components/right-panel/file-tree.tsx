@@ -59,12 +59,48 @@ interface FileTreeProps {
 	agentId: string;
 	entries: BrowserTreeEntry[];
 	onOpenFile: (params: { agentId: string; path: string }) => void;
+	onOpenDirectory?: (params: { agentId: string; path: string }) => void;
 }
 
 export type FilesViewMode = "tree" | "graph";
 
 function normalizeDirectoryStatusPath(path: string): string {
 	return path.endsWith("/") ? path : `${path}/`;
+}
+
+function denormalizeDirectoryStatusPath(path: string): string {
+	return path.endsWith("/") ? path.slice(0, -1) : path;
+}
+
+export function updateExpandedDirectoryPaths(
+	paths: ReadonlySet<string>,
+	path: string,
+	expanded: boolean,
+): Set<string> {
+	const next = new Set(paths);
+	const normalizedPath = normalizeDirectoryStatusPath(path);
+	if (expanded) {
+		next.add(normalizedPath);
+	} else {
+		next.delete(normalizedPath);
+	}
+	return next;
+}
+
+export function reconcileExpandedDirectoryPaths(
+	previousPaths: ReadonlySet<string>,
+	currentExpandedPaths: Iterable<string>,
+): { expandedPaths: Set<string>; newlyExpandedPaths: string[] } {
+	const expandedPaths = new Set<string>();
+	const newlyExpandedPaths: string[] = [];
+	for (const path of currentExpandedPaths) {
+		const normalizedPath = normalizeDirectoryStatusPath(path);
+		expandedPaths.add(normalizedPath);
+		if (!previousPaths.has(normalizedPath)) {
+			newlyExpandedPaths.push(denormalizeDirectoryStatusPath(normalizedPath));
+		}
+	}
+	return { expandedPaths, newlyExpandedPaths };
 }
 
 function pierreGitStatus(
@@ -87,6 +123,7 @@ export function flattenBrowserTreePaths(entries: BrowserTreeEntry[]): string[] {
 			paths.push(entry.path);
 			continue;
 		}
+		paths.push(normalizeDirectoryStatusPath(entry.path));
 		if (entry.children) {
 			paths.push(...flattenBrowserTreePaths(entry.children));
 		}
@@ -159,30 +196,54 @@ export function FileTreeHeader({
 	);
 }
 
-function clickedFilePath(event: ReactMouseEvent<HTMLElement>): string | null {
+function clickedTreeRow(
+	event: ReactMouseEvent<HTMLElement>,
+): { kind: "directory" | "file"; path: string } | null {
 	const path = event.nativeEvent.composedPath();
 
 	for (const target of path) {
 		if (!(target instanceof HTMLElement)) {
 			continue;
 		}
-		if (target.dataset.itemType === "file" && target.dataset.itemPath) {
-			return target.dataset.itemPath;
+		if (!target.dataset.itemPath) {
+			continue;
+		}
+		if (target.dataset.itemType === "file") {
+			return { kind: "file", path: target.dataset.itemPath };
+		}
+		if (target.dataset.itemType === "folder") {
+			return {
+				kind: "directory",
+				path: target.dataset.itemPath.replace(/\/$/, ""),
+			};
 		}
 	}
 
 	return null;
 }
 
-export function FileTree({ agentId, entries, onOpenFile }: FileTreeProps) {
+export function FileTree({
+	agentId,
+	entries,
+	onOpenDirectory,
+	onOpenFile,
+}: FileTreeProps) {
 	const paths = useMemo(() => flattenBrowserTreePaths(entries), [entries]);
 	const gitStatusEntries = useMemo(
 		() => browserTreeGitStatusEntries(entries),
 		[entries],
 	);
 	const latestAgentId = useRef(agentId);
+	const latestOnOpenDirectory = useRef(onOpenDirectory);
 	const latestOnOpenFile = useRef(onOpenFile);
+	const expandedDirectoryPaths = useRef(new Set<string>());
+	const previousAgentId = useRef(agentId);
+	if (previousAgentId.current !== agentId) {
+		expandedDirectoryPaths.current.clear();
+		previousAgentId.current = agentId;
+	}
 	latestAgentId.current = agentId;
+	latestOnOpenDirectory.current = onOpenDirectory;
 	latestOnOpenFile.current = onOpenFile;
 	const { model } = useFileTree({
 		gitStatus: gitStatusEntries,
@@ -191,23 +252,60 @@ export function FileTree({ agentId, entries, onOpenFile }: FileTreeProps) {
 	});
 
 	useEffect(() => {
-		model.resetPaths(paths);
+		model.resetPaths(paths, {
+			initialExpandedPaths: [...expandedDirectoryPaths.current],
+		});
 	}, [model, paths]);
 
 	useEffect(() => {
 		model.setGitStatus(gitStatusEntries);
 	}, [model, gitStatusEntries]);
 
+	useEffect(() => {
+		const syncExpandedDirectories = () => {
+			const currentExpandedPaths: string[] = [];
+			for (const path of paths) {
+				if (!path.endsWith("/")) {
+					continue;
+				}
+				const item = model.getItem(path);
+				if (item && "isExpanded" in item && item.isExpanded()) {
+					currentExpandedPaths.push(path);
+				}
+			}
+			const result = reconcileExpandedDirectoryPaths(
+				expandedDirectoryPaths.current,
+				currentExpandedPaths,
+			);
+			expandedDirectoryPaths.current = result.expandedPaths;
+			for (const path of result.newlyExpandedPaths) {
+				latestOnOpenDirectory.current?.({
+					agentId: latestAgentId.current,
+					path,
+				});
+			}
+		};
+
+		syncExpandedDirectories();
+		return model.subscribe(syncExpandedDirectories);
+	}, [model, paths]);
+
 	return (
 		<PierreFileTree
 			model={model}
 			className="block h-full min-h-0"
 			onClick={(event) => {
-				const path = clickedFilePath(event);
-				if (!path) {
+				const row = clickedTreeRow(event);
+				if (!row) {
 					return;
 				}
-				latestOnOpenFile.current({ agentId: latestAgentId.current, path });
+				if (row.kind === "file") {
+					latestOnOpenFile.current({
+						agentId: latestAgentId.current,
+						path: row.path,
+					});
+					return;
+				}
 			}}
 			style={fileTreeThemeStyle}
 		/>

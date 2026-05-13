@@ -498,12 +498,16 @@ export async function fetchAgentTree(
 
 export async function fetchCodingRepositoryTree(
 	repositoryId: string,
+	path?: string,
 ): Promise<BrowserTreeEntry[]> {
-	return parseJsonResponse(
-		await fetch(
-			`/api/coding/repositories/${encodeURIComponent(repositoryId)}/tree`,
-		),
+	const url = new URL(
+		`/api/coding/repositories/${encodeURIComponent(repositoryId)}/tree`,
+		window.location.origin,
 	);
+	if (path) {
+		url.searchParams.set("path", path);
+	}
+	return parseJsonResponse(await fetch(url));
 }
 
 export async function fetchCodingRepositoryWorkspaceFiles(

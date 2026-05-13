@@ -725,6 +725,15 @@ describe("CodexAdapter", () => {
 					phase: "final_answer",
 				},
 			},
+			{
+				type: "event_msg",
+				payload: {
+					type: "task_complete",
+					turn_id: "turn-1",
+					completed_at: 1778560196,
+					duration_ms: 23624,
+				},
+			},
 		]
 			.map((row) => JSON.stringify(row))
 			.join("\n");
@@ -780,6 +789,11 @@ describe("CodexAdapter", () => {
 				text: "Done.",
 				sessionId: "codex-thread-123",
 			},
+			{
+				type: "done",
+				sessionId: "codex-thread-123",
+				durationMs: 23624,
+			},
 		]);
 	});
 
@@ -801,6 +815,128 @@ describe("CodexAdapter", () => {
 				type: "text",
 				text: "completed output",
 				sessionId: "codex-thread-x",
+			},
+		]);
+	});
+
+	test("treats a final-answer JSONL message as a terminal coding turn", () => {
+		const jsonl = [
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "user",
+					content: [{ type: "input_text", text: "inspect session" }],
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "assistant",
+					content: [{ type: "output_text", text: "All set." }],
+					phase: "final_answer",
+				},
+			},
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n");
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-final" }),
+		).toEqual([
+			{
+				type: "user_prompt",
+				text: "inspect session",
+				sessionId: "codex-thread-final",
+			},
+			{
+				type: "text",
+				text: "All set.",
+				sessionId: "codex-thread-final",
+			},
+			{
+				type: "done",
+				sessionId: "codex-thread-final",
+				durationMs: 0,
+			},
+		]);
+	});
+
+	test("updates an existing JSONL terminal event instead of duplicating it", () => {
+		const jsonl = [
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "user",
+					content: [{ type: "input_text", text: "apply patch" }],
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "assistant",
+					content: [{ type: "output_text", text: "Applied." }],
+					phase: "final_answer",
+				},
+			},
+			{
+				type: "event_msg",
+				payload: {
+					type: "patch_apply_end",
+					call_id: "call_patch",
+					success: true,
+					changes: {
+						"/work/repo/file.txt": {
+							type: "update",
+							unified_diff: "@@ -1 +1 @@\n-old\n+new\n",
+							move_path: null,
+						},
+					},
+				},
+			},
+			{
+				type: "event_msg",
+				payload: {
+					type: "task_complete",
+					duration_ms: 4200,
+				},
+			},
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n");
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-final" }),
+		).toEqual([
+			{
+				type: "user_prompt",
+				text: "apply patch",
+				sessionId: "codex-thread-final",
+			},
+			{
+				type: "text",
+				text: "Applied.",
+				sessionId: "codex-thread-final",
+			},
+			{
+				type: "done",
+				sessionId: "codex-thread-final",
+				durationMs: 4200,
+			},
+			{
+				type: "file_change_applied",
+				callId: "call_patch",
+				changes: [
+					{
+						path: "/work/repo/file.txt",
+						kind: "update",
+						diff: "@@ -1 +1 @@\n-old\n+new\n",
+					},
+				],
+				sessionId: "codex-thread-final",
 			},
 		]);
 	});
@@ -1159,6 +1295,11 @@ describe("CodexAdapter", () => {
 				type: "text",
 				text: "Done.",
 				sessionId: "codex-thread-123",
+			},
+			{
+				type: "done",
+				sessionId: "codex-thread-123",
+				durationMs: 0,
 			},
 		]);
 	});

@@ -28,6 +28,10 @@ import {
 } from "../lib/api.ts";
 import { useLayoutStore } from "../stores/layout.ts";
 import {
+	selectGitRevision,
+	useRightPanelRefreshStore,
+} from "../stores/right-panel-refresh.ts";
+import {
 	selectActiveTerminalId,
 	selectActiveTerminalTab,
 	selectAgentTerminals,
@@ -120,14 +124,23 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	const [tree, setTree] = useState<BrowserTreeEntry[]>([]);
 	const [treeLoading, setTreeLoading] = useState(false);
 	const [treeError, setTreeError] = useState<string | null>(null);
+	const loadingTreeDirectoriesRef = useRef(new Set<string>());
+	const latestFocusedRepositoryId = useRef(focusedRepositoryId);
 	const [gitStatus, setGitStatus] = useState<BrowserGitStatusResponse | null>(
 		null,
 	);
 	const [gitLoading, setGitLoading] = useState(false);
 	const [gitError, setGitError] = useState<string | null>(null);
+	const [loadedGitRepositoryId, setLoadedGitRepositoryId] = useState<
+		string | null
+	>(null);
+	const [loadedGitRevision, setLoadedGitRevision] = useState<number | null>(
+		null,
+	);
 	const [selectedGitCommitSha, setSelectedGitCommitSha] = useState<
 		string | null
 	>(null);
+	const gitRevision = useRightPanelRefreshStore(selectGitRevision);
 	const { gitHistoryLoadError, gitHistoryLoadingMore, loadMoreGitHistory } =
 		useGitHistoryPagination({
 			repositoryId: focusedRepositoryId,
@@ -136,12 +149,19 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		});
 	const [isResizing, setIsResizing] = useState(false);
 	const contentRef = useRef<HTMLDivElement | null>(null);
+	if (latestFocusedRepositoryId.current !== focusedRepositoryId) {
+		loadingTreeDirectoriesRef.current.clear();
+		latestFocusedRepositoryId.current = focusedRepositoryId;
+	}
 
 	useEffect(() => {
 		if (!focusedRepositoryId) {
 			setTree([]);
 			setTreeError(null);
 			setTreeLoading(false);
+			return;
+		}
+		if (!shouldLoadCodingRepositoryTree({ activeTab, focusedRepositoryId })) {
 			return;
 		}
 
@@ -153,6 +173,7 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 				if (!cancelled) {
 					setTree(entries);
 					setTreeError(null);
+					loadingTreeDirectoriesRef.current.clear();
 				}
 			})
 			.catch((error) => {
@@ -172,21 +193,79 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		return () => {
 			cancelled = true;
 		};
+	}, [activeTab, focusedRepositoryId]);
+
+	const handleOpenTreeDirectory = useCallback(
+		(params: { path: string }) => {
+			const requestRepositoryId = focusedRepositoryId;
+			if (
+				!requestRepositoryId ||
+				loadingTreeDirectoriesRef.current.has(params.path)
+			) {
+				return;
+			}
+			if (treeDirectoryLoaded(tree, params.path)) {
+				return;
+			}
+			loadingTreeDirectoriesRef.current.add(params.path);
+			void fetchCodingRepositoryTree(requestRepositoryId, params.path)
+				.then((entries) => {
+					if (
+						!shouldApplyCodingRepositoryDirectoryChildren({
+							focusedRepositoryId: latestFocusedRepositoryId.current,
+							requestRepositoryId,
+						})
+					) {
+						return;
+					}
+					setTree((current) =>
+						mergeTreeDirectoryChildren(current, params.path, entries),
+					);
+				})
+				.catch((error) => {
+					console.warn("Failed to load coding repository directory", error);
+				})
+				.finally(() => {
+					loadingTreeDirectoriesRef.current.delete(params.path);
+				});
+		},
+		[focusedRepositoryId, tree],
+	);
+
+	useEffect(() => {
+		void focusedRepositoryId;
+		setSelectedGitCommitSha(null);
 	}, [focusedRepositoryId]);
 
 	useEffect(() => {
-		if (!focusedRepositoryId || activeTab !== "git") {
+		if (activeTab !== "git" || !focusedRepositoryId) {
+			setGitLoading(false);
+			return;
+		}
+
+		const shouldLoadGitStatus = shouldLoadCodingRepositoryGitStatus({
+			activeTab,
+			focusedRepositoryId,
+			gitRevision,
+			loadedGitRepositoryId,
+			loadedGitRevision,
+		});
+		if (!shouldLoadGitStatus) {
 			return;
 		}
 
 		let cancelled = false;
+		const requestGitRevision = gitRevision;
+		const requestRepositoryId = focusedRepositoryId;
 		setGitLoading(true);
 		setGitError(null);
-		void fetchGitStatus({ repositoryId: focusedRepositoryId })
+		void fetchGitStatus({ repositoryId: requestRepositoryId })
 			.then((status) => {
 				if (!cancelled) {
 					setGitStatus(status);
 					setGitError(null);
+					setLoadedGitRepositoryId(requestRepositoryId);
+					setLoadedGitRevision(requestGitRevision);
 				}
 			})
 			.catch((error) => {
@@ -197,6 +276,8 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 							? error.message
 							: "Failed to load git status",
 					);
+					setLoadedGitRepositoryId(requestRepositoryId);
+					setLoadedGitRevision(requestGitRevision);
 				}
 			})
 			.finally(() => {
@@ -208,7 +289,13 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		return () => {
 			cancelled = true;
 		};
-	}, [focusedRepositoryId, activeTab]);
+	}, [
+		activeTab,
+		focusedRepositoryId,
+		gitRevision,
+		loadedGitRepositoryId,
+		loadedGitRevision,
+	]);
 
 	useEffect(() => {
 		if (
@@ -227,7 +314,9 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		}
 		const status = await initGitRepo({ repositoryId: focusedRepositoryId });
 		setGitStatus(status);
-	}, [focusedRepositoryId]);
+		setLoadedGitRepositoryId(focusedRepositoryId);
+		setLoadedGitRevision(gitRevision);
+	}, [focusedRepositoryId, gitRevision]);
 
 	const handleResizeMouseDown = useCallback(
 		(event: React.MouseEvent<HTMLButtonElement>) => {
@@ -280,6 +369,19 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 
 	const upperHeight = `${splitRatio * 100}%`;
 	const lowerHeight = `${(1 - splitRatio) * 100}%`;
+	const gitStatusNeedsLoad = shouldLoadCodingRepositoryGitStatus({
+		activeTab,
+		focusedRepositoryId,
+		gitRevision,
+		loadedGitRepositoryId,
+		loadedGitRevision,
+	});
+	const visibleGitStatus = gitStatusNeedsLoad ? null : gitStatus;
+	const visibleGitError = gitStatusNeedsLoad ? null : gitError;
+	const visibleGitLoading =
+		activeTab === "git" && focusedRepositoryId
+			? gitLoading || gitStatusNeedsLoad
+			: gitLoading;
 
 	const noRepoState = (
 		<div className="flex h-full items-center justify-center px-6 text-center text-sm text-dark-500">
@@ -306,6 +408,7 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 							<FileTree
 								agentId={focusedRepositoryId}
 								entries={tree}
+								onOpenDirectory={handleOpenTreeDirectory}
 								onOpenFile={handleOpenFile}
 							/>
 						)}
@@ -321,9 +424,9 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 				onInitialize={handleInitialize}
 				onLoadMoreHistory={loadMoreGitHistory}
 				repositoryId={focusedRepositoryId}
-				status={gitStatus}
-				loading={gitLoading}
-				error={gitError}
+				status={visibleGitStatus}
+				loading={visibleGitLoading}
+				error={visibleGitError}
 				onOpenDiff={handleOpenDiff}
 				onSelectCommit={setSelectedGitCommitSha}
 				onToggleHistoryCollapsed={() =>
@@ -410,4 +513,97 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 			/>
 		</div>
 	);
+}
+
+export function treeDirectoryLoaded(
+	entries: BrowserTreeEntry[],
+	path: string,
+): boolean {
+	const entry = findTreeDirectory(entries, path);
+	return entry?.children !== undefined;
+}
+
+export function shouldLoadCodingRepositoryTree({
+	activeTab,
+	focusedRepositoryId,
+}: {
+	activeTab: CodingRightTab;
+	focusedRepositoryId: string | undefined;
+}): boolean {
+	return activeTab === "files" && focusedRepositoryId !== undefined;
+}
+
+export function shouldLoadCodingRepositoryGitStatus({
+	activeTab,
+	focusedRepositoryId,
+	gitRevision,
+	loadedGitRepositoryId,
+	loadedGitRevision,
+}: {
+	activeTab: CodingRightTab;
+	focusedRepositoryId: string | undefined;
+	gitRevision: number;
+	loadedGitRepositoryId: string | null;
+	loadedGitRevision: number | null;
+}): boolean {
+	if (activeTab !== "git" || focusedRepositoryId === undefined) {
+		return false;
+	}
+	return (
+		loadedGitRepositoryId !== focusedRepositoryId ||
+		loadedGitRevision !== gitRevision
+	);
+}
+
+export function shouldApplyCodingRepositoryDirectoryChildren({
+	focusedRepositoryId,
+	requestRepositoryId,
+}: {
+	focusedRepositoryId: string | undefined;
+	requestRepositoryId: string;
+}): boolean {
+	return focusedRepositoryId === requestRepositoryId;
+}
+
+export function mergeTreeDirectoryChildren(
+	entries: BrowserTreeEntry[],
+	path: string,
+	children: BrowserTreeEntry[],
+): BrowserTreeEntry[] {
+	return entries.map((entry) => {
+		if (entry.kind !== "directory") {
+			return entry;
+		}
+		if (entry.path === path) {
+			return { ...entry, children };
+		}
+		if (!entry.children) {
+			return entry;
+		}
+		return {
+			...entry,
+			children: mergeTreeDirectoryChildren(entry.children, path, children),
+		};
+	});
+}
+
+function findTreeDirectory(
+	entries: BrowserTreeEntry[],
+	path: string,
+): BrowserTreeEntry | undefined {
+	for (const entry of entries) {
+		if (entry.kind !== "directory") {
+			continue;
+		}
+		if (entry.path === path) {
+			return entry;
+		}
+		const nested = entry.children
+			? findTreeDirectory(entry.children, path)
+			: undefined;
+		if (nested) {
+			return nested;
+		}
+	}
+	return undefined;
 }

@@ -427,7 +427,9 @@ export async function handleBrowserApiRequest(
 					return jsonError("Coding repository API is not configured", 404);
 				}
 				return Response.json(
-					await browserApi.listCodingRepositoryTree(repositoryId),
+					await browserApi.listCodingRepositoryTree(repositoryId, {
+						path: url.searchParams.get("path") ?? undefined,
+					}),
 				);
 			}
 

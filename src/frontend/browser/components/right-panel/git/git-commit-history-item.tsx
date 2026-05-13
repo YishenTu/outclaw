@@ -13,12 +13,15 @@ import type {
 	BrowserGitHistoryCommit,
 } from "../../../../../common/protocol.ts";
 import { useCopyToClipboard } from "../../../clipboard/use-copy-to-clipboard.ts";
-import { fetchGitCommitStats } from "../../../lib/api.ts";
 import {
 	selectGitRevision,
 	useRightPanelRefreshStore,
 } from "../../../stores/right-panel-refresh.ts";
 import { gitCommitSubject, shortGitSha } from "./git-commit-format.ts";
+import {
+	prefetchGitCommitStats,
+	readCachedGitCommitStats,
+} from "./git-commit-stats-cache.ts";
 
 const commitHistoryDateFormatter = new Intl.DateTimeFormat("en-US", {
 	month: "short",
@@ -76,6 +79,12 @@ export function GitCommitHistoryItem({
 			<CommitItemHeader
 				commit={commit}
 				onToggle={onToggleSelect}
+				onPrimeDetails={() =>
+					prefetchGitCommitStats({
+						sha: commit.sha,
+						...(repositoryId ? { repositoryId } : {}),
+					})
+				}
 				selected={selected}
 			/>
 			{selected ? (
@@ -91,10 +100,12 @@ export function GitCommitHistoryItem({
 
 function CommitItemHeader({
 	commit,
+	onPrimeDetails,
 	onToggle,
 	selected,
 }: {
 	commit: BrowserGitHistoryCommit;
+	onPrimeDetails: () => void;
 	onToggle: () => void;
 	selected: boolean;
 }) {
@@ -108,6 +119,8 @@ function CommitItemHeader({
 			role="button"
 			tabIndex={0}
 			aria-pressed={selected}
+			onFocus={onPrimeDetails}
+			onMouseEnter={onPrimeDetails}
 			onClick={onToggle}
 			onKeyDown={(event) => {
 				if (event.key === "Enter" || event.key === " ") {
@@ -161,10 +174,10 @@ function CommitItemDetails({
 		setStatsError(null);
 		setStatsLoading(true);
 
-		void fetchGitCommitStats(
-			commit.sha,
-			repositoryId ? { repositoryId } : undefined,
-		)
+		void readCachedGitCommitStats({
+			sha: commit.sha,
+			...(repositoryId ? { repositoryId } : {}),
+		})
 			.then((next) => {
 				if (!cancelled) {
 					setStats(next);

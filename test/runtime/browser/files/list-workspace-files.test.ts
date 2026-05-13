@@ -110,7 +110,7 @@ describe("listWorkspaceFiles", () => {
 		}
 	});
 
-	test("repository workspace files ignore only git metadata", async () => {
+	test("repository workspace files skip dependency and generated directories", async () => {
 		const { root, cleanup } = makeTempRoot("outclaw-repo-files-");
 		try {
 			mkdirSync(join(root, ".git"));
@@ -125,9 +125,70 @@ describe("listWorkspaceFiles", () => {
 
 			expect(entries).toEqual([
 				{ kind: "file", path: ".gitignore" },
-				{ kind: "directory", path: "node_modules" },
-				{ kind: "file", path: "node_modules/package.js" },
 				{ kind: "file", path: "README.md" },
+			]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	test("repository workspace files honor git ignored files", async () => {
+		const { root, cleanup } = makeTempRoot("outclaw-repo-git-files-");
+		try {
+			writeFileSync(join(root, ".gitignore"), "scratch/\n");
+			mkdirSync(join(root, "scratch"));
+			writeFileSync(join(root, "scratch", "ignored.md"), "");
+			mkdirSync(join(root, "node_modules", "dependency"), {
+				recursive: true,
+			});
+			writeFileSync(join(root, "node_modules", "dependency", "index.js"), "");
+			mkdirSync(join(root, "packages", "app", "node_modules", "dependency"), {
+				recursive: true,
+			});
+			writeFileSync(
+				join(root, "packages", "app", "node_modules", "dependency", "index.js"),
+				"",
+			);
+			mkdirSync(join(root, "src"));
+			writeFileSync(join(root, "src", "index.ts"), "");
+			const init = Bun.spawnSync(["git", "init", "--initial-branch=main"], {
+				cwd: root,
+				stderr: "pipe",
+				stdout: "pipe",
+			});
+			expect(init.exitCode).toBe(0);
+
+			const entries = await listRepositoryWorkspaceFiles(root);
+
+			expect(entries).toEqual([
+				{ kind: "file", path: ".gitignore" },
+				{ kind: "directory", path: "src" },
+				{ kind: "file", path: "src/index.ts" },
+			]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	test("repository workspace files preserve git paths with leading and trailing spaces", async () => {
+		const { root, cleanup } = makeTempRoot("outclaw-repo-spaced-files-");
+		try {
+			const init = Bun.spawnSync(["git", "init", "--initial-branch=main"], {
+				cwd: root,
+				stderr: "pipe",
+				stdout: "pipe",
+			});
+			expect(init.exitCode).toBe(0);
+			mkdirSync(join(root, "src"));
+			writeFileSync(join(root, " leading.ts"), "");
+			writeFileSync(join(root, "src", "trailing.ts "), "");
+
+			const entries = await listRepositoryWorkspaceFiles(root);
+
+			expect(entries).toEqual([
+				{ kind: "file", path: " leading.ts" },
+				{ kind: "directory", path: "src" },
+				{ kind: "file", path: "src/trailing.ts " },
 			]);
 		} finally {
 			cleanup();

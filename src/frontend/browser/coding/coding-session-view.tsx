@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	BrowserCodingRepositorySummary,
 	BrowserCodingSessionSummary,
@@ -23,6 +23,10 @@ import {
 	isCodingTurnInFlight,
 } from "./coding-event-renderer.tsx";
 import { CodingModelSelector } from "./coding-model-selector.tsx";
+import {
+	appendCodingSessionEventBatch,
+	codingSessionEventCache,
+} from "./coding-session-event-cache.ts";
 import { buildCodingSkillCommands } from "./coding-skill-commands.ts";
 import { useCodingStore } from "./coding-store.ts";
 
@@ -363,13 +367,70 @@ function ActiveSessionPanel({
 	const usageSessionKey = `coding:${session.providerId}/${session.sdkSessionId}`;
 
 	useEffect(() => {
-		setEvents([]);
+		const cached = codingSessionEventCache.get(usageSessionKey);
+		setEvents(cached?.events ?? []);
 		setStreamError(undefined);
 		eventLengthRef.current = 0;
+		const pendingEvents: CodingSessionEventStreamItem[] = [];
+		let frameId: number | undefined;
+		let active = true;
+		const flushPendingEventsToCache = (): CodingSessionEventStreamItem[] => {
+			frameId = undefined;
+			if (pendingEvents.length === 0) {
+				return codingSessionEventCache.get(usageSessionKey)?.events ?? [];
+			}
+			const pending = pendingEvents.splice(0);
+			const baseEvents =
+				codingSessionEventCache.get(usageSessionKey)?.events ??
+				cached?.events ??
+				[];
+			return appendCodingSessionEventBatch(
+				codingSessionEventCache,
+				usageSessionKey,
+				baseEvents,
+				pending,
+				{ allowSequenceRestart: true },
+			).events;
+		};
+		const flushPendingEvents = () => {
+			frameId = undefined;
+			if (pendingEvents.length === 0) {
+				return;
+			}
+			if (!active) {
+				flushPendingEventsToCache();
+				return;
+			}
+			const pending = pendingEvents.splice(0);
+			setEvents((prev) => {
+				return appendCodingSessionEventBatch(
+					codingSessionEventCache,
+					usageSessionKey,
+					prev,
+					pending,
+					{ allowSequenceRestart: true },
+				).events;
+			});
+		};
+		const scheduleFlush = () => {
+			if (frameId !== undefined) {
+				return;
+			}
+			if (typeof window === "undefined") {
+				frameId = setTimeout(flushPendingEvents, 16) as unknown as number;
+				return;
+			}
+			frameId = window.requestAnimationFrame(flushPendingEvents);
+		};
 		const close = openCodingSessionEventStream({
 			providerId: session.providerId,
 			sdkSessionId: session.sdkSessionId,
+			// Stream sequences are scoped to one replay/follow subscription; provider
+			// history is re-numbered on the next open, so cached cursors cannot skip it.
 			onEvent: (item) => {
+				if (!active) {
+					return;
+				}
 				// Codex emits `thread/tokenUsage/updated` mid-turn; the adapter
 				// surfaces it as a `usage_updated` FacadeEvent. The `done` event
 				// also carries the final usage. Push either snapshot into the
@@ -378,23 +439,25 @@ function ActiveSessionPanel({
 				if (usageInfo) {
 					useContextUsageStore.getState().setUsage(usageSessionKey, usageInfo);
 				}
-				setEvents((prev) => {
-					if (
-						prev.length > 0 &&
-						prev[prev.length - 1] &&
-						(prev[prev.length - 1] as CodingSessionEventStreamItem).sequence >=
-							item.sequence
-					) {
-						return prev;
-					}
-					return [...prev, item];
-				});
+				pendingEvents.push(item);
+				scheduleFlush();
 			},
 			onError: (message) => {
-				setStreamError(message);
+				if (active) {
+					setStreamError(message);
+				}
 			},
 		});
 		return () => {
+			active = false;
+			if (frameId !== undefined) {
+				if (typeof window === "undefined") {
+					clearTimeout(frameId);
+				} else {
+					window.cancelAnimationFrame(frameId);
+				}
+				flushPendingEventsToCache();
+			}
 			close();
 		};
 	}, [session.providerId, session.sdkSessionId, usageSessionKey]);
@@ -473,9 +536,9 @@ function ActiveSessionPanel({
 	const title = session.title || session.sdkSessionId;
 	// Prefer the live event log so the spinner hides as soon as a terminal event
 	// arrives. Use the cached runStatus only before replay delivers any events.
+	const turnInFlight = useMemo(() => isCodingTurnInFlight(events), [events]);
 	const isRunning =
-		isCodingTurnInFlight(events) ||
-		(events.length === 0 && session.runStatus === "running");
+		turnInFlight || (events.length === 0 && session.runStatus === "running");
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-dark-950">

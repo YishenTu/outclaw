@@ -1,5 +1,6 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { CodingCenter } from "../coding/coding-center.tsx";
+import { useCodingDataLoader } from "../coding/coding-data.ts";
 import { CodingRightPanel } from "../coding/coding-right-panel.tsx";
 import { CodingSidebarContainer } from "../coding/coding-sidebar-container.tsx";
 import { useCodingStore } from "../coding/coding-store.ts";
@@ -41,6 +42,7 @@ export function AppLayoutView({
 }: AppLayoutViewProps) {
 	const appMode = useCodingStore((state) => state.appMode);
 	const isCodeMode = appMode === "code";
+	useCodingDataLoader(isCodeMode);
 	// In code mode the workspace is always interactive; the welcome page only
 	// applies to chat mode.
 	const effectiveShowWelcomePage = !isCodeMode && showWelcomePage;

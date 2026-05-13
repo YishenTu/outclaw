@@ -10,6 +10,7 @@ import {
 	fetchAgentWorkspaceFiles,
 	fetchCodingRepositories,
 	fetchCodingRepository,
+	fetchCodingRepositoryTree,
 	fetchCodingRepositoryWorkspaceFiles,
 	fetchCodingSession,
 	fetchCodingSessions,
@@ -321,6 +322,16 @@ describe("browser API client integration", () => {
 					{ kind: "file", path: "README.md" },
 				];
 			},
+			listCodingRepositoryTree: async (repositoryId, params) => {
+				calls.push(`repo:tree:${repositoryId}:${params?.path ?? "root"}`);
+				return [
+					{
+						kind: "directory",
+						name: params?.path ? "feature" : "src",
+						path: params?.path ? `${params.path}/feature` : "src",
+					},
+				];
+			},
 			listAgentTree: async (agentId) => {
 				calls.push(`tree:${agentId}`);
 				return [
@@ -610,6 +621,20 @@ describe("browser API client integration", () => {
 			{ kind: "file", path: "node_modules/dependency.js" },
 			{ kind: "file", path: "README.md" },
 		]);
+		await expect(fetchCodingRepositoryTree("repo-1")).resolves.toEqual([
+			{
+				kind: "directory",
+				name: "src",
+				path: "src",
+			},
+		]);
+		await expect(fetchCodingRepositoryTree("repo-1", "src")).resolves.toEqual([
+			{
+				kind: "directory",
+				name: "feature",
+				path: "src/feature",
+			},
+		]);
 		await expect(
 			registerCodingRepository({
 				rootCwd: "/workspace/outclaw",
@@ -685,6 +710,8 @@ describe("browser API client integration", () => {
 			"repo:list:true",
 			"repo:get:repo-1",
 			"repo:workspace-files:repo-1",
+			"repo:tree:repo-1:root",
+			"repo:tree:repo-1:src",
 			"repo:register:/workspace/outclaw:Outclaw",
 			"repo:archive:repo-1",
 			"repo:restore:repo-1",

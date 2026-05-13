@@ -70,52 +70,33 @@ export function resolveFocusedCodingSession(params: {
 }
 
 /**
- * Loads repositories and the sessions for the focused repository, and exposes
- * the handlers the sidebar/center components need to manipulate selection and
- * absorb a freshly-started session. Returning a stable shape lets the same
- * data flow drive whichever shell the coding tab is mounted inside of.
+ * Keeps the code-mode data fetch effects mounted once at the layout level so
+ * the left and center panes can read the same store state without duplicating
+ * repository/session/model requests.
  */
-export function useCodingData() {
-	const repositories = useCodingStore((state) => state.repositories);
+export function useCodingDataLoader(enabled = true) {
 	const repositoriesLoaded = useCodingStore(
 		(state) => state.repositoriesLoaded,
 	);
 	const sessionsByRepository = useCodingStore(
 		(state) => state.sessionsByRepository,
 	);
-	const archivedSessions = useCodingStore((state) => state.archivedSessions);
 	const focusedRepositoryId = useCodingStore(
 		(state) => state.focusedRepositoryId,
 	);
-	const focusedSession = useCodingStore((state) => state.focusedSession);
 	const setRepositories = useCodingStore((state) => state.setRepositories);
 	const setRepositorySessions = useCodingStore(
 		(state) => state.setRepositorySessions,
 	);
-	const setFocusedRepository = useCodingStore(
-		(state) => state.setFocusedRepository,
-	);
-	const setFocusedSession = useCodingStore((state) => state.setFocusedSession);
-	const upsertSession = useCodingStore((state) => state.upsertSession);
-	const upsertArchivedSession = useCodingStore(
-		(state) => state.upsertArchivedSession,
-	);
-	const removeSession = useCodingStore((state) => state.removeSession);
-	const removeArchivedSession = useCodingStore(
-		(state) => state.removeArchivedSession,
-	);
-	const renameSession = useCodingStore((state) => state.renameSession);
-	const updateRepository = useCodingStore((state) => state.updateRepository);
-	const openTab = useCodingStore((state) => state.openTab);
-	const closeTab = useCodingStore((state) => state.closeTab);
-	const updateTabTitle = useCodingStore((state) => state.updateTabTitle);
-	const openTabs = useCodingStore((state) => state.openTabs);
 	const codingModelsLoaded = useCodingStore(
 		(state) => state.codingModelsLoaded,
 	);
 	const setCodingModels = useCodingStore((state) => state.setCodingModels);
 
 	useEffect(() => {
+		if (!enabled || repositoriesLoaded) {
+			return;
+		}
 		void fetchCodingRepositories({ includeArchived: true })
 			.then((result) => {
 				setRepositories(result.repositories);
@@ -123,10 +104,10 @@ export function useCodingData() {
 			.catch((error) => {
 				console.warn("Failed to load coding repositories", error);
 			});
-	}, [setRepositories]);
+	}, [enabled, repositoriesLoaded, setRepositories]);
 
 	useEffect(() => {
-		if (codingModelsLoaded) {
+		if (!enabled || codingModelsLoaded) {
 			return;
 		}
 		void fetchCodingModels()
@@ -136,10 +117,10 @@ export function useCodingData() {
 			.catch((error) => {
 				console.warn("Failed to load coding models", error);
 			});
-	}, [codingModelsLoaded, setCodingModels]);
+	}, [codingModelsLoaded, enabled, setCodingModels]);
 
 	useEffect(() => {
-		if (!focusedRepositoryId) {
+		if (!enabled || !focusedRepositoryId) {
 			return;
 		}
 		if (sessionsByRepository[focusedRepositoryId]) {
@@ -159,7 +140,50 @@ export function useCodingData() {
 			.catch((error) => {
 				console.warn("Failed to load coding sessions", error);
 			});
-	}, [focusedRepositoryId, sessionsByRepository, setRepositorySessions]);
+	}, [
+		enabled,
+		focusedRepositoryId,
+		sessionsByRepository,
+		setRepositorySessions,
+	]);
+}
+
+/**
+ * Exposes the derived data and handlers the sidebar/center components need to
+ * manipulate selection and absorb a freshly-started session.
+ */
+export function useCodingData() {
+	const repositories = useCodingStore((state) => state.repositories);
+	const repositoriesLoaded = useCodingStore(
+		(state) => state.repositoriesLoaded,
+	);
+	const sessionsByRepository = useCodingStore(
+		(state) => state.sessionsByRepository,
+	);
+	const archivedSessions = useCodingStore((state) => state.archivedSessions);
+	const focusedRepositoryId = useCodingStore(
+		(state) => state.focusedRepositoryId,
+	);
+	const focusedSession = useCodingStore((state) => state.focusedSession);
+	const setRepositories = useCodingStore((state) => state.setRepositories);
+	const setFocusedRepository = useCodingStore(
+		(state) => state.setFocusedRepository,
+	);
+	const setFocusedSession = useCodingStore((state) => state.setFocusedSession);
+	const upsertSession = useCodingStore((state) => state.upsertSession);
+	const upsertArchivedSession = useCodingStore(
+		(state) => state.upsertArchivedSession,
+	);
+	const removeSession = useCodingStore((state) => state.removeSession);
+	const removeArchivedSession = useCodingStore(
+		(state) => state.removeArchivedSession,
+	);
+	const renameSession = useCodingStore((state) => state.renameSession);
+	const updateRepository = useCodingStore((state) => state.updateRepository);
+	const openTab = useCodingStore((state) => state.openTab);
+	const closeTab = useCodingStore((state) => state.closeTab);
+	const updateTabTitle = useCodingStore((state) => state.updateTabTitle);
+	const openTabs = useCodingStore((state) => state.openTabs);
 
 	const activeRepositories = repositories.filter(
 		(entry) => entry.status === "active",

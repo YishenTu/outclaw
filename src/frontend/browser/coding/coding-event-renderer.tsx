@@ -8,6 +8,7 @@ import {
 	Terminal,
 	Wrench,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { DisplayChatMessage } from "../../../common/protocol.ts";
 import { Message } from "../components/chat/message.tsx";
 import { ThinkingBlock } from "../components/chat/thinking-block.tsx";
@@ -30,7 +31,7 @@ interface TurnFooter {
 }
 
 export function CodingEventView({ events }: CodingEventViewProps) {
-	const groups = groupEvents(events);
+	const groups = useMemo(() => groupEvents(events), [events]);
 	if (groups.length === 0) {
 		return (
 			<div className="text-sm text-dark-400">
@@ -380,23 +381,30 @@ function CompletedWorkDisclosure({
 	durationMs?: number;
 	groups: CodingEventGroup[];
 }) {
+	const [open, setOpen] = useState(false);
 	const durationLabel = formatWorkDuration(durationMs);
 	const summary = durationLabel ? `Works for ${durationLabel}` : "Work details";
+	const renderBody = open || typeof window === "undefined";
 
 	return (
-		<details>
+		<details
+			open={open}
+			onToggle={(event) => setOpen(event.currentTarget.open)}
+		>
 			<summary className="font-mono-ui cursor-pointer list-none border-b border-dark-500 px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-dark-500 transition-colors hover:text-dark-300 [&::-webkit-details-marker]:hidden">
 				<span className="tabular-nums">{summary}</span>
 			</summary>
-			<div className="mt-2 flex flex-col gap-3">
-				{groups.length > 0 ? (
-					groups.map((group) => <div key={group.key}>{group.render()}</div>)
-				) : (
-					<div className="font-mono-ui px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-dark-600">
-						No intermediate output
-					</div>
-				)}
-			</div>
+			{renderBody && (
+				<div className="mt-2 flex flex-col gap-3">
+					{groups.length > 0 ? (
+						groups.map((group) => <div key={group.key}>{group.render()}</div>)
+					) : (
+						<div className="font-mono-ui px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-dark-600">
+							No intermediate output
+						</div>
+					)}
+				</div>
+			)}
 		</details>
 	);
 }
@@ -499,9 +507,13 @@ function ToolFrame({
 	isFailure?: boolean;
 	children: React.ReactNode;
 }) {
+	const [open, setOpen] = useState(false);
 	const dividerColor = isFailure ? "border-danger/40" : "border-dark-800";
+	const renderBody = open || typeof window === "undefined";
 	return (
 		<details
+			open={open}
+			onToggle={(event) => setOpen(event.currentTarget.open)}
 			className={`group overflow-hidden rounded-md border text-xs leading-5 ${
 				isFailure
 					? "border-danger/40 bg-danger/10"
@@ -528,9 +540,11 @@ function ToolFrame({
 					</span>
 				)}
 			</summary>
-			<div className={`border-t ${dividerColor} bg-dark-950/40`}>
-				{children}
-			</div>
+			{renderBody && (
+				<div className={`border-t ${dividerColor} bg-dark-950/40`}>
+					{children}
+				</div>
+			)}
 		</details>
 	);
 }

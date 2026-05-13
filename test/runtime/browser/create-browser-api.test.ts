@@ -1343,12 +1343,99 @@ describe("createBrowserApi", () => {
 		await expect(
 			api.listCodingRepositoryWorkspaceFiles(repository.id),
 		).resolves.toEqual([
-			{ kind: "directory", path: "node_modules" },
-			{ kind: "file", path: "node_modules/dependency.js" },
 			{ kind: "file", path: "README.md" },
 			{ kind: "directory", path: "src" },
 			{ kind: "file", path: "src/index.ts" },
 		]);
+
+		repositories.close();
+	});
+
+	test("lists shallow coding repository tree entries with repository exclusions", async () => {
+		const root = createTempDir("outclaw-browser-coding-tree-");
+		cleanupPaths.push(root);
+		const repositories = new CodingRepositoryStore(join(root, "coding.sqlite"));
+		const repositoryRoot = join(root, "repo");
+		mkdirSync(repositoryRoot, { recursive: true });
+		runGit(repositoryRoot, ["init", "--initial-branch=main"]);
+		runGit(repositoryRoot, ["config", "user.email", "test@example.com"]);
+		runGit(repositoryRoot, ["config", "user.name", "Test User"]);
+		writeFileSync(join(repositoryRoot, "README.md"), "# Repository\n");
+		runGit(repositoryRoot, ["add", "README.md"]);
+		runGit(repositoryRoot, ["commit", "-m", "Initial commit"]);
+		mkdirSync(join(repositoryRoot, "src", "feature"), { recursive: true });
+		mkdirSync(join(repositoryRoot, "node_modules", "dependency"), {
+			recursive: true,
+		});
+		mkdirSync(join(repositoryRoot, "src", "node_modules", "dependency"), {
+			recursive: true,
+		});
+		writeFileSync(join(repositoryRoot, "src", "index.ts"), "export {};\n");
+		writeFileSync(join(repositoryRoot, "src", "feature", "view.ts"), "");
+		writeFileSync(
+			join(repositoryRoot, "node_modules", "dependency", "index.js"),
+			"",
+		);
+		writeFileSync(
+			join(repositoryRoot, "src", "node_modules", "dependency", "index.js"),
+			"",
+		);
+		const repository = repositories.register({
+			rootCwd: repositoryRoot,
+			displayName: "repo",
+			source: "manual",
+		});
+		const api = createBrowserApi({
+			agents: [],
+			codingRepositories: repositories,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(api.listCodingRepositoryTree(repository.id)).resolves.toEqual([
+			{
+				gitStatus: "new",
+				kind: "directory",
+				name: "src",
+				path: "src",
+			},
+			{
+				kind: "file",
+				name: "README.md",
+				path: "README.md",
+			},
+		]);
+		await expect(
+			api.listCodingRepositoryTree(repository.id, { path: "src" }),
+		).resolves.toEqual([
+			{
+				gitStatus: "new",
+				kind: "directory",
+				name: "feature",
+				path: "src/feature",
+			},
+			{
+				gitStatus: "new",
+				kind: "file",
+				name: "index.ts",
+				path: "src/index.ts",
+			},
+		]);
+		const status = await api.readGitStatus({ repositoryId: repository.id });
+		if (!status.initialized) {
+			throw new Error("expected initialized git status");
+		}
+		expect(status.files).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ path: "src/feature/view.ts" }),
+				expect.objectContaining({ path: "src/index.ts" }),
+			]),
+		);
+		const statusPaths = status.files.map((file) => file.path);
+		expect(statusPaths).not.toContain("node_modules/dependency/index.js");
+		expect(statusPaths).not.toContain("src/node_modules/dependency/index.js");
 
 		repositories.close();
 	});
@@ -3476,11 +3563,13 @@ describe("createBrowserApi", () => {
 		runGit(root, ["config", "user.name", "Test User"]);
 		writeFileSync(join(root, "keep.txt"), "alpha\nbeta\n");
 		writeFileSync(join(root, "drop.txt"), "to-be-deleted\n");
-		runGit(root, ["add", "keep.txt", "drop.txt"]);
+		writeFileSync(join(root, "rename-source.txt"), "stable\n");
+		runGit(root, ["add", "keep.txt", "drop.txt", "rename-source.txt"]);
 		runGit(root, ["commit", "-m", "Initial commit"]);
 		writeFileSync(join(root, "keep.txt"), "alpha\nbeta\ngamma\n");
 		writeFileSync(join(root, "fresh.txt"), "new\nfile\n");
 		runGit(root, ["rm", "drop.txt"]);
+		runGit(root, ["mv", "rename-source.txt", "rename-target.txt"]);
 		runGit(root, ["add", "keep.txt", "fresh.txt"]);
 		runGit(root, ["commit", "-m", "Second commit"]);
 
@@ -3527,6 +3616,14 @@ describe("createBrowserApi", () => {
 					change: "deleted",
 					additions: 0,
 					deletions: 1,
+					binary: false,
+				}),
+				expect.objectContaining({
+					path: "rename-target.txt",
+					change: "renamed",
+					renamedFrom: "rename-source.txt",
+					additions: 0,
+					deletions: 0,
 					binary: false,
 				}),
 			]),

@@ -86,9 +86,13 @@ import { buildAgentGraph } from "./files/build-graph.ts";
 import {
 	listRepositoryWorkspaceFiles,
 	listWorkspaceFiles,
+	REPOSITORY_WORKSPACE_IGNORED_NAMES,
 } from "./files/list-workspace-files.ts";
 import { readBrowserFile } from "./files/read-browser-file.ts";
-import { listTreeEntries } from "./files/tree-workbench.ts";
+import {
+	listRepositoryTreeEntries,
+	listTreeEntries,
+} from "./files/tree-workbench.ts";
 import { writeBrowserFile } from "./files/write-browser-file.ts";
 import {
 	initGitRepo as initGitRepoWorkbench,
@@ -281,7 +285,10 @@ export interface BrowserApi {
 	listCodingRepositoryWorkspaceFiles(
 		repositoryId: string,
 	): Promise<WorkspaceFileEntry[]>;
-	listCodingRepositoryTree(repositoryId: string): Promise<BrowserTreeEntry[]>;
+	listCodingRepositoryTree(
+		repositoryId: string,
+		params?: { path?: string },
+	): Promise<BrowserTreeEntry[]>;
 	getCodingRepositoryCwd(repositoryId: string): string | undefined;
 	readConfigFile(): Promise<BrowserConfigResponse>;
 	writeConfigFile(
@@ -344,6 +351,9 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		options.agents.map((agent) => [agent.agentId, agent] as const),
 	);
 	const ignoredGitPaths = normalizeGitPaths(options.ignoredGitPaths ?? []);
+	const repositoryIgnoredGitPaths = normalizeGitPaths([
+		...REPOSITORY_WORKSPACE_IGNORED_NAMES,
+	]);
 	const pickCodingFolder =
 		options.pickCodingFolder ?? createNativeFolderPicker();
 	const cloneRepository = options.cloneCodingRepository ?? createGitCloner();
@@ -361,6 +371,12 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			return resolveRepositoryCwd(params.repositoryId);
 		}
 		return options.gitRoot;
+	}
+
+	function resolveGitIgnoredPaths(params?: {
+		repositoryId?: string;
+	}): readonly string[] {
+		return params?.repositoryId ? repositoryIgnoredGitPaths : ignoredGitPaths;
 	}
 
 	return {
@@ -880,7 +896,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				cwd,
 				cwd,
 				file.path,
-				ignoredGitPaths,
+				repositoryIgnoredGitPaths,
 			);
 			return {
 				...file,
@@ -900,7 +916,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				cwd,
 				cwd,
 				file.path,
-				ignoredGitPaths,
+				repositoryIgnoredGitPaths,
 			);
 			return {
 				...file,
@@ -931,10 +947,16 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			};
 		},
 		async readGitStatus(params) {
-			return readGitStatusWorkbench(resolveGitCwd(params), ignoredGitPaths);
+			return readGitStatusWorkbench(
+				resolveGitCwd(params),
+				resolveGitIgnoredPaths(params),
+			);
 		},
 		async initGitRepo(params) {
-			return initGitRepoWorkbench(resolveGitCwd(params), ignoredGitPaths);
+			return initGitRepoWorkbench(
+				resolveGitCwd(params),
+				resolveGitIgnoredPaths(params),
+			);
 		},
 		async readGitCommit(sha, params) {
 			return readGitCommitWorkbench(resolveGitCwd(params), sha);
@@ -951,10 +973,19 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				limit: params?.limit,
 			});
 		},
-		async listCodingRepositoryTree(repositoryId) {
+		async listCodingRepositoryTree(repositoryId, params) {
 			const cwd = resolveRepositoryCwd(repositoryId);
-			const gitStatuses = readAgentTreeGitStatuses(cwd, cwd, ignoredGitPaths);
-			return await listTreeEntries(cwd, cwd, gitStatuses);
+			const currentDir = params?.path
+				? resolveExistingPathWithinRoot(cwd, params.path)
+				: cwd;
+			const gitStatuses = readAgentTreeGitStatuses(
+				cwd,
+				cwd,
+				repositoryIgnoredGitPaths,
+			);
+			return await listRepositoryTreeEntries(cwd, currentDir, gitStatuses, {
+				maxDepth: 1,
+			});
 		},
 		async uploadImages(images) {
 			if (!options.filesRoot) {

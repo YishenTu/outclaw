@@ -21,6 +21,7 @@ import {
 	toRelativeDescendantPath,
 	toRelativePath,
 } from "../paths/path-safety.ts";
+import { gitExcludePathspecsForPaths } from "./pathspec.ts";
 
 const MAX_GIT_HISTORY_COMMITS = 30;
 const MAX_GIT_HISTORY_PAGE_SIZE = 100;
@@ -41,7 +42,13 @@ export function readGitStatus(
 	}
 	const output = runGit(
 		gitRoot,
-		["status", "--porcelain=v1", "--branch", "--untracked-files=all"],
+		[
+			"status",
+			"--porcelain=v1",
+			"--branch",
+			"--untracked-files=all",
+			...gitStatusPathspecArgs(".", ignoredGitPaths),
+		],
 		false,
 	);
 	return parseGitStatus(
@@ -100,22 +107,31 @@ export function readGitCommitStats(
 	root: string,
 	sha: string,
 ): BrowserGitCommitStats {
-	const resolvedSha = resolveGitCommitSha(root, sha);
-	const parentSha = readFirstParentSha(root, resolvedSha);
-	const numstatArgs: string[] =
+	const { parentSha, resolvedSha } = readCommitIdentity(root, sha);
+	const statsArgs: string[] =
 		parentSha === undefined
-			? ["show", "-z", "--numstat", "--format=", resolvedSha]
-			: ["diff", "-z", "--numstat", parentSha, resolvedSha];
-	const nameStatusArgs: string[] =
-		parentSha === undefined
-			? ["show", "-z", "--name-status", "--format=", resolvedSha]
-			: ["diff", "-z", "--name-status", parentSha, resolvedSha];
+			? [
+					"show",
+					"-z",
+					"--raw",
+					"--numstat",
+					"--no-ext-diff",
+					"--format=",
+					resolvedSha,
+				]
+			: [
+					"diff",
+					"-z",
+					"--raw",
+					"--numstat",
+					"--no-ext-diff",
+					parentSha,
+					resolvedSha,
+				];
 
-	const numstatOutput = runGit(root, numstatArgs, false);
-	const nameStatusOutput = runGit(root, nameStatusArgs, false);
-
-	const numstatByPath = parseGitNumstatZ(numstatOutput);
-	const statusByPath = parseGitNameStatusZ(nameStatusOutput);
+	const { numstatByPath, statusByPath } = parseGitRawNumstatZ(
+		runGit(root, statsArgs, false),
+	);
 
 	const files: BrowserGitCommitFileStat[] = [];
 	let totalAdditions = 0;
@@ -146,16 +162,29 @@ export function readGitCommitStats(
 	};
 }
 
-function readFirstParentSha(root: string, sha: string): string | undefined {
-	const parents = runGit(
-		root,
-		["show", "--no-patch", "--format=%P", sha],
-		false,
-	)
-		.trim()
-		.split(/\s+/)
-		.filter((part) => part !== "");
-	return parents[0];
+function readCommitIdentity(
+	root: string,
+	sha: string,
+): { parentSha?: string; resolvedSha: string } {
+	let metadata: string;
+	try {
+		metadata = runGit(
+			root,
+			["show", "--no-patch", "--format=%H%x1f%P", sha],
+			false,
+		).trim();
+	} catch {
+		throw new Error(`Unknown commit: ${sha}`);
+	}
+	const [resolvedSha, parentsValue] = metadata.split("\x1f");
+	if (!resolvedSha || parentsValue === undefined) {
+		throw new Error(`Failed to parse commit metadata: ${sha}`);
+	}
+	const parentSha = parentsValue.split(" ").find((parent) => parent !== "");
+	return {
+		resolvedSha,
+		...(parentSha ? { parentSha } : {}),
+	};
 }
 
 interface GitNumstatEntry {
@@ -164,10 +193,66 @@ interface GitNumstatEntry {
 	binary: boolean;
 }
 
-function parseGitNumstatZ(output: string): Map<string, GitNumstatEntry> {
-	const result = new Map<string, GitNumstatEntry>();
+function parseGitRawNumstatZ(output: string): {
+	numstatByPath: Map<string, GitNumstatEntry>;
+	statusByPath: Map<string, GitNameStatusEntry>;
+} {
 	const fields = output.split("\0");
 	let index = 0;
+	const statusByPath = new Map<string, GitNameStatusEntry>();
+	while (index < fields.length) {
+		const head = fields[index];
+		if (head === undefined || head === "") {
+			index += 1;
+			continue;
+		}
+		if (!head.startsWith(":")) {
+			break;
+		}
+		const status = parseGitRawStatusHeader(head);
+		if (!status) {
+			index += 1;
+			continue;
+		}
+		if (status.change === "renamed" || status.change === "copied") {
+			const oldPath = fields[index + 1];
+			const newPath = fields[index + 2];
+			if (newPath !== undefined && newPath !== "") {
+				statusByPath.set(newPath, {
+					change: status.change,
+					renamedFrom: oldPath,
+				});
+			}
+			index += 3;
+			continue;
+		}
+		const path = fields[index + 1];
+		if (path !== undefined && path !== "") {
+			statusByPath.set(path, { change: status.change });
+		}
+		index += 2;
+	}
+
+	return {
+		numstatByPath: parseGitNumstatFields(fields, index),
+		statusByPath,
+	};
+}
+
+function parseGitRawStatusHeader(
+	head: string,
+): { change: BrowserGitCommitFileChangeType } | undefined {
+	const statusToken = head.split(" ").at(-1);
+	const change = mapGitStatusCode(statusToken?.[0]);
+	return change ? { change } : undefined;
+}
+
+function parseGitNumstatFields(
+	fields: string[],
+	startIndex: number,
+): Map<string, GitNumstatEntry> {
+	const result = new Map<string, GitNumstatEntry>();
+	let index = startIndex;
 	while (index < fields.length) {
 		const head = fields[index];
 		if (head === undefined || head === "") {
@@ -209,43 +294,6 @@ function parseGitNumstatZ(output: string): Map<string, GitNumstatEntry> {
 interface GitNameStatusEntry {
 	change: BrowserGitCommitFileChangeType;
 	renamedFrom?: string;
-}
-
-function parseGitNameStatusZ(output: string): Map<string, GitNameStatusEntry> {
-	const result = new Map<string, GitNameStatusEntry>();
-	const fields = output.split("\0");
-	let index = 0;
-	while (index < fields.length) {
-		const head = fields[index];
-		if (head === undefined || head === "") {
-			index += 1;
-			continue;
-		}
-		const code = head[0];
-		const change = mapGitStatusCode(code);
-		if (change === undefined) {
-			index += 1;
-			continue;
-		}
-		if (code === "R" || code === "C") {
-			const oldPath = fields[index + 1];
-			const newPath = fields[index + 2];
-			if (newPath !== undefined && newPath !== "") {
-				result.set(newPath, {
-					change,
-					renamedFrom: oldPath,
-				});
-			}
-			index += 3;
-			continue;
-		}
-		const path = fields[index + 1];
-		if (path !== undefined && path !== "") {
-			result.set(path, { change });
-		}
-		index += 2;
-	}
-	return result;
 }
 
 function mapGitStatusCode(
@@ -374,8 +422,10 @@ function readAgentTreeGitChanges(
 				"status",
 				"--porcelain=v1",
 				"--untracked-files=all",
-				"--",
-				relativeAgentRoot === "" ? "." : relativeAgentRoot,
+				...gitStatusPathspecArgs(
+					relativeAgentRoot === "" ? "." : relativeAgentRoot,
+					ignoredGitPaths,
+				),
 			],
 			false,
 		);
@@ -799,6 +849,16 @@ function isIgnoredGitPath(
 			normalizedPath === ignoredPath ||
 			normalizedPath.startsWith(`${ignoredPath}/`),
 	);
+}
+
+function gitStatusPathspecArgs(
+	rootPathspec: string,
+	ignoredGitPaths: readonly string[],
+): string[] {
+	const ignoredPathspecs = gitExcludePathspecsForPaths(
+		normalizeGitPaths(ignoredGitPaths),
+	);
+	return ["--", rootPathspec, ...ignoredPathspecs];
 }
 
 export function readGitHistory(

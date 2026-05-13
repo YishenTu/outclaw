@@ -246,12 +246,17 @@ export function normalizeCodexJsonlEvents(
 							text: userPromptText,
 							sessionId: options.sessionId,
 						});
-					} else if (payload.role === "assistant" && text) {
-						events.push({
-							type: "text",
-							text,
-							sessionId: options.sessionId,
-						});
+					} else if (payload.role === "assistant") {
+						if (text) {
+							events.push({
+								type: "text",
+								text,
+								sessionId: options.sessionId,
+							});
+						}
+						if (payload.phase === "final_answer") {
+							recordJsonlDone(events, options.sessionId, 0);
+						}
 					}
 					break;
 				}
@@ -430,6 +435,14 @@ export function normalizeCodexJsonlEvents(
 
 		if (rowType === "event_msg") {
 			switch (payloadType) {
+				case "task_complete": {
+					recordJsonlDone(
+						events,
+						options.sessionId,
+						readJsonlDurationMs(payload),
+					);
+					break;
+				}
 				case "patch_apply_end": {
 					const event = readJsonlPatchApplyEnd(payload, options.sessionId);
 					if (event) {
@@ -489,6 +502,61 @@ function findLastNonEmptyLineIndex(lines: string[]): number {
 		}
 	}
 	return -1;
+}
+
+function readJsonlDurationMs(payload: Record<string, unknown>): number {
+	const durationMs = payload.duration_ms;
+	return typeof durationMs === "number" && durationMs >= 0 ? durationMs : 0;
+}
+
+function recordJsonlDone(
+	events: CodingSessionEvent[],
+	sessionId: string,
+	durationMs: number,
+): void {
+	const currentTurnDone = findCurrentTurnDone(events, sessionId);
+	if (currentTurnDone) {
+		currentTurnDone.durationMs = Math.max(
+			currentTurnDone.durationMs,
+			durationMs,
+		);
+		return;
+	}
+	events.push({
+		type: "done",
+		sessionId,
+		durationMs,
+	});
+}
+
+function findCurrentTurnDone(
+	events: CodingSessionEvent[],
+	sessionId: string,
+): Extract<CodingSessionEvent, { type: "done" }> | undefined {
+	for (let index = events.length - 1; index >= 0; index -= 1) {
+		const event = events[index];
+		if (!event) {
+			continue;
+		}
+		if (event.type === "done") {
+			if (event.sessionId === sessionId) {
+				return event;
+			}
+			continue;
+		}
+		if (event.type === "user_prompt") {
+			if (event.sessionId === undefined || event.sessionId === sessionId) {
+				return undefined;
+			}
+			continue;
+		}
+		if (event.type === "error") {
+			if (event.sessionId === undefined || event.sessionId === sessionId) {
+				return undefined;
+			}
+		}
+	}
+	return undefined;
 }
 
 function readTurnFailureMessage(

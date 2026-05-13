@@ -4,12 +4,14 @@ import {
 	browserTreeGitStatusEntries,
 	FileTreeHeader,
 	flattenBrowserTreePaths,
+	reconcileExpandedDirectoryPaths,
+	updateExpandedDirectoryPaths,
 } from "../../../src/frontend/browser/components/right-panel/file-tree.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
 describe("file tree adapters", () => {
-	test("flattens the browser tree shape to leaf file paths", () => {
+	test("flattens the browser tree shape to directory and leaf file paths", () => {
 		expect(
 			flattenBrowserTreePaths([
 				{
@@ -42,7 +44,13 @@ describe("file tree adapters", () => {
 					path: "README.md",
 				},
 			]),
-		).toEqual(["src/index.ts", "src/components/button.tsx", "README.md"]);
+		).toEqual([
+			"src/",
+			"src/index.ts",
+			"src/components/",
+			"src/components/button.tsx",
+			"README.md",
+		]);
 	});
 
 	test("maps browser git statuses to Pierre tree status entries", () => {
@@ -72,6 +80,31 @@ describe("file tree adapters", () => {
 			{ path: "src/", status: "untracked" },
 			{ path: "src/index.ts", status: "modified" },
 		]);
+	});
+
+	test("tracks expanded directory paths in Pierre's canonical slash form", () => {
+		let expanded = new Set<string>();
+
+		expanded = updateExpandedDirectoryPaths(expanded, "src", true);
+		expanded = updateExpandedDirectoryPaths(expanded, "src/components/", true);
+		expanded = updateExpandedDirectoryPaths(expanded, "src", false);
+
+		expect([...expanded]).toEqual(["src/components/"]);
+	});
+
+	test("detects newly expanded directories independent of the click target", () => {
+		const result = reconcileExpandedDirectoryPaths(new Set(["src/"]), [
+			"src/",
+			"src/components/",
+			"docs",
+		]);
+
+		expect([...result.expandedPaths]).toEqual([
+			"src/",
+			"src/components/",
+			"docs/",
+		]);
+		expect(result.newlyExpandedPaths).toEqual(["src/components", "docs"]);
 	});
 
 	test("renders the agents directory path on the same h-8 subheader row as git panel", () => {
