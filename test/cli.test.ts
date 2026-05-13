@@ -1807,7 +1807,7 @@ describe("CLI", () => {
 		}
 	});
 
-	test("coding transcript defaults to the latest twenty renderable events", async () => {
+	test("coding transcript defaults to the latest interaction turn", async () => {
 		const frame = (sequence: number, event: Record<string, unknown>): string =>
 			`id: ${sequence}\ndata: ${JSON.stringify({
 				providerId: "codex",
@@ -1824,13 +1824,52 @@ describe("CLI", () => {
 					return new Response("not found", { status: 404 });
 				}
 				return new Response(
-					Array.from({ length: 25 }, (_, index) =>
-						frame(index + 1, {
-							type: "text",
-							text: `event ${index + 1}\n`,
+					[
+						frame(1, {
+							type: "session_initialized",
 							sessionId: "done-session",
 						}),
-					).join(""),
+						frame(2, {
+							type: "user_prompt",
+							text: "first prompt",
+							sessionId: "done-session",
+						}),
+						frame(3, {
+							type: "text",
+							text: "first result\n",
+							sessionId: "done-session",
+						}),
+						frame(4, {
+							type: "done",
+							sessionId: "done-session",
+							durationMs: 10,
+						}),
+						frame(5, {
+							type: "user_prompt",
+							text: "check roman numerals",
+							sessionId: "done-session",
+						}),
+						frame(6, {
+							type: "text",
+							text: "```text\n",
+							sessionId: "done-session",
+						}),
+						frame(7, {
+							type: "text",
+							text: "I\nIV\nIX\n",
+							sessionId: "done-session",
+						}),
+						frame(8, {
+							type: "text",
+							text: "```\n",
+							sessionId: "done-session",
+						}),
+						frame(9, {
+							type: "done",
+							sessionId: "done-session",
+							durationMs: 35200,
+						}),
+					].join(""),
 					{
 						headers: {
 							"content-type": "text/event-stream; charset=utf-8",
@@ -1849,15 +1888,16 @@ describe("CLI", () => {
 			expect(result.timedOut).toBe(false);
 			expect(result.exitCode).toBe(0);
 			expect(result.stderr).toBe("");
-			expect(result.stdout).not.toContain("event 5");
-			expect(result.stdout).toContain("event 6");
-			expect(result.stdout).toContain("event 25");
+			expect(result.stdout).toStartWith("[user] check roman numerals\n");
+			expect(result.stdout).not.toContain("first prompt");
+			expect(result.stdout).toContain("```text\nI\nIV\nIX\n```\n");
+			expect(result.stdout).toContain("[done] 35.2s");
 		} finally {
 			server.stop();
 		}
 	});
 
-	test("coding transcript supports an explicit tail count", async () => {
+	test("coding transcript supports an explicit interaction turn count", async () => {
 		const frame = (
 			sdkSessionId: string,
 			sequence: number,
@@ -1879,18 +1919,48 @@ describe("CLI", () => {
 						[
 							frame("done-session", 1, {
 								type: "user_prompt",
-								text: "previous prompt",
+								text: "first prompt",
 								sessionId: "done-session",
 							}),
 							frame("done-session", 2, {
 								type: "text",
-								text: "already finished",
+								text: "first result\n",
 								sessionId: "done-session",
 							}),
 							frame("done-session", 3, {
 								type: "done",
 								sessionId: "done-session",
 								durationMs: 42,
+							}),
+							frame("done-session", 4, {
+								type: "user_prompt",
+								text: "second prompt",
+								sessionId: "done-session",
+							}),
+							frame("done-session", 5, {
+								type: "text",
+								text: "second result\n",
+								sessionId: "done-session",
+							}),
+							frame("done-session", 6, {
+								type: "done",
+								sessionId: "done-session",
+								durationMs: 43,
+							}),
+							frame("done-session", 7, {
+								type: "user_prompt",
+								text: "third prompt",
+								sessionId: "done-session",
+							}),
+							frame("done-session", 8, {
+								type: "text",
+								text: "third result\n",
+								sessionId: "done-session",
+							}),
+							frame("done-session", 9, {
+								type: "done",
+								sessionId: "done-session",
+								durationMs: 44,
 							}),
 						].join(""),
 						{
@@ -1907,30 +1977,32 @@ describe("CLI", () => {
 
 		try {
 			const done = await runCliAsyncWithTimeout(
-				["coding", "transcript", "codex/done-session", "--tail", "2"],
+				["coding", "transcript", "codex/done-session", "--turns", "2"],
 				{ cwd: TEST_HOME, timeoutMs: 1000 },
 			);
 			expect(done.timedOut).toBe(false);
 			expect(done.stderr).toBe("");
 			expect(done.exitCode).toBe(0);
-			expect(done.stdout).not.toContain("[user] previous prompt");
-			expect(done.stdout).toContain("already finished");
-			expect(done.stdout).toContain("[done] 42ms");
+			expect(done.stdout).not.toContain("[user] first prompt");
+			expect(done.stdout).toStartWith("[user] second prompt\n");
+			expect(done.stdout).toContain("second result\n");
+			expect(done.stdout).toContain("[user] third prompt");
+			expect(done.stdout).toContain("third result\n");
 		} finally {
 			server.stop();
 		}
 	});
 
-	test("coding transcript rejects malformed tail counts", async () => {
+	test("coding transcript rejects malformed turn counts", async () => {
 		const result = await runCliAsync(
-			["coding", "transcript", "codex/done-session", "--tail=2x"],
+			["coding", "transcript", "codex/done-session", "--turns=2x"],
 			{},
 		);
 
 		expect(result.exitCode).toBe(1);
 		expect(result.stdout).toBe("");
 		expect(result.stderr).toContain(
-			"Transcript tail must be a positive integer",
+			"Transcript turn count must be a positive integer",
 		);
 	});
 

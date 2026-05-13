@@ -22,7 +22,7 @@ export function formatUsage() {
 		'       oc coding start <repo-id-or-path> "<prompt>"',
 		'       oc coding resume <provider/session> "<prompt>"',
 		"       oc coding status <provider/session>",
-		"       oc coding transcript <provider/session> [--tail N|--full]",
+		"       oc coding transcript <provider/session> [--turns N|--full]",
 		"       oc session list [--limit N] [--tag cron]",
 		"       oc session search <query> [--limit N]",
 		"       oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
@@ -235,7 +235,7 @@ export function formatCodingUsage() {
 		'       oc coding start <repo-id-or-path> "<prompt>"',
 		'       oc coding resume <provider/session> "<prompt>"',
 		"       oc coding status <provider/session>",
-		"       oc coding transcript <provider/session> [--tail N|--full]",
+		"       oc coding transcript <provider/session> [--turns N|--full]",
 		"",
 		"Commands:",
 		"       <target>  start or resume based on the target",
@@ -272,10 +272,11 @@ export function formatCodingResumeUsage() {
 
 export function formatCodingTranscriptUsage() {
 	return joinLines([
-		"Usage: oc coding transcript <provider/session> [--tail N|--full]",
+		"Usage: oc coding transcript <provider/session> [--turns N|--full]",
 		"",
 		"Replays normalized coding-session history without following future events.",
-		"Default tail: 20 renderable events.",
+		"Default: latest interaction turn.",
+		"Use --turns N to print the latest N interaction turns.",
 		"Use --full to print the complete available replay.",
 	]);
 }

@@ -158,7 +158,7 @@ describe("CLI usage text", () => {
 			],
 			[
 				formatCodingTranscriptUsage(),
-				["Usage: oc coding transcript", "Default tail: 20"],
+				["Usage: oc coding transcript", "latest interaction turn"],
 			],
 			[
 				formatCodingStatusUsage(),

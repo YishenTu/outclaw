@@ -194,18 +194,18 @@ async function codingTranscriptCommand(options: CodingCommandOptions) {
 function parseCodingTranscriptOptions(
 	args: string[],
 ):
-	| { status: "valid"; value: { full: boolean; tail: number } }
+	| { status: "valid"; value: { full: boolean; turns: number } }
 	| { status: "invalid"; message: string } {
 	let full = false;
-	let tail = 20;
-	let tailSet = false;
+	let turns = 1;
+	let turnsSet = false;
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
 		if (arg === "--full") {
 			full = true;
 			continue;
 		}
-		if (arg === "--tail") {
+		if (arg === "--turns") {
 			const value = args[index + 1];
 			if (!value) {
 				return { status: "invalid", message: formatCodingTranscriptUsage() };
@@ -214,35 +214,35 @@ function parseCodingTranscriptOptions(
 			if (parsed === undefined) {
 				return {
 					status: "invalid",
-					message: "Transcript tail must be a positive integer",
+					message: "Transcript turn count must be a positive integer",
 				};
 			}
-			tail = parsed;
-			tailSet = true;
+			turns = parsed;
+			turnsSet = true;
 			index += 1;
 			continue;
 		}
-		if (arg?.startsWith("--tail=")) {
-			const parsed = parsePositiveInteger(arg.slice("--tail=".length));
+		if (arg?.startsWith("--turns=")) {
+			const parsed = parsePositiveInteger(arg.slice("--turns=".length));
 			if (parsed === undefined) {
 				return {
 					status: "invalid",
-					message: "Transcript tail must be a positive integer",
+					message: "Transcript turn count must be a positive integer",
 				};
 			}
-			tail = parsed;
-			tailSet = true;
+			turns = parsed;
+			turnsSet = true;
 			continue;
 		}
 		return { status: "invalid", message: formatCodingTranscriptUsage() };
 	}
-	if (full && tailSet) {
+	if (full && turnsSet) {
 		return {
 			status: "invalid",
-			message: "Use either --full or --tail, not both",
+			message: "Use either --full or --turns, not both",
 		};
 	}
-	return { status: "valid", value: { full, tail } };
+	return { status: "valid", value: { full, turns } };
 }
 
 function parsePositiveInteger(value: string): number | undefined {
@@ -458,7 +458,7 @@ async function printCodingTranscript(
 	options: {
 		chatContext?: CodingChatContext;
 		full: boolean;
-		tail: number;
+		turns: number;
 	},
 ) {
 	const abortController = new AbortController();
@@ -472,13 +472,29 @@ async function printCodingTranscript(
 			events.push(item.event);
 		}
 	}
-	const selected = options.full ? events : events.slice(-options.tail);
+	const selected = options.full
+		? events
+		: selectLatestInteractionTurns(events, options.turns);
 	const renderer = new CodingTranscriptRenderer((chunk) => {
 		process.stdout.write(chunk);
 	});
 	for (const event of selected) {
 		renderer.render(event);
 	}
+}
+
+function selectLatestInteractionTurns(
+	events: CodingSessionEvent[],
+	turns: number,
+): CodingSessionEvent[] {
+	const turnStarts = events.flatMap((event, index) =>
+		event.type === "user_prompt" ? [index] : [],
+	);
+	if (turnStarts.length === 0) {
+		return events;
+	}
+	const selectedTurnIndex = Math.max(0, turnStarts.length - turns);
+	return events.slice(turnStarts[selectedTurnIndex]);
 }
 
 interface CodingSessionStreamItem {

@@ -8,7 +8,7 @@
 | `oc coding start <repo-id-or-path> "<prompt>"` | Start a daemon-owned coding session and print its ref |
 | `oc coding resume <provider/session> "<prompt>"` | Send a follow-up prompt to an existing coding session |
 | `oc coding status <provider/session>` | Print running, error, or the final response |
-| `oc coding transcript <provider/session> [--tail N|--full]` | Replay normalized coding-session history |
+| `oc coding transcript <provider/session> [--turns N|--full]` | Replay normalized coding-session history |
 
 The prompt can be passed as a quoted string or as bare words. All remaining
 positional arguments after the repo/path or session ref are joined with spaces.
@@ -26,4 +26,4 @@ positional arguments after the repo/path or session ref are joined with spaces.
 - Archived sessions are restored by the daemon resume path before the prompt is accepted.
 - If the session is already running, `resume` steers the active turn instead of queueing another turn into the same coding session.
 - Use `status` when you need a non-streaming snapshot. It prints `running` while the latest turn is active, `error: <message>` for failed turns, or `done` plus the final assistant response when the session is idle.
-- Use `transcript` when you need history or evidence. It replays normalized prior events without following future output. Default tail: 20 renderable events; use `--full` only for intentional full replay.
+- Use `transcript` when you need history or evidence. It replays normalized prior events without following future output. By default it prints the latest interaction turn; use `--turns N` to inspect the latest N interaction turns and `--full` only for intentional full replay.
