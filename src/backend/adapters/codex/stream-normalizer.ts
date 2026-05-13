@@ -23,16 +23,76 @@ interface NormalizeCodexTurnOptions {
 	startedAtMs: number;
 }
 
+class CodexToolCallProjectionState {
+	private readonly commandCallIds = new Set<string>();
+	private readonly commandOutputsByCallId = new Map<string, string>();
+	private readonly genericToolKindsByCallId = new Map<string, string>();
+	private readonly suppressedCallIds = new Set<string>();
+
+	markCommandStarted(callId: string): void {
+		this.commandCallIds.add(callId);
+	}
+
+	hasCommandStarted(callId: string): boolean {
+		return this.commandCallIds.has(callId);
+	}
+
+	rememberCommandOutput(callId: string, output: string): void {
+		this.commandOutputsByCallId.set(callId, output);
+	}
+
+	readCommandOutput(callId: string): string | undefined {
+		return this.commandOutputsByCallId.get(callId);
+	}
+
+	forgetCommandOutput(callId: string): void {
+		this.commandOutputsByCallId.delete(callId);
+	}
+
+	commandOutputs(): Iterable<[string, string]> {
+		return this.commandOutputsByCallId;
+	}
+
+	markGenericToolStarted(callId: string, toolKind: string): void {
+		this.genericToolKindsByCallId.set(callId, toolKind);
+	}
+
+	consumeGenericToolKind(callId: string): string | undefined {
+		const toolKind = this.genericToolKindsByCallId.get(callId);
+		if (toolKind) {
+			this.genericToolKindsByCallId.delete(callId);
+		}
+		return toolKind;
+	}
+
+	suppress(callId: string): void {
+		this.suppressedCallIds.add(callId);
+	}
+
+	isSuppressed(callId: string): boolean {
+		return this.suppressedCallIds.has(callId);
+	}
+
+	consumeSuppressed(callId: string): boolean {
+		if (!this.suppressedCallIds.has(callId)) {
+			return false;
+		}
+		this.suppressedCallIds.delete(callId);
+		return true;
+	}
+
+	clearCommandOutputs(): void {
+		this.commandOutputsByCallId.clear();
+	}
+}
+
 export async function* normalizeCodexTurnNotifications(
 	options: NormalizeCodexTurnOptions,
 ): AsyncIterable<FacadeEvent> {
 	let pendingUsage: UsageInfo | undefined;
 	let terminalError = false;
 	const finalAssistantMessageIds = new Set<string>();
-	const rawCommandStarts = new Set<string>();
-	const rawCommandOutputs = new Map<string, string>();
-	const rawToolKindsByCallId = new Map<string, string>();
-	const suppressedToolCallIds = new Set<string>();
+	const projection = new CodexToolCallProjectionState();
 	const completedCommands = new Set<string>();
 
 	for await (const notification of options.notifications) {
@@ -70,10 +130,7 @@ export async function* normalizeCodexTurnNotifications(
 				const events = readRawResponseItemCompleted(
 					notification.params,
 					options.sessionId,
-					rawCommandStarts,
-					rawCommandOutputs,
-					rawToolKindsByCallId,
-					suppressedToolCallIds,
+					projection,
 				);
 				for (const event of events) {
 					yield event;
@@ -88,14 +145,14 @@ export async function* normalizeCodexTurnNotifications(
 					finalAssistantMessageIds.add(finalAssistantMessageId);
 				}
 				const callId = readItemCallId(notification.params);
-				if (callId && suppressedToolCallIds.has(callId)) {
+				if (callId && projection.isSuppressed(callId)) {
 					break;
 				}
 				const event = readItemStarted(notification.params, options.sessionId);
 				if (event) {
 					if (
 						event.type === "command_execution_started" &&
-						rawCommandStarts.has(event.callId)
+						projection.hasCommandStarted(event.callId)
 					) {
 						break;
 					}
@@ -129,11 +186,12 @@ export async function* normalizeCodexTurnNotifications(
 					return;
 				}
 				const callId = readItemCallId(notification.params);
-				if (callId && suppressedToolCallIds.has(callId)) {
-					suppressedToolCallIds.delete(callId);
+				if (callId && projection.consumeSuppressed(callId)) {
 					break;
 				}
-				const rawOutput = callId ? rawCommandOutputs.get(callId) : undefined;
+				const rawOutput = callId
+					? projection.readCommandOutput(callId)
+					: undefined;
 				const event = readItemCompleted(
 					notification.params,
 					options.sessionId,
@@ -142,7 +200,7 @@ export async function* normalizeCodexTurnNotifications(
 				if (event) {
 					if (event.type === "command_execution_completed") {
 						completedCommands.add(event.callId);
-						rawCommandOutputs.delete(event.callId);
+						projection.forgetCommandOutput(event.callId);
 					}
 					yield event;
 				}
@@ -186,7 +244,7 @@ export async function* normalizeCodexTurnNotifications(
 					};
 					return;
 				}
-				for (const [callId, output] of rawCommandOutputs) {
+				for (const [callId, output] of projection.commandOutputs()) {
 					if (completedCommands.has(callId)) {
 						continue;
 					}
@@ -197,7 +255,7 @@ export async function* normalizeCodexTurnNotifications(
 						sessionId: options.sessionId,
 					};
 				}
-				rawCommandOutputs.clear();
+				projection.clearCommandOutputs();
 				yield {
 					type: "done",
 					sessionId: options.sessionId,
@@ -217,8 +275,7 @@ export function normalizeCodexJsonlEvents(
 	options: { sessionId: string },
 ): CodingSessionEvent[] {
 	const events: CodingSessionEvent[] = [];
-	const commandCallIds = new Set<string>();
-	const toolKindsByCallId = new Map<string, string>();
+	const projection = new CodexToolCallProjectionState();
 	const terminalCommandCallIds = new Map<string, string>();
 	const writeStdinParentCallIds = new Map<string, string>();
 	const runningCommandCallIds = new Set<string>();
@@ -283,7 +340,7 @@ export function normalizeCodexJsonlEvents(
 							options.sessionId,
 						);
 						if (event?.type === "command_execution_started") {
-							commandCallIds.add(event.callId);
+							projection.markCommandStarted(event.callId);
 							events.push(event);
 						}
 						break;
@@ -307,7 +364,7 @@ export function normalizeCodexJsonlEvents(
 						options.sessionId,
 					)) {
 						if (event.type === "tool_call_started") {
-							toolKindsByCallId.set(event.callId, event.toolKind);
+							projection.markGenericToolStarted(event.callId, event.toolKind);
 						}
 						events.push(event);
 					}
@@ -319,7 +376,7 @@ export function normalizeCodexJsonlEvents(
 					if (!callId) {
 						break;
 					}
-					if (commandCallIds.has(callId)) {
+					if (projection.hasCommandStarted(callId)) {
 						const commandResult = readCommandToolResult(payload.output);
 						if (commandResult.status === "running") {
 							runningCommandCallIds.add(callId);
@@ -378,7 +435,7 @@ export function normalizeCodexJsonlEvents(
 						}
 						break;
 					}
-					const toolKind = toolKindsByCallId.get(callId);
+					const toolKind = projection.consumeGenericToolKind(callId);
 					if (toolKind) {
 						events.push({
 							type: "tool_call_completed",
@@ -404,7 +461,7 @@ export function normalizeCodexJsonlEvents(
 						options.sessionId,
 					)) {
 						if (event.type === "tool_call_started") {
-							toolKindsByCallId.set(event.callId, event.toolKind);
+							projection.markGenericToolStarted(event.callId, event.toolKind);
 						}
 						events.push(event);
 					}
@@ -418,10 +475,9 @@ export function normalizeCodexJsonlEvents(
 					// card with no header context; drop it.
 					const callId =
 						typeof payload.call_id === "string" ? payload.call_id : undefined;
-					if (!callId || !toolKindsByCallId.has(callId)) {
+					if (!callId || !projection.consumeGenericToolKind(callId)) {
 						break;
 					}
-					toolKindsByCallId.delete(callId);
 					for (const event of readRawGenericToolCompleted(
 						payload,
 						options.sessionId,
@@ -666,10 +722,7 @@ function readErrorMessage(params: unknown): string | undefined {
 function readRawResponseItemCompleted(
 	params: unknown,
 	sessionId: string,
-	rawCommandStarts: Set<string>,
-	rawCommandOutputs: Map<string, string>,
-	rawToolKindsByCallId: Map<string, string>,
-	suppressedToolCallIds: Set<string>,
+	projection: CodexToolCallProjectionState,
 ): FacadeEvent[] {
 	const item = asRecord(asRecord(params)?.item);
 	const itemType = typeof item?.type === "string" ? item.type : undefined;
@@ -684,21 +737,21 @@ function readRawResponseItemCompleted(
 			if (!event) {
 				return [];
 			}
-			rawCommandStarts.add(event.callId);
+			projection.markCommandStarted(event.callId);
 			return [event];
 		}
 		if (name === "write_stdin") {
 			const callId =
 				typeof item.call_id === "string" ? item.call_id : undefined;
 			if (callId) {
-				suppressedToolCallIds.add(callId);
+				projection.suppress(callId);
 			}
 			return [];
 		}
 		const events = readRawGenericToolStarted(item, sessionId);
 		for (const event of events) {
 			if (event.type === "tool_call_started") {
-				rawToolKindsByCallId.set(event.callId, event.toolKind);
+				projection.markGenericToolStarted(event.callId, event.toolKind);
 			}
 		}
 		return events;
@@ -709,20 +762,18 @@ function readRawResponseItemCompleted(
 		if (!callId) {
 			return [];
 		}
-		if (suppressedToolCallIds.has(callId)) {
-			suppressedToolCallIds.delete(callId);
+		if (projection.consumeSuppressed(callId)) {
 			return [];
 		}
 		const output = normalizeFunctionOutput(item.output);
-		if (rawCommandStarts.has(callId)) {
-			rawCommandOutputs.set(callId, output);
+		if (projection.hasCommandStarted(callId)) {
+			projection.rememberCommandOutput(callId, output);
 			return [];
 		}
-		const toolKind = rawToolKindsByCallId.get(callId);
+		const toolKind = projection.consumeGenericToolKind(callId);
 		if (!toolKind) {
 			return [];
 		}
-		rawToolKindsByCallId.delete(callId);
 		return [
 			{
 				type: "tool_call_completed",
@@ -739,14 +790,14 @@ function readRawResponseItemCompleted(
 			const callId =
 				typeof item.call_id === "string" ? item.call_id : undefined;
 			if (callId) {
-				suppressedToolCallIds.add(callId);
+				projection.suppress(callId);
 			}
 			return [];
 		}
 		const events = readRawGenericToolStarted(item, sessionId);
 		for (const event of events) {
 			if (event.type === "tool_call_started") {
-				rawToolKindsByCallId.set(event.callId, event.toolKind);
+				projection.markGenericToolStarted(event.callId, event.toolKind);
 			}
 		}
 		return events;
@@ -759,14 +810,12 @@ function readRawResponseItemCompleted(
 		// render as a bare "Success. Updated …" card with no header context;
 		// drop it.
 		const callId = typeof item.call_id === "string" ? item.call_id : undefined;
-		if (callId && suppressedToolCallIds.has(callId)) {
-			suppressedToolCallIds.delete(callId);
+		if (callId && projection.consumeSuppressed(callId)) {
 			return [];
 		}
-		if (!callId || !rawToolKindsByCallId.has(callId)) {
+		if (!callId || !projection.consumeGenericToolKind(callId)) {
 			return [];
 		}
-		rawToolKindsByCallId.delete(callId);
 		return readRawGenericToolCompleted(item, sessionId);
 	}
 

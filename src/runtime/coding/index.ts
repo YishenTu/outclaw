@@ -29,6 +29,12 @@ export {
 	type StoredCodingSessionEvent,
 } from "./coding-session-event-hub.ts";
 export {
+	type CodingSessionEventHistory,
+	type CodingSessionExistence,
+	type OpenCodingSessionEventStreamParams,
+	openCodingSessionEventStream,
+} from "./coding-session-event-stream.ts";
+export {
 	CODING_STORAGE_OWNER_ID,
 	type CodingSessionDetail,
 	type CodingSessionLifecycleStatus,

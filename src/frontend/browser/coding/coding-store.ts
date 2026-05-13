@@ -11,6 +11,12 @@ import type {
 	BrowserCodingSessionSummary,
 	SessionCursor,
 } from "../../../common/protocol.ts";
+import {
+	mergeCodingSessions,
+	removeCodingSession,
+	renameCodingSession as renameCodingSessionInList,
+	upsertCodingSession,
+} from "./coding-session-collections.ts";
 
 export type BrowserAppMode = "chat" | "code";
 
@@ -489,24 +495,10 @@ export const useCodingStore = create<CodingState>()(
 			appendRepositorySessions(repositoryId, sessions, nextCursor) {
 				set((state) => {
 					const existing = state.sessionsByRepository[repositoryId] ?? [];
-					const seen = new Set(
-						existing.map(
-							(entry) => `${entry.providerId}\u0000${entry.sdkSessionId}`,
-						),
-					);
-					const merged = [...existing];
-					for (const session of sessions) {
-						const key = `${session.providerId}\u0000${session.sdkSessionId}`;
-						if (seen.has(key)) {
-							continue;
-						}
-						merged.push(session);
-						seen.add(key);
-					}
 					return {
 						sessionsByRepository: {
 							...state.sessionsByRepository,
-							[repositoryId]: merged,
+							[repositoryId]: mergeCodingSessions(existing, sessions),
 						},
 						nextCursorByRepository: {
 							...state.nextCursorByRepository,
@@ -529,26 +521,12 @@ export const useCodingStore = create<CodingState>()(
 					if (!current || current.query !== query) {
 						return state;
 					}
-					const seen = new Set(
-						current.sessions.map(
-							(entry) => `${entry.providerId}\u0000${entry.sdkSessionId}`,
-						),
-					);
-					const merged = [...current.sessions];
-					for (const session of sessions) {
-						const key = `${session.providerId}\u0000${session.sdkSessionId}`;
-						if (seen.has(key)) {
-							continue;
-						}
-						merged.push(session);
-						seen.add(key);
-					}
 					return {
 						searchByRepository: {
 							...state.searchByRepository,
 							[repositoryId]: {
 								query,
-								sessions: merged,
+								sessions: mergeCodingSessions(current.sessions, sessions),
 								nextCursor,
 							},
 						},
@@ -573,22 +551,11 @@ export const useCodingStore = create<CodingState>()(
 			},
 			appendArchivedSessions(sessions, nextCursor) {
 				set((state) => {
-					const seen = new Set(
-						state.archivedSessions.map(
-							(entry) => `${entry.providerId}\u0000${entry.sdkSessionId}`,
-						),
-					);
-					const merged = [...state.archivedSessions];
-					for (const session of sessions) {
-						const key = `${session.providerId}\u0000${session.sdkSessionId}`;
-						if (seen.has(key)) {
-							continue;
-						}
-						merged.push(session);
-						seen.add(key);
-					}
 					return {
-						archivedSessions: merged,
+						archivedSessions: mergeCodingSessions(
+							state.archivedSessions,
+							sessions,
+						),
 						archivedNextCursor: nextCursor,
 					};
 				});
@@ -604,24 +571,10 @@ export const useCodingStore = create<CodingState>()(
 					if (!current || current.query !== query) {
 						return state;
 					}
-					const seen = new Set(
-						current.sessions.map(
-							(entry) => `${entry.providerId}\u0000${entry.sdkSessionId}`,
-						),
-					);
-					const merged = [...current.sessions];
-					for (const session of sessions) {
-						const key = `${session.providerId}\u0000${session.sdkSessionId}`;
-						if (seen.has(key)) {
-							continue;
-						}
-						merged.push(session);
-						seen.add(key);
-					}
 					return {
 						archivedSearchState: {
 							query,
-							sessions: merged,
+							sessions: mergeCodingSessions(current.sessions, sessions),
 							nextCursor,
 						},
 					};
@@ -632,16 +585,12 @@ export const useCodingStore = create<CodingState>()(
 			},
 			renameSession(repositoryId, providerId, sdkSessionId, title) {
 				set((state) => {
-					const matches = (entry: BrowserCodingSessionSummary) =>
-						entry.providerId === providerId &&
-						entry.sdkSessionId === sdkSessionId;
+					const ref = { providerId, sdkSessionId };
 					const sessions = state.sessionsByRepository[repositoryId];
 					const nextSessionsByRepository = sessions
 						? {
 								...state.sessionsByRepository,
-								[repositoryId]: sessions.map((entry) =>
-									matches(entry) ? { ...entry, title } : entry,
-								),
+								[repositoryId]: renameCodingSessionInList(sessions, ref, title),
 							}
 						: state.sessionsByRepository;
 					const currentSearch = state.searchByRepository[repositoryId];
@@ -650,20 +599,26 @@ export const useCodingStore = create<CodingState>()(
 								...state.searchByRepository,
 								[repositoryId]: {
 									...currentSearch,
-									sessions: currentSearch.sessions.map((entry) =>
-										matches(entry) ? { ...entry, title } : entry,
+									sessions: renameCodingSessionInList(
+										currentSearch.sessions,
+										ref,
+										title,
 									),
 								},
 							}
 						: state.searchByRepository;
-					const nextArchivedSessions = state.archivedSessions.map((entry) =>
-						matches(entry) ? { ...entry, title } : entry,
+					const nextArchivedSessions = renameCodingSessionInList(
+						state.archivedSessions,
+						ref,
+						title,
 					);
 					const nextArchivedSearchState = state.archivedSearchState
 						? {
 								...state.archivedSearchState,
-								sessions: state.archivedSearchState.sessions.map((entry) =>
-									matches(entry) ? { ...entry, title } : entry,
+								sessions: renameCodingSessionInList(
+									state.archivedSearchState.sessions,
+									ref,
+									title,
 								),
 							}
 						: state.archivedSearchState;
@@ -685,32 +640,21 @@ export const useCodingStore = create<CodingState>()(
 			upsertSession(repositoryId, session) {
 				set((state) => {
 					const existing = state.sessionsByRepository[repositoryId] ?? [];
-					const filtered = existing.filter(
-						(entry) =>
-							!(
-								entry.providerId === session.providerId &&
-								entry.sdkSessionId === session.sdkSessionId
-							),
-					);
 					return {
 						sessionsByRepository: {
 							...state.sessionsByRepository,
-							[repositoryId]: [session, ...filtered],
+							[repositoryId]: upsertCodingSession(existing, session),
 						},
 					};
 				});
 			},
 			upsertArchivedSession(session) {
 				set((state) => {
-					const filtered = state.archivedSessions.filter(
-						(entry) =>
-							!(
-								entry.providerId === session.providerId &&
-								entry.sdkSessionId === session.sdkSessionId
-							),
-					);
 					return {
-						archivedSessions: [session, ...filtered],
+						archivedSessions: upsertCodingSession(
+							state.archivedSessions,
+							session,
+						),
 					};
 				});
 			},
@@ -811,14 +755,12 @@ export const useCodingStore = create<CodingState>()(
 			},
 			removeSession(repositoryId, providerId, sdkSessionId) {
 				set((state) => {
-					const matches = (entry: BrowserCodingSessionSummary) =>
-						entry.providerId === providerId &&
-						entry.sdkSessionId === sdkSessionId;
+					const ref = { providerId, sdkSessionId };
 					const sessions = state.sessionsByRepository[repositoryId];
 					const nextSessionsByRepository = sessions
 						? {
 								...state.sessionsByRepository,
-								[repositoryId]: sessions.filter((entry) => !matches(entry)),
+								[repositoryId]: removeCodingSession(sessions, ref),
 							}
 						: state.sessionsByRepository;
 					const search = state.searchByRepository[repositoryId];
@@ -827,7 +769,7 @@ export const useCodingStore = create<CodingState>()(
 								...state.searchByRepository,
 								[repositoryId]: {
 									...search,
-									sessions: search.sessions.filter((entry) => !matches(entry)),
+									sessions: removeCodingSession(search.sessions, ref),
 								},
 							}
 						: state.searchByRepository;
@@ -845,17 +787,16 @@ export const useCodingStore = create<CodingState>()(
 			},
 			removeArchivedSession(providerId, sdkSessionId) {
 				set((state) => {
-					const matches = (entry: BrowserCodingSessionSummary) =>
-						entry.providerId === providerId &&
-						entry.sdkSessionId === sdkSessionId;
-					const nextArchivedSessions = state.archivedSessions.filter(
-						(entry) => !matches(entry),
+					const ref = { providerId, sdkSessionId };
+					const nextArchivedSessions = removeCodingSession(
+						state.archivedSessions,
+						ref,
 					);
 					const search = state.archivedSearchState;
 					const nextArchivedSearchState = search
 						? {
 								...search,
-								sessions: search.sessions.filter((entry) => !matches(entry)),
+								sessions: removeCodingSession(search.sessions, ref),
 							}
 						: state.archivedSearchState;
 					return {
