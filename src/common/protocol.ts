@@ -567,6 +567,15 @@ export interface BrowserAgentActiveSessionChangedEvent {
 	};
 }
 
+export interface BrowserChatCodingLinksChangedEvent {
+	type: "browser_chat_coding_links_changed";
+	chatAgentId: string;
+	chatProviderId: string;
+	chatSdkSessionId: string;
+	codingProviderId: string;
+	codingSdkSessionId: string;
+}
+
 export interface SkillInfo {
 	name: string;
 	description: string;
@@ -1104,6 +1113,7 @@ export type ServerEvent =
 	| BrowserSidebarInvalidatedEvent
 	| BrowserAgentsInvalidatedEvent
 	| BrowserAgentActiveSessionChangedEvent
+	| BrowserChatCodingLinksChangedEvent
 	| SkillsUpdateEvent
 	| WorkspaceFilesUpdateEvent
 	| AskResponseEvent

@@ -24,6 +24,8 @@ import { useRuntimeStore } from "../../../src/frontend/browser/stores/runtime.ts
 import { useRuntimePopupStore } from "../../../src/frontend/browser/stores/runtime-popup.ts";
 import { useSessionsStore } from "../../../src/frontend/browser/stores/sessions.ts";
 import { useSlashCommandsStore } from "../../../src/frontend/browser/stores/slash-commands.ts";
+import { CHAT_TAB } from "../../../src/frontend/browser/stores/tab-policy.ts";
+import { useTabsStore } from "../../../src/frontend/browser/stores/tabs.ts";
 
 const USAGE: UsageInfo = {
 	inputTokens: 10,
@@ -53,6 +55,7 @@ function resetBrowserStores() {
 	resetStore(useRuntimePopupStore);
 	resetStore(useRightPanelRefreshStore);
 	resetStore(useSlashCommandsStore);
+	resetStore(useTabsStore);
 }
 
 function createHandlerOptions(overrides: Record<string, unknown> = {}) {
@@ -1715,6 +1718,66 @@ describe("browser runtime server events", () => {
 		);
 		expect(useRuntimeStore.getState().error).toBe("provider failed");
 		expect(calls).toContain("live:clear");
+	});
+
+	test("opens linked coding sessions for the active chat in the background", async () => {
+		const { options } = createHandlerOptions();
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = new URL(String(input), "http://localhost");
+			expect(url.pathname).toBe("/api/coding/sessions/codex/code-1");
+			return Response.json({
+				providerId: "codex",
+				sdkSessionId: "code-1",
+				repositoryId: "repo-1",
+				title: "Fix tests",
+				model: "gpt-5.5",
+				lastActive: 300,
+				cwd: "/workspace/outclaw",
+				lifecycleStatus: "open",
+				runStatus: "running",
+				createdAt: 250,
+				source: "code",
+				tag: "code",
+			});
+		}) as typeof fetch;
+		try {
+			useAgentsStore.getState().setActiveAgent("agent-railly");
+			useSessionsStore
+				.getState()
+				.setActiveSession(
+					"agent-railly",
+					createBrowserSessionRef("agent-railly", "claude", "chat-1"),
+				);
+
+			handleBrowserServerEvent(
+				{
+					type: "browser_chat_coding_links_changed",
+					chatAgentId: "agent-railly",
+					chatProviderId: "claude",
+					chatSdkSessionId: "chat-1",
+					codingProviderId: "codex",
+					codingSdkSessionId: "code-1",
+				},
+				options,
+			);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(useTabsStore.getState().activeTabId).toBe(CHAT_TAB.id);
+			expect(useTabsStore.getState().tabs).toEqual([
+				CHAT_TAB,
+				{
+					type: "coding-session",
+					id: "coding:repo-1:codex:code-1",
+					providerId: "codex",
+					sdkSessionId: "code-1",
+					repositoryId: "repo-1",
+					title: "Fix tests",
+				},
+			]);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
 	test("handles status, model, effort, and ignored terminal-only events", () => {

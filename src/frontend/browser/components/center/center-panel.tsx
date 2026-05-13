@@ -1,3 +1,4 @@
+import { LinkedCodingSessionPanel } from "../../coding/linked-coding-session-panel.tsx";
 import { CHAT_TAB } from "../../stores/tab-policy.ts";
 import { type Tab, useTabsStore } from "../../stores/tabs.ts";
 import { ChatPanel } from "../chat/chat-panel.tsx";
@@ -109,6 +110,17 @@ function CenterTabPanel({ active, tab }: { active: boolean; tab: Tab }) {
 
 	if (tab.type === "git-diff") {
 		return <GitDiffViewer path={tab.path} />;
+	}
+
+	if (tab.type === "coding-session") {
+		return (
+			<LinkedCodingSessionPanel
+				providerId={tab.providerId}
+				sdkSessionId={tab.sdkSessionId}
+				repositoryId={tab.repositoryId}
+				title={tab.title}
+			/>
+		);
 	}
 
 	return <ChatPanel active={active} />;

@@ -1,3 +1,4 @@
+import type { BrowserCodingSessionSummary } from "../../../common/protocol.ts";
 import type { Tab, TabsState } from "./tabs.ts";
 
 export const CHAT_TAB: Tab = { type: "chat", id: "chat" };
@@ -7,17 +8,53 @@ type TabStateSnapshot = Pick<
 	"activeTabId" | "scrollPositions" | "tabs"
 >;
 
+interface OpenBrowserTabOptions {
+	activate?: boolean;
+}
+
+export function codingSessionTabId(session: {
+	providerId: string;
+	repositoryId: string;
+	sdkSessionId: string;
+}): string {
+	return `coding:${session.repositoryId}:${session.providerId}:${session.sdkSessionId}`;
+}
+
+export function makeCodingSessionCenterTab(
+	session: BrowserCodingSessionSummary,
+): Extract<Tab, { type: "coding-session" }> | undefined {
+	if (!session.repositoryId) {
+		return undefined;
+	}
+	return {
+		type: "coding-session",
+		id: codingSessionTabId({
+			providerId: session.providerId,
+			repositoryId: session.repositoryId,
+			sdkSessionId: session.sdkSessionId,
+		}),
+		providerId: session.providerId,
+		sdkSessionId: session.sdkSessionId,
+		repositoryId: session.repositoryId,
+		title: session.title || session.sdkSessionId,
+	};
+}
+
 export function openBrowserTabState(
 	state: TabStateSnapshot,
 	tab: Tab,
+	options: OpenBrowserTabOptions = {},
 ): Partial<TabStateSnapshot> {
 	if (tab.type === "chat") {
 		return { activeTabId: CHAT_TAB.id };
 	}
 	const exists = state.tabs.some((entry) => entry.id === tab.id);
+	const activate = options.activate ?? true;
 	return {
-		tabs: exists ? state.tabs : [...state.tabs, tab],
-		activeTabId: tab.id,
+		tabs: exists
+			? state.tabs.map((entry) => (entry.id === tab.id ? tab : entry))
+			: [...state.tabs, tab],
+		activeTabId: activate ? tab.id : state.activeTabId,
 	};
 }
 

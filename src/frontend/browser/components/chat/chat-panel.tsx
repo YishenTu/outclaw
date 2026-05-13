@@ -1,5 +1,7 @@
+import { Code2 } from "lucide-react";
 import type { EffortLevel } from "../../../../common/commands.ts";
 import type { ModelAlias } from "../../../../common/models.ts";
+import { openLatestLinkedCodingSessionForActiveChat } from "../../coding/linked-coding-session-actions.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import { useIsMobile } from "../../lib/use-is-mobile.ts";
 import {
@@ -90,6 +92,10 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 		return sendCommand(`/thinking ${effort}`);
 	}
 
+	function handleOpenCodingSession() {
+		void openLatestLinkedCodingSessionForActiveChat();
+	}
+
 	if (!activeAgentId || !activeAgent) {
 		return (
 			<div className="flex h-full flex-col bg-dark-950">
@@ -128,6 +134,15 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 						<span className="px-2 text-dark-700">/</span>
 						<span className="truncate">{sessionTitle}</span>
 					</div>
+					<button
+						type="button"
+						title="Open latest linked coding session"
+						aria-label="Open latest linked coding session"
+						onClick={handleOpenCodingSession}
+						className="ml-auto inline-flex h-6 w-6 items-center justify-center border border-dark-700 text-dark-400 transition-colors hover:border-dark-500 hover:text-parchment"
+					>
+						<Code2 size={14} />
+					</button>
 				</div>
 			</div>
 			{chatSession?.error && (

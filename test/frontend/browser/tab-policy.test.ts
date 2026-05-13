@@ -22,6 +22,15 @@ const DIFF_TAB: Tab = {
 	path: "README.md",
 };
 
+const CODING_TAB: Tab = {
+	type: "coding-session",
+	id: "coding:repo-1:codex:code-1",
+	providerId: "codex",
+	sdkSessionId: "code-1",
+	repositoryId: "repo-1",
+	title: "Fix tests",
+};
+
 describe("browser tab policy", () => {
 	test("opens new tabs once and activates existing tabs", () => {
 		const first = openBrowserTabState(
@@ -93,5 +102,47 @@ describe("browser tab policy", () => {
 				32,
 			),
 		).toEqual({ scrollPositions: { chat: 32 } });
+	});
+
+	test("opens linked coding tabs in the background until explicitly activated", () => {
+		expect(
+			openBrowserTabState(
+				{ tabs: [CHAT_TAB], activeTabId: "chat", scrollPositions: {} },
+				CODING_TAB,
+				{ activate: false },
+			),
+		).toEqual({
+			tabs: [CHAT_TAB, CODING_TAB],
+			activeTabId: "chat",
+		});
+
+		expect(
+			openBrowserTabState(
+				{
+					tabs: [CHAT_TAB, CODING_TAB],
+					activeTabId: "chat",
+					scrollPositions: {},
+				},
+				{ ...CODING_TAB, title: "Updated title" },
+				{ activate: false },
+			),
+		).toEqual({
+			tabs: [CHAT_TAB, { ...CODING_TAB, title: "Updated title" }],
+			activeTabId: "chat",
+		});
+
+		expect(
+			openBrowserTabState(
+				{
+					tabs: [CHAT_TAB, CODING_TAB],
+					activeTabId: "chat",
+					scrollPositions: {},
+				},
+				CODING_TAB,
+			),
+		).toEqual({
+			tabs: [CHAT_TAB, CODING_TAB],
+			activeTabId: CODING_TAB.id,
+		});
 	});
 });

@@ -338,7 +338,7 @@ function NewSessionPanel({
 	);
 }
 
-function ActiveSessionPanel({
+export function ActiveSessionPanel({
 	repository,
 	session,
 }: {
@@ -541,7 +541,7 @@ function ActiveSessionPanel({
 		turnInFlight || (events.length === 0 && session.runStatus === "running");
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col bg-dark-950">
+		<div className="flex h-full min-h-0 flex-1 flex-col bg-dark-950">
 			<HeaderBar leading={repository.displayName} title={title} />
 			{resumeError && (
 				<div className="border-b border-danger/30 bg-danger/10 px-6 py-3 text-sm text-danger">

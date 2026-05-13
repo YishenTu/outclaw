@@ -1,4 +1,5 @@
 import {
+	Code2,
 	FileText,
 	GitBranch,
 	GitCommitHorizontal,
@@ -69,7 +70,9 @@ export function TabBarView({
 					? {}
 					: {
 							closeLabel: `Close ${
-								tab.type === "git-commit" ? tab.title : tab.path
+								tab.type === "git-commit" || tab.type === "coding-session"
+									? tab.title
+									: tab.path
 							}`,
 						}),
 			}))}
@@ -91,6 +94,9 @@ function centerTabTitle(tab: Tab): string {
 	if (tab.type === "git-commit") {
 		return tab.title;
 	}
+	if (tab.type === "coding-session") {
+		return tab.title;
+	}
 	return fileNameFromPath(tab.path);
 }
 
@@ -105,6 +111,10 @@ function centerTabIcon(tab: Tab) {
 
 	if (tab.type === "git-diff") {
 		return <GitBranch size={14} className="shrink-0" />;
+	}
+
+	if (tab.type === "coding-session") {
+		return <Code2 size={14} className="shrink-0" />;
 	}
 
 	return <FileText size={14} className="shrink-0" />;

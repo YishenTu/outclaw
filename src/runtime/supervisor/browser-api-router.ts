@@ -1,4 +1,5 @@
 import type {
+	BrowserChatCodingLinksChangedEvent,
 	BrowserCronHistoryCursor,
 	BrowserLatencyResponse,
 	ImageMediaType,
@@ -32,11 +33,18 @@ type AlwaysRequired =
 export type BrowserApi = Pick<BrowserApiImpl, AlwaysRequired> &
 	Partial<Omit<BrowserApiImpl, AlwaysRequired>>;
 
+export interface BrowserApiRequestContext {
+	browserClientId?: string;
+	onChatCodingLinksChanged?: (
+		event: BrowserChatCodingLinksChangedEvent,
+	) => void | Promise<void>;
+}
+
 export async function handleBrowserApiRequest(
 	req: Request,
 	url: URL,
 	browserApi: BrowserApi | undefined,
-	context: { browserClientId?: string } = {},
+	context: BrowserApiRequestContext = {},
 ): Promise<Response> {
 	if (url.pathname === "/api/latency") {
 		if (req.method !== "GET") {
@@ -291,6 +299,7 @@ export async function handleBrowserApiRequest(
 			req,
 			url,
 			browserApi,
+			context,
 		);
 		if (codingResponse) {
 			return codingResponse;

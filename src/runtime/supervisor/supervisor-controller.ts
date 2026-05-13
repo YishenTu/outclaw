@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
 	type BrowserAgentActiveSessionChangedEvent,
 	type BrowserAgentsInvalidatedEvent,
+	type BrowserChatCodingLinksChangedEvent,
 	type BrowserSidebarInvalidatedEvent,
 	extractError,
 	parseMessage,
@@ -62,6 +63,16 @@ export class SupervisorController {
 
 	broadcastBrowserAgentActiveSessionChanged(
 		event: BrowserAgentActiveSessionChangedEvent,
+	) {
+		for (const client of this.options.bindings.listBoundClientsByTypes([
+			"browser",
+		])) {
+			client.send(serialize(event));
+		}
+	}
+
+	broadcastBrowserChatCodingLinksChanged(
+		event: BrowserChatCodingLinksChangedEvent,
 	) {
 		for (const client of this.options.bindings.listBoundClientsByTypes([
 			"browser",

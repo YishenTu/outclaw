@@ -4,14 +4,19 @@ import { type Tab, useTabsStore } from "../stores/tabs.ts";
 import { useIsMobile } from "./use-is-mobile.ts";
 
 /**
- * Single entry point for "open a document-like tab" (file / git-diff /
- * git-commit). On desktop it routes through the multi-tab center store.
+ * Single entry point for opening a document-like tab. On desktop it routes
+ * through the multi-tab center store.
  * On mobile it routes through the single-slot overlay so the existing
  * sidebars don't have to know which mode they're in.
  *
- * Chat tabs are never opened through this hook — chat is the home panel.
+ * Chat and linked coding sessions are center-panel surfaces, not overlays.
  */
-export function useOpenDoc(): (tab: Exclude<Tab, { type: "chat" }>) => void {
+export function useOpenDoc(): (
+	tab: Extract<
+		Tab,
+		{ type: "file" } | { type: "git-diff" } | { type: "git-commit" }
+	>,
+) => void {
 	const isMobile = useIsMobile();
 	const openTab = useTabsStore((state) => state.openTab);
 	const openOverlay = useMobileNavStore((state) => state.openOverlay);

@@ -12,6 +12,7 @@ import type {
 	BrowserCodingSessionDeleteResponse,
 	BrowserCodingSessionDetail,
 	BrowserCodingSessionLifecycleStatus,
+	BrowserCodingSessionLinksResponse,
 	BrowserCodingSessionPageResponse,
 	BrowserCodingSessionRestoreResponse,
 	BrowserCodingSessionResumeResponse,
@@ -160,6 +161,18 @@ export async function fetchCodingSession(
 	return parseJsonResponse(
 		await fetch(
 			`/api/coding/sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}`,
+		),
+	);
+}
+
+export async function fetchChatCodingSessions(params: {
+	agentId: string;
+	providerId: string;
+	sdkSessionId: string;
+}): Promise<BrowserCodingSessionLinksResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/agents/${encodeURIComponent(params.agentId)}/sessions/${encodeURIComponent(params.providerId)}/${encodeURIComponent(params.sdkSessionId)}/coding-links`,
 		),
 	);
 }

@@ -154,6 +154,8 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 				return attachSetCookie(
 					await handleBrowserApiRequest(req, url, options.browserApi, {
 						browserClientId: cookieClientId,
+						onChatCodingLinksChanged: (event) =>
+							controller.broadcastBrowserChatCodingLinksChanged(event),
 					}),
 					newCookieHeader,
 				);

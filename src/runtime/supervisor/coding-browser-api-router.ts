@@ -1,7 +1,10 @@
 import { type EffortLevel, isEffortLevel } from "../../common/commands.ts";
 import type { SessionCursor } from "../../common/protocol.ts";
 import { validateSessionSearchQuery } from "../application/session-search-query.ts";
-import type { BrowserApi } from "./browser-api-router.ts";
+import type {
+	BrowserApi,
+	BrowserApiRequestContext,
+} from "./browser-api-router.ts";
 import {
 	createSseResponse,
 	jsonError,
@@ -18,6 +21,7 @@ export async function handleCodingBrowserApiRequest(
 	req: Request,
 	url: URL,
 	browserApi: BrowserApi,
+	context: BrowserApiRequestContext = {},
 ): Promise<Response | undefined> {
 	if (url.pathname === "/api/coding/models") {
 		if (req.method !== "GET") {
@@ -93,6 +97,7 @@ export async function handleCodingBrowserApiRequest(
 			req,
 			url,
 			browserApi,
+			context,
 			codingSessionsMatch,
 		);
 	}
@@ -268,6 +273,7 @@ async function handleCodingSessionRequest(
 	req: Request,
 	url: URL,
 	browserApi: BrowserApi,
+	context: BrowserApiRequestContext,
 	match: RegExpMatchArray,
 ): Promise<Response> {
 	const [, encodedProviderId, encodedSdkSessionId, action] = match;
@@ -275,7 +281,7 @@ async function handleCodingSessionRequest(
 	if (encodedProviderId && encodedSdkSessionId) {
 		const providerId = decodeURIComponent(encodedProviderId);
 		const sdkSessionId = decodeURIComponent(encodedSdkSessionId);
-		return handleTargetedCodingSessionRequest(req, url, browserApi, {
+		return handleTargetedCodingSessionRequest(req, url, browserApi, context, {
 			action,
 			providerId,
 			sdkSessionId,
@@ -283,7 +289,7 @@ async function handleCodingSessionRequest(
 	}
 
 	if (req.method === "POST") {
-		return startCodingSession(req, browserApi);
+		return startCodingSession(req, browserApi, context);
 	}
 
 	if (req.method !== "GET") {
@@ -333,6 +339,7 @@ async function handleTargetedCodingSessionRequest(
 	req: Request,
 	url: URL,
 	browserApi: BrowserApi,
+	context: BrowserApiRequestContext,
 	target: { action?: string; providerId: string; sdkSessionId: string },
 ): Promise<Response> {
 	if (target.action === "archive") {
@@ -381,14 +388,19 @@ async function handleTargetedCodingSessionRequest(
 			target.providerId,
 			target.sdkSessionId,
 		);
-		await linkChatCodingSession(browserApi, chatContext.value, {
-			providerId: target.providerId,
-			sdkSessionId: target.sdkSessionId,
-		});
+		await linkChatCodingSession(
+			browserApi,
+			chatContext.value,
+			{
+				providerId: target.providerId,
+				sdkSessionId: target.sdkSessionId,
+			},
+			context,
+		);
 		return Response.json(result);
 	}
 	if (target.action === "resume") {
-		return resumeCodingSession(req, browserApi, target);
+		return resumeCodingSession(req, browserApi, context, target);
 	}
 	if (target.action === "stop") {
 		if (req.method !== "POST") {
@@ -481,6 +493,7 @@ function streamCodingSessionEvents(
 async function resumeCodingSession(
 	req: Request,
 	browserApi: BrowserApi,
+	context: BrowserApiRequestContext,
 	target: { providerId: string; sdkSessionId: string },
 ): Promise<Response> {
 	if (req.method !== "POST") {
@@ -518,10 +531,15 @@ async function resumeCodingSession(
 		...overrides.value,
 	});
 	if (result.status === "accepted") {
-		await linkChatCodingSession(browserApi, chatContext.value, {
-			providerId: result.providerId,
-			sdkSessionId: result.sdkSessionId,
-		});
+		await linkChatCodingSession(
+			browserApi,
+			chatContext.value,
+			{
+				providerId: result.providerId,
+				sdkSessionId: result.sdkSessionId,
+			},
+			context,
+		);
 	}
 	return Response.json(result);
 }
@@ -529,6 +547,7 @@ async function resumeCodingSession(
 async function startCodingSession(
 	req: Request,
 	browserApi: BrowserApi,
+	context: BrowserApiRequestContext,
 ): Promise<Response> {
 	if (!browserApi.startCodingSession) {
 		return jsonError("Coding session API is not configured", 404);
@@ -581,10 +600,15 @@ async function startCodingSession(
 		...overrides.value,
 	});
 	if (result.status === "accepted") {
-		await linkChatCodingSession(browserApi, chatContext.value, {
-			providerId: result.providerId,
-			sdkSessionId: result.sdkSessionId,
-		});
+		await linkChatCodingSession(
+			browserApi,
+			chatContext.value,
+			{
+				providerId: result.providerId,
+				sdkSessionId: result.sdkSessionId,
+			},
+			context,
+		);
 	}
 	return Response.json(result);
 }
@@ -621,11 +645,18 @@ async function linkChatCodingSession(
 	browserApi: BrowserApi,
 	chatContext: ChatCodingContext | undefined,
 	codingSession: { providerId: string; sdkSessionId: string },
+	context: BrowserApiRequestContext,
 ) {
 	if (!chatContext || !browserApi.linkChatCodingSession) {
 		return;
 	}
 	await browserApi.linkChatCodingSession({
+		...chatContext,
+		codingProviderId: codingSession.providerId,
+		codingSdkSessionId: codingSession.sdkSessionId,
+	});
+	await context.onChatCodingLinksChanged?.({
+		type: "browser_chat_coding_links_changed",
 		...chatContext,
 		codingProviderId: codingSession.providerId,
 		codingSdkSessionId: codingSession.sdkSessionId,

@@ -35,14 +35,20 @@ describe("buildSlashCommands", () => {
 
 	test("mirrors the command catalog for builtin discoverability", () => {
 		const commands = buildSlashCommands([]);
-		expect(commands).toEqual(
-			listSlashCommands().map((command) => ({
+		expect(commands).toEqual([
+			...listSlashCommands().map((command) => ({
 				name: command.command,
 				description: command.description,
-				source: "builtin",
+				source: "builtin" as const,
 				transport: command.transport,
 			})),
-		);
+			{
+				name: "coding",
+				description: "Open the latest coding session linked to this chat",
+				source: "builtin" as const,
+				transport: "runtime" as const,
+			},
+		]);
 	});
 
 	test("keeps builtin commands authoritative when skill names collide", () => {

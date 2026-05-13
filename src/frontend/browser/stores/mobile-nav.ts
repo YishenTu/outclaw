@@ -5,9 +5,13 @@ export type MobilePanel = "agents" | "chat" | "inspector";
 
 /**
  * The kinds of tabs that can be promoted to a mobile overlay.
- * Chat is excluded — chat is the home panel, never an overlay.
+ * Chat and linked coding sessions stay in the center panel; overlays are for
+ * document previews opened from side panels.
  */
-export type MobileOverlayDoc = Exclude<Tab, { type: "chat" }>;
+export type MobileOverlayDoc = Extract<
+	Tab,
+	{ type: "file" } | { type: "git-diff" } | { type: "git-commit" }
+>;
 
 export interface MobileNavState {
 	mobilePanel: MobilePanel;

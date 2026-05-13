@@ -3,6 +3,8 @@ import {
 	isRuntimeCommand,
 } from "../../../common/commands.ts";
 
+const BROWSER_RUNTIME_COMMANDS = new Set(["/coding"]);
+
 export type PreparedPromptDispatch<SocketLike> =
 	| { kind: "empty" }
 	| { kind: "runtime"; result: boolean }
@@ -34,7 +36,7 @@ export function preparePromptDispatch<SocketLike>(
 		return { kind: "empty" };
 	}
 
-	if (trimmed !== "" && isRuntimeCommand(trimmed)) {
+	if (trimmed !== "" && isBrowserRuntimeCommand(trimmed)) {
 		if (params.hasImages && params.rejectRuntimeCommandWithImages) {
 			params.setRuntimeError("Runtime commands cannot include images");
 			return { kind: "runtime", result: false };
@@ -54,4 +56,8 @@ export function preparePromptDispatch<SocketLike>(
 		trimmed === "" ? "" : (canonicalizePromptSlashCommand(trimmed) ?? trimmed);
 
 	return { kind: "prompt", agentId, socket, sessionKey, prompt };
+}
+
+function isBrowserRuntimeCommand(input: string): boolean {
+	return isRuntimeCommand(input) || BROWSER_RUNTIME_COMMANDS.has(input.trim());
 }

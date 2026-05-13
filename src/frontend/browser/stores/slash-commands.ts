@@ -5,6 +5,15 @@ import {
 } from "../../../common/commands.ts";
 import type { SkillInfo } from "../../../common/protocol.ts";
 
+const BROWSER_BUILTIN_COMMANDS: CommandEntry[] = [
+	{
+		name: "coding",
+		description: "Open the latest coding session linked to this chat",
+		source: "builtin",
+		transport: "runtime",
+	},
+];
+
 export interface CommandEntry {
 	name: string;
 	description: string;
@@ -23,12 +32,15 @@ export interface SlashCommandsState {
 }
 
 function createBuiltinCommandEntries(): CommandEntry[] {
-	return listSlashCommands().map((command) => ({
-		name: command.command,
-		description: command.description,
-		source: "builtin" as const,
-		transport: command.transport,
-	}));
+	return [
+		...listSlashCommands().map((command) => ({
+			name: command.command,
+			description: command.description,
+			source: "builtin" as const,
+			transport: command.transport,
+		})),
+		...BROWSER_BUILTIN_COMMANDS,
+	];
 }
 
 export function buildSlashCommands(skills: SkillInfo[]): CommandEntry[] {

@@ -126,5 +126,6 @@ Organize code around ownership and depth, not line count. Files should be focuse
 - Bun auto-loads `.env`; do not add dotenv.
 - Prefer `Bun.serve()` built-ins for WebSocket and routes over third-party equivalents.
 - Keep provider-specific logic behind the backend facade. If a change adds a provider SDK import under `src/runtime/`, the design is probably wrong.
+- Do not add or stage files under `dev/`; treat `dev/` as local scratch/spec space unless the user explicitly asks to track a specific file.
 - All code, comments, identifiers, commit messages, and content inside code blocks must be English.
 - Explanations and discussions are English by default unless the user writes in another language.

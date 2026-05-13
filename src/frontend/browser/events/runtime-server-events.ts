@@ -3,6 +3,7 @@ import type {
 	ServerEvent,
 } from "../../../common/protocol.ts";
 import { formatStatusCompact } from "../../../common/status.ts";
+import { fetchCodingSession } from "../lib/api.ts";
 import {
 	createBrowserSessionRef,
 	createSessionKey,
@@ -16,6 +17,8 @@ import { useRuntimeStore } from "../stores/runtime.ts";
 import { useRuntimePopupStore } from "../stores/runtime-popup.ts";
 import { type SessionEntry, useSessionsStore } from "../stores/sessions.ts";
 import { useSlashCommandsStore } from "../stores/slash-commands.ts";
+import { makeCodingSessionCenterTab } from "../stores/tab-policy.ts";
+import { useTabsStore } from "../stores/tabs.ts";
 import {
 	applyBrowserChatEvent,
 	type BrowserChatEventHandlerOptions,
@@ -361,6 +364,9 @@ export function handleBrowserServerEvent(
 						: null,
 				);
 			return;
+		case "browser_chat_coding_links_changed":
+			void openLinkedCodingSessionForActiveChat(event);
+			return;
 		case "cron_result":
 			return;
 		case "session_info":
@@ -375,5 +381,34 @@ export function handleBrowserServerEvent(
 		case "code_prompt_response":
 		case "code_prompt_error":
 			return;
+	}
+}
+
+async function openLinkedCodingSessionForActiveChat(
+	event: Extract<ServerEvent, { type: "browser_chat_coding_links_changed" }>,
+) {
+	const activeAgentId = useAgentsStore.getState().activeAgentId;
+	if (activeAgentId !== event.chatAgentId) {
+		return;
+	}
+	const activeSession =
+		useSessionsStore.getState().activeSessionByAgent[event.chatAgentId];
+	if (
+		activeSession?.providerId !== event.chatProviderId ||
+		activeSession.sdkSessionId !== event.chatSdkSessionId
+	) {
+		return;
+	}
+	try {
+		const session = await fetchCodingSession(
+			event.codingProviderId,
+			event.codingSdkSessionId,
+		);
+		const tab = makeCodingSessionCenterTab(session);
+		if (tab) {
+			useTabsStore.getState().openTab(tab, { activate: false });
+		}
+	} catch (error) {
+		console.warn("Failed to open linked coding session", error);
 	}
 }

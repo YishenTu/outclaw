@@ -3,7 +3,10 @@ import {
 	resolveFocusedCodingRepository,
 	resolveFocusedCodingSession,
 } from "../../../src/frontend/browser/coding/coding-data.ts";
-import { CodingSessionView } from "../../../src/frontend/browser/coding/coding-session-view.tsx";
+import {
+	ActiveSessionPanel,
+	CodingSessionView,
+} from "../../../src/frontend/browser/coding/coding-session-view.tsx";
 import {
 	CODING_STORAGE_KEY,
 	useCodingStore,
@@ -64,6 +67,40 @@ describe("browser coding center", () => {
 
 		expect(html).toContain('class="flex min-h-0 flex-1 flex-col bg-dark-950"');
 		expect(html).not.toContain('class="flex h-full flex-col bg-dark-950"');
+	});
+
+	test("lets an active coding session fill linked middle-panel tabs", () => {
+		const html = renderToStaticMarkup(
+			<ActiveSessionPanel
+				repository={{
+					id: "repo-1",
+					rootCwd: "/repo",
+					displayName: "outclaw",
+					source: "manual",
+					status: "active",
+					createdAt: 1,
+					lastActive: 1,
+				}}
+				session={{
+					providerId: "codex",
+					sdkSessionId: "code-1",
+					repositoryId: "repo-1",
+					title: "Linked code task",
+					model: "gpt-5.5",
+					lastActive: 1,
+					cwd: "/repo",
+					lifecycleStatus: "open",
+					runStatus: "idle",
+					createdAt: 1,
+					source: "code",
+					tag: "code",
+				}}
+			/>,
+		);
+
+		expect(html).toContain(
+			'class="flex h-full min-h-0 flex-1 flex-col bg-dark-950"',
+		);
 	});
 
 	test("renders the coding composer as text-only because coding APIs do not accept images", () => {

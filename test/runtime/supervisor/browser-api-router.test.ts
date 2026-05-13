@@ -844,6 +844,7 @@ describe("handleBrowserApiRequest", () => {
 
 	test("links coding start, resume, and status requests when chat context headers are present", async () => {
 		const links: string[] = [];
+		const notifications: string[] = [];
 		const browserApi = {
 			startCodingSession: async () => ({
 				status: "accepted" as const,
@@ -895,6 +896,13 @@ describe("handleBrowserApiRequest", () => {
 			}),
 			startUrl,
 			browserApi,
+			{
+				onChatCodingLinksChanged: (event) => {
+					notifications.push(
+						`${event.chatAgentId}:${event.chatProviderId}/${event.chatSdkSessionId}->${event.codingProviderId}/${event.codingSdkSessionId}`,
+					);
+				},
+			},
 		);
 		const resumeUrl = new URL(
 			"http://localhost/api/coding/sessions/codex/code-resume/resume",
@@ -907,6 +915,13 @@ describe("handleBrowserApiRequest", () => {
 			}),
 			resumeUrl,
 			browserApi,
+			{
+				onChatCodingLinksChanged: (event) => {
+					notifications.push(
+						`${event.chatAgentId}:${event.chatProviderId}/${event.chatSdkSessionId}->${event.codingProviderId}/${event.codingSdkSessionId}`,
+					);
+				},
+			},
 		);
 		const statusUrl = new URL(
 			"http://localhost/api/coding/sessions/codex/code-status/status",
@@ -915,6 +930,13 @@ describe("handleBrowserApiRequest", () => {
 			new Request(statusUrl, { headers }),
 			statusUrl,
 			browserApi,
+			{
+				onChatCodingLinksChanged: (event) => {
+					notifications.push(
+						`${event.chatAgentId}:${event.chatProviderId}/${event.chatSdkSessionId}->${event.codingProviderId}/${event.codingSdkSessionId}`,
+					);
+				},
+			},
 		);
 
 		expect(links).toEqual([
@@ -922,6 +944,7 @@ describe("handleBrowserApiRequest", () => {
 			"agent-railly:claude/chat-1->codex/code-resume",
 			"agent-railly:claude/chat-1->codex/code-status",
 		]);
+		expect(notifications).toEqual(links);
 	});
 
 	test("does not link rejected coding start requests", async () => {
