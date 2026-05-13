@@ -1304,6 +1304,77 @@ describe("CodexAdapter", () => {
 		]);
 	});
 
+	test("strips internal memory citation blocks from JSONL transcript messages", () => {
+		const citationBlock = [
+			"<oai-mem-citation>",
+			"<citation_entries>",
+			"MEMORY.md:66-74|note=[recent outclaw coding UI context]",
+			"</citation_entries>",
+			"<rollout_ids>",
+			"</rollout_ids>",
+			"</oai-mem-citation>",
+		].join("\n");
+		const jsonl = [
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "user",
+					content: [{ type: "input_text", text: citationBlock }],
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "user",
+					content: [
+						{
+							type: "input_text",
+							text: `fix the transcript\n\n${citationBlock}`,
+						},
+					],
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "assistant",
+					content: [
+						{
+							type: "output_text",
+							text: `Done.\n\n${citationBlock}`,
+						},
+					],
+					phase: "final_answer",
+				},
+			},
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n");
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-123" }),
+		).toEqual([
+			{
+				type: "user_prompt",
+				text: "fix the transcript",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "text",
+				text: "Done.",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "done",
+				sessionId: "codex-thread-123",
+				durationMs: 0,
+			},
+		]);
+	});
+
 	test("reads normalized coding events from a resumed thread JSONL transcript", async () => {
 		const root = mkdtempSync(join(tmpdir(), "outclaw-codex-jsonl-"));
 		try {

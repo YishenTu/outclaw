@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { DisplayChatMessage } from "../../../common/protocol.ts";
+import { isCodingTranscriptSilentEvent } from "../../../common/transcript-cleanup.ts";
 import { Message } from "../components/chat/message.tsx";
 import { ThinkingBlock } from "../components/chat/thinking-block.tsx";
 import type { CodingSessionEventStreamItem } from "../lib/api.ts";
@@ -279,11 +280,7 @@ function groupEvents(
 		// - write_stdin/custom_tool_call_output: transport noise from older or
 		//   partially-normalized Codex event logs; substantive command/file data
 		//   is projected elsewhere and these rows only duplicate or distract.
-		if (
-			type === "usage_updated" ||
-			type === "image" ||
-			isHiddenToolNoiseEvent(event)
-		) {
+		if (isCodingTranscriptSilentEvent(event)) {
 			continue;
 		}
 
@@ -456,17 +453,6 @@ function toolCategoryFor(
 		default:
 			return undefined;
 	}
-}
-
-function isHiddenToolNoiseEvent(event: FacadeLike): boolean {
-	const type = event.type;
-	if (type !== "tool_call_started" && type !== "tool_call_completed") {
-		return false;
-	}
-	return (
-		event.toolKind === "write_stdin" ||
-		event.toolKind === "custom_tool_call_output"
-	);
 }
 
 function renderToolEntry(entry: ToolEntry): React.ReactNode {

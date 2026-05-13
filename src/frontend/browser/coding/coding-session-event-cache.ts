@@ -1,3 +1,4 @@
+import { isCodingTranscriptSilentEvent } from "../../../common/transcript-cleanup.ts";
 import type { CodingSessionEventStreamItem } from "../lib/api.ts";
 
 export interface CodingSessionEventCacheEntry {
@@ -35,7 +36,7 @@ export function appendCodingSessionEventBatch(
 			continue;
 		}
 		lastSequence = item.sequence;
-		if (isTranscriptSilentCodingEvent(item.event)) {
+		if (isCodingTranscriptSilentEvent(item.event)) {
 			continue;
 		}
 		nextEvents =
@@ -45,24 +46,6 @@ export function appendCodingSessionEventBatch(
 	const entry = { events: nextEvents, lastSequence };
 	rememberCodingSessionEventCacheEntry(cache, key, entry, options.maxEntries);
 	return entry;
-}
-
-export function isTranscriptSilentCodingEvent(event: unknown): boolean {
-	if (!event || typeof event !== "object") {
-		return false;
-	}
-	const record = event as { toolKind?: unknown; type?: unknown };
-	const type = record.type;
-	if (type === "usage_updated" || type === "image") {
-		return true;
-	}
-	if (type !== "tool_call_started" && type !== "tool_call_completed") {
-		return false;
-	}
-	return (
-		record.toolKind === "write_stdin" ||
-		record.toolKind === "custom_tool_call_output"
-	);
 }
 
 function rememberCodingSessionEventCacheEntry(

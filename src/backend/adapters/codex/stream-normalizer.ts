@@ -7,6 +7,7 @@ import type {
 	ToolCallDetail,
 	UsageInfo,
 } from "../../../common/protocol.ts";
+import { stripOaiMemoryCitationBlocks } from "../../../common/transcript-cleanup.ts";
 import type {
 	CodexServerNotification,
 	CodexThreadTokenUsage,
@@ -235,7 +236,9 @@ export function normalizeCodexJsonlEvents(
 		if (rowType === "response_item") {
 			switch (payloadType) {
 				case "message": {
-					const text = readContentText(payload.content);
+					const text = stripOaiMemoryCitationBlocks(
+						readContentText(payload.content),
+					);
 					const userPromptText =
 						payload.role === "user"
 							? normalizeCodexJsonlUserPromptText(text)
