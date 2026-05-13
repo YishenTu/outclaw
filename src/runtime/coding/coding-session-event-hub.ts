@@ -19,18 +19,34 @@ export interface CodingSessionEventRecorder {
 		event: CodingSessionEvent;
 		timestamp?: number;
 	}): StoredCodingSessionEvent;
+	snapshot?(target: {
+		providerId: string;
+		sdkSessionId: string;
+	}): StoredCodingSessionEvent[];
 	subscribe(
 		target: { providerId: string; sdkSessionId: string },
 		handler: CodingSessionEventSubscriber,
 	): () => void;
+	subscribeAll?(handler: CodingSessionEventSubscriber): () => void;
 }
+
+export const CODING_SESSION_EVENT_REPLAY_LIMIT = 5000;
 
 export class CodingSessionEventHub implements CodingSessionEventRecorder {
 	private readonly nextSequenceBySession = new Map<string, number>();
+	private readonly eventsBySession = new Map<
+		string,
+		StoredCodingSessionEvent[]
+	>();
 	private readonly subscribers = new Map<
 		string,
 		Set<CodingSessionEventSubscriber>
 	>();
+	private readonly allSubscribers = new Set<CodingSessionEventSubscriber>();
+
+	constructor(
+		private readonly replayLimit = CODING_SESSION_EVENT_REPLAY_LIMIT,
+	) {}
 
 	append(params: {
 		providerId: string;
@@ -48,8 +64,20 @@ export class CodingSessionEventHub implements CodingSessionEventRecorder {
 			event: params.event,
 			createdAt: params.timestamp ?? Date.now(),
 		};
+		this.remember(key, stored);
 		this.dispatch(stored);
 		return stored;
+	}
+
+	snapshot(target: {
+		providerId: string;
+		sdkSessionId: string;
+	}): StoredCodingSessionEvent[] {
+		return [
+			...(this.eventsBySession.get(
+				subscriberKey(target.providerId, target.sdkSessionId),
+			) ?? []),
+		];
 	}
 
 	subscribe(
@@ -75,12 +103,36 @@ export class CodingSessionEventHub implements CodingSessionEventRecorder {
 		};
 	}
 
+	subscribeAll(handler: CodingSessionEventSubscriber): () => void {
+		this.allSubscribers.add(handler);
+		return () => {
+			this.allSubscribers.delete(handler);
+		};
+	}
+
 	close() {
 		this.subscribers.clear();
+		this.allSubscribers.clear();
 		this.nextSequenceBySession.clear();
+		this.eventsBySession.clear();
+	}
+
+	private remember(key: string, stored: StoredCodingSessionEvent) {
+		if (this.replayLimit <= 0) {
+			return;
+		}
+		const events = this.eventsBySession.get(key) ?? [];
+		events.push(stored);
+		while (events.length > this.replayLimit) {
+			events.shift();
+		}
+		this.eventsBySession.set(key, events);
 	}
 
 	private dispatch(stored: StoredCodingSessionEvent) {
+		for (const handler of [...this.allSubscribers]) {
+			handler(stored);
+		}
 		const bucket = this.subscribers.get(
 			subscriberKey(stored.providerId, stored.sdkSessionId),
 		);

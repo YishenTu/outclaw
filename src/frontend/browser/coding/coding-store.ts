@@ -8,6 +8,7 @@ import type { EffortLevel } from "../../../common/commands.ts";
 import type {
 	BrowserCodingModel,
 	BrowserCodingRepositorySummary,
+	BrowserCodingSessionRunStatus,
 	BrowserCodingSessionSummary,
 	SessionCursor,
 } from "../../../common/protocol.ts";
@@ -210,6 +211,16 @@ export interface CodingState {
 		sdkSessionId: string,
 		title: string,
 	): void;
+	updateSessionRunStatus(
+		providerId: string,
+		sdkSessionId: string,
+		update: {
+			runStatus: BrowserCodingSessionRunStatus;
+			lastActive?: number;
+			failedAt?: number;
+			failureMessage?: string;
+		},
+	): void;
 	openTab(tab: CodingTab): void;
 	closeTab(
 		providerId: string,
@@ -388,6 +399,98 @@ function openCodingTab(
 	return state.openTabs.map((entry, index) =>
 		index === replacementIndex ? tab : entry,
 	);
+}
+
+function updateSessionListRunStatus(
+	sessions: BrowserCodingSessionSummary[],
+	providerId: string,
+	sdkSessionId: string,
+	update: {
+		runStatus: BrowserCodingSessionRunStatus;
+		lastActive?: number;
+		failedAt?: number;
+		failureMessage?: string;
+	},
+): BrowserCodingSessionSummary[] {
+	let changed = false;
+	const next = sessions.map((session) => {
+		if (
+			session.providerId !== providerId ||
+			session.sdkSessionId !== sdkSessionId
+		) {
+			return session;
+		}
+		changed = true;
+		return {
+			...session,
+			runStatus: update.runStatus,
+			lastActive: update.lastActive ?? session.lastActive,
+			...(update.failedAt !== undefined ? { failedAt: update.failedAt } : {}),
+			...(update.failureMessage !== undefined
+				? { failureMessage: update.failureMessage }
+				: {}),
+		};
+	});
+	return changed ? next : sessions;
+}
+
+function updateSessionMapsRunStatus(
+	sessionsByRepository: Record<string, BrowserCodingSessionSummary[]>,
+	providerId: string,
+	sdkSessionId: string,
+	update: {
+		runStatus: BrowserCodingSessionRunStatus;
+		lastActive?: number;
+		failedAt?: number;
+		failureMessage?: string;
+	},
+): Record<string, BrowserCodingSessionSummary[]> {
+	let changed = false;
+	const entries = Object.entries(sessionsByRepository).map(
+		([repositoryId, sessions]) => {
+			const nextSessions = updateSessionListRunStatus(
+				sessions,
+				providerId,
+				sdkSessionId,
+				update,
+			);
+			if (nextSessions !== sessions) {
+				changed = true;
+			}
+			return [repositoryId, nextSessions] as const;
+		},
+	);
+	return changed ? Object.fromEntries(entries) : sessionsByRepository;
+}
+
+function updateSearchRunStatus(
+	searchByRepository: Record<string, RepositorySearchState>,
+	providerId: string,
+	sdkSessionId: string,
+	update: {
+		runStatus: BrowserCodingSessionRunStatus;
+		lastActive?: number;
+		failedAt?: number;
+		failureMessage?: string;
+	},
+): Record<string, RepositorySearchState> {
+	let changed = false;
+	const entries = Object.entries(searchByRepository).map(
+		([repositoryId, search]) => {
+			const sessions = updateSessionListRunStatus(
+				search.sessions,
+				providerId,
+				sdkSessionId,
+				update,
+			);
+			if (sessions !== search.sessions) {
+				changed = true;
+				return [repositoryId, { ...search, sessions }] as const;
+			}
+			return [repositoryId, search] as const;
+		},
+	);
+	return changed ? Object.fromEntries(entries) : searchByRepository;
 }
 
 export const useCodingStore = create<CodingState>()(
@@ -636,6 +739,39 @@ export const useCodingStore = create<CodingState>()(
 						openTabs: nextOpenTabs,
 					};
 				});
+			},
+			updateSessionRunStatus(providerId, sdkSessionId, update) {
+				set((state) => ({
+					sessionsByRepository: updateSessionMapsRunStatus(
+						state.sessionsByRepository,
+						providerId,
+						sdkSessionId,
+						update,
+					),
+					searchByRepository: updateSearchRunStatus(
+						state.searchByRepository,
+						providerId,
+						sdkSessionId,
+						update,
+					),
+					archivedSessions: updateSessionListRunStatus(
+						state.archivedSessions,
+						providerId,
+						sdkSessionId,
+						update,
+					),
+					archivedSearchState: state.archivedSearchState
+						? {
+								...state.archivedSearchState,
+								sessions: updateSessionListRunStatus(
+									state.archivedSearchState.sessions,
+									providerId,
+									sdkSessionId,
+									update,
+								),
+							}
+						: undefined,
+				}));
 			},
 			upsertSession(repositoryId, session) {
 				set((state) => {

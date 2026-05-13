@@ -2,6 +2,7 @@ import type { RuntimeClientType } from "../../common/protocol.ts";
 import type { AgentRuntime } from "../application/create-agent-runtime.ts";
 import { createBrowserSidebarWatcher } from "../browser/sidebar/watcher.ts";
 import { TerminalRelay } from "../browser/terminal/relay.ts";
+import type { CodingSessionEventRecorder } from "../coding/index.ts";
 import { AgentRuntimeRegistry } from "./agent-runtime-registry.ts";
 import {
 	type BrowserApi,
@@ -52,6 +53,7 @@ interface CreateSupervisorOptions {
 	agents: AgentRuntime[];
 	browserApp?: BrowserApp;
 	browserApi?: BrowserApi;
+	codingEvents?: CodingSessionEventRecorder;
 	browserWatch?: {
 		agents: Array<{
 			agentId: string;
@@ -126,6 +128,13 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 					controller.broadcastBrowserSidebarInvalidated(event),
 			})
 		: undefined;
+	const unsubscribeCodingEvents = options.codingEvents?.subscribeAll?.(
+		(event) =>
+			controller.broadcastCodingSessionEvent({
+				type: "coding_session_event",
+				...event,
+			}),
+	);
 	const terminalRelay = new TerminalRelay();
 
 	const server = createSupervisorServer({
@@ -257,6 +266,7 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 			if (!stopPromise) {
 				stopPromise = (async () => {
 					browserSidebarWatcher?.stop();
+					unsubscribeCodingEvents?.();
 					await registry.stopAll();
 					server.stop();
 				})();

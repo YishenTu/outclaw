@@ -25,6 +25,7 @@ import type {
 	CodexThreadResumeResult,
 	CodexThreadStartResult,
 	CodexTurnStartResult,
+	CodexTurnSteerResult,
 	CodexUserInput,
 } from "./types.ts";
 
@@ -40,6 +41,7 @@ export class CodexAdapter implements Facade {
 	private readonly injectedClient?: CodexAppServerClient;
 	private readonly appServerOptions?: CodexAppServerClientOptions;
 	private cachedClient?: CodexAppServerClient;
+	private readonly activeTurns = new Map<string, CodexActiveTurn>();
 
 	constructor(options: CodexAdapterOptions = {}) {
 		this.injectedClient = options.client;
@@ -121,6 +123,36 @@ export class CodexAdapter implements Facade {
 		return normalizeCodexJsonlEvents(content, { sessionId: thread.thread.id });
 	}
 
+	async steerCodingSession(params: {
+		sessionId: string;
+		prompt: string;
+		cwd?: string;
+	}): Promise<{ sessionId: string; turnId: string }> {
+		const client = await this.loadClient();
+		await client.initialize();
+		const activeTurn = this.activeTurns.get(params.sessionId);
+		if (!activeTurn) {
+			throw new Error(
+				`Coding session has no active steerable turn: ${params.sessionId}`,
+			);
+		}
+		const input = await buildUserInput(client, {
+			prompt: params.prompt,
+			cwd: params.cwd,
+		});
+		const result = await client.request<CodexTurnSteerResult>("turn/steer", {
+			threadId: activeTurn.threadId,
+			expectedTurnId: activeTurn.turnId,
+			input,
+		});
+		activeTurn.turnId = result.turnId;
+		activeTurn.observedTurnIds.add(result.turnId);
+		return {
+			sessionId: params.sessionId,
+			turnId: result.turnId,
+		};
+	}
+
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		const startedAtMs = Date.now();
 		const client = await this.loadClient();
@@ -130,6 +162,7 @@ export class CodexAdapter implements Facade {
 		});
 		let threadId: string | undefined;
 		let turnId: string | undefined;
+		let activeTurn: CodexActiveTurn | undefined;
 		let abortListener: (() => void) | undefined;
 
 		try {
@@ -156,6 +189,12 @@ export class CodexAdapter implements Facade {
 				buildTurnStartParams(threadId, params, input),
 			);
 			turnId = turnResult.turn.id;
+			activeTurn = {
+				threadId,
+				turnId,
+				observedTurnIds: new Set([turnId]),
+			};
+			this.activeTurns.set(threadId, activeTurn);
 
 			abortListener = () => {
 				void client
@@ -172,10 +211,11 @@ export class CodexAdapter implements Facade {
 			yield* normalizeCodexTurnNotifications({
 				notifications: queue,
 				threadId,
-				turnId,
+				turnIds: activeTurn.observedTurnIds,
+				isCurrentTurnId: (candidate) => activeTurn?.turnId === candidate,
 				sessionId: threadId,
 				startedAtMs,
-			});
+			}) as AsyncIterable<FacadeEvent>;
 		} catch (err) {
 			yield {
 				type: "error",
@@ -183,6 +223,11 @@ export class CodexAdapter implements Facade {
 				sessionId: threadId,
 			};
 		} finally {
+			if (threadId && activeTurn) {
+				if (this.activeTurns.get(threadId) === activeTurn) {
+					this.activeTurns.delete(threadId);
+				}
+			}
 			if (abortListener) {
 				params.abortController?.signal.removeEventListener(
 					"abort",
@@ -201,6 +246,12 @@ export class CodexAdapter implements Facade {
 		this.cachedClient ??= createCodexAppServerClient(this.appServerOptions);
 		return this.cachedClient;
 	}
+}
+
+interface CodexActiveTurn {
+	threadId: string;
+	turnId: string;
+	observedTurnIds: Set<string>;
 }
 
 function buildThreadStartParams(params: RunParams): Record<string, unknown> {

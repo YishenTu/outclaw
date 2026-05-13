@@ -591,7 +591,128 @@ describe("CodingRuntime", () => {
 		expect(abortCount).toBe(1);
 	});
 
-	test("rejects resume for provider mismatch, unknown, closed, or busy sessions", async () => {
+	test("steers a running coding session instead of starting another turn", async () => {
+		const eventLog = createRecordingEventLog();
+		let detachedRan = false;
+		let steered:
+			| {
+					cwd: string;
+					prompt: string;
+					sdkSessionId: string;
+			  }
+			| undefined;
+		const runtime = createCodingRuntime({
+			codingEvents: eventLog,
+			codingSessions: {
+				resolveRef({ providerId, sdkSessionId }) {
+					if (providerId !== "codex" || sdkSessionId !== "busy") {
+						return { status: "not_found" };
+					}
+					return {
+						status: "resolved",
+						session: {
+							storageOwnerId: "__coding__",
+							providerId,
+							sdkSessionId,
+							cwd: "/repo",
+							lifecycleStatus: "open",
+							runStatus: "running",
+							createdAt: 1,
+							lastActive: 2,
+						},
+					};
+				},
+				upsert() {},
+			},
+			providerId: "codex",
+			runDetachedPrompt() {
+				detachedRan = true;
+				return acceptedDetachedPrompt("busy");
+			},
+			async steerActivePrompt(params) {
+				steered = params;
+			},
+		});
+
+		await expect(
+			runtime.resumePrompt({
+				providerId: "codex",
+				sdkSessionId: "busy",
+				prompt: "adjust the approach",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "busy",
+		});
+
+		expect(detachedRan).toBe(false);
+		expect(steered).toEqual({
+			cwd: "/repo",
+			prompt: "adjust the approach",
+			sdkSessionId: "busy",
+		});
+		expect(eventLog.recorded.map((entry) => entry.event)).toEqual([
+			{ type: "user_prompt", text: "adjust the approach" },
+		]);
+	});
+
+	test("records a running-session follow-up prompt before provider steering settles", async () => {
+		const eventLog = createRecordingEventLog();
+		let resolveSteer: (() => void) | undefined;
+		const runtime = createCodingRuntime({
+			codingEvents: eventLog,
+			codingSessions: {
+				resolveRef({ providerId, sdkSessionId }) {
+					if (providerId !== "codex" || sdkSessionId !== "busy") {
+						return { status: "not_found" };
+					}
+					return {
+						status: "resolved",
+						session: {
+							storageOwnerId: "__coding__",
+							providerId,
+							sdkSessionId,
+							cwd: "/repo",
+							lifecycleStatus: "open",
+							runStatus: "running",
+							createdAt: 1,
+							lastActive: 2,
+						},
+					};
+				},
+				upsert() {},
+			},
+			providerId: "codex",
+			runDetachedPrompt() {
+				return acceptedDetachedPrompt("busy");
+			},
+			steerActivePrompt: () =>
+				new Promise((resolve) => {
+					resolveSteer = resolve;
+				}),
+		});
+
+		const resumed = runtime.resumePrompt({
+			providerId: "codex",
+			sdkSessionId: "busy",
+			prompt: "show this immediately",
+		});
+
+		await Promise.resolve();
+		expect(eventLog.recorded.map((entry) => entry.event)).toEqual([
+			{ type: "user_prompt", text: "show this immediately" },
+		]);
+
+		resolveSteer?.();
+		await expect(resumed).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "busy",
+		});
+	});
+
+	test("rejects resume for provider mismatch, unknown, closed, or unsupported busy sessions", async () => {
 		const runtime = createCodingRuntime({
 			codingSessions: {
 				resolveRef({ providerId, sdkSessionId }) {
@@ -676,7 +797,7 @@ describe("CodingRuntime", () => {
 			}),
 		).resolves.toEqual({
 			status: "rejected",
-			message: "Coding session is busy: codex/busy",
+			message: "Coding provider cannot steer running sessions: codex/busy",
 		});
 	});
 

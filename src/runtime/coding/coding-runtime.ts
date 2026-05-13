@@ -1,5 +1,9 @@
 import type { EffortLevel } from "../../common/commands.ts";
-import type { CodingSessionEvent, FacadeEvent } from "../../common/protocol.ts";
+import {
+	type CodingSessionEvent,
+	extractError,
+	type FacadeEvent,
+} from "../../common/protocol.ts";
 import type { PromptExecution } from "../application/prompt-execution/prompt-dispatcher.ts";
 import type { DetachedPromptStartResult } from "../application/runtime-controller.ts";
 import type { CodingSessionEventRecorder } from "./coding-session-event-hub.ts";
@@ -86,6 +90,11 @@ interface CodingRuntimeOptions {
 	getLinkedChatSessionId?: () => string | undefined;
 	providerId: string;
 	runDetachedPrompt(task: PromptExecution): DetachedPromptStartResult;
+	steerActivePrompt?(params: {
+		cwd: string;
+		prompt: string;
+		sdkSessionId: string;
+	}): Promise<void>;
 }
 
 export class CodingRuntime {
@@ -232,11 +241,13 @@ export class CodingRuntime {
 				message: `Coding session is not open: ${params.providerId}/${params.sdkSessionId}`,
 			};
 		}
-		if (session.runStatus === "running") {
-			return {
-				status: "rejected",
-				message: `Coding session is busy: ${params.providerId}/${params.sdkSessionId}`,
-			};
+		if (
+			session.runStatus === "running" ||
+			this.activeTurns.has(
+				activeTurnKey(session.providerId, session.sdkSessionId),
+			)
+		) {
+			return await this.steerRunningSession(session, params.prompt);
 		}
 
 		const detachedResult = this.options.runDetachedPrompt({
@@ -301,6 +312,39 @@ export class CodingRuntime {
 			status: "accepted",
 			providerId: session.providerId,
 			sdkSessionId: params.sdkSessionId,
+		};
+	}
+
+	private async steerRunningSession(
+		session: CodingSessionRecord,
+		prompt: string,
+	): Promise<CodePromptStartResult> {
+		if (!this.options.steerActivePrompt) {
+			return {
+				status: "rejected",
+				message: `Coding provider cannot steer running sessions: ${session.providerId}/${session.sdkSessionId}`,
+			};
+		}
+		this.recordEvent(session.sdkSessionId, {
+			type: "user_prompt",
+			text: prompt,
+		});
+		try {
+			await this.options.steerActivePrompt({
+				cwd: session.cwd,
+				prompt,
+				sdkSessionId: session.sdkSessionId,
+			});
+		} catch (error) {
+			return {
+				status: "rejected",
+				message: extractError(error),
+			};
+		}
+		return {
+			status: "accepted",
+			providerId: session.providerId,
+			sdkSessionId: session.sdkSessionId,
 		};
 	}
 

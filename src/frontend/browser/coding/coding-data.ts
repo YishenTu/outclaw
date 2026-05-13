@@ -18,7 +18,6 @@ import type { CodingTab } from "./coding-store.ts";
 import {
 	isCodingDiffTab,
 	isCodingFileTab,
-	isPendingCodingTab,
 	makeCodingFileTab,
 	makePendingCodingTab,
 	useCodingStore,
@@ -67,6 +66,28 @@ export function resolveFocusedCodingSession(params: {
 				entry.sdkSessionId === params.focusedSession?.sdkSessionId,
 		)
 	);
+}
+
+export function createProvisionalCodingSessionSummary(
+	repository: BrowserCodingRepositorySummary,
+	summary: { providerId: string; sdkSessionId: string; prompt?: string },
+	timestamp = Date.now(),
+): BrowserCodingSessionSummary {
+	const title = summary.prompt?.trim() || summary.sdkSessionId;
+	return {
+		providerId: summary.providerId,
+		sdkSessionId: summary.sdkSessionId,
+		repositoryId: repository.id,
+		title,
+		model: "",
+		lastActive: timestamp,
+		cwd: repository.rootCwd,
+		lifecycleStatus: "open",
+		runStatus: "running",
+		createdAt: timestamp,
+		source: "code",
+		tag: "code",
+	};
 }
 
 /**
@@ -257,41 +278,41 @@ export function useCodingData() {
 	const handleSessionStarted = useCallback(
 		async (
 			repositoryId: string,
-			summary: { providerId: string; sdkSessionId: string },
+			summary: { providerId: string; sdkSessionId: string; prompt?: string },
 		) => {
-			let resolvedTitle = summary.sdkSessionId;
+			const startedRepository = repositories.find(
+				(entry) => entry.id === repositoryId,
+			);
+			const provisional = startedRepository
+				? createProvisionalCodingSessionSummary(startedRepository, summary)
+				: undefined;
+			if (provisional) {
+				upsertSession(repositoryId, provisional);
+			}
+			openTab({
+				providerId: summary.providerId,
+				sdkSessionId: summary.sdkSessionId,
+				repositoryId,
+				title: provisional
+					? describeTabTitle(provisional)
+					: summary.sdkSessionId,
+			});
 			try {
 				const resolved = await fetchCodingSession(
 					summary.providerId,
 					summary.sdkSessionId,
 				);
-				upsertSession(repositoryId, resolved);
-				resolvedTitle = describeTabTitle(resolved);
+				upsertSession(resolved.repositoryId ?? repositoryId, resolved);
+				updateTabTitle(
+					resolved.providerId,
+					resolved.sdkSessionId,
+					describeTabTitle(resolved),
+				);
 			} catch (error) {
 				console.warn("Failed to fetch newly created coding session", error);
 			}
-			// Open the real tab first so any pending tab in the same repo can be
-			// closed without tripping the min-1-tab invariant and spawning a fresh
-			// pending replacement.
-			openTab({
-				providerId: summary.providerId,
-				sdkSessionId: summary.sdkSessionId,
-				repositoryId,
-				title: resolvedTitle,
-			});
-			const pending = openTabs.find(
-				(entry) =>
-					isPendingCodingTab(entry) && entry.repositoryId === repositoryId,
-			);
-			if (pending) {
-				closeTab(
-					pending.providerId,
-					pending.sdkSessionId,
-					pending.repositoryId,
-				);
-			}
 		},
-		[closeTab, openTab, openTabs, upsertSession],
+		[openTab, repositories, updateTabTitle, upsertSession],
 	);
 
 	const handleAddTab = useCallback(() => {

@@ -5,6 +5,7 @@ import {
 	type BrowserAgentsInvalidatedEvent,
 	type BrowserChatCodingLinksChangedEvent,
 	type BrowserSidebarInvalidatedEvent,
+	type CodingSessionStreamEvent,
 	extractError,
 	parseMessage,
 	serialize,
@@ -74,6 +75,14 @@ export class SupervisorController {
 	broadcastBrowserChatCodingLinksChanged(
 		event: BrowserChatCodingLinksChangedEvent,
 	) {
+		for (const client of this.options.bindings.listBoundClientsByTypes([
+			"browser",
+		])) {
+			client.send(serialize(event));
+		}
+	}
+
+	broadcastCodingSessionEvent(event: CodingSessionStreamEvent) {
 		for (const client of this.options.bindings.listBoundClientsByTypes([
 			"browser",
 		])) {

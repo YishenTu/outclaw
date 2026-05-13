@@ -44,6 +44,10 @@ export interface CodexTurnStartResult {
 	turn: CodexTurn;
 }
 
+export interface CodexTurnSteerResult {
+	turnId: string;
+}
+
 export type CodexUserInput =
 	| {
 			type: "text";

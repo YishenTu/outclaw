@@ -1298,6 +1298,7 @@ describe("createSupervisor", () => {
 		});
 		const supervisor = createSupervisor({
 			port: 0,
+			codingEvents,
 			agents: [
 				createAgentRuntime({
 					agentId: "agent-railly",
@@ -1322,6 +1323,13 @@ describe("createSupervisor", () => {
 			rmSync(codeHome, { recursive: true, force: true });
 		};
 		const ws = await connectControlWs(supervisor.port);
+		const browser = await connectBrowserRuntimeWs(supervisor.port, "railly");
+		const codingEvent = waitForEvent(
+			browser,
+			(event) =>
+				event.type === "coding_session_event" &&
+				(event.event as { type?: string } | undefined)?.type === "user_prompt",
+		);
 
 		ws.send(
 			JSON.stringify({
@@ -1338,6 +1346,15 @@ describe("createSupervisor", () => {
 		expect(response).toMatchObject({
 			providerId: "mock",
 			sdkSessionId: "mock-session-123",
+		});
+		await expect(codingEvent).resolves.toMatchObject({
+			type: "coding_session_event",
+			providerId: "mock",
+			sdkSessionId: "mock-session-123",
+			event: {
+				type: "user_prompt",
+				text: "implement the parser",
+			},
 		});
 		await waitForCondition(
 			() => codingSharedStore.get("mock", "mock-session-123") !== undefined,

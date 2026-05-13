@@ -1678,9 +1678,9 @@ describe("CLI", () => {
 		}
 	});
 
-	test("coding monitor streams normalized coding events and exits on the terminal event", async () => {
-		let statusSeen = false;
+	test("coding transcript renders normalized replay events without following", async () => {
 		let eventsSeen = false;
+		let followParam: string | null | undefined;
 		const frame = (sequence: number, event: Record<string, unknown>): string =>
 			`id: ${sequence}\ndata: ${JSON.stringify({
 				providerId: "codex",
@@ -1694,23 +1694,13 @@ describe("CLI", () => {
 			fetch(req) {
 				const url = new URL(req.url);
 				if (
-					url.pathname === "/api/coding/sessions/codex/codex-session-1/status"
-				) {
-					statusSeen = true;
-					expect(req.method).toBe("GET");
-					return Response.json({
-						providerId: "codex",
-						sdkSessionId: "codex-session-1",
-						state: "running",
-					});
-				}
-				if (
 					url.pathname !== "/api/coding/sessions/codex/codex-session-1/events"
 				) {
 					return new Response("not found", { status: 404 });
 				}
 				eventsSeen = true;
 				expect(req.method).toBe("GET");
+				followParam = url.searchParams.get("follow");
 				const encoder = new TextEncoder();
 				return new Response(
 					new ReadableStream<Uint8Array>({
@@ -1768,7 +1758,7 @@ describe("CLI", () => {
 								encoder.encode(
 									frame(6, {
 										type: "text",
-										text: "Implemented monitor.",
+										text: "Implemented transcript.",
 										sessionId: "codex-session-1",
 									}),
 								),
@@ -1782,6 +1772,7 @@ describe("CLI", () => {
 									}),
 								),
 							);
+							controller.close();
 						},
 					}),
 					{
@@ -1796,7 +1787,7 @@ describe("CLI", () => {
 
 		try {
 			const result = await runCliAsyncWithTimeout(
-				["coding", "monitor", "codex/codex-session-1"],
+				["coding", "transcript", "codex/codex-session-1", "--full"],
 				{ cwd: TEST_HOME, timeoutMs: 1000 },
 			);
 			expect(result.timedOut).toBe(false);
@@ -1807,17 +1798,16 @@ describe("CLI", () => {
 			expect(result.stdout).toContain("tests passed");
 			expect(result.stdout).toContain("[command exited 0]");
 			expect(result.stdout).toContain("[file] update src/app.ts");
-			expect(result.stdout).toContain("Implemented monitor.");
+			expect(result.stdout).toContain("Implemented transcript.");
 			expect(result.stdout).toContain("[done] 1.5s");
-			expect(statusSeen).toBe(true);
 			expect(eventsSeen).toBe(true);
+			expect(followParam).toBe("false");
 		} finally {
 			server.stop();
 		}
 	});
 
-	test("coding monitor replays completed sessions without following future events", async () => {
-		let followParam: string | null | undefined;
+	test("coding transcript defaults to the latest twenty renderable events", async () => {
 		const frame = (sequence: number, event: Record<string, unknown>): string =>
 			`id: ${sequence}\ndata: ${JSON.stringify({
 				providerId: "codex",
@@ -1830,36 +1820,17 @@ describe("CLI", () => {
 			port: 0,
 			fetch(req) {
 				const url = new URL(req.url);
-				if (url.pathname === "/api/coding/sessions/codex/done-session/status") {
-					return Response.json({
-						providerId: "codex",
-						sdkSessionId: "done-session",
-						state: "done",
-						finalResponse: "already finished",
-					});
-				}
 				if (url.pathname !== "/api/coding/sessions/codex/done-session/events") {
 					return new Response("not found", { status: 404 });
 				}
-				followParam = url.searchParams.get("follow");
 				return new Response(
-					[
-						frame(1, {
-							type: "user_prompt",
-							text: "previous prompt",
-							sessionId: "done-session",
-						}),
-						frame(2, {
+					Array.from({ length: 25 }, (_, index) =>
+						frame(index + 1, {
 							type: "text",
-							text: "already finished",
+							text: `event ${index + 1}\n`,
 							sessionId: "done-session",
 						}),
-						frame(3, {
-							type: "done",
-							sessionId: "done-session",
-							durationMs: 42,
-						}),
-					].join(""),
+					).join(""),
 					{
 						headers: {
 							"content-type": "text/event-stream; charset=utf-8",
@@ -1872,22 +1843,21 @@ describe("CLI", () => {
 
 		try {
 			const result = await runCliAsyncWithTimeout(
-				["coding", "monitor", "codex/done-session"],
+				["coding", "transcript", "codex/done-session"],
 				{ cwd: TEST_HOME, timeoutMs: 1000 },
 			);
 			expect(result.timedOut).toBe(false);
 			expect(result.exitCode).toBe(0);
 			expect(result.stderr).toBe("");
-			expect(result.stdout).toContain("[user] previous prompt");
-			expect(result.stdout).toContain("already finished");
-			expect(result.stdout).toContain("[done] 42ms");
-			expect(followParam).toBe("false");
+			expect(result.stdout).not.toContain("event 5");
+			expect(result.stdout).toContain("event 6");
+			expect(result.stdout).toContain("event 25");
 		} finally {
 			server.stop();
 		}
 	});
 
-	test("coding monitor prints the snapshot terminal state when replay has no terminal event", async () => {
+	test("coding transcript supports an explicit tail count", async () => {
 		const frame = (
 			sdkSessionId: string,
 			sequence: number,
@@ -1904,24 +1874,6 @@ describe("CLI", () => {
 			port: 0,
 			fetch(req) {
 				const url = new URL(req.url);
-				if (url.pathname === "/api/coding/sessions/codex/done-session/status") {
-					return Response.json({
-						providerId: "codex",
-						sdkSessionId: "done-session",
-						state: "done",
-						finalResponse: "already finished",
-					});
-				}
-				if (
-					url.pathname === "/api/coding/sessions/codex/error-session/status"
-				) {
-					return Response.json({
-						providerId: "codex",
-						sdkSessionId: "error-session",
-						state: "error",
-						error: "boom",
-					});
-				}
 				if (url.pathname === "/api/coding/sessions/codex/done-session/events") {
 					return new Response(
 						[
@@ -1935,23 +1887,12 @@ describe("CLI", () => {
 								text: "already finished",
 								sessionId: "done-session",
 							}),
+							frame("done-session", 3, {
+								type: "done",
+								sessionId: "done-session",
+								durationMs: 42,
+							}),
 						].join(""),
-						{
-							headers: {
-								"content-type": "text/event-stream; charset=utf-8",
-							},
-						},
-					);
-				}
-				if (
-					url.pathname === "/api/coding/sessions/codex/error-session/events"
-				) {
-					return new Response(
-						frame("error-session", 1, {
-							type: "user_prompt",
-							text: "previous prompt",
-							sessionId: "error-session",
-						}),
 						{
 							headers: {
 								"content-type": "text/event-stream; charset=utf-8",
@@ -1966,26 +1907,42 @@ describe("CLI", () => {
 
 		try {
 			const done = await runCliAsyncWithTimeout(
-				["coding", "monitor", "codex/done-session"],
+				["coding", "transcript", "codex/done-session", "--tail", "2"],
 				{ cwd: TEST_HOME, timeoutMs: 1000 },
 			);
 			expect(done.timedOut).toBe(false);
 			expect(done.stderr).toBe("");
 			expect(done.exitCode).toBe(0);
+			expect(done.stdout).not.toContain("[user] previous prompt");
 			expect(done.stdout).toContain("already finished");
-			expect(done.stdout).toContain("[done]");
-
-			const failed = await runCliAsyncWithTimeout(
-				["coding", "monitor", "codex/error-session"],
-				{ cwd: TEST_HOME, timeoutMs: 1000 },
-			);
-			expect(failed.timedOut).toBe(false);
-			expect(failed.stderr).toBe("");
-			expect(failed.exitCode).toBe(0);
-			expect(failed.stdout).toContain("[error] boom");
+			expect(done.stdout).toContain("[done] 42ms");
 		} finally {
 			server.stop();
 		}
+	});
+
+	test("coding transcript rejects malformed tail counts", async () => {
+		const result = await runCliAsync(
+			["coding", "transcript", "codex/done-session", "--tail=2x"],
+			{},
+		);
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stdout).toBe("");
+		expect(result.stderr).toContain(
+			"Transcript tail must be a positive integer",
+		);
+	});
+
+	test("coding monitor is no longer an agent-facing command", async () => {
+		const result = await runCliAsync(
+			["coding", "monitor", "codex/codex-session-1"],
+			{},
+		);
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stdout).toBe("");
+		expect(result.stderr).toContain("oc coding monitor was removed");
 	});
 
 	test("coding start prints daemon rejection messages to stderr", async () => {

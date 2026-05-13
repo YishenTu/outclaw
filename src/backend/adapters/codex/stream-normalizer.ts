@@ -18,7 +18,8 @@ import type {
 interface NormalizeCodexTurnOptions {
 	notifications: AsyncIterable<CodexServerNotification>;
 	threadId: string;
-	turnId: string;
+	turnIds: ReadonlySet<string>;
+	isCurrentTurnId?: (turnId: string) => boolean;
 	sessionId: string;
 	startedAtMs: number;
 }
@@ -88,16 +89,17 @@ class CodexToolCallProjectionState {
 
 export async function* normalizeCodexTurnNotifications(
 	options: NormalizeCodexTurnOptions,
-): AsyncIterable<FacadeEvent> {
+): AsyncIterable<CodingSessionEvent> {
 	let pendingUsage: UsageInfo | undefined;
 	let terminalError = false;
+	let streamedAssistantText = "";
 	const finalAssistantMessageIds = new Set<string>();
 	const projection = new CodexToolCallProjectionState();
 	const completedCommands = new Set<string>();
 
 	for await (const notification of options.notifications) {
 		if (
-			!isNotificationForTurn(notification, options.threadId, options.turnId)
+			!isNotificationForTurn(notification, options.threadId, options.turnIds)
 		) {
 			continue;
 		}
@@ -106,11 +108,70 @@ export async function* normalizeCodexTurnNotifications(
 			case "item/agentMessage/delta": {
 				const delta = readString(notification.params, "delta");
 				if (delta) {
+					streamedAssistantText += delta;
 					yield {
 						type: "text",
 						text: delta,
 						sessionId: options.sessionId,
 					};
+				}
+				break;
+			}
+			case "event_msg": {
+				const payload = asRecord(notification.params);
+				if (!payload) {
+					break;
+				}
+				const payloadType =
+					typeof payload.type === "string" ? payload.type : undefined;
+				switch (payloadType) {
+					case "user_message": {
+						const text =
+							typeof payload.message === "string" ? payload.message : "";
+						if (text) {
+							yield {
+								type: "user_prompt",
+								text,
+								sessionId: options.sessionId,
+							};
+						}
+						break;
+					}
+					case "agent_message": {
+						const text =
+							typeof payload.message === "string" ? payload.message : "";
+						const missingText = normalizeAgentMessageCompletionText(
+							text,
+							streamedAssistantText,
+						);
+						if (missingText) {
+							yield {
+								type: "text",
+								text: missingText,
+								sessionId: options.sessionId,
+							};
+						}
+						break;
+					}
+					case "task_complete": {
+						const completedTurnId = readEventPayloadTurnId(payload);
+						if (
+							completedTurnId &&
+							options.isCurrentTurnId &&
+							!options.isCurrentTurnId(completedTurnId)
+						) {
+							break;
+						}
+						yield {
+							type: "done",
+							sessionId: options.sessionId,
+							durationMs: readJsonlDurationMs(payload),
+							...(pendingUsage ? { usage: pendingUsage } : {}),
+						};
+						return;
+					}
+					default:
+						break;
 				}
 				break;
 			}
@@ -130,6 +191,7 @@ export async function* normalizeCodexTurnNotifications(
 				const events = readRawResponseItemCompleted(
 					notification.params,
 					options.sessionId,
+					streamedAssistantText,
 					projection,
 				);
 				for (const event of events) {
@@ -175,6 +237,10 @@ export async function* normalizeCodexTurnNotifications(
 					isFinalAssistantMessageCompleted(
 						notification.params,
 						finalAssistantMessageIds,
+					) &&
+					isCurrentNotificationTurn(
+						notification.params,
+						options.isCurrentTurnId,
 					)
 				) {
 					yield {
@@ -232,6 +298,13 @@ export async function* normalizeCodexTurnNotifications(
 			}
 			case "turn/completed": {
 				const turn = readTurn(notification.params);
+				if (
+					turn?.id &&
+					options.isCurrentTurnId &&
+					!options.isCurrentTurnId(turn.id)
+				) {
+					break;
+				}
 				if (terminalError) {
 					return;
 				}
@@ -639,7 +712,7 @@ function readTurnFailureMessage(
 function isNotificationForTurn(
 	notification: CodexServerNotification,
 	threadId: string,
-	turnId: string,
+	turnIds: ReadonlySet<string>,
 ): boolean {
 	const params = asRecord(notification.params);
 	if (!params || params.threadId !== threadId) {
@@ -647,10 +720,36 @@ function isNotificationForTurn(
 	}
 
 	if (notification.method === "turn/completed") {
-		return readTurn(params)?.id === turnId;
+		const completedTurnId = readTurn(params)?.id;
+		return completedTurnId !== undefined && turnIds.has(completedTurnId);
 	}
 
-	return params.turnId === turnId;
+	const notificationTurnId =
+		typeof params.turnId === "string" ? params.turnId : undefined;
+	return notificationTurnId !== undefined && turnIds.has(notificationTurnId);
+}
+
+function isCurrentNotificationTurn(
+	params: unknown,
+	isCurrentTurnId: ((turnId: string) => boolean) | undefined,
+): boolean {
+	if (!isCurrentTurnId) {
+		return true;
+	}
+	const turnId = readNotificationTurnId(params);
+	return !turnId || isCurrentTurnId(turnId);
+}
+
+function readNotificationTurnId(params: unknown): string | undefined {
+	const record = asRecord(params);
+	return typeof record?.turnId === "string" ? record.turnId : undefined;
+}
+
+function readEventPayloadTurnId(
+	payload: Record<string, unknown>,
+): string | undefined {
+	const turnId = payload.turn_id ?? payload.turnId;
+	return typeof turnId === "string" ? turnId : undefined;
 }
 
 function readUsage(params: unknown): UsageInfo | undefined {
@@ -722,6 +821,7 @@ function readErrorMessage(params: unknown): string | undefined {
 function readRawResponseItemCompleted(
 	params: unknown,
 	sessionId: string,
+	streamedAssistantText: string,
 	projection: CodexToolCallProjectionState,
 ): FacadeEvent[] {
 	const item = asRecord(asRecord(params)?.item);
@@ -819,7 +919,41 @@ function readRawResponseItemCompleted(
 		return readRawGenericToolCompleted(item, sessionId);
 	}
 
+	if (itemType === "agentMessage") {
+		const text = readContentText(item.content);
+		const missingText = normalizeAgentMessageCompletionText(
+			text,
+			streamedAssistantText,
+		);
+		if (!missingText) {
+			return [];
+		}
+		return [
+			{
+				type: "text",
+				text: missingText,
+				sessionId,
+			},
+		];
+	}
+
 	return [];
+}
+
+function normalizeAgentMessageCompletionText(
+	text: string,
+	streamedAssistantText: string,
+): string {
+	if (!text) {
+		return "";
+	}
+	if (!streamedAssistantText) {
+		return text;
+	}
+	if (text.startsWith(streamedAssistantText)) {
+		return text.slice(streamedAssistantText.length);
+	}
+	return text;
 }
 
 function readRawCommandExecutionStarted(

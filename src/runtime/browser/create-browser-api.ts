@@ -17,6 +17,7 @@ import type {
 	BrowserCodingSessionArchiveResponse,
 	BrowserCodingSessionDeleteResponse,
 	BrowserCodingSessionDetail,
+	BrowserCodingSessionEvent,
 	BrowserCodingSessionLifecycleStatus,
 	BrowserCodingSessionLinksResponse,
 	BrowserCodingSessionPageResponse,
@@ -631,7 +632,14 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					`Unknown coding session: ${providerId}/${sdkSessionId}`,
 				);
 			}
-			return toBrowserCodingSessionSummary(session);
+			const events = await readCodingSessionBootstrapEvents(options, {
+				providerId,
+				sdkSessionId,
+			});
+			return {
+				...toBrowserCodingSessionSummary(session),
+				...(events.length > 0 ? { events } : {}),
+			};
 		},
 		async getCodingSessionStatus(providerId, sdkSessionId) {
 			const session = options.codingSessions?.getDetail(
@@ -658,11 +666,12 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					error: session.failureMessage ?? "Coding session failed",
 				};
 			}
-			const events =
-				(await options.coding?.rehydrateSessionEvents?.({
+			const events = (
+				await readCodingSessionBootstrapEvents(options, {
 					providerId,
 					sdkSessionId,
-				})) ?? [];
+				})
+			).map((item) => item.event);
 			return {
 				providerId,
 				sdkSessionId,
@@ -828,7 +837,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 								Promise.resolve([]),
 						}
 					: undefined,
-				liveEvents: params.follow === false ? undefined : options.codingEvents,
+				liveEvents: options.codingEvents,
 				sessions: options.codingSessions
 					? {
 							hasCodingSession: (target) =>
@@ -839,6 +848,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 						}
 					: undefined,
 				...params,
+				follow: params.follow ?? true,
 			});
 		},
 		async resumeCodingSession(params) {
@@ -1129,6 +1139,40 @@ function normalizeTerminalRunCommand(command: string): string {
 		throw new Error("Terminal run command must be a single line");
 	}
 	return nextCommand;
+}
+
+async function readCodingSessionBootstrapEvents(
+	options: Pick<
+		CreateBrowserApiOptions,
+		"coding" | "codingEvents" | "codingSessions"
+	>,
+	target: { providerId: string; sdkSessionId: string },
+): Promise<BrowserCodingSessionEvent[]> {
+	const events: BrowserCodingSessionEvent[] = [];
+	for await (const item of openRuntimeCodingSessionEventStream({
+		history: options.coding?.rehydrateSessionEvents
+			? {
+					readCodingSessionEvents: (params) =>
+						options.coding?.rehydrateSessionEvents?.(params) ??
+						Promise.resolve([]),
+				}
+			: undefined,
+		liveEvents: options.codingEvents,
+		sessions: options.codingSessions
+			? {
+					hasCodingSession: (params) =>
+						!!options.codingSessions?.getDetail(
+							params.providerId,
+							params.sdkSessionId,
+						),
+				}
+			: undefined,
+		...target,
+		follow: false,
+	})) {
+		events.push(item);
+	}
+	return events;
 }
 
 function extractLatestAssistantResponse(events: CodingSessionEvent[]): string {

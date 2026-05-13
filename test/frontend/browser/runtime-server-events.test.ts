@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { UsageInfo } from "../../../src/common/protocol.ts";
 import {
+	clearCodingSessionEventCache,
+	readCodingSessionCachedEvents,
+} from "../../../src/frontend/browser/coding/coding-session-event-cache.ts";
+import { useCodingStore } from "../../../src/frontend/browser/coding/coding-store.ts";
+import {
 	applySidebarSummary,
 	formatSessionInfoSummary,
 	formatSessionListSummary,
@@ -46,6 +51,7 @@ function resetStore<TState>(store: {
 }
 
 function resetBrowserStores() {
+	clearCodingSessionEventCache();
 	resetStore(useAgentsStore);
 	resetStore(useAgentFilesStore);
 	resetStore(useSessionsStore);
@@ -56,6 +62,7 @@ function resetBrowserStores() {
 	resetStore(useRightPanelRefreshStore);
 	resetStore(useSlashCommandsStore);
 	resetStore(useTabsStore);
+	resetStore(useCodingStore);
 }
 
 function createHandlerOptions(overrides: Record<string, unknown> = {}) {
@@ -1778,6 +1785,108 @@ describe("browser runtime server events", () => {
 		} finally {
 			globalThis.fetch = originalFetch;
 		}
+	});
+
+	test("routes coding session events through the shared browser websocket handler", () => {
+		const { options } = createHandlerOptions();
+
+		handleBrowserServerEvent(
+			{
+				type: "coding_session_event",
+				providerId: "codex",
+				sdkSessionId: "code-1",
+				sequence: 1,
+				event: { type: "user_prompt", text: "follow up" },
+				createdAt: 10,
+			},
+			options,
+		);
+		handleBrowserServerEvent(
+			{
+				type: "coding_session_event",
+				providerId: "codex",
+				sdkSessionId: "code-1",
+				sequence: 2,
+				event: { type: "text", text: "answer", sessionId: "code-1" },
+				createdAt: 11,
+			},
+			options,
+		);
+
+		expect(
+			readCodingSessionCachedEvents("coding:codex/code-1").map(
+				(item) => item.event,
+			),
+		).toEqual([
+			{ type: "user_prompt", text: "follow up" },
+			{ type: "text", text: "answer", sessionId: "code-1" },
+		]);
+	});
+
+	test("refreshes code session run status from shared websocket coding events", () => {
+		const { options } = createHandlerOptions();
+		useCodingStore.setState({
+			sessionsByRepository: {
+				"repo-1": [
+					{
+						providerId: "codex",
+						sdkSessionId: "code-1",
+						repositoryId: "repo-1",
+						title: "Fix tests",
+						model: "gpt-5.5",
+						lastActive: 1,
+						cwd: "/repo",
+						lifecycleStatus: "open",
+						runStatus: "idle",
+						createdAt: 1,
+						source: "code",
+						tag: "code",
+					},
+				],
+			},
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "coding_session_event",
+				providerId: "codex",
+				sdkSessionId: "code-1",
+				sequence: 1,
+				event: { type: "user_prompt", text: "continue" },
+				createdAt: 30,
+			},
+			options,
+		);
+
+		expect(
+			useCodingStore.getState().sessionsByRepository["repo-1"]?.[0],
+		).toMatchObject({
+			runStatus: "running",
+			lastActive: 30,
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "coding_session_event",
+				providerId: "codex",
+				sdkSessionId: "code-1",
+				sequence: 2,
+				event: {
+					type: "done",
+					sessionId: "code-1",
+					durationMs: 12,
+				},
+				createdAt: 42,
+			},
+			options,
+		);
+
+		expect(
+			useCodingStore.getState().sessionsByRepository["repo-1"]?.[0],
+		).toMatchObject({
+			runStatus: "idle",
+			lastActive: 42,
+		});
 	});
 
 	test("handles status, model, effort, and ignored terminal-only events", () => {

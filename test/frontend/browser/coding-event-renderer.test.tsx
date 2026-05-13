@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { CodingSessionEvent } from "../../../src/common/protocol.ts";
 import {
 	CodingEventView,
 	isCodingTurnInFlight,
@@ -9,13 +10,13 @@ import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules
 
 function streamItem(
 	sequence: number,
-	event: Record<string, unknown>,
+	event: unknown,
 ): CodingSessionEventStreamItem {
 	return {
 		providerId: "codex",
 		sdkSessionId: "session-1",
 		sequence,
-		event,
+		event: event as CodingSessionEvent,
 		createdAt: sequence,
 	};
 }

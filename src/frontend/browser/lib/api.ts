@@ -11,6 +11,7 @@ import type {
 	BrowserCodingSessionArchiveResponse,
 	BrowserCodingSessionDeleteResponse,
 	BrowserCodingSessionDetail,
+	BrowserCodingSessionEvent,
 	BrowserCodingSessionLifecycleStatus,
 	BrowserCodingSessionLinksResponse,
 	BrowserCodingSessionPageResponse,
@@ -311,79 +312,7 @@ export async function fetchCodingRepositorySkills(
 	return parseJsonResponse(await fetch(url));
 }
 
-export interface CodingSessionEventStreamItem {
-	providerId: string;
-	sdkSessionId: string;
-	sequence: number;
-	event: unknown;
-	createdAt: number;
-}
-
-export function openCodingSessionEventStream(params: {
-	providerId: string;
-	sdkSessionId: string;
-	sinceSequence?: number;
-	onEvent: (item: CodingSessionEventStreamItem) => void;
-	onError?: (message: string) => void;
-	reconnectDelayMs?: number;
-}): () => void {
-	let lastSequence = params.sinceSequence;
-	let closed = false;
-	let source: EventSource | undefined;
-	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-	const reconnectDelayMs = params.reconnectDelayMs ?? 1000;
-
-	const connect = () => {
-		if (closed) {
-			return;
-		}
-		const url = new URL(
-			`/api/coding/sessions/${encodeURIComponent(params.providerId)}/${encodeURIComponent(params.sdkSessionId)}/events`,
-			window.location.origin,
-		);
-		if (lastSequence !== undefined) {
-			url.searchParams.set("sinceSequence", String(lastSequence));
-		}
-		source = new EventSource(url.toString());
-		source.onmessage = (event) => {
-			try {
-				const parsed = JSON.parse(event.data) as CodingSessionEventStreamItem;
-				lastSequence = parsed.sequence;
-				params.onEvent(parsed);
-			} catch (err) {
-				params.onError?.(
-					err instanceof Error ? err.message : "Malformed coding event payload",
-				);
-			}
-		};
-		source.addEventListener("error", () => {
-			if (closed || !source) {
-				return;
-			}
-			// EventSource.readyState === 2 (CLOSED) means the connection is dead;
-			// readyState === 0 (CONNECTING) means the built-in retry is already in
-			// flight, so we let it ride.
-			if (source.readyState === EventSource.CLOSED) {
-				source.close();
-				source = undefined;
-				params.onError?.("Coding event stream interrupted; reconnecting");
-				reconnectTimer = setTimeout(connect, reconnectDelayMs);
-			}
-		});
-	};
-
-	connect();
-
-	return () => {
-		closed = true;
-		if (reconnectTimer) {
-			clearTimeout(reconnectTimer);
-			reconnectTimer = undefined;
-		}
-		source?.close();
-		source = undefined;
-	};
-}
+export type CodingSessionEventStreamItem = BrowserCodingSessionEvent;
 
 export async function fetchCodingRepositories(params?: {
 	includeArchived?: boolean;

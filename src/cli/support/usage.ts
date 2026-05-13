@@ -21,8 +21,8 @@ export function formatUsage() {
 		'       oc coding <repo-id-or-path|provider/session> "<prompt>"',
 		'       oc coding start <repo-id-or-path> "<prompt>"',
 		'       oc coding resume <provider/session> "<prompt>"',
-		"       oc coding monitor <provider/session>",
 		"       oc coding status <provider/session>",
+		"       oc coding transcript <provider/session> [--tail N|--full]",
 		"       oc session list [--limit N] [--tag cron]",
 		"       oc session search <query> [--limit N]",
 		"       oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
@@ -234,15 +234,15 @@ export function formatCodingUsage() {
 		'Usage: oc coding <repo-id-or-path|provider/session> "<prompt>"',
 		'       oc coding start <repo-id-or-path> "<prompt>"',
 		'       oc coding resume <provider/session> "<prompt>"',
-		"       oc coding monitor <provider/session>",
 		"       oc coding status <provider/session>",
+		"       oc coding transcript <provider/session> [--tail N|--full]",
 		"",
 		"Commands:",
 		"       <target>  start or resume based on the target",
 		"       start     start a cwd-bound coding session and print its ref",
-		"       resume    send a follow-up prompt to an existing coding session",
-		"       monitor   replay prior progress and stream until terminal state",
+		"       resume    continue an existing coding session; running sessions are steered",
 		"       status    print running, error, or the final response",
+		"       transcript replay normalized coding-session history",
 	]);
 }
 
@@ -263,23 +263,25 @@ export function formatCodingResumeUsage() {
 	return joinLines([
 		'Usage: oc coding resume <provider/session> "<prompt>"',
 		"",
-		"Sends a follow-up prompt to a daemon-owned coding session and exits after the turn is accepted.",
+		"Continues a daemon-owned coding session and exits after the prompt is accepted.",
+		"If the session is running, the daemon steers the active turn.",
+		"If the session is idle, the daemon starts a normal resumed turn.",
 		"Archived sessions are restored by the daemon before the prompt is accepted.",
 	]);
 }
 
-export function formatCodingMonitorUsage() {
+export function formatCodingTranscriptUsage() {
 	return joinLines([
-		"Usage: oc coding monitor <provider/session>",
+		"Usage: oc coding transcript <provider/session> [--tail N|--full]",
 		"",
-		"Replays normalized coding-session events and streams new events.",
-		"Blocks until the observed turn reaches done or error.",
-		"Use the caller's shell/tool timeout when a maximum wait is needed.",
+		"Replays normalized coding-session history without following future events.",
+		"Default tail: 20 renderable events.",
+		"Use --full to print the complete available replay.",
 	]);
 }
 
-export function printCodingMonitorUsage() {
-	console.log(formatCodingMonitorUsage());
+export function printCodingTranscriptUsage() {
+	console.log(formatCodingTranscriptUsage());
 }
 
 export function formatCodingStatusUsage() {

@@ -54,6 +54,17 @@ export function createCodingService(
 		codingSessions: opts.sessions,
 		providerId: opts.facade.providerId,
 		runDetachedPrompt: controller.runDetachedPrompt.bind(controller),
+		...(opts.facade.steerCodingSession
+			? {
+					steerActivePrompt: async (params) => {
+						await opts.facade.steerCodingSession?.({
+							sessionId: params.sdkSessionId,
+							prompt: params.prompt,
+							cwd: params.cwd,
+						});
+					},
+				}
+			: {}),
 	});
 	let stopPromise: Promise<void> | undefined;
 	return {

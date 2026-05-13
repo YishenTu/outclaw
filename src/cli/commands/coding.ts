@@ -9,10 +9,10 @@ import type {
 } from "../../common/protocol.ts";
 import { loadGlobalConfig } from "../../runtime/config/index.ts";
 import {
-	formatCodingMonitorUsage,
 	formatCodingResumeUsage,
 	formatCodingStartUsage,
 	formatCodingStatusUsage,
+	formatCodingTranscriptUsage,
 	formatCodingUsage,
 	isHelpFlag,
 	printCodingUsage,
@@ -55,10 +55,16 @@ export async function codingCommand(options: CodingCommandOptions) {
 			await runCodingSubcommand(() => codingResumeCommand(options));
 			return;
 		case "monitor":
-			await runCodingSubcommand(() => codingMonitorCommand(options));
+			console.error(
+				"oc coding monitor was removed; use oc coding transcript for history or oc coding status for a snapshot.",
+			);
+			process.exit(1);
 			return;
 		case "status":
 			await runCodingSubcommand(() => codingStatusCommand(options));
+			return;
+		case "transcript":
+			await runCodingSubcommand(() => codingTranscriptCommand(options));
 			return;
 		default:
 			await runCodingSubcommand(() => codingTargetCommand(options));
@@ -153,16 +159,21 @@ async function codingStatusCommand(options: CodingCommandOptions) {
 	process.exit(0);
 }
 
-async function codingMonitorCommand(options: CodingCommandOptions) {
+async function codingTranscriptCommand(options: CodingCommandOptions) {
 	const args = options.argv.slice(4);
 	if (isHelpFlag(args[0])) {
-		console.log(formatCodingMonitorUsage());
+		console.log(formatCodingTranscriptUsage());
 		process.exit(0);
 	}
 
 	const sessionRef = args[0];
-	if (!sessionRef || args.length !== 1) {
-		console.error(formatCodingMonitorUsage());
+	const transcriptOptions = parseCodingTranscriptOptions(args.slice(1));
+	if (!sessionRef || transcriptOptions.status === "invalid") {
+		console.error(
+			transcriptOptions.status === "invalid"
+				? transcriptOptions.message
+				: formatCodingTranscriptUsage(),
+		);
 		process.exit(1);
 	}
 
@@ -173,13 +184,73 @@ async function codingMonitorCommand(options: CodingCommandOptions) {
 	}
 
 	const chatContext = await resolveCodingChatContext(options);
-	const status = await getCodingStatus(options.homeDir, ref, chatContext);
-	await monitorCodingSession(options.homeDir, ref, {
+	await printCodingTranscript(options.homeDir, ref, {
 		chatContext,
-		follow: status.state === "running",
-		status,
+		...transcriptOptions.value,
 	});
 	process.exit(0);
+}
+
+function parseCodingTranscriptOptions(
+	args: string[],
+):
+	| { status: "valid"; value: { full: boolean; tail: number } }
+	| { status: "invalid"; message: string } {
+	let full = false;
+	let tail = 20;
+	let tailSet = false;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--full") {
+			full = true;
+			continue;
+		}
+		if (arg === "--tail") {
+			const value = args[index + 1];
+			if (!value) {
+				return { status: "invalid", message: formatCodingTranscriptUsage() };
+			}
+			const parsed = parsePositiveInteger(value);
+			if (parsed === undefined) {
+				return {
+					status: "invalid",
+					message: "Transcript tail must be a positive integer",
+				};
+			}
+			tail = parsed;
+			tailSet = true;
+			index += 1;
+			continue;
+		}
+		if (arg?.startsWith("--tail=")) {
+			const parsed = parsePositiveInteger(arg.slice("--tail=".length));
+			if (parsed === undefined) {
+				return {
+					status: "invalid",
+					message: "Transcript tail must be a positive integer",
+				};
+			}
+			tail = parsed;
+			tailSet = true;
+			continue;
+		}
+		return { status: "invalid", message: formatCodingTranscriptUsage() };
+	}
+	if (full && tailSet) {
+		return {
+			status: "invalid",
+			message: "Use either --full or --tail, not both",
+		};
+	}
+	return { status: "valid", value: { full, tail } };
+}
+
+function parsePositiveInteger(value: string): number | undefined {
+	if (!/^[1-9]\d*$/.test(value)) {
+		return undefined;
+	}
+	const parsed = Number(value);
+	return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 async function codingTargetCommand(options: CodingCommandOptions) {
@@ -381,43 +452,32 @@ function codingChatContextHeaders(
 	};
 }
 
-async function monitorCodingSession(
+async function printCodingTranscript(
 	homeDir: string,
 	ref: { providerId: string; sdkSessionId: string },
 	options: {
 		chatContext?: CodingChatContext;
-		follow: boolean;
-		status: BrowserCodingSessionStatusResponse;
+		full: boolean;
+		tail: number;
 	},
 ) {
-	const renderer = new CodingMonitorRenderer((chunk) => {
+	const abortController = new AbortController();
+	const events: CodingSessionEvent[] = [];
+	for await (const item of streamCodingSessionEvents(homeDir, ref, {
+		chatContext: options.chatContext,
+		follow: false,
+		signal: abortController.signal,
+	})) {
+		if (isRenderableCodingEvent(item.event)) {
+			events.push(item.event);
+		}
+	}
+	const selected = options.full ? events : events.slice(-options.tail);
+	const renderer = new CodingTranscriptRenderer((chunk) => {
 		process.stdout.write(chunk);
 	});
-	const abortController = new AbortController();
-	let terminalSeen = false;
-	try {
-		for await (const item of streamCodingSessionEvents(homeDir, ref, {
-			chatContext: options.chatContext,
-			follow: options.follow,
-			signal: abortController.signal,
-		})) {
-			renderer.render(item.event);
-			if (isTerminalCodingEvent(item.event)) {
-				terminalSeen = true;
-				abortController.abort();
-				break;
-			}
-		}
-	} catch (error) {
-		if (!terminalSeen || !abortController.signal.aborted) {
-			throw error;
-		}
-	}
-	if (options.follow && !terminalSeen) {
-		throw new Error("Coding monitor stream ended before terminal event");
-	}
-	if (!terminalSeen) {
-		renderer.renderStatusTerminal(options.status);
+	for (const event of selected) {
+		renderer.render(event);
 	}
 }
 
@@ -453,7 +513,7 @@ async function* streamCodingSessionEvents(
 		throw new Error(await readCodingError(response));
 	}
 	if (!response.body) {
-		throw new Error("Coding monitor stream returned no body");
+		throw new Error("Coding transcript stream returned no body");
 	}
 
 	const reader = response.body.getReader();
@@ -503,7 +563,7 @@ function parseCodingSseFrame(
 	const dataText = dataLines.join("\n");
 	const data = JSON.parse(dataText) as unknown;
 	if (eventName === "error") {
-		throw new Error(readMessage(data) ?? "Coding monitor stream failed");
+		throw new Error(readMessage(data) ?? "Coding transcript stream failed");
 	}
 	return data as CodingSessionStreamItem;
 }
@@ -567,7 +627,7 @@ function printCodingStatus(result: BrowserCodingSessionStatusResponse) {
 	}
 }
 
-class CodingMonitorRenderer {
+class CodingTranscriptRenderer {
 	private readonly commandOutputSeen = new Set<string>();
 	private lastOutputEndedWithNewline = true;
 	private wroteAny = false;
@@ -663,16 +723,6 @@ class CodingMonitorRenderer {
 		}
 	}
 
-	renderStatusTerminal(status: BrowserCodingSessionStatusResponse) {
-		if (status.state === "done") {
-			this.writeBlock("[done]");
-			return;
-		}
-		if (status.state === "error") {
-			this.writeBlock(`[error] ${status.error ?? "Coding session failed"}`);
-		}
-	}
-
 	private writeDetails(
 		details: Array<{ label: string; value: string }> | undefined,
 	) {
@@ -700,8 +750,8 @@ class CodingMonitorRenderer {
 	}
 }
 
-function isTerminalCodingEvent(event: CodingSessionEvent): boolean {
-	return event.type === "done" || event.type === "error";
+function isRenderableCodingEvent(event: CodingSessionEvent): boolean {
+	return event.type !== "usage_updated";
 }
 
 function formatDuration(durationMs: number): string {

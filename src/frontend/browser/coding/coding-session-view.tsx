@@ -11,7 +11,7 @@ import {
 	type CodingSessionEventStreamItem,
 	fetchCodingRepositorySkills,
 	fetchCodingRepositoryWorkspaceFiles,
-	openCodingSessionEventStream,
+	fetchCodingSession,
 	resumeCodingSession,
 	startCodingSession,
 	stopCodingSession,
@@ -24,8 +24,10 @@ import {
 } from "./coding-event-renderer.tsx";
 import { CodingModelSelector } from "./coding-model-selector.tsx";
 import {
-	appendCodingSessionEventBatch,
-	codingSessionEventCache,
+	codingSessionEventCacheKey,
+	hydrateCodingSessionCachedEvents,
+	readCodingSessionCachedEvents,
+	subscribeCodingSessionCachedEvents,
 } from "./coding-session-event-cache.ts";
 import { buildCodingSkillCommands } from "./coding-skill-commands.ts";
 import { useCodingStore } from "./coding-store.ts";
@@ -40,6 +42,7 @@ interface CodingSessionViewProps {
 
 export interface PartialSessionSummary {
 	providerId: string;
+	prompt?: string;
 	sdkSessionId: string;
 }
 
@@ -274,6 +277,7 @@ function NewSessionPanel({
 				}
 				onStarted({
 					providerId: result.providerId,
+					prompt: trimmed,
 					sdkSessionId: result.sdkSessionId,
 				});
 				return true;
@@ -364,101 +368,47 @@ export function ActiveSessionPanel({
 	const [resumeError, setResumeError] = useState<string | undefined>();
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const eventLengthRef = useRef(0);
-	const usageSessionKey = `coding:${session.providerId}/${session.sdkSessionId}`;
+	const usageSessionKey = codingSessionEventCacheKey({
+		providerId: session.providerId,
+		sdkSessionId: session.sdkSessionId,
+	});
 
 	useEffect(() => {
-		const cached = codingSessionEventCache.get(usageSessionKey);
-		setEvents(cached?.events ?? []);
+		const syncEvents = () => {
+			setEvents(readCodingSessionCachedEvents(usageSessionKey));
+		};
+		syncEvents();
 		setStreamError(undefined);
 		eventLengthRef.current = 0;
-		const pendingEvents: CodingSessionEventStreamItem[] = [];
-		let frameId: number | undefined;
 		let active = true;
-		const flushPendingEventsToCache = (): CodingSessionEventStreamItem[] => {
-			frameId = undefined;
-			if (pendingEvents.length === 0) {
-				return codingSessionEventCache.get(usageSessionKey)?.events ?? [];
-			}
-			const pending = pendingEvents.splice(0);
-			const baseEvents =
-				codingSessionEventCache.get(usageSessionKey)?.events ??
-				cached?.events ??
-				[];
-			return appendCodingSessionEventBatch(
-				codingSessionEventCache,
-				usageSessionKey,
-				baseEvents,
-				pending,
-				{ allowSequenceRestart: true },
-			).events;
-		};
-		const flushPendingEvents = () => {
-			frameId = undefined;
-			if (pendingEvents.length === 0) {
-				return;
-			}
-			if (!active) {
-				flushPendingEventsToCache();
-				return;
-			}
-			const pending = pendingEvents.splice(0);
-			setEvents((prev) => {
-				return appendCodingSessionEventBatch(
-					codingSessionEventCache,
-					usageSessionKey,
-					prev,
-					pending,
-					{ allowSequenceRestart: true },
-				).events;
-			});
-		};
-		const scheduleFlush = () => {
-			if (frameId !== undefined) {
-				return;
-			}
-			if (typeof window === "undefined") {
-				frameId = setTimeout(flushPendingEvents, 16) as unknown as number;
-				return;
-			}
-			frameId = window.requestAnimationFrame(flushPendingEvents);
-		};
-		const close = openCodingSessionEventStream({
-			providerId: session.providerId,
-			sdkSessionId: session.sdkSessionId,
-			// Stream sequences are scoped to one replay/follow subscription; provider
-			// history is re-numbered on the next open, so cached cursors cannot skip it.
-			onEvent: (item) => {
-				if (!active) {
+		const unsubscribe = subscribeCodingSessionCachedEvents(
+			usageSessionKey,
+			syncEvents,
+		);
+		void fetchCodingSession(session.providerId, session.sdkSessionId)
+			.then((detail) => {
+				if (!active || !detail.events) {
 					return;
 				}
-				// Codex emits `thread/tokenUsage/updated` mid-turn; the adapter
-				// surfaces it as a `usage_updated` FacadeEvent. The `done` event
-				// also carries the final usage. Push either snapshot into the
-				// shared usage store so the input's ContextGauge ticks live.
-				const usageInfo = readUsageFromEvent(item.event);
-				if (usageInfo) {
-					useContextUsageStore.getState().setUsage(usageSessionKey, usageInfo);
+				for (const item of detail.events) {
+					const usageInfo = readUsageFromEvent(item.event);
+					if (usageInfo) {
+						useContextUsageStore
+							.getState()
+							.setUsage(usageSessionKey, usageInfo);
+					}
 				}
-				pendingEvents.push(item);
-				scheduleFlush();
-			},
-			onError: (message) => {
+				hydrateCodingSessionCachedEvents(usageSessionKey, detail.events);
+				syncEvents();
+			})
+			.catch((err) => {
 				if (active) {
-					setStreamError(message);
+					setStreamError(err instanceof Error ? err.message : String(err));
 				}
-			},
-		});
+			});
 		return () => {
 			active = false;
-			if (frameId !== undefined) {
-				if (typeof window === "undefined") {
-					clearTimeout(frameId);
-				} else {
-					window.cancelAnimationFrame(frameId);
-				}
-				flushPendingEventsToCache();
-			}
-			close();
+			unsubscribe();
 		};
 	}, [session.providerId, session.sdkSessionId, usageSessionKey]);
 

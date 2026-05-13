@@ -10,10 +10,10 @@ import {
 	formatAgentRemoveUsage,
 	formatAgentRenameUsage,
 	formatAgentSendUsage,
-	formatCodingMonitorUsage,
 	formatCodingResumeUsage,
 	formatCodingStartUsage,
 	formatCodingStatusUsage,
+	formatCodingTranscriptUsage,
 	formatCodingUsage,
 	formatConfigRuntimeUsage,
 	formatConfigSecureUsage,
@@ -128,8 +128,8 @@ describe("oc skill template contract", () => {
 		expectReferenceIncludesUsage(coding, formatCodingUsage());
 		expectReferenceIncludesUsage(coding, formatCodingStartUsage());
 		expectReferenceIncludesUsage(coding, formatCodingResumeUsage());
-		expectReferenceIncludesUsage(coding, formatCodingMonitorUsage());
 		expectReferenceIncludesUsage(coding, formatCodingStatusUsage());
+		expectReferenceIncludesUsage(coding, formatCodingTranscriptUsage());
 		expect(coding).toContain("Archived sessions are restored");
 		expectReferenceIncludesUsage(session, formatSessionListUsage());
 		expectReferenceIncludesUsage(session, formatSessionSearchUsage());

@@ -1,8 +1,12 @@
 import type {
 	BrowserAgentsResponse,
+	BrowserCodingSessionRunStatus,
 	ServerEvent,
+	UsageInfo,
 } from "../../../common/protocol.ts";
 import { formatStatusCompact } from "../../../common/status.ts";
+import { appendCodingSessionCachedEvent } from "../coding/coding-session-event-cache.ts";
+import { useCodingStore } from "../coding/coding-store.ts";
 import { fetchCodingSession } from "../lib/api.ts";
 import {
 	createBrowserSessionRef,
@@ -28,6 +32,43 @@ import { applyBrowserStatusEvent } from "./browser-status-event.ts";
 import { ensureRunningChatSession } from "./ensure-running-chat-session.ts";
 
 export { inferImageMediaTypeFromPath };
+
+function readCodingUsageFromEvent(event: unknown): UsageInfo | undefined {
+	if (!event || typeof event !== "object") {
+		return undefined;
+	}
+	const record = event as Record<string, unknown>;
+	if (record.type === "usage_updated" || record.type === "done") {
+		return record.usage as UsageInfo | undefined;
+	}
+	return undefined;
+}
+
+function readCodingRunStatusFromEvent(
+	event: unknown,
+):
+	| { runStatus: BrowserCodingSessionRunStatus; failureMessage?: string }
+	| undefined {
+	if (!event || typeof event !== "object") {
+		return undefined;
+	}
+	const record = event as Record<string, unknown>;
+	if (record.type === "session_initialized" || record.type === "user_prompt") {
+		return { runStatus: "running" };
+	}
+	if (record.type === "done") {
+		return { runStatus: "idle" };
+	}
+	if (record.type === "error") {
+		return {
+			runStatus: "failed",
+			...(typeof record.message === "string"
+				? { failureMessage: record.message }
+				: {}),
+		};
+	}
+	return undefined;
+}
 
 export function applySidebarSummary(summary: BrowserAgentsResponse) {
 	useAgentsStore.getState().setAgents(
@@ -367,6 +408,28 @@ export function handleBrowserServerEvent(
 		case "browser_chat_coding_links_changed":
 			void openLinkedCodingSessionForActiveChat(event);
 			return;
+		case "coding_session_event": {
+			appendCodingSessionCachedEvent(event);
+			const status = readCodingRunStatusFromEvent(event.event);
+			if (status) {
+				useCodingStore
+					.getState()
+					.updateSessionRunStatus(event.providerId, event.sdkSessionId, {
+						...status,
+						lastActive: event.createdAt,
+						...(status.runStatus === "failed"
+							? { failedAt: event.createdAt }
+							: {}),
+					});
+			}
+			const usage = readCodingUsageFromEvent(event.event);
+			if (usage) {
+				useContextUsageStore
+					.getState()
+					.setUsage(`coding:${event.providerId}/${event.sdkSessionId}`, usage);
+			}
+			return;
+		}
 		case "cron_result":
 			return;
 		case "session_info":

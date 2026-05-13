@@ -134,6 +134,49 @@ describe("useCodingStore", () => {
 		expect(state.focusedSession?.sdkSessionId).toBe("session-2");
 	});
 
+	test("updateSessionRunStatus refreshes a continued session in place", () => {
+		useCodingStore.setState({
+			sessionsByRepository: {
+				"repo-a": [
+					makeSession({
+						providerId: "codex",
+						sdkSessionId: "session-1",
+						runStatus: "idle",
+						lastActive: 10,
+					}),
+				],
+				"repo-b": [
+					makeSession({
+						providerId: "codex",
+						sdkSessionId: "session-2",
+						runStatus: "idle",
+						lastActive: 20,
+					}),
+				],
+			},
+		});
+
+		useCodingStore.getState().updateSessionRunStatus("codex", "session-1", {
+			runStatus: "running",
+			lastActive: 30,
+		});
+
+		expect(
+			useCodingStore.getState().sessionsByRepository["repo-a"]?.[0],
+		).toMatchObject({
+			sdkSessionId: "session-1",
+			runStatus: "running",
+			lastActive: 30,
+		});
+		expect(
+			useCodingStore.getState().sessionsByRepository["repo-b"]?.[0],
+		).toMatchObject({
+			sdkSessionId: "session-2",
+			runStatus: "idle",
+			lastActive: 20,
+		});
+	});
+
 	test("setCodingModels picks the default model and resets effort to its default", () => {
 		useCodingStore.getState().setCodingModels([
 			{

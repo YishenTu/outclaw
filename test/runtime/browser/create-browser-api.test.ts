@@ -540,6 +540,83 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("hydrates coding session detail with provider-owned event history", async () => {
+		const root = createTempDir("outclaw-browser-coding-session-detail-events-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+
+		const store = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		store.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-detail",
+			title: "Implement detail route",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-detail",
+			cwd: join(root, "workspace"),
+			runStatus: "idle",
+			timestamp: 150,
+		});
+
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async () => [
+					{ type: "user_prompt", text: "show history" },
+					{ type: "text", text: "loaded", sessionId: "code-detail" },
+				],
+			},
+			codingSessions: codingStore,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.getCodingSession("codex", "code-detail"),
+		).resolves.toMatchObject({
+			events: [
+				{
+					providerId: "codex",
+					sdkSessionId: "code-detail",
+					sequence: 1,
+					event: { type: "user_prompt", text: "show history" },
+				},
+				{
+					providerId: "codex",
+					sdkSessionId: "code-detail",
+					sequence: 2,
+					event: {
+						type: "text",
+						text: "loaded",
+						sessionId: "code-detail",
+					},
+				},
+			],
+		});
+
+		codingStore.close();
+		store.close();
+	});
+
 	test("reports idle coding session status with the latest final assistant response", async () => {
 		const root = createTempDir("outclaw-browser-coding-session-status-api-");
 		cleanupPaths.push(root);

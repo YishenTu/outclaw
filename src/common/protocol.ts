@@ -663,7 +663,21 @@ export interface BrowserCodingSessionLinksResponse {
 }
 
 export interface BrowserCodingSessionDetail
-	extends BrowserCodingSessionSummary {}
+	extends BrowserCodingSessionSummary {
+	events?: BrowserCodingSessionEvent[];
+}
+
+export interface BrowserCodingSessionEvent {
+	providerId: string;
+	sdkSessionId: string;
+	sequence: number;
+	event: CodingSessionEvent;
+	createdAt: number;
+}
+
+export interface CodingSessionStreamEvent extends BrowserCodingSessionEvent {
+	type: "coding_session_event";
+}
 
 export interface BrowserCodingSessionDeleteResponse {
 	deleted: true;
@@ -1114,6 +1128,7 @@ export type ServerEvent =
 	| BrowserAgentsInvalidatedEvent
 	| BrowserAgentActiveSessionChangedEvent
 	| BrowserChatCodingLinksChangedEvent
+	| CodingSessionStreamEvent
 	| SkillsUpdateEvent
 	| WorkspaceFilesUpdateEvent
 	| AskResponseEvent
@@ -1216,6 +1231,16 @@ export interface Facade {
 	providerId: string;
 	prepareWorkspace?(promptHomeDir: string): void;
 	run(params: RunParams): AsyncIterable<FacadeEvent>;
+	/**
+	 * Provider-owned same-turn steering for an active coding session. Runtime
+	 * decides when a coding session should be steered; adapters own the
+	 * provider-native active-turn identity and request shape.
+	 */
+	steerCodingSession?(params: {
+		sessionId: string;
+		prompt: string;
+		cwd?: string;
+	}): Promise<{ sessionId: string; turnId?: string }>;
 	readHistory?(sessionId: string): Promise<DisplayMessage[]>;
 	readReplay?(sessionId: string): Promise<DisplayMessage[]>;
 	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;

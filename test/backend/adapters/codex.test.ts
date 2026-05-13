@@ -8,7 +8,10 @@ import type {
 	CodexAppServerClient,
 	CodexServerNotification,
 } from "../../../src/backend/adapters/codex/types.ts";
-import type { FacadeEvent } from "../../../src/common/protocol.ts";
+import type {
+	CodingSessionEvent,
+	FacadeEvent,
+} from "../../../src/common/protocol.ts";
 
 interface FakeCodexAppServerClientOptions {
 	skills?: Array<{
@@ -19,6 +22,8 @@ interface FakeCodexAppServerClientOptions {
 		scope?: string;
 		shortDescription?: string;
 	}>;
+	steerNotifications?: CodexServerNotification[];
+	steerTurnId?: string;
 	threadPath?: string | null;
 }
 
@@ -78,6 +83,15 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 			} as T;
 		}
 
+		if (method === "turn/steer") {
+			for (const notification of this.options.steerNotifications ?? []) {
+				this.emit(notification);
+			}
+			return {
+				turnId: this.options.steerTurnId ?? "turn-2",
+			} as T;
+		}
+
 		if (method === "skills/list") {
 			return {
 				data: [
@@ -116,12 +130,25 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 
 async function collectEvents(
 	events: AsyncIterable<FacadeEvent>,
-): Promise<FacadeEvent[]> {
-	const collected: FacadeEvent[] = [];
+): Promise<CodingSessionEvent[]> {
+	const collected: CodingSessionEvent[] = [];
 	for await (const event of events) {
 		collected.push(event);
 	}
 	return collected;
+}
+
+async function waitForRequest(
+	client: FakeCodexAppServerClient,
+	method: string,
+): Promise<void> {
+	for (let attempt = 0; attempt < 20; attempt += 1) {
+		if (client.requests.some((request) => request.method === method)) {
+			return;
+		}
+		await Bun.sleep(1);
+	}
+	throw new Error(`Timed out waiting for request: ${method}`);
 }
 
 describe("CodexAdapter", () => {
@@ -242,6 +269,172 @@ describe("CodexAdapter", () => {
 				durationMs: 31,
 			},
 		]);
+	});
+
+	test("streams live event_msg user and assistant messages through the Facade contract", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "event_msg",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					type: "user_message",
+					message: "run ls",
+				},
+			},
+			{
+				method: "event_msg",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					type: "agent_message",
+					message: "I’ll list the directory.",
+					phase: "commentary",
+				},
+			},
+			{
+				method: "event_msg",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					type: "agent_message",
+					message: "I’ll list the directory. Files: a.ts, b.ts",
+					phase: "final_answer",
+				},
+			},
+			{
+				method: "event_msg",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					type: "task_complete",
+					duration_ms: 31,
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({
+				prompt: "say hello",
+				cwd: "/work/repo",
+			}),
+		);
+
+		expect(events).toEqual([
+			{
+				type: "session_initialized",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "user_prompt",
+				text: "run ls",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "text",
+				text: "I’ll list the directory.",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "text",
+				text: "I’ll list the directory. Files: a.ts, b.ts",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "done",
+				sessionId: "codex-thread-123",
+				durationMs: 31,
+			},
+		]);
+	});
+
+	test("continues streaming after a running Codex turn is steered", async () => {
+		const client = new FakeCodexAppServerClient([], {
+			steerTurnId: "turn-2",
+			steerNotifications: [
+				{
+					method: "item/agentMessage/delta",
+					params: {
+						threadId: "codex-thread-123",
+						turnId: "turn-2",
+						itemId: "message-2",
+						delta: "continued output",
+					},
+				},
+				{
+					method: "turn/completed",
+					params: {
+						threadId: "codex-thread-123",
+						turn: {
+							id: "turn-2",
+							durationMs: 41,
+							status: "completed",
+						},
+					},
+				},
+				{
+					method: "turn/completed",
+					params: {
+						threadId: "codex-thread-123",
+						turn: {
+							id: "turn-1",
+							durationMs: 99,
+							status: "completed",
+						},
+					},
+				},
+			],
+		});
+		const adapter = new CodexAdapter({ client });
+		const iterator = adapter
+			.run({
+				prompt: "start",
+				cwd: "/work/repo",
+			})
+			[Symbol.asyncIterator]();
+
+		expect(await iterator.next()).toEqual({
+			done: false,
+			value: {
+				type: "session_initialized",
+				sessionId: "codex-thread-123",
+			},
+		});
+
+		const nextEvent = iterator.next();
+		await waitForRequest(client, "turn/start");
+		await expect(
+			adapter.steerCodingSession({
+				sessionId: "codex-thread-123",
+				prompt: "keep going",
+				cwd: "/work/repo",
+			}),
+		).resolves.toEqual({
+			sessionId: "codex-thread-123",
+			turnId: "turn-2",
+		});
+
+		expect(await nextEvent).toEqual({
+			done: false,
+			value: {
+				type: "text",
+				text: "continued output",
+				sessionId: "codex-thread-123",
+			},
+		});
+		expect(await iterator.next()).toEqual({
+			done: false,
+			value: {
+				type: "done",
+				sessionId: "codex-thread-123",
+				durationMs: 41,
+			},
+		});
+		expect(await iterator.next()).toEqual({
+			done: true,
+			value: undefined,
+		});
 	});
 
 	test("resolves explicit $skill prompts into Codex skill inputs", async () => {

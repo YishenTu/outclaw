@@ -154,6 +154,7 @@ function startMultiAgentDaemon(
 		browserApp: {
 			distDir: layout.browserDistDir,
 		},
+		codingEvents,
 		browserApi: createBrowserApi({
 			agents: agents.map((agent) => {
 				const runtime = runtimes.find(

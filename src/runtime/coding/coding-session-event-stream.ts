@@ -25,6 +25,7 @@ export interface OpenCodingSessionEventStreamParams {
 	providerId: string;
 	sdkSessionId: string;
 	sinceSequence?: number;
+	follow?: boolean;
 	signal?: AbortSignal;
 }
 
@@ -53,23 +54,29 @@ export async function* openCodingSessionEventStream(
 			notify();
 		},
 	);
+	const liveSnapshot =
+		params.liveEvents?.snapshot?.({
+			providerId: params.providerId,
+			sdkSessionId: params.sdkSessionId,
+		}) ?? [];
 
 	try {
 		const history = await readCodingSessionHistory(params);
+		const seedEvents = mergeHistoryAndLiveSnapshot(history, liveSnapshot);
 		let overlappingBufferedEvents = countHistoryLiveEventOverlap(
-			history,
+			seedEvents.map((seed) => seed.event),
 			liveBuffer.map((live) => live.event),
 		);
 		const sinceSequence = params.sinceSequence ?? 0;
 		let nextSequence = 1;
 		const historyCreatedAt = Date.now();
-		for (const event of history) {
+		for (const seed of seedEvents) {
 			const stored = toStoredCodingSessionEvent({
 				providerId: params.providerId,
 				sdkSessionId: params.sdkSessionId,
 				sequence: nextSequence,
-				event,
-				createdAt: historyCreatedAt + nextSequence - 1,
+				event: seed.event,
+				createdAt: seed.createdAt ?? historyCreatedAt + nextSequence - 1,
 			});
 			nextSequence += 1;
 			if (stored.sequence > sinceSequence) {
@@ -81,7 +88,7 @@ export async function* openCodingSessionEventStream(
 			nextSequence = sinceSequence + 1;
 		}
 
-		while (!signal?.aborted && params.liveEvents) {
+		while (!signal?.aborted && params.liveEvents && params.follow !== false) {
 			while (liveBuffer.length > 0) {
 				const live = liveBuffer.shift();
 				if (!live) {
@@ -138,6 +145,44 @@ async function readCodingSessionHistory(params: {
 	});
 }
 
+interface CodingSessionEventSeed {
+	event: CodingSessionEvent;
+	createdAt?: number;
+}
+
+function mergeHistoryAndLiveSnapshot(
+	history: CodingSessionEvent[],
+	liveSnapshot: StoredCodingSessionEvent[],
+): CodingSessionEventSeed[] {
+	if (liveSnapshot.length === 0) {
+		return history.map((event) => ({ event }));
+	}
+	if (isCompleteFreshLiveSnapshot(liveSnapshot)) {
+		return liveSnapshot.map((stored) => ({
+			event: stored.event,
+			createdAt: stored.createdAt,
+		}));
+	}
+	const snapshotEvents = liveSnapshot.map((stored) => stored.event);
+	const overlap = findHistorySuffixInLiveSnapshot(history, snapshotEvents);
+	return [
+		...history
+			.slice(0, history.length - overlap.length)
+			.map((event) => ({ event })),
+		...liveSnapshot.map((stored) => ({
+			event: stored.event,
+			createdAt: stored.createdAt,
+		})),
+	];
+}
+
+function isCompleteFreshLiveSnapshot(
+	liveSnapshot: StoredCodingSessionEvent[],
+): boolean {
+	const first = liveSnapshot[0];
+	return first?.sequence === 1 && first.event.type === "session_initialized";
+}
+
 function toStoredCodingSessionEvent(params: {
 	providerId: string;
 	sdkSessionId: string;
@@ -152,6 +197,40 @@ function toStoredCodingSessionEvent(params: {
 		event: params.event,
 		createdAt: params.createdAt,
 	};
+}
+
+function findHistorySuffixInLiveSnapshot(
+	history: CodingSessionEvent[],
+	liveSnapshot: CodingSessionEvent[],
+): { length: number } {
+	const maxLength = Math.min(history.length, liveSnapshot.length);
+	for (let length = maxLength; length > 0; length -= 1) {
+		const historyStart = history.length - length;
+		for (
+			let snapshotStart = 0;
+			snapshotStart <= liveSnapshot.length - length;
+			snapshotStart += 1
+		) {
+			let matches = true;
+			for (let offset = 0; offset < length; offset += 1) {
+				const historyEvent = history[historyStart + offset];
+				const liveEvent = liveSnapshot[snapshotStart + offset];
+				if (
+					!historyEvent ||
+					!liveEvent ||
+					codingSessionEventKey(historyEvent) !==
+						codingSessionEventKey(liveEvent)
+				) {
+					matches = false;
+					break;
+				}
+			}
+			if (matches) {
+				return { length };
+			}
+		}
+	}
+	return { length: 0 };
 }
 
 function countHistoryLiveEventOverlap(
