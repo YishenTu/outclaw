@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { openLatestLinkedCodingSessionForActiveChat } from "../../../src/frontend/browser/coding/linked-coding-session-actions.ts";
+import {
+	listLinkedCodingSessionsForActiveChat,
+	openLatestLinkedCodingSessionForActiveChat,
+} from "../../../src/frontend/browser/coding/linked-coding-session-actions.ts";
 import { createBrowserSessionRef } from "../../../src/frontend/browser/sessions/session.ts";
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
 import { useRuntimePopupStore } from "../../../src/frontend/browser/stores/runtime-popup.ts";
@@ -35,6 +38,20 @@ describe("linked coding session actions", () => {
 			);
 			return Response.json({
 				sessions: [
+					{
+						providerId: "codex",
+						sdkSessionId: "code-archived",
+						repositoryId: "repo-1",
+						title: "Archived coding task",
+						model: "gpt-5.5",
+						lastActive: 400,
+						cwd: "/workspace/outclaw",
+						lifecycleStatus: "archived",
+						runStatus: "idle",
+						createdAt: 350,
+						source: "code",
+						tag: "code",
+					},
 					{
 						providerId: "codex",
 						sdkSessionId: "code-latest",
@@ -92,6 +109,79 @@ describe("linked coding session actions", () => {
 					repositoryId: "repo-1",
 					title: "Latest coding task",
 				},
+			]);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	test("lists all unarchived linked coding sessions for the active chat", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () =>
+			Response.json({
+				sessions: [
+					{
+						providerId: "codex",
+						sdkSessionId: "code-running",
+						repositoryId: "repo-1",
+						title: "Running coding task",
+						model: "gpt-5.5",
+						lastActive: 300,
+						cwd: "/workspace/outclaw",
+						lifecycleStatus: "open",
+						runStatus: "running",
+						createdAt: 250,
+						source: "code",
+						tag: "code",
+					},
+					{
+						providerId: "codex",
+						sdkSessionId: "code-archived",
+						repositoryId: "repo-1",
+						title: "Archived coding task",
+						model: "gpt-5.5",
+						lastActive: 200,
+						cwd: "/workspace/outclaw",
+						lifecycleStatus: "archived",
+						runStatus: "idle",
+						createdAt: 150,
+						source: "code",
+						tag: "code",
+					},
+					{
+						providerId: "codex",
+						sdkSessionId: "code-idle",
+						repositoryId: "repo-1",
+						title: "Idle coding task",
+						model: "gpt-5.5",
+						lastActive: 100,
+						cwd: "/workspace/outclaw",
+						lifecycleStatus: "open",
+						runStatus: "idle",
+						createdAt: 50,
+						source: "code",
+						tag: "code",
+					},
+				],
+			})) as unknown as typeof fetch;
+		try {
+			useAgentsStore.getState().setActiveAgent("agent-railly");
+			useSessionsStore
+				.getState()
+				.setActiveSession(
+					"agent-railly",
+					createBrowserSessionRef("agent-railly", "claude", "chat-1"),
+				);
+
+			await expect(listLinkedCodingSessionsForActiveChat()).resolves.toEqual([
+				expect.objectContaining({
+					sdkSessionId: "code-running",
+					lifecycleStatus: "open",
+				}),
+				expect.objectContaining({
+					sdkSessionId: "code-idle",
+					lifecycleStatus: "open",
+				}),
 			]);
 		} finally {
 			globalThis.fetch = originalFetch;

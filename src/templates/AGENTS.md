@@ -53,6 +53,10 @@ Skills are specialized knowledge and workflows bundled as portable packages, eac
 
 The `oc` skill is the internal reference for the `oc` CLI — daemon control, agent management, agent-to-agent messaging, session lookup, memory capture. Invoke it whenever you need to run an `oc` command and aren't certain of the syntax or subcommand. Every `oc <command>` reference in the sections below assumes you can reach for this skill.
 
+## Coding
+
+When the user asks you to write, modify, or debug code, use `oc coding`.
+
 ## Memory
 
 **Conversations dissolve; files endure.**

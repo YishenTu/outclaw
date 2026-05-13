@@ -1,6 +1,6 @@
 ---
 name: oc
-description: Use when operating the `oc` CLI for daemon control, agent management, config updates, agent-to-agent communication, coding-session start/resume, cron job operations and failure inspection, past-session lookup, memory capture (`oc note`), or schema-memory freshness checks (`oc schema`). Also invoke when the user references a past or different session you need to inspect.
+description: Use when operating the `oc` CLI for daemon control, agent management, config updates, agent-to-agent communication, coding-session, cron job operations and failure inspection, past-session lookup, memory capture (`oc note`), or schema-memory freshness checks (`oc schema`). Also invoke when the user references a past or different session you need to inspect.
 ---
 
 # oc
