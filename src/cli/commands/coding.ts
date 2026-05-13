@@ -481,20 +481,38 @@ async function printCodingTranscript(
 	for (const event of selected) {
 		renderer.render(event);
 	}
+	renderer.finish();
 }
 
 function selectLatestInteractionTurns(
 	events: CodingSessionEvent[],
 	turns: number,
 ): CodingSessionEvent[] {
-	const turnStarts = events.flatMap((event, index) =>
-		event.type === "user_prompt" ? [index] : [],
-	);
-	if (turnStarts.length === 0) {
+	const ranges: Array<{ start: number }> = [];
+	let activeStart: number | undefined;
+	for (const [index, event] of events.entries()) {
+		if (event.type === "user_prompt" && activeStart === undefined) {
+			activeStart = index;
+			continue;
+		}
+		if (activeStart !== undefined && isTerminalCodingEvent(event)) {
+			ranges.push({ start: activeStart });
+			activeStart = undefined;
+		}
+	}
+	if (activeStart !== undefined) {
+		ranges.push({ start: activeStart });
+	}
+	if (ranges.length === 0) {
 		return events;
 	}
-	const selectedTurnIndex = Math.max(0, turnStarts.length - turns);
-	return events.slice(turnStarts[selectedTurnIndex]);
+	const selectedTurnIndex = Math.max(0, ranges.length - turns);
+	const selectedRange = ranges[selectedTurnIndex];
+	return selectedRange ? events.slice(selectedRange.start) : events;
+}
+
+function isTerminalCodingEvent(event: CodingSessionEvent): boolean {
+	return event.type === "done" || event.type === "error";
 }
 
 interface CodingSessionStreamItem {
@@ -646,11 +664,17 @@ function printCodingStatus(result: BrowserCodingSessionStatusResponse) {
 class CodingTranscriptRenderer {
 	private readonly commandOutputSeen = new Set<string>();
 	private lastOutputEndedWithNewline = true;
+	private pendingThinking = "";
 	private wroteAny = false;
 
 	constructor(private readonly write: (chunk: string) => void) {}
 
 	render(event: CodingSessionEvent) {
+		if (event.type === "thinking") {
+			this.pendingThinking += event.text;
+			return;
+		}
+		this.flushThinking();
 		switch (event.type) {
 			case "user_prompt":
 				this.writeBlock(`[user] ${event.text.trim()}`);
@@ -660,9 +684,6 @@ class CodingTranscriptRenderer {
 				break;
 			case "text":
 				this.writeRaw(event.text);
-				break;
-			case "thinking":
-				this.writeBlock(`[thinking] ${event.text.trim()}`);
 				break;
 			case "status":
 				this.writeBlock(`[status] ${event.message}`);
@@ -739,6 +760,18 @@ class CodingTranscriptRenderer {
 		}
 	}
 
+	finish() {
+		this.flushThinking();
+	}
+
+	private flushThinking() {
+		const text = this.pendingThinking.trim();
+		this.pendingThinking = "";
+		if (text) {
+			this.writeBlock(`[thinking] ${text}`);
+		}
+	}
+
 	private writeDetails(
 		details: Array<{ label: string; value: string }> | undefined,
 	) {
@@ -767,7 +800,7 @@ class CodingTranscriptRenderer {
 }
 
 function isRenderableCodingEvent(event: CodingSessionEvent): boolean {
-	return event.type !== "usage_updated";
+	return event.type !== "usage_updated" && event.type !== "session_initialized";
 }
 
 function formatDuration(durationMs: number): string {

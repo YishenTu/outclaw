@@ -245,6 +245,29 @@ describe("openCodingSessionEventStream", () => {
 		liveEvents.close();
 	});
 
+	test("rejects unknown persisted coding sessions before reading history", async () => {
+		let historyRead = false;
+		const iterator = openCodingSessionEventStream({
+			history: {
+				readCodingSessionEvents: async () => {
+					historyRead = true;
+					return [];
+				},
+			},
+			sessions: {
+				hasCodingSession: () => false,
+			},
+			providerId: "codex",
+			sdkSessionId: "missing",
+			follow: false,
+		})[Symbol.asyncIterator]();
+
+		await expect(iterator.next()).rejects.toThrow(
+			"Unknown coding session: codex/missing",
+		);
+		expect(historyRead).toBe(false);
+	});
+
 	test("buffers live events while provider history is loading", async () => {
 		const liveEvents = new CodingSessionEventHub();
 		let resolveHistory: (events: CodingSessionEvent[]) => void = () => {};

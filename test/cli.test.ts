@@ -1708,6 +1708,14 @@ describe("CLI", () => {
 							controller.enqueue(
 								encoder.encode(
 									frame(1, {
+										type: "session_initialized",
+										sessionId: "codex-session-1",
+									}),
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									frame(2, {
 										type: "user_prompt",
 										text: "go build it",
 										sessionId: "codex-session-1",
@@ -1716,7 +1724,7 @@ describe("CLI", () => {
 							);
 							controller.enqueue(
 								encoder.encode(
-									frame(2, {
+									frame(3, {
 										type: "command_execution_started",
 										callId: "cmd-1",
 										command: "bun test",
@@ -1726,7 +1734,7 @@ describe("CLI", () => {
 							);
 							controller.enqueue(
 								encoder.encode(
-									frame(3, {
+									frame(4, {
 										type: "command_execution_output",
 										callId: "cmd-1",
 										output: "tests passed\n",
@@ -1736,7 +1744,7 @@ describe("CLI", () => {
 							);
 							controller.enqueue(
 								encoder.encode(
-									frame(4, {
+									frame(5, {
 										type: "command_execution_completed",
 										callId: "cmd-1",
 										exitCode: 0,
@@ -1746,7 +1754,7 @@ describe("CLI", () => {
 							);
 							controller.enqueue(
 								encoder.encode(
-									frame(5, {
+									frame(6, {
 										type: "file_change_applied",
 										callId: "patch-1",
 										changes: [{ kind: "update", path: "src/app.ts" }],
@@ -1756,7 +1764,7 @@ describe("CLI", () => {
 							);
 							controller.enqueue(
 								encoder.encode(
-									frame(6, {
+									frame(7, {
 										type: "text",
 										text: "Implemented transcript.",
 										sessionId: "codex-session-1",
@@ -1765,7 +1773,7 @@ describe("CLI", () => {
 							);
 							controller.enqueue(
 								encoder.encode(
-									frame(7, {
+									frame(8, {
 										type: "done",
 										sessionId: "codex-session-1",
 										durationMs: 1500,
@@ -1793,6 +1801,7 @@ describe("CLI", () => {
 			expect(result.timedOut).toBe(false);
 			expect(result.exitCode).toBe(0);
 			expect(result.stderr).toBe("");
+			expect(result.stdout).not.toContain("[session]");
 			expect(result.stdout).toContain("[user] go build it");
 			expect(result.stdout).toContain("[command] bun test");
 			expect(result.stdout).toContain("tests passed");
@@ -1802,6 +1811,82 @@ describe("CLI", () => {
 			expect(result.stdout).toContain("[done] 1.5s");
 			expect(eventsSeen).toBe(true);
 			expect(followParam).toBe("false");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding transcript coalesces contiguous thinking deltas", async () => {
+		const frame = (sequence: number, event: Record<string, unknown>): string =>
+			`id: ${sequence}\ndata: ${JSON.stringify({
+				providerId: "codex",
+				sdkSessionId: "thinking-session",
+				sequence,
+				event,
+				createdAt: sequence,
+			})}\n\n`;
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/thinking-session/events"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				return new Response(
+					[
+						frame(1, {
+							type: "user_prompt",
+							text: "plan it",
+							sessionId: "thinking-session",
+						}),
+						frame(2, {
+							type: "thinking",
+							text: "I",
+							sessionId: "thinking-session",
+						}),
+						frame(3, {
+							type: "thinking",
+							text: " will",
+							sessionId: "thinking-session",
+						}),
+						frame(4, {
+							type: "thinking",
+							text: " inspect first",
+							sessionId: "thinking-session",
+						}),
+						frame(5, {
+							type: "text",
+							text: "done",
+							sessionId: "thinking-session",
+						}),
+						frame(6, {
+							type: "done",
+							sessionId: "thinking-session",
+							durationMs: 1200,
+						}),
+					].join(""),
+					{
+						headers: {
+							"content-type": "text/event-stream; charset=utf-8",
+						},
+					},
+				);
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsyncWithTimeout(
+				["coding", "transcript", "codex/thinking-session"],
+				{ cwd: TEST_HOME, timeoutMs: 1000 },
+			);
+			expect(result.timedOut).toBe(false);
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr).toBe("");
+			expect(result.stdout).toContain("[thinking] I will inspect first\n");
+			expect(result.stdout.match(/\[thinking\]/g)).toHaveLength(1);
 		} finally {
 			server.stop();
 		}
@@ -1892,6 +1977,94 @@ describe("CLI", () => {
 			expect(result.stdout).not.toContain("first prompt");
 			expect(result.stdout).toContain("```text\nI\nIV\nIX\n```\n");
 			expect(result.stdout).toContain("[done] 35.2s");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding transcript keeps steering prompts in the active interaction turn", async () => {
+		const frame = (sequence: number, event: Record<string, unknown>): string =>
+			`id: ${sequence}\ndata: ${JSON.stringify({
+				providerId: "codex",
+				sdkSessionId: "steered-session",
+				sequence,
+				event,
+				createdAt: sequence,
+			})}\n\n`;
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/steered-session/events"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				return new Response(
+					[
+						frame(1, {
+							type: "user_prompt",
+							text: "first prompt",
+							sessionId: "steered-session",
+						}),
+						frame(2, {
+							type: "text",
+							text: "first result\n",
+							sessionId: "steered-session",
+						}),
+						frame(3, {
+							type: "done",
+							sessionId: "steered-session",
+							durationMs: 10,
+						}),
+						frame(4, {
+							type: "user_prompt",
+							text: "start the refactor",
+							sessionId: "steered-session",
+						}),
+						frame(5, {
+							type: "thinking",
+							text: "working",
+							sessionId: "steered-session",
+						}),
+						frame(6, {
+							type: "user_prompt",
+							text: "also add coverage",
+							sessionId: "steered-session",
+						}),
+						frame(7, {
+							type: "text",
+							text: "refactor complete\n",
+							sessionId: "steered-session",
+						}),
+						frame(8, {
+							type: "done",
+							sessionId: "steered-session",
+							durationMs: 2200,
+						}),
+					].join(""),
+					{
+						headers: {
+							"content-type": "text/event-stream; charset=utf-8",
+						},
+					},
+				);
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsyncWithTimeout(
+				["coding", "transcript", "codex/steered-session"],
+				{ cwd: TEST_HOME, timeoutMs: 1000 },
+			);
+			expect(result.timedOut).toBe(false);
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr).toBe("");
+			expect(result.stdout).toStartWith("[user] start the refactor\n");
+			expect(result.stdout).toContain("[user] also add coverage\n");
+			expect(result.stdout).toContain("refactor complete\n");
+			expect(result.stdout).not.toContain("first prompt");
 		} finally {
 			server.stop();
 		}
@@ -2004,6 +2177,40 @@ describe("CLI", () => {
 		expect(result.stderr).toContain(
 			"Transcript turn count must be a positive integer",
 		);
+	});
+
+	test("coding transcript exits with stream errors", async () => {
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname !== "/api/coding/sessions/codex/missing/events") {
+					return new Response("not found", { status: 404 });
+				}
+				return new Response(
+					'event: error\ndata: {"message":"Unknown coding session: codex/missing"}\n\n',
+					{
+						headers: {
+							"content-type": "text/event-stream; charset=utf-8",
+						},
+					},
+				);
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsyncWithTimeout(
+				["coding", "transcript", "codex/missing"],
+				{ cwd: TEST_HOME, timeoutMs: 1000 },
+			);
+			expect(result.timedOut).toBe(false);
+			expect(result.exitCode).toBe(1);
+			expect(result.stdout).toBe("");
+			expect(result.stderr).toContain("Unknown coding session: codex/missing");
+		} finally {
+			server.stop();
+		}
 	});
 
 	test("coding monitor is no longer an agent-facing command", async () => {

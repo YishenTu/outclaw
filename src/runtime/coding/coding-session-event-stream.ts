@@ -128,16 +128,19 @@ async function readCodingSessionHistory(params: {
 	sdkSessionId: string;
 	signal?: AbortSignal;
 }): Promise<CodingSessionEvent[]> {
-	if (
-		params.signal?.aborted ||
-		!params.history ||
-		(params.sessions &&
-			!params.sessions.hasCodingSession({
-				providerId: params.providerId,
-				sdkSessionId: params.sdkSessionId,
-			}))
-	) {
+	if (params.signal?.aborted || !params.history) {
 		return [];
+	}
+	if (
+		params.sessions &&
+		!params.sessions.hasCodingSession({
+			providerId: params.providerId,
+			sdkSessionId: params.sdkSessionId,
+		})
+	) {
+		throw new Error(
+			`Unknown coding session: ${params.providerId}/${params.sdkSessionId}`,
+		);
 	}
 	return params.history.readCodingSessionEvents({
 		providerId: params.providerId,
