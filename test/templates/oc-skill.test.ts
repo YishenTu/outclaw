@@ -10,6 +10,11 @@ import {
 	formatAgentRemoveUsage,
 	formatAgentRenameUsage,
 	formatAgentSendUsage,
+	formatCodingMonitorUsage,
+	formatCodingResumeUsage,
+	formatCodingStartUsage,
+	formatCodingStatusUsage,
+	formatCodingUsage,
 	formatConfigRuntimeUsage,
 	formatConfigSecureUsage,
 	formatCronRunUsage,
@@ -60,6 +65,7 @@ describe("oc skill template contract", () => {
 			"agent-management.md",
 			"config-management.md",
 			"agent-com.md",
+			"coding-sessions.md",
 			"cron-jobs.md",
 			"session-lookup.md",
 			"memory-capture.md",
@@ -112,12 +118,19 @@ describe("oc skill template contract", () => {
 		expectReferenceIncludesUsage(config, formatConfigSecureUsage());
 	});
 
-	test("session, cron, note, and schema references match CLI usage syntax", () => {
+	test("coding, session, cron, note, and schema references match CLI usage syntax", () => {
+		const coding = readOcTemplate("references/coding-sessions.md");
 		const session = readOcTemplate("references/session-lookup.md");
 		const cron = readOcTemplate("references/cron-jobs.md");
 		const note = readOcTemplate("references/memory-capture.md");
 		const schema = readOcTemplate("references/schema-memory.md");
 
+		expectReferenceIncludesUsage(coding, formatCodingUsage());
+		expectReferenceIncludesUsage(coding, formatCodingStartUsage());
+		expectReferenceIncludesUsage(coding, formatCodingResumeUsage());
+		expectReferenceIncludesUsage(coding, formatCodingMonitorUsage());
+		expectReferenceIncludesUsage(coding, formatCodingStatusUsage());
+		expect(coding).toContain("Archived sessions are restored");
 		expectReferenceIncludesUsage(session, formatSessionListUsage());
 		expectReferenceIncludesUsage(session, formatSessionSearchUsage());
 		expectReferenceIncludesUsage(session, formatSessionTranscriptUsage());

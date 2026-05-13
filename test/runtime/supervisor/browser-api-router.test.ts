@@ -434,6 +434,90 @@ describe("handleBrowserApiRequest", () => {
 		});
 	});
 
+	test("routes agent active-session requests", async () => {
+		const calls: string[] = [];
+		const browserApi = {
+			getAgentActiveSession: (agentId: string) => {
+				calls.push(agentId);
+				return {
+					activeSession: {
+						providerId: "claude",
+						sdkSessionId: "chat-1",
+					},
+				};
+			},
+		} as unknown as BrowserApi;
+		const url = new URL(
+			"http://localhost/api/agents/agent-railly/active-session",
+		);
+
+		const response = await handleBrowserApiRequest(
+			new Request(url),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			activeSession: {
+				providerId: "claude",
+				sdkSessionId: "chat-1",
+			},
+		});
+		expect(calls).toEqual(["agent-railly"]);
+	});
+
+	test("routes chat coding link requests by chat session identity", async () => {
+		let params:
+			| {
+					agentId: string;
+					providerId: string;
+					sdkSessionId: string;
+			  }
+			| undefined;
+		const browserApi = {
+			listChatCodingSessions: async (input: typeof params) => {
+				params = input;
+				return {
+					sessions: [
+						{
+							providerId: "codex",
+							sdkSessionId: "code-1",
+							title: "Coding task",
+							model: "gpt-5.5",
+							lastActive: 20,
+							cwd: "/workspace/outclaw",
+							lifecycleStatus: "open",
+							runStatus: "idle",
+							createdAt: 10,
+							source: "code",
+							tag: "code",
+						},
+					],
+				};
+			},
+		} as unknown as BrowserApi;
+		const url = new URL(
+			"http://localhost/api/agents/agent-railly/sessions/claude/chat-1/coding-links",
+		);
+
+		const response = await handleBrowserApiRequest(
+			new Request(url),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toMatchObject({
+			sessions: [{ providerId: "codex", sdkSessionId: "code-1" }],
+		});
+		expect(params).toEqual({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "chat-1",
+		});
+	});
+
 	test("routes coding session detail requests by provider session identity", async () => {
 		let params:
 			| {
@@ -758,6 +842,127 @@ describe("handleBrowserApiRequest", () => {
 		});
 	});
 
+	test("links coding start, resume, and status requests when chat context headers are present", async () => {
+		const links: string[] = [];
+		const browserApi = {
+			startCodingSession: async () => ({
+				status: "accepted" as const,
+				providerId: "codex",
+				sdkSessionId: "code-start",
+			}),
+			resumeCodingSession: async () => ({
+				status: "accepted" as const,
+				providerId: "codex",
+				sdkSessionId: "code-resume",
+			}),
+			getCodingSessionStatus: async (
+				providerId: string,
+				sdkSessionId: string,
+			) => ({
+				providerId,
+				sdkSessionId,
+				state: "done" as const,
+				finalResponse: "finished",
+			}),
+			linkChatCodingSession: (params: {
+				chatAgentId: string;
+				chatProviderId: string;
+				chatSdkSessionId: string;
+				codingProviderId: string;
+				codingSdkSessionId: string;
+			}) => {
+				links.push(
+					`${params.chatAgentId}:${params.chatProviderId}/${params.chatSdkSessionId}->${params.codingProviderId}/${params.codingSdkSessionId}`,
+				);
+			},
+		} as unknown as BrowserApi;
+		const headers = {
+			"content-type": "application/json",
+			"x-outclaw-chat-agent-id": "agent-railly",
+			"x-outclaw-chat-provider-id": "claude",
+			"x-outclaw-chat-session-id": "chat-1",
+		};
+
+		const startUrl = new URL("http://localhost/api/coding/sessions");
+		await handleBrowserApiRequest(
+			new Request(startUrl, {
+				method: "POST",
+				headers,
+				body: JSON.stringify({
+					repositoryId: "repo-1",
+					prompt: "fix",
+				}),
+			}),
+			startUrl,
+			browserApi,
+		);
+		const resumeUrl = new URL(
+			"http://localhost/api/coding/sessions/codex/code-resume/resume",
+		);
+		await handleBrowserApiRequest(
+			new Request(resumeUrl, {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ prompt: "continue" }),
+			}),
+			resumeUrl,
+			browserApi,
+		);
+		const statusUrl = new URL(
+			"http://localhost/api/coding/sessions/codex/code-status/status",
+		);
+		await handleBrowserApiRequest(
+			new Request(statusUrl, { headers }),
+			statusUrl,
+			browserApi,
+		);
+
+		expect(links).toEqual([
+			"agent-railly:claude/chat-1->codex/code-start",
+			"agent-railly:claude/chat-1->codex/code-resume",
+			"agent-railly:claude/chat-1->codex/code-status",
+		]);
+	});
+
+	test("does not link rejected coding start requests", async () => {
+		let linked = false;
+		const browserApi = {
+			startCodingSession: async () => ({
+				status: "rejected" as const,
+				message: "Coding service is not configured",
+			}),
+			linkChatCodingSession: () => {
+				linked = true;
+			},
+		} as unknown as BrowserApi;
+		const url = new URL("http://localhost/api/coding/sessions");
+
+		const response = await handleBrowserApiRequest(
+			new Request(url, {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"x-outclaw-chat-agent-id": "agent-railly",
+					"x-outclaw-chat-provider-id": "claude",
+					"x-outclaw-chat-session-id": "chat-1",
+				},
+				body: JSON.stringify({
+					repositoryId: "repo-1",
+					prompt: "fix",
+				}),
+			}),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			status: "rejected",
+			message: "Coding service is not configured",
+		});
+		expect(linked).toBe(false);
+	});
+
 	test("rejects coding session start requests without a prompt", async () => {
 		let called = false;
 		const browserApi = {
@@ -865,6 +1070,50 @@ describe("handleBrowserApiRequest", () => {
 			status: "accepted",
 			providerId: "codex",
 			sdkSessionId: "codex-thread-1",
+		});
+		expect(params).toEqual({
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
+		});
+	});
+
+	test("routes coding session status requests as GET /api/coding/sessions/:provider/:id/status", async () => {
+		let params:
+			| {
+					providerId: string;
+					sdkSessionId: string;
+			  }
+			| undefined;
+		const browserApi = {
+			getCodingSessionStatus: async (
+				providerId: string,
+				sdkSessionId: string,
+			) => {
+				params = { providerId, sdkSessionId };
+				return {
+					providerId,
+					sdkSessionId,
+					state: "done" as const,
+					finalResponse: "final answer",
+				};
+			},
+		} as unknown as BrowserApi;
+		const url = new URL(
+			"http://localhost/api/coding/sessions/codex/codex-thread-1/status",
+		);
+
+		const response = await handleBrowserApiRequest(
+			new Request(url),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
+			state: "done",
+			finalResponse: "final answer",
 		});
 		expect(params).toEqual({
 			providerId: "codex",
@@ -1130,6 +1379,31 @@ describe("handleBrowserApiRequest", () => {
 		);
 		await response.text();
 		expect(observedSince).toBe(5);
+	});
+
+	test("passes follow=false to coding event streams for replay-only clients", async () => {
+		let observedFollow: boolean | undefined;
+		async function* iterable() {
+			// no yields
+		}
+		const browserApi = {
+			openCodingSessionEventStream: (params: { follow?: boolean }) => {
+				observedFollow = params.follow;
+				return iterable();
+			},
+		} as unknown as BrowserApi;
+		const url = new URL(
+			"http://localhost/api/coding/sessions/codex/session-1/events?follow=false",
+		);
+
+		const response = await handleBrowserApiRequest(
+			new Request(url),
+			url,
+			browserApi,
+		);
+
+		await response.text();
+		expect(observedFollow).toBe(false);
 	});
 
 	test("prefers the larger of sinceSequence query and Last-Event-ID header", async () => {

@@ -15,6 +15,7 @@ import { join } from "node:path";
 import type { CodingSessionEvent } from "../../../src/common/protocol.ts";
 import { createBrowserApi } from "../../../src/runtime/browser/create-browser-api.ts";
 import {
+	ChatCodingLinkStore,
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
 	CodingSessionEventHub,
@@ -211,6 +212,54 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("returns the active chat session for an agent", () => {
+		const root = createTempDir("outclaw-browser-active-session-api-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		store.upsert({
+			providerId: "claude",
+			sdkSessionId: "chat-session",
+			title: "Current chat",
+			model: "opus",
+			tag: "chat",
+			timestamp: 100,
+		});
+		store.setActiveSessionId("claude", "chat-session");
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		expect(api.getAgentActiveSession("agent-railly")).toEqual({
+			activeSession: {
+				providerId: "claude",
+				sdkSessionId: "chat-session",
+			},
+		});
+
+		store.setActiveSessionId("claude", "missing-session");
+		expect(api.getAgentActiveSession("agent-railly")).toEqual({});
+
+		store.close();
+	});
+
 	test("lists coding sessions from the daemon coding store", async () => {
 		const root = createTempDir("outclaw-browser-coding-sessions-api-");
 		cleanupPaths.push(root);
@@ -319,6 +368,108 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("links and lists coding sessions for a chat session", async () => {
+		const root = createTempDir("outclaw-browser-chat-coding-links-api-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const chatStore = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const codingSharedStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		const links = new ChatCodingLinkStore(dbPath);
+
+		chatStore.upsert({
+			providerId: "claude",
+			sdkSessionId: "chat-session",
+			title: "Build the tool",
+			model: "opus",
+			tag: "chat",
+			timestamp: 100,
+		});
+		for (const params of [
+			{ sdkSessionId: "code-1", title: "First coding task", timestamp: 200 },
+			{ sdkSessionId: "code-2", title: "Second coding task", timestamp: 300 },
+		]) {
+			codingSharedStore.upsert({
+				providerId: "codex",
+				sdkSessionId: params.sdkSessionId,
+				title: params.title,
+				model: "gpt-5.5",
+				source: "code",
+				tag: "code",
+				timestamp: params.timestamp,
+			});
+			codingStore.upsert({
+				providerId: "codex",
+				sdkSessionId: params.sdkSessionId,
+				cwd: join(root, "workspace"),
+				runStatus: "idle",
+				timestamp: params.timestamp,
+			});
+		}
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			chatCodingLinks: links,
+			codingSessions: codingStore,
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", chatStore]]),
+		});
+
+		api.linkChatCodingSession({
+			chatAgentId: "agent-railly",
+			chatProviderId: "claude",
+			chatSdkSessionId: "chat-session",
+			codingProviderId: "codex",
+			codingSdkSessionId: "code-1",
+			timestamp: 400,
+		});
+		api.linkChatCodingSession({
+			chatAgentId: "agent-railly",
+			chatProviderId: "claude",
+			chatSdkSessionId: "chat-session",
+			codingProviderId: "codex",
+			codingSdkSessionId: "code-2",
+			timestamp: 500,
+		});
+
+		const result = await api.listChatCodingSessions({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "chat-session",
+		});
+		expect(result.sessions.map((session) => session.sdkSessionId)).toEqual([
+			"code-2",
+			"code-1",
+		]);
+		expect(result.sessions[0]).toMatchObject({
+			providerId: "codex",
+			sdkSessionId: "code-2",
+			title: "Second coding task",
+			cwd: join(root, "workspace"),
+		});
+
+		links.close();
+		codingStore.close();
+		codingSharedStore.close();
+		chatStore.close();
+	});
+
 	test("reads coding session detail by provider session identity", async () => {
 		const root = createTempDir("outclaw-browser-coding-session-detail-api-");
 		cleanupPaths.push(root);
@@ -387,6 +538,155 @@ describe("createBrowserApi", () => {
 
 		codingStore.close();
 		store.close();
+	});
+
+	test("reports idle coding session status with the latest final assistant response", async () => {
+		const root = createTempDir("outclaw-browser-coding-session-status-api-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-status",
+			title: "Status me",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-status",
+			cwd: join(root, "workspace"),
+			runStatus: "idle",
+			timestamp: 100,
+		});
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async () => [
+					{ type: "user_prompt", text: "first", sessionId: "code-status" },
+					{ type: "text", text: "old answer", sessionId: "code-status" },
+					{ type: "done", sessionId: "code-status", durationMs: 5 },
+					{ type: "user_prompt", text: "follow up", sessionId: "code-status" },
+					{ type: "thinking", text: "hidden work", sessionId: "code-status" },
+					{ type: "text", text: "final", sessionId: "code-status" },
+					{ type: "text", text: " answer", sessionId: "code-status" },
+					{ type: "done", sessionId: "code-status", durationMs: 7 },
+				],
+			},
+			codingSessions: codingStore,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.getCodingSessionStatus("codex", "code-status"),
+		).resolves.toEqual({
+			providerId: "codex",
+			sdkSessionId: "code-status",
+			state: "done",
+			finalResponse: "final answer",
+		});
+
+		codingStore.close();
+		sessionStore.close();
+	});
+
+	test("reports active and failed coding session status without reading history", async () => {
+		const root = createTempDir(
+			"outclaw-browser-coding-session-live-status-api-",
+		);
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		for (const sdkSessionId of ["code-running", "code-failed"]) {
+			sessionStore.upsert({
+				providerId: "codex",
+				sdkSessionId,
+				title: sdkSessionId,
+				model: "gpt-5.5",
+				source: "code",
+				tag: "code",
+				timestamp: 100,
+			});
+			codingStore.upsert({
+				providerId: "codex",
+				sdkSessionId,
+				cwd: join(root, "workspace"),
+				runStatus: "idle",
+				timestamp: 100,
+			});
+		}
+		codingStore.markRunning({
+			providerId: "codex",
+			sdkSessionId: "code-running",
+		});
+		codingStore.markFailed({
+			providerId: "codex",
+			sdkSessionId: "code-failed",
+			message: "boom",
+		});
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async () => {
+					throw new Error("history should not be read");
+				},
+			},
+			codingSessions: codingStore,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.getCodingSessionStatus("codex", "code-running"),
+		).resolves.toEqual({
+			providerId: "codex",
+			sdkSessionId: "code-running",
+			state: "running",
+		});
+		await expect(
+			api.getCodingSessionStatus("codex", "code-failed"),
+		).resolves.toEqual({
+			providerId: "codex",
+			sdkSessionId: "code-failed",
+			state: "error",
+			error: "boom",
+		});
+
+		codingStore.close();
+		sessionStore.close();
 	});
 
 	test("deletes coding sessions through the daemon coding store", async () => {
@@ -1690,6 +1990,80 @@ describe("createBrowserApi", () => {
 
 		controller.abort();
 		await iterator.next();
+
+		events.close();
+		codingSessions.close();
+		sessionStore.close();
+	});
+
+	test("opens replay-only coding-session event streams without following live events", async () => {
+		const root = createTempDir("outclaw-browser-coding-event-replay-only-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingSessions = new CodingSessionStore(dbPath);
+		const events = new CodingSessionEventHub();
+
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			title: "demo",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 10,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "codex-1",
+			cwd: root,
+			runStatus: "idle",
+			timestamp: 10,
+		});
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				resumePrompt: async () => ({
+					status: "rejected",
+					message: "unused",
+				}),
+				stopPrompt: unusedStopPrompt,
+				rehydrateSessionEvents: async () => [
+					{ type: "text", text: "history", sessionId: "codex-1" },
+				],
+			},
+			codingEvents: events,
+			codingSessions,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const iterator = api
+			.openCodingSessionEventStream({
+				providerId: "codex",
+				sdkSessionId: "codex-1",
+				follow: false,
+			})
+			[Symbol.asyncIterator]();
+
+		expect((await iterator.next()).value?.event).toEqual({
+			type: "text",
+			text: "history",
+			sessionId: "codex-1",
+		});
+		expect(await iterator.next()).toEqual({
+			done: true,
+			value: undefined,
+		});
 
 		events.close();
 		codingSessions.close();

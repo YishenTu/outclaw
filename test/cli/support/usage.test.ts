@@ -8,6 +8,11 @@ import {
 	formatAgentRenameUsage,
 	formatAgentSendUsage,
 	formatAgentUsage,
+	formatCodingMonitorUsage,
+	formatCodingResumeUsage,
+	formatCodingStartUsage,
+	formatCodingStatusUsage,
+	formatCodingUsage,
 	formatConfigRuntimeUsage,
 	formatConfigSecureUsage,
 	formatConfigUsage,
@@ -33,6 +38,9 @@ import {
 	printAgentRenameUsage,
 	printAgentSendUsage,
 	printAgentUsage,
+	printCodingMonitorUsage,
+	printCodingStatusUsage,
+	printCodingUsage,
 	printConfigRuntimeUsage,
 	printConfigSecureUsage,
 	printConfigUsage,
@@ -77,7 +85,7 @@ describe("CLI usage text", () => {
 			[
 				formatUsage(),
 				[
-					"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|session|cron|note|schema>",
+					"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|coding|session|cron|note|schema>",
 					"oc build && oc start",
 				],
 			],
@@ -132,6 +140,29 @@ describe("CLI usage text", () => {
 			[
 				formatConfigSecureUsage(),
 				["Usage: oc config secure", "telegram secrets"],
+			],
+			[
+				formatCodingUsage(),
+				[
+					"Usage: oc coding <repo-id-or-path|provider/session>",
+					"existing coding session",
+				],
+			],
+			[
+				formatCodingStartUsage(),
+				["Usage: oc coding start", "provider/session"],
+			],
+			[
+				formatCodingResumeUsage(),
+				["Usage: oc coding resume", "Archived sessions are restored"],
+			],
+			[
+				formatCodingMonitorUsage(),
+				["Usage: oc coding monitor", "streams new events"],
+			],
+			[
+				formatCodingStatusUsage(),
+				["Usage: oc coding status", "final assistant response"],
 			],
 			[formatCronUsage(), ["Usage: oc cron <run|status>", "failed cron runs"]],
 			[
@@ -192,6 +223,9 @@ describe("CLI usage text", () => {
 			[printConfigUsage, formatConfigUsage],
 			[printConfigRuntimeUsage, formatConfigRuntimeUsage],
 			[printConfigSecureUsage, formatConfigSecureUsage],
+			[printCodingUsage, formatCodingUsage],
+			[printCodingMonitorUsage, formatCodingMonitorUsage],
+			[printCodingStatusUsage, formatCodingStatusUsage],
 			[printCronUsage, formatCronUsage],
 			[printCronRunUsage, formatCronRunUsage],
 			[printCronStatusUsage, formatCronStatusUsage],

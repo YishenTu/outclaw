@@ -1,0 +1,726 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import type {
+	BrowserAgentActiveSessionResponse,
+	BrowserCodingSessionResumeResponse,
+	BrowserCodingSessionStartResponse,
+	BrowserCodingSessionStatusResponse,
+	CodingSessionEvent,
+} from "../../common/protocol.ts";
+import { loadGlobalConfig } from "../../runtime/config/index.ts";
+import {
+	formatCodingMonitorUsage,
+	formatCodingResumeUsage,
+	formatCodingStartUsage,
+	formatCodingStatusUsage,
+	formatCodingUsage,
+	isHelpFlag,
+	printCodingUsage,
+} from "../support/usage.ts";
+import { resolveSenderAgent } from "./agent-message.ts";
+
+interface CodingCommandOptions {
+	argv: string[];
+	homeDir: string;
+}
+
+type CodingStartBody =
+	| {
+			cwd: string;
+			prompt: string;
+	  }
+	| {
+			repositoryId: string;
+			prompt: string;
+	  };
+
+interface CodingChatContext {
+	chatAgentId: string;
+	chatProviderId: string;
+	chatSdkSessionId: string;
+}
+
+export async function codingCommand(options: CodingCommandOptions) {
+	const subcommand = options.argv[3];
+	if (subcommand === undefined || isHelpFlag(subcommand)) {
+		printCodingUsage();
+		process.exit(subcommand === undefined ? 1 : 0);
+	}
+
+	switch (subcommand) {
+		case "start":
+			await runCodingSubcommand(() => codingStartCommand(options));
+			return;
+		case "resume":
+			await runCodingSubcommand(() => codingResumeCommand(options));
+			return;
+		case "monitor":
+			await runCodingSubcommand(() => codingMonitorCommand(options));
+			return;
+		case "status":
+			await runCodingSubcommand(() => codingStatusCommand(options));
+			return;
+		default:
+			await runCodingSubcommand(() => codingTargetCommand(options));
+			return;
+	}
+}
+
+async function runCodingSubcommand(command: () => Promise<void>) {
+	try {
+		await command();
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exit(1);
+	}
+}
+
+async function codingStartCommand(options: CodingCommandOptions) {
+	const args = options.argv.slice(4);
+	if (isHelpFlag(args[0])) {
+		console.log(formatCodingStartUsage());
+		process.exit(0);
+	}
+
+	const target = args[0];
+	const prompt = args.slice(1).join(" ").trim();
+	if (!target || !prompt) {
+		console.error(formatCodingStartUsage());
+		process.exit(1);
+	}
+
+	const chatContext = await resolveCodingChatContext(options);
+	const result = await postCodingStart(
+		options.homeDir,
+		resolveStartBody(target, prompt),
+		chatContext,
+	);
+	exitWithCodingResult(result);
+}
+
+async function codingResumeCommand(options: CodingCommandOptions) {
+	const args = options.argv.slice(4);
+	if (isHelpFlag(args[0])) {
+		console.log(formatCodingResumeUsage());
+		process.exit(0);
+	}
+
+	const sessionRef = args[0];
+	const prompt = args.slice(1).join(" ").trim();
+	if (!sessionRef || !prompt) {
+		console.error(formatCodingResumeUsage());
+		process.exit(1);
+	}
+
+	const ref = parseExplicitSessionRef(sessionRef);
+	if (!ref) {
+		console.error("Coding session ref must use provider/session format");
+		process.exit(1);
+	}
+
+	const chatContext = await resolveCodingChatContext(options);
+	const result = await postCodingResume(
+		options.homeDir,
+		ref,
+		{ prompt },
+		chatContext,
+	);
+	exitWithCodingResult(result);
+}
+
+async function codingStatusCommand(options: CodingCommandOptions) {
+	const args = options.argv.slice(4);
+	if (isHelpFlag(args[0])) {
+		console.log(formatCodingStatusUsage());
+		process.exit(0);
+	}
+
+	const sessionRef = args[0];
+	if (!sessionRef || args.length !== 1) {
+		console.error(formatCodingStatusUsage());
+		process.exit(1);
+	}
+
+	const ref = parseExplicitSessionRef(sessionRef);
+	if (!ref) {
+		console.error("Coding session ref must use provider/session format");
+		process.exit(1);
+	}
+
+	const chatContext = await resolveCodingChatContext(options);
+	const result = await getCodingStatus(options.homeDir, ref, chatContext);
+	printCodingStatus(result);
+	process.exit(0);
+}
+
+async function codingMonitorCommand(options: CodingCommandOptions) {
+	const args = options.argv.slice(4);
+	if (isHelpFlag(args[0])) {
+		console.log(formatCodingMonitorUsage());
+		process.exit(0);
+	}
+
+	const sessionRef = args[0];
+	if (!sessionRef || args.length !== 1) {
+		console.error(formatCodingMonitorUsage());
+		process.exit(1);
+	}
+
+	const ref = parseExplicitSessionRef(sessionRef);
+	if (!ref) {
+		console.error("Coding session ref must use provider/session format");
+		process.exit(1);
+	}
+
+	const chatContext = await resolveCodingChatContext(options);
+	const status = await getCodingStatus(options.homeDir, ref, chatContext);
+	await monitorCodingSession(options.homeDir, ref, {
+		chatContext,
+		follow: status.state === "running",
+		status,
+	});
+	process.exit(0);
+}
+
+async function codingTargetCommand(options: CodingCommandOptions) {
+	const args = options.argv.slice(3);
+	const target = args[0];
+	const prompt = args.slice(1).join(" ").trim();
+	if (!target || !prompt) {
+		console.error(formatCodingUsage());
+		process.exit(1);
+	}
+
+	const ref = parseExplicitSessionRef(target);
+	const chatContext = await resolveCodingChatContext(options);
+	if (ref && isKnownCodingProviderId(ref.providerId)) {
+		const result = await postCodingResume(
+			options.homeDir,
+			ref,
+			{ prompt },
+			chatContext,
+		);
+		exitWithCodingResult(result);
+	}
+
+	const startBody = resolveStartBody(target, prompt);
+	if ("cwd" in startBody) {
+		const result = await postCodingStart(
+			options.homeDir,
+			startBody,
+			chatContext,
+		);
+		exitWithCodingResult(result);
+	}
+
+	if (ref) {
+		const result = await postCodingResume(
+			options.homeDir,
+			ref,
+			{ prompt },
+			chatContext,
+		);
+		exitWithCodingResult(result);
+	}
+
+	const result = await postCodingStart(options.homeDir, startBody, chatContext);
+	exitWithCodingResult(result);
+}
+
+function resolveStartBody(target: string, prompt: string): CodingStartBody {
+	const cwd = resolve(target);
+	if (existsSync(cwd)) {
+		return { cwd, prompt };
+	}
+	return { repositoryId: target, prompt };
+}
+
+function parseExplicitSessionRef(
+	sessionRef: string,
+): { providerId: string; sdkSessionId: string } | undefined {
+	const slashIndex = sessionRef.indexOf("/");
+	if (slashIndex <= 0 || slashIndex === sessionRef.length - 1) {
+		return undefined;
+	}
+	return {
+		providerId: sessionRef.slice(0, slashIndex),
+		sdkSessionId: sessionRef.slice(slashIndex + 1),
+	};
+}
+
+function isKnownCodingProviderId(providerId: string): boolean {
+	return providerId === "codex";
+}
+
+async function resolveCodingChatContext(
+	options: CodingCommandOptions,
+): Promise<CodingChatContext | undefined> {
+	const sender = resolveSenderAgent(options.homeDir, process.cwd());
+	if (!sender) {
+		return undefined;
+	}
+	try {
+		const result = await getJson<BrowserAgentActiveSessionResponse>(
+			options.homeDir,
+			`/api/agents/${encodeURIComponent(sender.agentId)}/active-session`,
+		);
+		if (!result.activeSession) {
+			return undefined;
+		}
+		return {
+			chatAgentId: sender.agentId,
+			chatProviderId: result.activeSession.providerId,
+			chatSdkSessionId: result.activeSession.sdkSessionId,
+		};
+	} catch {
+		return undefined;
+	}
+}
+
+async function postCodingStart(
+	homeDir: string,
+	body: CodingStartBody,
+	chatContext?: CodingChatContext,
+): Promise<BrowserCodingSessionStartResponse> {
+	return postJson(homeDir, "/api/coding/sessions", body, chatContext);
+}
+
+async function postCodingResume(
+	homeDir: string,
+	ref: { providerId: string; sdkSessionId: string },
+	body: { prompt: string },
+	chatContext?: CodingChatContext,
+): Promise<BrowserCodingSessionResumeResponse> {
+	return postJson(
+		homeDir,
+		`/api/coding/sessions/${encodeURIComponent(ref.providerId)}/${encodeURIComponent(ref.sdkSessionId)}/resume`,
+		body,
+		chatContext,
+	);
+}
+
+async function getCodingStatus(
+	homeDir: string,
+	ref: { providerId: string; sdkSessionId: string },
+	chatContext?: CodingChatContext,
+): Promise<BrowserCodingSessionStatusResponse> {
+	return getJson(
+		homeDir,
+		`/api/coding/sessions/${encodeURIComponent(ref.providerId)}/${encodeURIComponent(ref.sdkSessionId)}/status`,
+		chatContext,
+	);
+}
+
+async function postJson<TResponse>(
+	homeDir: string,
+	path: string,
+	body: unknown,
+	chatContext?: CodingChatContext,
+): Promise<TResponse> {
+	return requestJson(homeDir, path, {
+		body: JSON.stringify(body),
+		headers: {
+			"content-type": "application/json",
+			...codingChatContextHeaders(chatContext),
+		},
+		method: "POST",
+	});
+}
+
+async function getJson<TResponse>(
+	homeDir: string,
+	path: string,
+	chatContext?: CodingChatContext,
+): Promise<TResponse> {
+	return requestJson(homeDir, path, {
+		headers: codingChatContextHeaders(chatContext),
+		method: "GET",
+	});
+}
+
+async function requestJson<TResponse>(
+	homeDir: string,
+	path: string,
+	init: RequestInit,
+): Promise<TResponse> {
+	const url = codingApiUrl(homeDir, path);
+	const response = await fetch(url, init);
+	const text = await response.text();
+	let data: unknown;
+	try {
+		data = text ? (JSON.parse(text) as unknown) : undefined;
+	} catch {
+		if (!response.ok) {
+			throw new Error(`Coding request failed: ${response.status}`);
+		}
+		throw new Error("Coding request returned invalid JSON");
+	}
+	if (!response.ok) {
+		const message =
+			typeof data === "object" &&
+			data !== null &&
+			"error" in data &&
+			typeof data.error === "string"
+				? data.error
+				: `Coding request failed: ${response.status}`;
+		throw new Error(message);
+	}
+	return data as TResponse;
+}
+
+function codingChatContextHeaders(
+	chatContext: CodingChatContext | undefined,
+): Record<string, string> {
+	if (!chatContext) {
+		return {};
+	}
+	return {
+		"x-outclaw-chat-agent-id": chatContext.chatAgentId,
+		"x-outclaw-chat-provider-id": chatContext.chatProviderId,
+		"x-outclaw-chat-session-id": chatContext.chatSdkSessionId,
+	};
+}
+
+async function monitorCodingSession(
+	homeDir: string,
+	ref: { providerId: string; sdkSessionId: string },
+	options: {
+		chatContext?: CodingChatContext;
+		follow: boolean;
+		status: BrowserCodingSessionStatusResponse;
+	},
+) {
+	const renderer = new CodingMonitorRenderer((chunk) => {
+		process.stdout.write(chunk);
+	});
+	const abortController = new AbortController();
+	let terminalSeen = false;
+	try {
+		for await (const item of streamCodingSessionEvents(homeDir, ref, {
+			chatContext: options.chatContext,
+			follow: options.follow,
+			signal: abortController.signal,
+		})) {
+			renderer.render(item.event);
+			if (isTerminalCodingEvent(item.event)) {
+				terminalSeen = true;
+				abortController.abort();
+				break;
+			}
+		}
+	} catch (error) {
+		if (!terminalSeen || !abortController.signal.aborted) {
+			throw error;
+		}
+	}
+	if (options.follow && !terminalSeen) {
+		throw new Error("Coding monitor stream ended before terminal event");
+	}
+	if (!terminalSeen) {
+		renderer.renderStatusTerminal(options.status);
+	}
+}
+
+interface CodingSessionStreamItem {
+	providerId: string;
+	sdkSessionId: string;
+	sequence: number;
+	event: CodingSessionEvent;
+	createdAt: number;
+}
+
+async function* streamCodingSessionEvents(
+	homeDir: string,
+	ref: { providerId: string; sdkSessionId: string },
+	options: {
+		chatContext?: CodingChatContext;
+		follow: boolean;
+		signal: AbortSignal;
+	},
+): AsyncIterable<CodingSessionStreamItem> {
+	const params = new URLSearchParams();
+	if (!options.follow) {
+		params.set("follow", "false");
+	}
+	const query = params.size > 0 ? `?${params}` : "";
+	const path = `/api/coding/sessions/${encodeURIComponent(ref.providerId)}/${encodeURIComponent(ref.sdkSessionId)}/events${query}`;
+	const response = await fetch(codingApiUrl(homeDir, path), {
+		headers: codingChatContextHeaders(options.chatContext),
+		method: "GET",
+		signal: options.signal,
+	});
+	if (!response.ok) {
+		throw new Error(await readCodingError(response));
+	}
+	if (!response.body) {
+		throw new Error("Coding monitor stream returned no body");
+	}
+
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+	try {
+		while (!options.signal.aborted) {
+			const result = await reader.read();
+			if (result.done) {
+				break;
+			}
+			buffer += decoder.decode(result.value, { stream: true });
+			let frameEnd = buffer.indexOf("\n\n");
+			while (frameEnd !== -1) {
+				const frame = buffer.slice(0, frameEnd);
+				buffer = buffer.slice(frameEnd + 2);
+				const item = parseCodingSseFrame(frame);
+				if (item) {
+					yield item;
+				}
+				frameEnd = buffer.indexOf("\n\n");
+			}
+		}
+	} finally {
+		await reader.cancel().catch(() => undefined);
+	}
+}
+
+function parseCodingSseFrame(
+	frame: string,
+): CodingSessionStreamItem | undefined {
+	let eventName = "message";
+	const dataLines: string[] = [];
+	for (const rawLine of frame.split(/\r?\n/)) {
+		const line = rawLine.trimEnd();
+		if (line.startsWith("event:")) {
+			eventName = line.slice("event:".length).trim();
+			continue;
+		}
+		if (line.startsWith("data:")) {
+			dataLines.push(removeOneLeadingSpace(line.slice("data:".length)));
+		}
+	}
+	if (dataLines.length === 0) {
+		return undefined;
+	}
+	const dataText = dataLines.join("\n");
+	const data = JSON.parse(dataText) as unknown;
+	if (eventName === "error") {
+		throw new Error(readMessage(data) ?? "Coding monitor stream failed");
+	}
+	return data as CodingSessionStreamItem;
+}
+
+function removeOneLeadingSpace(value: string): string {
+	return value.startsWith(" ") ? value.slice(1) : value;
+}
+
+async function readCodingError(response: Response): Promise<string> {
+	const text = await response.text();
+	if (!text) {
+		return `Coding request failed: ${response.status}`;
+	}
+	try {
+		const data = JSON.parse(text) as unknown;
+		return readMessage(data) ?? `Coding request failed: ${response.status}`;
+	} catch {
+		return `Coding request failed: ${response.status}`;
+	}
+}
+
+function readMessage(data: unknown): string | undefined {
+	if (
+		typeof data === "object" &&
+		data !== null &&
+		"message" in data &&
+		typeof data.message === "string"
+	) {
+		return data.message;
+	}
+	if (
+		typeof data === "object" &&
+		data !== null &&
+		"error" in data &&
+		typeof data.error === "string"
+	) {
+		return data.error;
+	}
+	return undefined;
+}
+
+function codingApiUrl(homeDir: string, path: string): URL {
+	const config = loadGlobalConfig(homeDir);
+	const host = config.host === "0.0.0.0" ? "127.0.0.1" : config.host;
+	return new URL(path, `http://${host}:${config.port}`);
+}
+
+function printCodingStatus(result: BrowserCodingSessionStatusResponse) {
+	if (result.state === "running") {
+		console.log("running");
+		return;
+	}
+	if (result.state === "error") {
+		console.log(`error: ${result.error ?? "Coding session failed"}`);
+		return;
+	}
+	console.log("done");
+	if (result.finalResponse?.trim()) {
+		console.log("");
+		console.log(result.finalResponse.trim());
+	}
+}
+
+class CodingMonitorRenderer {
+	private readonly commandOutputSeen = new Set<string>();
+	private lastOutputEndedWithNewline = true;
+	private wroteAny = false;
+
+	constructor(private readonly write: (chunk: string) => void) {}
+
+	render(event: CodingSessionEvent) {
+		switch (event.type) {
+			case "user_prompt":
+				this.writeBlock(`[user] ${event.text.trim()}`);
+				break;
+			case "session_initialized":
+				this.writeBlock(`[session] ${event.sessionId}`);
+				break;
+			case "text":
+				this.writeRaw(event.text);
+				break;
+			case "thinking":
+				this.writeBlock(`[thinking] ${event.text.trim()}`);
+				break;
+			case "status":
+				this.writeBlock(`[status] ${event.message}`);
+				break;
+			case "command_execution_started":
+				this.writeBlock(`[command] ${event.command}`);
+				break;
+			case "command_execution_output":
+				this.commandOutputSeen.add(event.callId);
+				this.writeRaw(event.output);
+				break;
+			case "command_execution_completed":
+				if (event.output && !this.commandOutputSeen.has(event.callId)) {
+					this.writeRaw(event.output);
+				}
+				this.writeBlock(`[command exited ${event.exitCode ?? "unknown"}]`);
+				break;
+			case "file_change_applied":
+				if (event.changes.length === 0) {
+					this.writeBlock("[file] no changes");
+					break;
+				}
+				for (const change of event.changes) {
+					const moveSuffix = change.movePath ? ` -> ${change.movePath}` : "";
+					this.writeBlock(`[file] ${change.kind} ${change.path}${moveSuffix}`);
+				}
+				break;
+			case "web_search_started":
+				this.writeBlock(`[web-search] ${event.query ?? "started"}`);
+				break;
+			case "web_search_completed":
+				this.writeBlock(
+					`[web-search done] ${event.query ?? event.queries?.join(", ") ?? "completed"}`,
+				);
+				break;
+			case "subagent_tool_started":
+				this.writeBlock(`[subagent] ${event.operation}`);
+				if (event.prompt) {
+					this.writeBlock(`  prompt: ${event.prompt}`);
+				}
+				break;
+			case "subagent_tool_completed":
+				this.writeBlock(
+					`[subagent done] ${event.operation}${event.status ? ` ${event.status}` : ""}`,
+				);
+				break;
+			case "tool_call_started":
+				this.writeBlock(`[tool] ${event.toolKind}`);
+				this.writeDetails(event.details);
+				break;
+			case "tool_call_completed":
+				this.writeBlock(
+					`[tool done] ${event.toolKind}${event.status ? ` ${event.status}` : ""}`,
+				);
+				this.writeDetails(event.details);
+				break;
+			case "compacting_started":
+				this.writeBlock("[compacting] started");
+				break;
+			case "compacting_finished":
+				this.writeBlock("[compacting] finished");
+				break;
+			case "error":
+				this.writeBlock(`[error] ${event.message}`);
+				break;
+			case "done":
+				this.writeBlock(`[done] ${formatDuration(event.durationMs)}`);
+				break;
+			case "image":
+				this.writeBlock(`[image] ${event.path}`);
+				break;
+			case "usage_updated":
+				break;
+		}
+	}
+
+	renderStatusTerminal(status: BrowserCodingSessionStatusResponse) {
+		if (status.state === "done") {
+			this.writeBlock("[done]");
+			return;
+		}
+		if (status.state === "error") {
+			this.writeBlock(`[error] ${status.error ?? "Coding session failed"}`);
+		}
+	}
+
+	private writeDetails(
+		details: Array<{ label: string; value: string }> | undefined,
+	) {
+		for (const detail of details ?? []) {
+			this.writeBlock(`  ${detail.label}: ${detail.value}`);
+		}
+	}
+
+	private writeBlock(line: string) {
+		if (this.wroteAny && !this.lastOutputEndedWithNewline) {
+			this.write("\n");
+		}
+		this.write(`${line}\n`);
+		this.wroteAny = true;
+		this.lastOutputEndedWithNewline = true;
+	}
+
+	private writeRaw(chunk: string) {
+		if (!chunk) {
+			return;
+		}
+		this.write(chunk);
+		this.wroteAny = true;
+		this.lastOutputEndedWithNewline = chunk.endsWith("\n");
+	}
+}
+
+function isTerminalCodingEvent(event: CodingSessionEvent): boolean {
+	return event.type === "done" || event.type === "error";
+}
+
+function formatDuration(durationMs: number): string {
+	if (durationMs < 1000) {
+		return `${durationMs}ms`;
+	}
+	const seconds = durationMs / 1000;
+	return `${seconds.toFixed(1).replace(/\.0$/, "")}s`;
+}
+
+function exitWithCodingResult(
+	result:
+		| BrowserCodingSessionStartResponse
+		| BrowserCodingSessionResumeResponse,
+) {
+	if (result.status === "rejected") {
+		console.error(result.message);
+		process.exit(1);
+	}
+	console.log(`${result.providerId}/${result.sdkSessionId}`);
+	process.exit(0);
+}

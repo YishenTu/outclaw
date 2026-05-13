@@ -8,6 +8,12 @@ import {
 	readFileWriteRequest,
 } from "./browser-http.ts";
 
+interface ChatCodingContext {
+	chatAgentId: string;
+	chatProviderId: string;
+	chatSdkSessionId: string;
+}
+
 export async function handleCodingBrowserApiRequest(
 	req: Request,
 	url: URL,
@@ -80,7 +86,7 @@ export async function handleCodingBrowserApiRequest(
 	}
 
 	const codingSessionsMatch = url.pathname.match(
-		/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(archive|restore|resume|events|stop))?)?$/,
+		/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(archive|restore|resume|events|stop|status))?)?$/,
 	);
 	if (codingSessionsMatch) {
 		return handleCodingSessionRequest(
@@ -360,6 +366,27 @@ async function handleTargetedCodingSessionRequest(
 	if (target.action === "events") {
 		return streamCodingSessionEvents(req, url, browserApi, target);
 	}
+	if (target.action === "status") {
+		if (req.method !== "GET") {
+			return jsonError("Method not allowed", 405);
+		}
+		if (!browserApi.getCodingSessionStatus) {
+			return jsonError("Coding session API is not configured", 404);
+		}
+		const chatContext = readChatCodingContext(req);
+		if (chatContext.status === "invalid") {
+			return jsonError(chatContext.message, 400);
+		}
+		const result = await browserApi.getCodingSessionStatus(
+			target.providerId,
+			target.sdkSessionId,
+		);
+		await linkChatCodingSession(browserApi, chatContext.value, {
+			providerId: target.providerId,
+			sdkSessionId: target.sdkSessionId,
+		});
+		return Response.json(result);
+	}
 	if (target.action === "resume") {
 		return resumeCodingSession(req, browserApi, target);
 	}
@@ -442,6 +469,7 @@ function streamCodingSessionEvents(
 	const iterable = browserApi.openCodingSessionEventStream({
 		providerId: target.providerId,
 		sdkSessionId: target.sdkSessionId,
+		...(url.searchParams.get("follow") === "false" ? { follow: false } : {}),
 		...(sinceSequence.value !== undefined
 			? { sinceSequence: sinceSequence.value }
 			: {}),
@@ -479,14 +507,23 @@ async function resumeCodingSession(
 	if (overrides.status === "invalid") {
 		return jsonError(overrides.message, 400);
 	}
-	return Response.json(
-		await browserApi.resumeCodingSession({
-			providerId: target.providerId,
-			sdkSessionId: target.sdkSessionId,
-			prompt: body.prompt,
-			...overrides.value,
-		}),
-	);
+	const chatContext = readChatCodingContext(req);
+	if (chatContext.status === "invalid") {
+		return jsonError(chatContext.message, 400);
+	}
+	const result = await browserApi.resumeCodingSession({
+		providerId: target.providerId,
+		sdkSessionId: target.sdkSessionId,
+		prompt: body.prompt,
+		...overrides.value,
+	});
+	if (result.status === "accepted") {
+		await linkChatCodingSession(browserApi, chatContext.value, {
+			providerId: result.providerId,
+			sdkSessionId: result.sdkSessionId,
+		});
+	}
+	return Response.json(result);
 }
 
 async function startCodingSession(
@@ -517,6 +554,10 @@ async function startCodingSession(
 	if (overrides.status === "invalid") {
 		return jsonError(overrides.message, 400);
 	}
+	const chatContext = readChatCodingContext(req);
+	if (chatContext.status === "invalid") {
+		return jsonError(chatContext.message, 400);
+	}
 	const startParams: {
 		prompt: string;
 		repositoryId?: string;
@@ -535,12 +576,60 @@ async function startCodingSession(
 	if (typeof body.linkedChatSessionId === "string") {
 		startParams.linkedChatSessionId = body.linkedChatSessionId;
 	}
-	return Response.json(
-		await browserApi.startCodingSession({
-			...startParams,
-			...overrides.value,
-		}),
-	);
+	const result = await browserApi.startCodingSession({
+		...startParams,
+		...overrides.value,
+	});
+	if (result.status === "accepted") {
+		await linkChatCodingSession(browserApi, chatContext.value, {
+			providerId: result.providerId,
+			sdkSessionId: result.sdkSessionId,
+		});
+	}
+	return Response.json(result);
+}
+
+function readChatCodingContext(
+	req: Request,
+):
+	| { status: "valid"; value: ChatCodingContext }
+	| { status: "absent"; value: undefined }
+	| { status: "invalid"; message: string } {
+	const chatAgentId = req.headers.get("x-outclaw-chat-agent-id")?.trim();
+	const chatProviderId = req.headers.get("x-outclaw-chat-provider-id")?.trim();
+	const chatSdkSessionId = req.headers.get("x-outclaw-chat-session-id")?.trim();
+	if (!chatAgentId && !chatProviderId && !chatSdkSessionId) {
+		return { status: "absent", value: undefined };
+	}
+	if (!chatAgentId || !chatProviderId || !chatSdkSessionId) {
+		return {
+			status: "invalid",
+			message: "Invalid chat coding context headers",
+		};
+	}
+	return {
+		status: "valid",
+		value: {
+			chatAgentId,
+			chatProviderId,
+			chatSdkSessionId,
+		},
+	};
+}
+
+async function linkChatCodingSession(
+	browserApi: BrowserApi,
+	chatContext: ChatCodingContext | undefined,
+	codingSession: { providerId: string; sdkSessionId: string },
+) {
+	if (!chatContext || !browserApi.linkChatCodingSession) {
+		return;
+	}
+	await browserApi.linkChatCodingSession({
+		...chatContext,
+		codingProviderId: codingSession.providerId,
+		codingSdkSessionId: codingSession.sdkSessionId,
+	});
 }
 
 function readSinceSequence(

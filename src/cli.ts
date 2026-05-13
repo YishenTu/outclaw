@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { agentCommand } from "./cli/commands/agent.ts";
+import { codingCommand } from "./cli/commands/coding.ts";
 import { configCommand } from "./cli/commands/config.ts";
 import { cronCommand } from "./cli/commands/cron.ts";
 import { createDaemonCommands } from "./cli/commands/daemon.ts";
@@ -86,6 +87,12 @@ switch (command) {
 		break;
 	case "config":
 		configCommand({
+			argv,
+			homeDir: layout.homeDir,
+		});
+		break;
+	case "coding":
+		await codingCommand({
 			argv,
 			homeDir: layout.homeDir,
 		});

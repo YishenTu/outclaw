@@ -296,6 +296,41 @@ export async function handleBrowserApiRequest(
 			return codingResponse;
 		}
 
+		const activeSessionMatch = url.pathname.match(
+			/^\/api\/agents\/([^/]+)\/active-session$/,
+		);
+		if (activeSessionMatch) {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.getAgentActiveSession) {
+				return jsonError("Agent active session API is not configured", 404);
+			}
+			const agentId = decodeURIComponent(activeSessionMatch[1] ?? "");
+			return Response.json(browserApi.getAgentActiveSession(agentId));
+		}
+
+		const codingLinksMatch = url.pathname.match(
+			/^\/api\/agents\/([^/]+)\/sessions\/([^/]+)\/([^/]+)\/coding-links$/,
+		);
+		if (codingLinksMatch) {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.listChatCodingSessions) {
+				return jsonError("Chat coding link API is not configured", 404);
+			}
+			const [, encodedAgentId, encodedProviderId, encodedSdkSessionId] =
+				codingLinksMatch;
+			return Response.json(
+				await browserApi.listChatCodingSessions({
+					agentId: decodeURIComponent(encodedAgentId ?? ""),
+					providerId: decodeURIComponent(encodedProviderId ?? ""),
+					sdkSessionId: decodeURIComponent(encodedSdkSessionId ?? ""),
+				}),
+			);
+		}
+
 		const sessionsMatch = url.pathname.match(
 			/^\/api\/agents\/([^/]+)\/sessions$/,
 		);

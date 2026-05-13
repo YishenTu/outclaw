@@ -49,6 +49,35 @@ async function runCliAsync(args: string[], options?: { cwd?: string }) {
 	};
 }
 
+async function runCliAsyncWithTimeout(
+	args: string[],
+	options: { cwd?: string; timeoutMs: number },
+) {
+	const child = Bun.spawn(["bun", CLI_PATH, ...args], {
+		cwd: options.cwd,
+		env: { ...process.env, HOME: TEST_HOME, TZ: "UTC" },
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	let timedOut = false;
+	const timeout = setTimeout(() => {
+		timedOut = true;
+		child.kill();
+	}, options.timeoutMs);
+	const [exitCode, stdout, stderr] = await Promise.all([
+		child.exited,
+		new Response(child.stdout).text(),
+		new Response(child.stderr).text(),
+	]);
+	clearTimeout(timeout);
+	return {
+		stdout: stdout.trim(),
+		stderr: stderr.trim(),
+		exitCode,
+		timedOut,
+	};
+}
+
 function createAgentHome(name: string, agentId: string) {
 	const agentHome = join(OUTCLAW_DIR, "agents", name);
 	mkdirSync(agentHome, { recursive: true });
@@ -192,9 +221,11 @@ describe("CLI", () => {
 		expect(stdout).toContain(
 			"<start|stop|restart|status|tui|browser|onboard|dev",
 		);
+		expect(stdout).toContain("|agent|config|coding|session|cron|");
 		expect(stdout).toContain(
 			"oc agent <list|create|config|rename|remove|ask|send|name>",
 		);
+		expect(stdout).toContain('oc coding start <repo-id-or-path> "<prompt>"');
 		expect(stdout).toContain("first run:   oc build && oc start");
 		expect(stdout).toContain("command help: oc <command> -h");
 		expect(stdout).not.toContain("LAN browser: oc start --lan");
@@ -1199,6 +1230,825 @@ describe("CLI", () => {
 			});
 			expect(result.exitCode).toBe(1);
 			expect(result.stderr).toContain("Cron job not found: missing");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding start posts cwd and prompt to the daemon coding API and prints the session ref", async () => {
+		const projectDir = join(TEST_HOME, "projects", "demo");
+		mkdirSync(projectDir, { recursive: true });
+		let requestSeen = false;
+		const server = createTestServer({
+			port: 0,
+			async fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname !== "/api/coding/sessions") {
+					return new Response("not found", { status: 404 });
+				}
+				requestSeen = true;
+				expect(req.method).toBe("POST");
+				expect(await req.json()).toEqual({
+					cwd: projectDir,
+					prompt: "go build it",
+				});
+				return Response.json({
+					status: "accepted",
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "start", projectDir, "go", "build", "it"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("codex/codex-session-1");
+			expect(result.stderr).toBe("");
+			expect(requestSeen).toBe(true);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding start attaches active chat context when run from an agent home", async () => {
+		const agentHome = createAgentHome("railly", "agent-railly");
+		const projectDir = join(TEST_HOME, "projects", "demo");
+		mkdirSync(projectDir, { recursive: true });
+		const seen: string[] = [];
+		const server = createTestServer({
+			port: 0,
+			async fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname === "/api/agents/agent-railly/active-session") {
+					seen.push("active-session");
+					expect(req.method).toBe("GET");
+					return Response.json({
+						activeSession: {
+							providerId: "claude",
+							sdkSessionId: "chat-session-1",
+						},
+					});
+				}
+				if (url.pathname !== "/api/coding/sessions") {
+					return new Response("not found", { status: 404 });
+				}
+				seen.push("coding-start");
+				expect(req.headers.get("x-outclaw-chat-agent-id")).toBe("agent-railly");
+				expect(req.headers.get("x-outclaw-chat-provider-id")).toBe("claude");
+				expect(req.headers.get("x-outclaw-chat-session-id")).toBe(
+					"chat-session-1",
+				);
+				expect(await req.json()).toEqual({
+					cwd: projectDir,
+					prompt: "go build it",
+				});
+				return Response.json({
+					status: "accepted",
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "start", projectDir, "go", "build", "it"],
+				{ cwd: agentHome },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("codex/codex-session-1");
+			expect(result.stderr).toBe("");
+			expect(seen).toEqual(["active-session", "coding-start"]);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding short form starts when the target is a path", async () => {
+		const projectDir = join(TEST_HOME, "projects", "demo");
+		mkdirSync(projectDir, { recursive: true });
+		let requestSeen = false;
+		const server = createTestServer({
+			port: 0,
+			async fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname !== "/api/coding/sessions") {
+					return new Response("not found", { status: 404 });
+				}
+				requestSeen = true;
+				expect(req.method).toBe("POST");
+				expect(await req.json()).toEqual({
+					cwd: projectDir,
+					prompt: "go build it",
+				});
+				return Response.json({
+					status: "accepted",
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", projectDir, "go", "build", "it"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("codex/codex-session-1");
+			expect(result.stderr).toBe("");
+			expect(requestSeen).toBe(true);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding short form starts when the target is a registered repo id", async () => {
+		let requestSeen = false;
+		const server = createTestServer({
+			port: 0,
+			async fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname !== "/api/coding/sessions") {
+					return new Response("not found", { status: 404 });
+				}
+				requestSeen = true;
+				expect(req.method).toBe("POST");
+				expect(await req.json()).toEqual({
+					repositoryId: "outclaw",
+					prompt: "go build it",
+				});
+				return Response.json({
+					status: "accepted",
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "outclaw", "go", "build", "it"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("codex/codex-session-1");
+			expect(result.stderr).toBe("");
+			expect(requestSeen).toBe(true);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding resume posts the follow-up prompt to the daemon coding API and prints the session ref", async () => {
+		let requestSeen = false;
+		const server = createTestServer({
+			port: 0,
+			async fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/resume"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				requestSeen = true;
+				expect(req.method).toBe("POST");
+				expect(await req.json()).toEqual({
+					prompt: "polish the implementation",
+				});
+				return Response.json({
+					status: "accepted",
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				[
+					"coding",
+					"resume",
+					"codex/codex-session-1",
+					"polish",
+					"the",
+					"implementation",
+				],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("codex/codex-session-1");
+			expect(result.stderr).toBe("");
+			expect(requestSeen).toBe(true);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding short form resumes when the target is an explicit session ref", async () => {
+		let requestSeen = false;
+		const server = createTestServer({
+			port: 0,
+			async fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/resume"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				requestSeen = true;
+				expect(req.method).toBe("POST");
+				expect(await req.json()).toEqual({
+					prompt: "polish the implementation",
+				});
+				return Response.json({
+					status: "accepted",
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "codex/codex-session-1", "polish", "the", "implementation"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("codex/codex-session-1");
+			expect(result.stderr).toBe("");
+			expect(requestSeen).toBe(true);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding short form resumes an explicit session ref even when a matching relative path exists", async () => {
+		mkdirSync(join(TEST_HOME, "codex", "codex-session-1"), {
+			recursive: true,
+		});
+		let requestSeen = false;
+		const server = createTestServer({
+			port: 0,
+			async fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/resume"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				requestSeen = true;
+				expect(req.method).toBe("POST");
+				expect(await req.json()).toEqual({
+					prompt: "polish the implementation",
+				});
+				return Response.json({
+					status: "accepted",
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "codex/codex-session-1", "polish", "the", "implementation"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("codex/codex-session-1");
+			expect(result.stderr).toBe("");
+			expect(requestSeen).toBe(true);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding status prints done and the final assistant response", async () => {
+		let requestSeen = false;
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/status"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				requestSeen = true;
+				expect(req.method).toBe("GET");
+				return Response.json({
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+					state: "done",
+					finalResponse: "final answer",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "status", "codex/codex-session-1"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("done\n\nfinal answer");
+			expect(result.stderr).toBe("");
+			expect(requestSeen).toBe(true);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding status attaches active chat context when run from an agent home", async () => {
+		const agentHome = createAgentHome("railly", "agent-railly");
+		const seen: string[] = [];
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname === "/api/agents/agent-railly/active-session") {
+					seen.push("active-session");
+					return Response.json({
+						activeSession: {
+							providerId: "claude",
+							sdkSessionId: "chat-session-1",
+						},
+					});
+				}
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/status"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				seen.push("coding-status");
+				expect(req.headers.get("x-outclaw-chat-agent-id")).toBe("agent-railly");
+				expect(req.headers.get("x-outclaw-chat-provider-id")).toBe("claude");
+				expect(req.headers.get("x-outclaw-chat-session-id")).toBe(
+					"chat-session-1",
+				);
+				return Response.json({
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+					state: "done",
+					finalResponse: "final answer",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "status", "codex/codex-session-1"],
+				{ cwd: agentHome },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("done\n\nfinal answer");
+			expect(result.stderr).toBe("");
+			expect(seen).toEqual(["active-session", "coding-status"]);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding status prints running and error states without failing the command", async () => {
+		const responses = new Map([
+			[
+				"/api/coding/sessions/codex/running-session/status",
+				{
+					providerId: "codex",
+					sdkSessionId: "running-session",
+					state: "running",
+				},
+			],
+			[
+				"/api/coding/sessions/codex/error-session/status",
+				{
+					providerId: "codex",
+					sdkSessionId: "error-session",
+					state: "error",
+					error: "boom",
+				},
+			],
+		]);
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				const response = responses.get(url.pathname);
+				if (!response) {
+					return new Response("not found", { status: 404 });
+				}
+				expect(req.method).toBe("GET");
+				return Response.json(response);
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const running = await runCliAsync(
+				["coding", "status", "codex/running-session"],
+				{ cwd: TEST_HOME },
+			);
+			expect(running.exitCode).toBe(0);
+			expect(running.stdout).toBe("running");
+			expect(running.stderr).toBe("");
+
+			const failed = await runCliAsync(
+				["coding", "status", "codex/error-session"],
+				{ cwd: TEST_HOME },
+			);
+			expect(failed.exitCode).toBe(0);
+			expect(failed.stdout).toBe("error: boom");
+			expect(failed.stderr).toBe("");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding monitor streams normalized coding events and exits on the terminal event", async () => {
+		let statusSeen = false;
+		let eventsSeen = false;
+		const frame = (sequence: number, event: Record<string, unknown>): string =>
+			`id: ${sequence}\ndata: ${JSON.stringify({
+				providerId: "codex",
+				sdkSessionId: "codex-session-1",
+				sequence,
+				event,
+				createdAt: sequence,
+			})}\n\n`;
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname === "/api/coding/sessions/codex/codex-session-1/status"
+				) {
+					statusSeen = true;
+					expect(req.method).toBe("GET");
+					return Response.json({
+						providerId: "codex",
+						sdkSessionId: "codex-session-1",
+						state: "running",
+					});
+				}
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/events"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				eventsSeen = true;
+				expect(req.method).toBe("GET");
+				const encoder = new TextEncoder();
+				return new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller) {
+							controller.enqueue(
+								encoder.encode(
+									frame(1, {
+										type: "user_prompt",
+										text: "go build it",
+										sessionId: "codex-session-1",
+									}),
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									frame(2, {
+										type: "command_execution_started",
+										callId: "cmd-1",
+										command: "bun test",
+										sessionId: "codex-session-1",
+									}),
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									frame(3, {
+										type: "command_execution_output",
+										callId: "cmd-1",
+										output: "tests passed\n",
+										sessionId: "codex-session-1",
+									}),
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									frame(4, {
+										type: "command_execution_completed",
+										callId: "cmd-1",
+										exitCode: 0,
+										sessionId: "codex-session-1",
+									}),
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									frame(5, {
+										type: "file_change_applied",
+										callId: "patch-1",
+										changes: [{ kind: "update", path: "src/app.ts" }],
+										sessionId: "codex-session-1",
+									}),
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									frame(6, {
+										type: "text",
+										text: "Implemented monitor.",
+										sessionId: "codex-session-1",
+									}),
+								),
+							);
+							controller.enqueue(
+								encoder.encode(
+									frame(7, {
+										type: "done",
+										sessionId: "codex-session-1",
+										durationMs: 1500,
+									}),
+								),
+							);
+						},
+					}),
+					{
+						headers: {
+							"content-type": "text/event-stream; charset=utf-8",
+						},
+					},
+				);
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsyncWithTimeout(
+				["coding", "monitor", "codex/codex-session-1"],
+				{ cwd: TEST_HOME, timeoutMs: 1000 },
+			);
+			expect(result.timedOut).toBe(false);
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr).toBe("");
+			expect(result.stdout).toContain("[user] go build it");
+			expect(result.stdout).toContain("[command] bun test");
+			expect(result.stdout).toContain("tests passed");
+			expect(result.stdout).toContain("[command exited 0]");
+			expect(result.stdout).toContain("[file] update src/app.ts");
+			expect(result.stdout).toContain("Implemented monitor.");
+			expect(result.stdout).toContain("[done] 1.5s");
+			expect(statusSeen).toBe(true);
+			expect(eventsSeen).toBe(true);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding monitor replays completed sessions without following future events", async () => {
+		let followParam: string | null | undefined;
+		const frame = (sequence: number, event: Record<string, unknown>): string =>
+			`id: ${sequence}\ndata: ${JSON.stringify({
+				providerId: "codex",
+				sdkSessionId: "done-session",
+				sequence,
+				event,
+				createdAt: sequence,
+			})}\n\n`;
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname === "/api/coding/sessions/codex/done-session/status") {
+					return Response.json({
+						providerId: "codex",
+						sdkSessionId: "done-session",
+						state: "done",
+						finalResponse: "already finished",
+					});
+				}
+				if (url.pathname !== "/api/coding/sessions/codex/done-session/events") {
+					return new Response("not found", { status: 404 });
+				}
+				followParam = url.searchParams.get("follow");
+				return new Response(
+					[
+						frame(1, {
+							type: "user_prompt",
+							text: "previous prompt",
+							sessionId: "done-session",
+						}),
+						frame(2, {
+							type: "text",
+							text: "already finished",
+							sessionId: "done-session",
+						}),
+						frame(3, {
+							type: "done",
+							sessionId: "done-session",
+							durationMs: 42,
+						}),
+					].join(""),
+					{
+						headers: {
+							"content-type": "text/event-stream; charset=utf-8",
+						},
+					},
+				);
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsyncWithTimeout(
+				["coding", "monitor", "codex/done-session"],
+				{ cwd: TEST_HOME, timeoutMs: 1000 },
+			);
+			expect(result.timedOut).toBe(false);
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr).toBe("");
+			expect(result.stdout).toContain("[user] previous prompt");
+			expect(result.stdout).toContain("already finished");
+			expect(result.stdout).toContain("[done] 42ms");
+			expect(followParam).toBe("false");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding monitor prints the snapshot terminal state when replay has no terminal event", async () => {
+		const frame = (
+			sdkSessionId: string,
+			sequence: number,
+			event: Record<string, unknown>,
+		): string =>
+			`id: ${sequence}\ndata: ${JSON.stringify({
+				providerId: "codex",
+				sdkSessionId,
+				sequence,
+				event,
+				createdAt: sequence,
+			})}\n\n`;
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname === "/api/coding/sessions/codex/done-session/status") {
+					return Response.json({
+						providerId: "codex",
+						sdkSessionId: "done-session",
+						state: "done",
+						finalResponse: "already finished",
+					});
+				}
+				if (
+					url.pathname === "/api/coding/sessions/codex/error-session/status"
+				) {
+					return Response.json({
+						providerId: "codex",
+						sdkSessionId: "error-session",
+						state: "error",
+						error: "boom",
+					});
+				}
+				if (url.pathname === "/api/coding/sessions/codex/done-session/events") {
+					return new Response(
+						[
+							frame("done-session", 1, {
+								type: "user_prompt",
+								text: "previous prompt",
+								sessionId: "done-session",
+							}),
+							frame("done-session", 2, {
+								type: "text",
+								text: "already finished",
+								sessionId: "done-session",
+							}),
+						].join(""),
+						{
+							headers: {
+								"content-type": "text/event-stream; charset=utf-8",
+							},
+						},
+					);
+				}
+				if (
+					url.pathname === "/api/coding/sessions/codex/error-session/events"
+				) {
+					return new Response(
+						frame("error-session", 1, {
+							type: "user_prompt",
+							text: "previous prompt",
+							sessionId: "error-session",
+						}),
+						{
+							headers: {
+								"content-type": "text/event-stream; charset=utf-8",
+							},
+						},
+					);
+				}
+				return new Response("not found", { status: 404 });
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const done = await runCliAsyncWithTimeout(
+				["coding", "monitor", "codex/done-session"],
+				{ cwd: TEST_HOME, timeoutMs: 1000 },
+			);
+			expect(done.timedOut).toBe(false);
+			expect(done.stderr).toBe("");
+			expect(done.exitCode).toBe(0);
+			expect(done.stdout).toContain("already finished");
+			expect(done.stdout).toContain("[done]");
+
+			const failed = await runCliAsyncWithTimeout(
+				["coding", "monitor", "codex/error-session"],
+				{ cwd: TEST_HOME, timeoutMs: 1000 },
+			);
+			expect(failed.timedOut).toBe(false);
+			expect(failed.stderr).toBe("");
+			expect(failed.exitCode).toBe(0);
+			expect(failed.stdout).toContain("[error] boom");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding start prints daemon rejection messages to stderr", async () => {
+		const projectDir = join(TEST_HOME, "projects", "demo");
+		mkdirSync(projectDir, { recursive: true });
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname !== "/api/coding/sessions") {
+					return new Response("not found", { status: 404 });
+				}
+				return Response.json({
+					status: "rejected",
+					message: "Coding service is not configured",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "start", projectDir, "go build it"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(1);
+			expect(result.stdout).toBe("");
+			expect(result.stderr).toBe("Coding service is not configured");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding start treats help-looking prompt words as prompt content", async () => {
+		const projectDir = join(TEST_HOME, "projects", "demo");
+		mkdirSync(projectDir, { recursive: true });
+		const server = createTestServer({
+			port: 0,
+			async fetch(req) {
+				const url = new URL(req.url);
+				if (url.pathname !== "/api/coding/sessions") {
+					return new Response("not found", { status: 404 });
+				}
+				expect(await req.json()).toEqual({
+					cwd: projectDir,
+					prompt: "fix --help output",
+				});
+				return Response.json({
+					status: "accepted",
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "start", projectDir, "fix", "--help", "output"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("codex/codex-session-1");
 		} finally {
 			server.stop();
 		}

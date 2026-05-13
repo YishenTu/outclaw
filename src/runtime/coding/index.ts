@@ -1,4 +1,8 @@
 export {
+	ChatCodingLinkStore,
+	ensureChatCodingLinkStoreSchema,
+} from "./chat-coding-link-store.ts";
+export {
 	type CodingCloneRequest,
 	type CodingCloneResult,
 	type CodingCloner,

@@ -12,12 +12,17 @@ export function hasHelpFlag(values: string[]): boolean {
 
 export function formatUsage() {
 	return joinLines([
-		"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|session|cron|note|schema>",
+		"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|coding|session|cron|note|schema>",
 		"       oc start|restart [--lan] [--host HOST]",
 		"       oc onboard",
 		"       oc agent <list|create|config|rename|remove|ask|send|name>",
 		"       oc config runtime [--host HOST] [--port N] [--auto-compact true|false] [--heartbeat-interval N] [--heartbeat-defer N] [--thinking-effort LEVEL]",
 		"       oc config secure",
+		'       oc coding <repo-id-or-path|provider/session> "<prompt>"',
+		'       oc coding start <repo-id-or-path> "<prompt>"',
+		'       oc coding resume <provider/session> "<prompt>"',
+		"       oc coding monitor <provider/session>",
+		"       oc coding status <provider/session>",
 		"       oc session list [--limit N] [--tag cron]",
 		"       oc session search <query> [--limit N]",
 		"       oc session transcript <id-or-prefix> [--limit N] [--tag cron]",
@@ -222,6 +227,73 @@ export function formatConfigSecureUsage() {
 
 export function printConfigSecureUsage() {
 	console.log(formatConfigSecureUsage());
+}
+
+export function formatCodingUsage() {
+	return joinLines([
+		'Usage: oc coding <repo-id-or-path|provider/session> "<prompt>"',
+		'       oc coding start <repo-id-or-path> "<prompt>"',
+		'       oc coding resume <provider/session> "<prompt>"',
+		"       oc coding monitor <provider/session>",
+		"       oc coding status <provider/session>",
+		"",
+		"Commands:",
+		"       <target>  start or resume based on the target",
+		"       start     start a cwd-bound coding session and print its ref",
+		"       resume    send a follow-up prompt to an existing coding session",
+		"       monitor   replay prior progress and stream until terminal state",
+		"       status    print running, error, or the final response",
+	]);
+}
+
+export function printCodingUsage() {
+	console.log(formatCodingUsage());
+}
+
+export function formatCodingStartUsage() {
+	return joinLines([
+		'Usage: oc coding start <repo-id-or-path> "<prompt>"',
+		"",
+		"Starts a daemon-owned coding session and exits after provider session initialization.",
+		"Prints the coding session ref as provider/session.",
+	]);
+}
+
+export function formatCodingResumeUsage() {
+	return joinLines([
+		'Usage: oc coding resume <provider/session> "<prompt>"',
+		"",
+		"Sends a follow-up prompt to a daemon-owned coding session and exits after the turn is accepted.",
+		"Archived sessions are restored by the daemon before the prompt is accepted.",
+	]);
+}
+
+export function formatCodingMonitorUsage() {
+	return joinLines([
+		"Usage: oc coding monitor <provider/session>",
+		"",
+		"Replays normalized coding-session events and streams new events.",
+		"Blocks until the observed turn reaches done or error.",
+		"Use the caller's shell/tool timeout when a maximum wait is needed.",
+	]);
+}
+
+export function printCodingMonitorUsage() {
+	console.log(formatCodingMonitorUsage());
+}
+
+export function formatCodingStatusUsage() {
+	return joinLines([
+		"Usage: oc coding status <provider/session>",
+		"",
+		"Prints running while a coding turn is active.",
+		"Prints error details for failed turns.",
+		"Prints done and the final assistant response when the session is idle.",
+	]);
+}
+
+export function printCodingStatusUsage() {
+	console.log(formatCodingStatusUsage());
 }
 
 export function formatCronUsage() {

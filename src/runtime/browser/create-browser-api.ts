@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import type { EffortLevel } from "../../common/commands.ts";
 import type {
+	BrowserAgentActiveSessionResponse,
 	BrowserAgentsResponse,
 	BrowserCodingFolderPickerResponse,
 	BrowserCodingModelsResponse,
@@ -17,10 +18,12 @@ import type {
 	BrowserCodingSessionDeleteResponse,
 	BrowserCodingSessionDetail,
 	BrowserCodingSessionLifecycleStatus,
+	BrowserCodingSessionLinksResponse,
 	BrowserCodingSessionPageResponse,
 	BrowserCodingSessionRestoreResponse,
 	BrowserCodingSessionResumeResponse,
 	BrowserCodingSessionStartResponse,
+	BrowserCodingSessionStatusResponse,
 	BrowserCodingSessionStopResponse,
 	BrowserCodingSessionSummary,
 	BrowserCodingSkillsResponse,
@@ -53,6 +56,7 @@ import type {
 	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
 import type {
+	ChatCodingLinkStore,
 	CodingCloner,
 	CodingRepositoryRecord,
 	CodingRepositoryStore,
@@ -138,6 +142,7 @@ export interface BrowserCodingService
 
 interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
+	chatCodingLinks?: ChatCodingLinkStore;
 	cloneCodingRepository?: CodingCloner;
 	coding?: BrowserCodingService;
 	codingEvents?: CodingSessionEventRecorder;
@@ -158,6 +163,7 @@ interface CreateBrowserApiOptions {
 }
 
 export interface BrowserApi {
+	getAgentActiveSession(agentId: string): BrowserAgentActiveSessionResponse;
 	getAgentTerminalCwd(agentId: string): string | undefined;
 	listAgents(params?: { browserClientId?: string }): BrowserAgentsResponse;
 	archiveAgentInboxItem(
@@ -186,6 +192,19 @@ export interface BrowserApi {
 			query?: string;
 		},
 	): Promise<BrowserSessionPageResponse>;
+	listChatCodingSessions(params: {
+		agentId: string;
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<BrowserCodingSessionLinksResponse>;
+	linkChatCodingSession(params: {
+		chatAgentId: string;
+		chatProviderId: string;
+		chatSdkSessionId: string;
+		codingProviderId: string;
+		codingSdkSessionId: string;
+		timestamp?: number;
+	}): void | Promise<void>;
 	listCodingSessions(params: {
 		limit: number;
 		cursor?: SessionCursor;
@@ -223,6 +242,10 @@ export interface BrowserApi {
 		providerId: string,
 		sdkSessionId: string,
 	): Promise<BrowserCodingSessionDetail>;
+	getCodingSessionStatus(
+		providerId: string,
+		sdkSessionId: string,
+	): Promise<BrowserCodingSessionStatusResponse>;
 	archiveCodingSession(
 		providerId: string,
 		sdkSessionId: string,
@@ -279,6 +302,7 @@ export interface BrowserApi {
 	openCodingSessionEventStream(params: {
 		providerId: string;
 		sdkSessionId: string;
+		follow?: boolean;
 		sinceSequence?: number;
 		signal?: AbortSignal;
 	}): AsyncIterable<StoredCodingSessionEvent>;
@@ -401,6 +425,24 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				storesByAgent: options.storesByAgent,
 			});
 		},
+		getAgentActiveSession(agentId) {
+			const agent = requireAgent(agentsById, agentId);
+			const store = options.storesByAgent.get(agentId);
+			const activeSessionId = store?.getActiveSessionId(agent.providerId);
+			if (!activeSessionId) {
+				return {};
+			}
+			const activeSession = store?.get(agent.providerId, activeSessionId);
+			if (!activeSession || activeSession.tag !== "chat") {
+				return {};
+			}
+			return {
+				activeSession: {
+					providerId: agent.providerId,
+					sdkSessionId: activeSessionId,
+				},
+			};
+		},
 		async listAgentCron(agentId) {
 			const agent = requireAgent(agentsById, agentId);
 			return await listCronEntries(agent.homeDir);
@@ -448,6 +490,28 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				sessions: rows.map(toBrowserSessionSummary),
 				nextCursor: nextSessionCursor(rows, params.limit),
 			};
+		},
+		async listChatCodingSessions(params) {
+			requireAgent(agentsById, params.agentId);
+			const chatSession = options.storesByAgent
+				.get(params.agentId)
+				?.get(params.providerId, params.sdkSessionId);
+			if (!chatSession || chatSession.tag !== "chat") {
+				return { sessions: [] };
+			}
+			return {
+				sessions:
+					options.chatCodingLinks
+						?.listForChat({
+							chatAgentId: params.agentId,
+							chatProviderId: params.providerId,
+							chatSdkSessionId: params.sdkSessionId,
+						})
+						.map(toBrowserCodingSessionSummary) ?? [],
+			};
+		},
+		linkChatCodingSession(params) {
+			options.chatCodingLinks?.upsert(params);
 		},
 		async listCodingSessions(params) {
 			const store = options.codingSessions;
@@ -568,6 +632,43 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				);
 			}
 			return toBrowserCodingSessionSummary(session);
+		},
+		async getCodingSessionStatus(providerId, sdkSessionId) {
+			const session = options.codingSessions?.getDetail(
+				providerId,
+				sdkSessionId,
+			);
+			if (!session) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			if (session.runStatus === "running") {
+				return {
+					providerId,
+					sdkSessionId,
+					state: "running",
+				};
+			}
+			if (session.runStatus === "failed") {
+				return {
+					providerId,
+					sdkSessionId,
+					state: "error",
+					error: session.failureMessage ?? "Coding session failed",
+				};
+			}
+			const events =
+				(await options.coding?.rehydrateSessionEvents?.({
+					providerId,
+					sdkSessionId,
+				})) ?? [];
+			return {
+				providerId,
+				sdkSessionId,
+				state: "done",
+				finalResponse: extractLatestAssistantResponse(events),
+			};
 		},
 		async archiveCodingSession(providerId, sdkSessionId) {
 			const store = options.codingSessions;
@@ -727,7 +828,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 								Promise.resolve([]),
 						}
 					: undefined,
-				liveEvents: options.codingEvents,
+				liveEvents: params.follow === false ? undefined : options.codingEvents,
 				sessions: options.codingSessions
 					? {
 							hasCodingSession: (target) =>
@@ -1028,6 +1129,20 @@ function normalizeTerminalRunCommand(command: string): string {
 		throw new Error("Terminal run command must be a single line");
 	}
 	return nextCommand;
+}
+
+function extractLatestAssistantResponse(events: CodingSessionEvent[]): string {
+	let response = "";
+	for (const event of events) {
+		if (event.type === "user_prompt") {
+			response = "";
+			continue;
+		}
+		if (event.type === "text") {
+			response += event.text;
+		}
+	}
+	return response.trim();
 }
 
 function toBrowserCodingSessionSummary(

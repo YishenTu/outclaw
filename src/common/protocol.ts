@@ -607,6 +607,13 @@ export interface BrowserAgentsResponse {
 	agents: BrowserAgentSummary[];
 }
 
+export interface BrowserAgentActiveSessionResponse {
+	activeSession?: {
+		providerId: string;
+		sdkSessionId: string;
+	};
+}
+
 export interface BrowserSessionPageResponse {
 	nextCursor?: SessionCursor;
 	query?: string;
@@ -642,6 +649,10 @@ export interface BrowserCodingSessionPageResponse {
 	sessions: BrowserCodingSessionSummary[];
 }
 
+export interface BrowserCodingSessionLinksResponse {
+	sessions: BrowserCodingSessionSummary[];
+}
+
 export interface BrowserCodingSessionDetail
 	extends BrowserCodingSessionSummary {}
 
@@ -659,6 +670,16 @@ export interface BrowserCodingSessionArchiveResponse {
 export interface BrowserCodingSessionRestoreResponse {
 	restored: true;
 	session: BrowserCodingSessionSummary;
+}
+
+export type BrowserCodingSessionStatusState = "running" | "done" | "error";
+
+export interface BrowserCodingSessionStatusResponse {
+	providerId: string;
+	sdkSessionId: string;
+	state: BrowserCodingSessionStatusState;
+	finalResponse?: string;
+	error?: string;
 }
 
 export type BrowserCodingSessionStartResponse =

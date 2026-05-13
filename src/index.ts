@@ -12,6 +12,7 @@ import { discoverAgents } from "./runtime/agents/discover-agents.ts";
 import { createAgentRuntime } from "./runtime/application/create-agent-runtime.ts";
 import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
 import {
+	ChatCodingLinkStore,
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
 	CodingSessionEventHub,
@@ -94,6 +95,7 @@ function startMultiAgentDaemon(
 	});
 	const codingSessions = new CodingSessionStore(layout.dbPath);
 	const codingRepositories = new CodingRepositoryStore(layout.dbPath);
+	const chatCodingLinks = new ChatCodingLinkStore(layout.dbPath);
 	const codingEvents = new CodingSessionEventHub();
 	const codingFacade = new CodexAdapter();
 	const codingService = createCodingService({
@@ -168,6 +170,7 @@ function startMultiAgentDaemon(
 					terminalRunCommand: agent.config.terminal.runCommand,
 				};
 			}),
+			chatCodingLinks,
 			coding: {
 				startPrompt: codingService.runtime.startPrompt.bind(
 					codingService.runtime,
@@ -278,6 +281,7 @@ function startMultiAgentDaemon(
 			await codingService.stop();
 			await codingFacade.dispose();
 			codingEvents.close();
+			chatCodingLinks.close();
 			codingSessions.close();
 			codingSharedSessionStore.close();
 			codingRepositories.close();
