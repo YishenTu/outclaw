@@ -215,7 +215,7 @@ export function RepositoryItem({
 						onSelectRepository();
 						onToggle();
 					}}
-					className="flex min-w-0 flex-1 items-center gap-2 text-left"
+					className="flex min-w-0 flex-1 items-center gap-2 pr-12 text-left"
 				>
 					{isExpanded ? (
 						<ChevronDown size={14} className="shrink-0" />

@@ -49,6 +49,16 @@ function buttonOpeningTagWithLabel(html: string, label: string): string {
 	return html.slice(buttonStart, buttonEnd);
 }
 
+function repositoryToggleOpeningTag(html: string, label: string): string {
+	const labelIndex = html.indexOf(label);
+	expect(labelIndex).toBeGreaterThan(-1);
+	const buttonStart = html.lastIndexOf("<button", labelIndex);
+	const buttonEnd = html.indexOf(">", labelIndex);
+	expect(buttonStart).toBeGreaterThan(-1);
+	expect(buttonEnd).toBeGreaterThan(buttonStart);
+	return html.slice(buttonStart, buttonEnd);
+}
+
 describe("RepositoryItem", () => {
 	test("renders the repository row with a secondary actions trigger and plus affordance", () => {
 		const html = renderToStaticMarkup(
@@ -69,6 +79,23 @@ describe("RepositoryItem", () => {
 		expect(html).toContain('aria-expanded="false"');
 		expect(html).not.toContain('aria-label="Search sessions for Outclaw"');
 		expect(html).not.toContain('aria-label="Archive repository Outclaw"');
+	});
+
+	test("reserves row space so long repository names truncate before action buttons", () => {
+		const longName =
+			"Outclaw project with a very long display name that should never cover actions";
+		const html = renderToStaticMarkup(
+			<RepositoryItem
+				repository={{ id: "repo-1", displayName: longName }}
+				isExpanded={false}
+				sessions={[]}
+				{...ACTIONS}
+			/>,
+		);
+
+		expect(repositoryToggleOpeningTag(html, longName)).toContain("pr-12");
+		expect(html).toContain('aria-label="Open repository actions for ');
+		expect(html).toContain('aria-label="Start new session in ');
 	});
 
 	test("renders sessions with the shared SessionItem when expanded and marks active", () => {
