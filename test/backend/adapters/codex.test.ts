@@ -71,6 +71,23 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 			} as T;
 		}
 
+		if (method === "thread/read") {
+			const paramsRecord =
+				typeof params === "object" && params !== null
+					? (params as Record<string, unknown>)
+					: {};
+			return {
+				thread: {
+					id:
+						typeof paramsRecord.threadId === "string"
+							? paramsRecord.threadId
+							: "codex-thread-123",
+					sessionId: "codex-session-tree",
+					path: this.options.threadPath ?? null,
+				},
+			} as T;
+		}
+
 		if (method === "turn/start") {
 			for (const notification of this.turnNotifications) {
 				this.emit(notification);
@@ -1729,8 +1746,8 @@ describe("CodexAdapter", () => {
 			]);
 			expect(client.requests).toEqual([
 				{
-					method: "thread/resume",
-					params: { threadId: "codex-thread-123" },
+					method: "thread/read",
+					params: { threadId: "codex-thread-123", includeTurns: false },
 				},
 			]);
 		} finally {

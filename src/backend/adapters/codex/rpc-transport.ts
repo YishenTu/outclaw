@@ -72,9 +72,7 @@ export class CodexRpcTransport {
 	request<T>(method: string, params?: unknown): Promise<T> {
 		const id = this.nextId++;
 		const message =
-			params === undefined
-				? { jsonrpc: "2.0", id, method }
-				: { jsonrpc: "2.0", id, method, params };
+			params === undefined ? { id, method } : { id, method, params };
 
 		return new Promise<T>((resolve, reject) => {
 			const timer = setTimeout(() => {
@@ -93,11 +91,7 @@ export class CodexRpcTransport {
 	}
 
 	notify(method: string, params?: unknown): void {
-		this.sendRaw(
-			params === undefined
-				? { jsonrpc: "2.0", method }
-				: { jsonrpc: "2.0", method, params },
-		);
+		this.sendRaw(params === undefined ? { method } : { method, params });
 	}
 
 	subscribe(
@@ -200,13 +194,11 @@ export class CodexRpcTransport {
 		try {
 			const result = await this.options.handleServerRequest(request);
 			this.sendRaw({
-				jsonrpc: "2.0",
 				id: request.id,
 				result,
 			});
 		} catch (error) {
 			this.sendRaw({
-				jsonrpc: "2.0",
 				id: request.id,
 				error: {
 					code: -32603,
@@ -218,7 +210,6 @@ export class CodexRpcTransport {
 
 	private rejectServerRequest(request: CodexServerRequest): void {
 		this.sendRaw({
-			jsonrpc: "2.0",
 			id: request.id,
 			error: {
 				code: -32601,

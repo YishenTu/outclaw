@@ -26,6 +26,7 @@ export interface CodexThreadStartResult {
 }
 
 export type CodexThreadResumeResult = CodexThreadStartResult;
+export type CodexThreadReadResult = CodexThreadStartResult;
 
 export interface CodexTurn {
 	id: string;

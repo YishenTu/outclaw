@@ -22,6 +22,7 @@ import type {
 	CodexModelListResponse,
 	CodexSkillMetadata,
 	CodexSkillsListResult,
+	CodexThreadReadResult,
 	CodexThreadResumeResult,
 	CodexThreadStartResult,
 	CodexTurnStartResult,
@@ -115,10 +116,10 @@ export class CodexAdapter implements Facade {
 	): Promise<CodingSessionEvent[]> {
 		const client = await this.loadClient();
 		await client.initialize();
-		const thread = await client.request<CodexThreadResumeResult>(
-			"thread/resume",
-			{ threadId: sessionId },
-		);
+		const thread = await client.request<CodexThreadReadResult>("thread/read", {
+			threadId: sessionId,
+			includeTurns: false,
+		});
 		if (!thread.thread.path) {
 			return [];
 		}
