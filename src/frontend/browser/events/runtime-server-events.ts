@@ -67,6 +67,9 @@ function readCodingRunStatusFromEvent(
 				: {}),
 		};
 	}
+	if (record.type === "turn_aborted") {
+		return { runStatus: "cancelled" };
+	}
 	return undefined;
 }
 

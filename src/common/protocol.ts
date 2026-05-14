@@ -1122,6 +1122,7 @@ export type ServerEvent =
 	| ImageEvent
 	| StatusEvent
 	| ErrorEvent
+	| TurnAbortedEvent
 	| DoneEvent
 	| UsageUpdatedEvent
 	| CommandExecutionStartedEvent
@@ -1179,6 +1180,7 @@ export type FacadeEvent =
 	| ImageEvent
 	| StatusEvent
 	| ErrorEvent
+	| TurnAbortedEvent
 	| SessionInitializedEvent
 	| DoneEvent
 	| UsageUpdatedEvent
@@ -1201,7 +1203,15 @@ export interface CodingUserPromptEvent {
 	sessionId?: string;
 }
 
-export type CodingSessionEvent = FacadeEvent | CodingUserPromptEvent;
+export interface TurnAbortedEvent {
+	type: "turn_aborted";
+	sessionId?: string;
+}
+
+export type CodingSessionEvent =
+	| FacadeEvent
+	| CodingUserPromptEvent
+	| TurnAbortedEvent;
 
 /**
  * Mid-stream usage update. Codex emits `thread/tokenUsage/updated` while a

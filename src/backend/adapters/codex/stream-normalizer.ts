@@ -128,6 +128,13 @@ export async function* normalizeCodexTurnNotifications(
 					case "user_message": {
 						const text =
 							typeof payload.message === "string" ? payload.message : "";
+						if (isCodexTurnAbortedMessage(text)) {
+							yield {
+								type: "turn_aborted",
+								sessionId: options.sessionId,
+							};
+							return;
+						}
 						if (text) {
 							yield {
 								type: "user_prompt",
@@ -369,6 +376,13 @@ export function normalizeCodexJsonlEvents(
 					const text = stripOaiMemoryCitationBlocks(
 						readContentText(payload.content),
 					);
+					if (payload.role === "user" && isCodexTurnAbortedMessage(text)) {
+						events.push({
+							type: "turn_aborted",
+							sessionId: options.sessionId,
+						});
+						break;
+					}
 					const userPromptText =
 						payload.role === "user"
 							? normalizeCodexJsonlUserPromptText(text)
@@ -1091,6 +1105,13 @@ function normalizeCodexJsonlUserPromptText(text: string): string {
 	return trimmedStart
 		.slice(environmentEnd + "</environment_context>".length)
 		.trim();
+}
+
+function isCodexTurnAbortedMessage(text: string): boolean {
+	const trimmed = text.trim();
+	return (
+		trimmed.startsWith("<turn_aborted>") && trimmed.endsWith("</turn_aborted>")
+	);
 }
 
 function isCodexSessionBootstrapText(text: string): boolean {

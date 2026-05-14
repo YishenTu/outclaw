@@ -19,6 +19,8 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 			return [{ type: "commit_streaming" }];
 		case "error":
 			return [{ type: "push_and_stop", role: "error", text: event.message }];
+		case "turn_aborted":
+			return [{ type: "push_and_stop", role: "info", text: "Turn aborted" }];
 		case "status":
 			return [{ type: "push", role: "info", text: event.message }];
 		case "model_changed":

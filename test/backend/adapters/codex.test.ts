@@ -349,6 +349,52 @@ describe("CodexAdapter", () => {
 		]);
 	});
 
+	test("normalizes live turn_aborted markers as terminal abort events", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "event_msg",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					type: "user_message",
+					message: [
+						"<turn_aborted>",
+						"The user interrupted the turn.",
+						"</turn_aborted>",
+					].join("\n"),
+				},
+			},
+			{
+				method: "event_msg",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					type: "task_complete",
+					duration_ms: 31,
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({
+				prompt: "say hello",
+				cwd: "/work/repo",
+			}),
+		);
+
+		expect(events).toEqual([
+			{
+				type: "session_initialized",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "turn_aborted",
+				sessionId: "codex-thread-123",
+			},
+		]);
+	});
+
 	test("continues streaming after a running Codex turn is steered", async () => {
 		const client = new FakeCodexAppServerClient([], {
 			steerTurnId: "turn-2",
@@ -1564,6 +1610,52 @@ describe("CodexAdapter", () => {
 				type: "done",
 				sessionId: "codex-thread-123",
 				durationMs: 0,
+			},
+		]);
+	});
+
+	test("normalizes JSONL turn_aborted markers as terminal abort events", () => {
+		const jsonl = [
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "user",
+					content: [{ type: "input_text", text: "fix the spinner" }],
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "user",
+					content: [
+						{
+							type: "input_text",
+							text: [
+								"<turn_aborted>",
+								"The user interrupted the turn.",
+								"</turn_aborted>",
+							].join("\n"),
+						},
+					],
+				},
+			},
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n");
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-abort" }),
+		).toEqual([
+			{
+				type: "user_prompt",
+				text: "fix the spinner",
+				sessionId: "codex-thread-abort",
+			},
+			{
+				type: "turn_aborted",
+				sessionId: "codex-thread-abort",
 			},
 		]);
 	});

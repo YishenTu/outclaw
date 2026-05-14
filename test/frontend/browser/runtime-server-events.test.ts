@@ -1887,6 +1887,28 @@ describe("browser runtime server events", () => {
 			runStatus: "idle",
 			lastActive: 42,
 		});
+
+		handleBrowserServerEvent(
+			{
+				type: "coding_session_event",
+				providerId: "codex",
+				sdkSessionId: "code-1",
+				sequence: 3,
+				event: {
+					type: "turn_aborted",
+					sessionId: "code-1",
+				},
+				createdAt: 50,
+			},
+			options,
+		);
+
+		expect(
+			useCodingStore.getState().sessionsByRepository["repo-1"]?.[0],
+		).toMatchObject({
+			runStatus: "cancelled",
+			lastActive: 50,
+		});
 	});
 
 	test("handles status, model, effort, and ignored terminal-only events", () => {

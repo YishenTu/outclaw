@@ -150,6 +150,23 @@ describe("CodingEventView command grouping", () => {
 		expect(html).toContain("on it");
 	});
 
+	test("renders turn_aborted with the chat-mode interrupt indicator", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, { type: "user_prompt", text: "fix the spinner" }),
+			streamItem(2, {
+				type: "turn_aborted",
+				sessionId: "session-1",
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(html).toContain("Request interrupted by user");
+		expect(html).toContain("font-mono-ui");
+		expect(html).toContain("uppercase");
+		expect(html).not.toContain("&lt;turn_aborted&gt;");
+	});
+
 	test("wraps a command in a collapsible details element with command in summary", () => {
 		const events: CodingSessionEventStreamItem[] = [
 			streamItem(1, {
@@ -788,6 +805,15 @@ describe("isCodingTurnInFlight", () => {
 			isCodingTurnInFlight([
 				streamItem(1, { type: "user_prompt", text: "go" }),
 				streamItem(2, { type: "done", sessionId: "s" }),
+			]),
+		).toBe(false);
+	});
+
+	test("returns false once a turn_aborted event arrives", () => {
+		expect(
+			isCodingTurnInFlight([
+				streamItem(1, { type: "user_prompt", text: "go" }),
+				streamItem(2, { type: "turn_aborted", sessionId: "s" }),
 			]),
 		).toBe(false);
 	});

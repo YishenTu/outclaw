@@ -830,7 +830,11 @@ function selectLatestInteractionTurns(
 }
 
 function isTerminalCodingEvent(event: CodingSessionEvent): boolean {
-	return event.type === "done" || event.type === "error";
+	return (
+		event.type === "done" ||
+		event.type === "error" ||
+		event.type === "turn_aborted"
+	);
 }
 
 interface CodingSessionStreamItem {
@@ -1256,6 +1260,9 @@ class CodingTranscriptRenderer {
 				break;
 			case "error":
 				this.writeBlock(`[error] ${event.message}`);
+				break;
+			case "turn_aborted":
+				this.writeBlock("[aborted]");
 				break;
 			case "done":
 				this.writeBlock(`[done] ${formatDuration(event.durationMs)}`);

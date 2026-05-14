@@ -61,7 +61,7 @@ export function isCodingTurnInFlight(
 	for (let index = events.length - 1; index >= 0; index -= 1) {
 		const event = events[index]?.event as FacadeLike | undefined;
 		const type = event?.type;
-		if (type === "done" || type === "error") {
+		if (type === "done" || type === "error" || type === "turn_aborted") {
 			return false;
 		}
 		if (type === "user_prompt") {
@@ -272,6 +272,17 @@ function groupEvents(
 			continue;
 		}
 
+		if (type === "turn_aborted") {
+			flushText();
+			flushThinking();
+			groups.push({
+				key: `turn-aborted-${item.sequence}`,
+				render: () => <TurnAbortedNotice />,
+			});
+			currentTurnWorkStartIndex = groups.length;
+			continue;
+		}
+
 		// Events that have no useful transcript projection in the coding view:
 		// - usage_updated: surfaced live via the ContextGauge above the composer.
 		// - image: runtime-extracted from assistant text; the path itself already
@@ -428,6 +439,18 @@ function formatWorkDuration(
 	}
 
 	return `${seconds}s`;
+}
+
+function TurnAbortedNotice() {
+	return (
+		<Message
+			message={{
+				kind: "system",
+				event: "status",
+				text: "Request interrupted by user",
+			}}
+		/>
+	);
 }
 
 function toolCategoryFor(

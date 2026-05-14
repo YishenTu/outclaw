@@ -210,6 +210,10 @@ export class CodingRuntime {
 					this.forgetActiveTurn(inFlightSessionId);
 					return;
 				}
+				if (event.type === "turn_aborted" && inFlightSessionId) {
+					this.markAborted(inFlightSessionId);
+					return;
+				}
 				if (event.type === "error" && !settled) {
 					settleStart({
 						status: "rejected",
@@ -320,6 +324,12 @@ export class CodingRuntime {
 						event.message,
 					);
 					this.forgetActiveTurn(params.sdkSessionId);
+				}
+				if (
+					event.type === "turn_aborted" &&
+					(!event.sessionId || event.sessionId === params.sdkSessionId)
+				) {
+					this.markAborted(params.sdkSessionId);
 				}
 			},
 			prompt: params.prompt,
@@ -638,6 +648,12 @@ export class CodingRuntime {
 			providerId: this.options.providerId,
 			sdkSessionId: sessionId,
 		});
+	}
+
+	private markAborted(sessionId: string) {
+		this.consumeCancelledTurn(sessionId);
+		this.markCancelled(sessionId);
+		this.forgetActiveTurn(sessionId);
 	}
 }
 
