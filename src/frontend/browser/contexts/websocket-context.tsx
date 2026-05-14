@@ -20,7 +20,6 @@ import {
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
 import type { ComposerImageAttachment } from "../attachments/composer-images.ts";
-import { openLatestLinkedCodingSessionForActiveChat } from "../coding/linked-coding-session-actions.ts";
 import { createBrowserSwitchDispatcher } from "../commands/browser-switch-dispatcher.ts";
 import { createBrowserLiveRunBridge } from "../events/browser-live-run-bridge.ts";
 import { createBrowserSocketLifecycle } from "../events/browser-socket-lifecycle.ts";
@@ -148,11 +147,6 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 	useRuntimeLatencyPolling();
 
 	const sendCommand = useCallback((command: string): boolean => {
-		if (command.trim() === "/coding") {
-			void openLatestLinkedCodingSessionForActiveChat();
-			return true;
-		}
-
 		const ws = wsRef.current;
 		if (!isRuntimeSocketOpen(ws)) {
 			useRuntimeStore.getState().setError("Runtime disconnected");

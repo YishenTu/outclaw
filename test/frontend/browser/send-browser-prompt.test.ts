@@ -247,6 +247,50 @@ describe("dispatchBrowserTextPrompt", () => {
 		expect(calls).toEqual(["command:/status"]);
 	});
 
+	test("does not treat /coding as a browser runtime command", () => {
+		const calls: string[] = [];
+		const socket = { id: "socket-1" };
+
+		const sent = dispatchBrowserTextPrompt({
+			input: " /coding ",
+			getActiveAgentId: () => "agent-a",
+			getCurrentSessionKey: () => "agent-a:claude:sdk-alpha",
+			getSocket: () => socket,
+			isSocketOpen: (candidate): candidate is typeof socket =>
+				candidate === socket,
+			pinSession: (sessionKey) => calls.push(`pin:${sessionKey}`),
+			pushUserMessage: (sessionKey, message) => {
+				calls.push(`push:${sessionKey}:${message.content}`);
+			},
+			queueUserMessage: () => calls.push("queue"),
+			sendCommand: (command) => {
+				calls.push(`command:${command}`);
+				return true;
+			},
+			sendPrompt: (target, prompt) => {
+				calls.push(`prompt:${target === socket}:${prompt}`);
+			},
+			setRuntimeError: (error) => calls.push(`runtime:${error}`),
+			setSessionError: (sessionKey, error) => {
+				calls.push(`session:${sessionKey}:${error}`);
+			},
+			startAssistantTurn: (sessionKey, options) =>
+				calls.push(
+					`start:${sessionKey}:${String(options?.pendingPromptStart ?? false)}`,
+				),
+		});
+
+		expect(sent).toBe(true);
+		expect(calls).toEqual([
+			"prompt:true:/coding",
+			"pin:agent-a:claude:sdk-alpha",
+			"push:agent-a:claude:sdk-alpha:/coding",
+			"start:agent-a:claude:sdk-alpha:true",
+			"session:agent-a:claude:sdk-alpha:null",
+			"runtime:null",
+		]);
+	});
+
 	test("surfaces disconnected errors before mutating chat state", () => {
 		const calls: string[] = [];
 		type TestSocket = { id: string };
