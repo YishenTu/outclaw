@@ -1214,6 +1214,12 @@ export type CodingSessionEvent =
 	| CodingUserPromptEvent
 	| TurnAbortedEvent;
 
+export interface ProviderCodingSessionUpdate {
+	sessionId: string;
+	lifecycleStatus?: "open" | "archived";
+	title?: string;
+}
+
 /**
  * Mid-stream usage update. Codex emits `thread/tokenUsage/updated` while a
  * turn is in flight; surfacing this lets the context gauge tick along with
@@ -1283,6 +1289,20 @@ export interface Facade {
 		prompt: string;
 		cwd?: string;
 	}): Promise<{ sessionId: string; turnId?: string }>;
+	/**
+	 * Provider-owned lifecycle sync for coding sessions. Runtime/browser code
+	 * owns Outclaw's product catalog; adapters own any native provider thread
+	 * mutation that should happen before the local catalog is updated.
+	 */
+	archiveCodingSession?(sessionId: string): Promise<void>;
+	restoreCodingSession?(sessionId: string): Promise<void>;
+	renameCodingSession?(sessionId: string, title: string): Promise<void>;
+	reconcileCodingSessions?(
+		sessionIds: string[],
+	): Promise<ProviderCodingSessionUpdate[]>;
+	subscribeCodingSessionUpdates?(
+		handler: (update: ProviderCodingSessionUpdate) => void,
+	): () => void;
 	readHistory?(sessionId: string): Promise<DisplayMessage[]>;
 	readReplay?(sessionId: string): Promise<DisplayMessage[]>;
 	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;

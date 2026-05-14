@@ -185,10 +185,14 @@ function startMultiAgentDaemon(
 				cancelPrompt: codingService.runtime.cancelPrompt.bind(
 					codingService.runtime,
 				),
+				archiveSession: (params) => codingService.archiveSession(params),
 				listModels: () => codingService.listModels(),
 				listSkills: (params) => codingService.listSkills(params),
+				renameSession: (params) => codingService.renameSession(params),
+				reconcileSessions: (params) => codingService.reconcileSessions(params),
 				rehydrateSessionEvents: (params) =>
 					codingService.rehydrateSessionEvents(params),
+				restoreSession: (params) => codingService.restoreSession(params),
 			},
 			codingEvents,
 			codingRepositories,

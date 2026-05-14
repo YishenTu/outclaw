@@ -999,6 +999,295 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("syncs coding session archive, restore, and rename with the provider before local mutation", async () => {
+		const root = createTempDir("outclaw-browser-coding-provider-sync-api-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		store.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-sync",
+			title: "Sync me",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-sync",
+			cwd: join(root, "workspace"),
+			runStatus: "idle",
+			timestamp: 100,
+		});
+		const providerCalls: string[] = [];
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			coding: {
+				startPrompt: async () => ({ status: "rejected", message: "unused" }),
+				resumePrompt: async () => ({ status: "rejected", message: "unused" }),
+				stopPrompt: unusedStopPrompt,
+				archiveSession: async ({ sdkSessionId }) => {
+					providerCalls.push(`archive:${sdkSessionId}`);
+				},
+				restoreSession: async ({ sdkSessionId }) => {
+					providerCalls.push(`restore:${sdkSessionId}`);
+				},
+				renameSession: async ({ sdkSessionId, title }) => {
+					providerCalls.push(`rename:${sdkSessionId}:${title}`);
+				},
+			},
+			codingSessions: codingStore,
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await api.archiveCodingSession("codex", "code-sync");
+		await api.restoreCodingSession("codex", "code-sync");
+		await api.renameCodingSession("codex", "code-sync", "Renamed sync");
+
+		expect(providerCalls).toEqual([
+			"archive:code-sync",
+			"restore:code-sync",
+			"rename:code-sync:Renamed sync",
+		]);
+		expect(codingStore.getDetail("codex", "code-sync")).toMatchObject({
+			lifecycleStatus: "open",
+			title: "Renamed sync",
+		});
+
+		codingStore.close();
+		store.close();
+	});
+
+	test("does not mutate local coding session state when provider sync fails", async () => {
+		const root = createTempDir(
+			"outclaw-browser-coding-provider-sync-failure-api-",
+		);
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		store.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-sync",
+			title: "Original title",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-sync",
+			cwd: join(root, "workspace"),
+			runStatus: "idle",
+			timestamp: 100,
+		});
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			coding: {
+				startPrompt: async () => ({ status: "rejected", message: "unused" }),
+				resumePrompt: async () => ({ status: "rejected", message: "unused" }),
+				stopPrompt: unusedStopPrompt,
+				archiveSession: async () => {
+					throw new Error("provider archive failed");
+				},
+				restoreSession: async () => {
+					throw new Error("provider restore failed");
+				},
+				renameSession: async () => {
+					throw new Error("provider rename failed");
+				},
+			},
+			codingSessions: codingStore,
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		await expect(
+			api.archiveCodingSession("codex", "code-sync"),
+		).rejects.toThrow("provider archive failed");
+		expect(codingStore.getDetail("codex", "code-sync")).toMatchObject({
+			lifecycleStatus: "open",
+			title: "Original title",
+		});
+
+		codingStore.archive("codex", "code-sync");
+		await expect(
+			api.restoreCodingSession("codex", "code-sync"),
+		).rejects.toThrow("provider restore failed");
+		expect(codingStore.getDetail("codex", "code-sync")).toMatchObject({
+			lifecycleStatus: "archived",
+			title: "Original title",
+		});
+
+		await expect(
+			api.renameCodingSession("codex", "code-sync", "Should not save"),
+		).rejects.toThrow("provider rename failed");
+		expect(codingStore.getDetail("codex", "code-sync")).toMatchObject({
+			lifecycleStatus: "archived",
+			title: "Original title",
+		});
+
+		codingStore.close();
+		store.close();
+	});
+
+	test("reconciles known coding sessions before listing archived sessions", async () => {
+		const root = createTempDir("outclaw-browser-coding-reconcile-list-api-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const store = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		store.upsert({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			title: "Original title",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			cwd: join(root, "workspace"),
+			runStatus: "idle",
+			timestamp: 100,
+		});
+		const reconciled: string[][] = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({ status: "rejected", message: "unused" }),
+				resumePrompt: async () => ({ status: "rejected", message: "unused" }),
+				stopPrompt: unusedStopPrompt,
+				reconcileSessions: async ({ sdkSessionIds }) => {
+					reconciled.push(sdkSessionIds);
+					codingStore.archive("codex", "known-thread");
+					codingStore.rename("codex", "known-thread", "Archived elsewhere");
+				},
+			},
+			codingSessions: codingStore,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.listCodingSessions({ lifecycleStatus: "archived", limit: 10 }),
+		).resolves.toMatchObject({
+			sessions: [
+				{
+					providerId: "codex",
+					sdkSessionId: "known-thread",
+					lifecycleStatus: "archived",
+					title: "Archived elsewhere",
+				},
+			],
+		});
+		expect(reconciled).toEqual([["known-thread"]]);
+
+		codingStore.close();
+		store.close();
+	});
+
+	test("keeps local coding session lists available when reconciliation fails", async () => {
+		const root = createTempDir(
+			"outclaw-browser-coding-reconcile-failure-list-api-",
+		);
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const store = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		store.upsert({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			title: "Local title",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			cwd: join(root, "workspace"),
+			runStatus: "idle",
+			timestamp: 100,
+		});
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				startPrompt: async () => ({ status: "rejected", message: "unused" }),
+				resumePrompt: async () => ({ status: "rejected", message: "unused" }),
+				stopPrompt: unusedStopPrompt,
+				reconcileSessions: async () => {
+					throw new Error("provider unavailable");
+				},
+			},
+			codingSessions: codingStore,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(api.listCodingSessions({ limit: 10 })).resolves.toMatchObject({
+			sessions: [
+				{
+					providerId: "codex",
+					sdkSessionId: "known-thread",
+					title: "Local title",
+				},
+			],
+		});
+
+		codingStore.close();
+		store.close();
+	});
+
 	test("manages coding repositories through the browser API", async () => {
 		const root = createTempDir("outclaw-browser-coding-repos-api-");
 		cleanupPaths.push(root);
@@ -1471,11 +1760,7 @@ describe("createBrowserApi", () => {
 			agentId: CODING_STORAGE_OWNER_ID,
 		});
 		const codingStore = new CodingSessionStore(dbPath);
-		const calls: Array<{
-			providerId: string;
-			sdkSessionId: string;
-			prompt: string;
-		}> = [];
+		const calls: string[] = [];
 
 		sessionStore.upsert({
 			providerId: "codex",
@@ -1502,16 +1787,17 @@ describe("createBrowserApi", () => {
 					throw new Error("start should not be called");
 				},
 				async resumePrompt(params) {
-					calls.push({
-						providerId: params.providerId ?? "",
-						sdkSessionId: params.sdkSessionId,
-						prompt: params.prompt,
-					});
+					calls.push(
+						`resume:${params.providerId ?? ""}/${params.sdkSessionId}:${params.prompt}`,
+					);
 					return {
 						status: "accepted",
 						providerId: params.providerId ?? "codex",
 						sdkSessionId: params.sdkSessionId,
 					};
+				},
+				async restoreSession(params) {
+					calls.push(`restore:${params.providerId}/${params.sdkSessionId}`);
 				},
 				stopPrompt: unusedStopPrompt,
 			},
@@ -1539,14 +1825,98 @@ describe("createBrowserApi", () => {
 		});
 
 		expect(calls).toEqual([
-			{
-				providerId: "codex",
-				sdkSessionId: "archived-thread-1",
-				prompt: "follow up",
-			},
+			"restore:codex/archived-thread-1",
+			"resume:codex/archived-thread-1:follow up",
 		]);
 		expect(
 			codingStore.getDetail("codex", "archived-thread-1")?.lifecycleStatus,
+		).toBe("open");
+
+		codingStore.close();
+		sessionStore.close();
+	});
+
+	test("reconciles externally archived coding sessions before resuming", async () => {
+		const root = createTempDir(
+			"outclaw-browser-coding-resume-reconcile-archived-",
+		);
+		cleanupPaths.push(root);
+		const dbPath = join(root, "db.sqlite");
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		const calls: string[] = [];
+
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "externally-archived-thread",
+			title: "Externally archived work",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "externally-archived-thread",
+			cwd: join(root, "workspace"),
+			runStatus: "idle",
+			timestamp: 100,
+		});
+
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt() {
+					throw new Error("start should not be called");
+				},
+				async resumePrompt(params) {
+					calls.push(`resume:${params.providerId}/${params.sdkSessionId}`);
+					return {
+						status: "accepted",
+						providerId: params.providerId ?? "codex",
+						sdkSessionId: params.sdkSessionId,
+					};
+				},
+				async restoreSession(params) {
+					calls.push(`restore:${params.providerId}/${params.sdkSessionId}`);
+				},
+				async reconcileSessions(params) {
+					calls.push(
+						`reconcile:${params.providerId}/${params.sdkSessionIds.join(",")}`,
+					);
+					codingStore.archive("codex", "externally-archived-thread");
+				},
+				stopPrompt: unusedStopPrompt,
+			},
+			codingSessions: codingStore,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.resumeCodingSession({
+				providerId: "codex",
+				sdkSessionId: "externally-archived-thread",
+				prompt: "follow up",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "externally-archived-thread",
+		});
+
+		expect(calls).toEqual([
+			"reconcile:codex/externally-archived-thread",
+			"restore:codex/externally-archived-thread",
+			"resume:codex/externally-archived-thread",
+		]);
+		expect(
+			codingStore.getDetail("codex", "externally-archived-thread")
+				?.lifecycleStatus,
 		).toBe("open");
 
 		codingStore.close();

@@ -4,6 +4,7 @@ import {
 	extractError,
 	type Facade,
 	type FacadeEvent,
+	type ProviderCodingSessionUpdate,
 	type ProviderModelInfo,
 	type ProviderSkillInfo,
 	type RunParams,
@@ -20,8 +21,11 @@ import {
 import type {
 	CodexAppServerClient,
 	CodexModelListResponse,
+	CodexServerNotification,
 	CodexSkillMetadata,
 	CodexSkillsListResult,
+	CodexThread,
+	CodexThreadListResult,
 	CodexThreadReadResult,
 	CodexThreadResumeResult,
 	CodexThreadStartResult,
@@ -39,6 +43,19 @@ const DEFAULT_CODEX_REASONING_SUMMARY = "auto";
 const CODEX_CODE_MODE_APPROVAL_POLICY = "never";
 const CODEX_CODE_MODE_THREAD_SANDBOX = "danger-full-access";
 const CODEX_CODE_MODE_TURN_SANDBOX_POLICY = { type: "dangerFullAccess" };
+const CODEX_THREAD_LIST_SOURCE_KINDS = [
+	"cli",
+	"vscode",
+	"exec",
+	"appServer",
+	"subAgent",
+	"subAgentReview",
+	"subAgentCompact",
+	"subAgentThreadSpawn",
+	"subAgentOther",
+	"unknown",
+];
+const CODEX_THREAD_LIST_PAGE_SIZE = 100;
 
 export class CodexAdapter implements Facade {
 	readonly providerId = "codex";
@@ -46,6 +63,10 @@ export class CodexAdapter implements Facade {
 	private readonly appServerOptions?: CodexAppServerClientOptions;
 	private cachedClient?: CodexAppServerClient;
 	private readonly activeTurns = new Map<string, CodexActiveTurn>();
+	private readonly codingSessionUpdateHandlers = new Set<
+		(update: ProviderCodingSessionUpdate) => void
+	>();
+	private codingSessionUpdateUnsubscribe?: () => void;
 
 	constructor(options: CodexAdapterOptions = {}) {
 		this.injectedClient = options.client;
@@ -53,6 +74,9 @@ export class CodexAdapter implements Facade {
 	}
 
 	async dispose(): Promise<void> {
+		this.codingSessionUpdateUnsubscribe?.();
+		this.codingSessionUpdateUnsubscribe = undefined;
+		this.codingSessionUpdateHandlers.clear();
 		const client = this.cachedClient ?? this.injectedClient;
 		this.cachedClient = undefined;
 		await client?.dispose?.();
@@ -157,6 +181,78 @@ export class CodexAdapter implements Facade {
 		};
 	}
 
+	async archiveCodingSession(sessionId: string): Promise<void> {
+		const client = await this.loadClient();
+		await client.initialize();
+		await client.request("thread/archive", { threadId: sessionId });
+	}
+
+	async restoreCodingSession(sessionId: string): Promise<void> {
+		const client = await this.loadClient();
+		await client.initialize();
+		await client.request("thread/unarchive", { threadId: sessionId });
+	}
+
+	async renameCodingSession(sessionId: string, title: string): Promise<void> {
+		const client = await this.loadClient();
+		await client.initialize();
+		await client.request("thread/name/set", {
+			threadId: sessionId,
+			name: title,
+		});
+	}
+
+	async reconcileCodingSessions(
+		sessionIds: string[],
+	): Promise<ProviderCodingSessionUpdate[]> {
+		const requested = new Set(
+			sessionIds.map((sessionId) => sessionId.trim()).filter(Boolean),
+		);
+		if (requested.size === 0) {
+			return [];
+		}
+		const client = await this.loadClient();
+		await client.initialize();
+
+		const updates: ProviderCodingSessionUpdate[] = [];
+		const found = new Set<string>();
+		for (const lifecycleStatus of ["open", "archived"] as const) {
+			const remaining = new Set(
+				[...requested].filter((sessionId) => !found.has(sessionId)),
+			);
+			if (remaining.size === 0) {
+				break;
+			}
+			const lifecycleUpdates = await listCodexThreadMetadata(
+				client,
+				remaining,
+				lifecycleStatus,
+			);
+			for (const update of lifecycleUpdates) {
+				found.add(update.sessionId);
+				updates.push(update);
+			}
+		}
+		return updates;
+	}
+
+	subscribeCodingSessionUpdates(
+		handler: (update: ProviderCodingSessionUpdate) => void,
+	): () => void {
+		this.codingSessionUpdateHandlers.add(handler);
+		const existingClient = this.cachedClient ?? this.injectedClient;
+		if (existingClient) {
+			this.ensureCodingSessionUpdateSubscription(existingClient);
+		}
+		return () => {
+			this.codingSessionUpdateHandlers.delete(handler);
+			if (this.codingSessionUpdateHandlers.size === 0) {
+				this.codingSessionUpdateUnsubscribe?.();
+				this.codingSessionUpdateUnsubscribe = undefined;
+			}
+		};
+	}
+
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		const startedAtMs = Date.now();
 		const client = await this.loadClient();
@@ -245,10 +341,30 @@ export class CodexAdapter implements Facade {
 
 	private async loadClient(): Promise<CodexAppServerClient> {
 		if (this.injectedClient) {
+			this.ensureCodingSessionUpdateSubscription(this.injectedClient);
 			return this.injectedClient;
 		}
 		this.cachedClient ??= createCodexAppServerClient(this.appServerOptions);
+		this.ensureCodingSessionUpdateSubscription(this.cachedClient);
 		return this.cachedClient;
+	}
+
+	private ensureCodingSessionUpdateSubscription(client: CodexAppServerClient) {
+		if (
+			this.codingSessionUpdateUnsubscribe ||
+			this.codingSessionUpdateHandlers.size === 0
+		) {
+			return;
+		}
+		this.codingSessionUpdateUnsubscribe = client.subscribe((notification) => {
+			const update = readCodexCodingSessionUpdate(notification);
+			if (!update) {
+				return;
+			}
+			for (const handler of this.codingSessionUpdateHandlers) {
+				handler(update);
+			}
+		});
 	}
 }
 
@@ -256,6 +372,108 @@ interface CodexActiveTurn {
 	threadId: string;
 	turnId: string;
 	observedTurnIds: Set<string>;
+}
+
+function readCodexCodingSessionUpdate(
+	notification: CodexServerNotification,
+): ProviderCodingSessionUpdate | undefined {
+	const params = asRecord(notification.params);
+	const sessionId = readThreadId(params);
+	if (!sessionId) {
+		return undefined;
+	}
+
+	if (notification.method === "thread/archived") {
+		return {
+			sessionId,
+			lifecycleStatus: "archived",
+		};
+	}
+	if (notification.method === "thread/unarchived") {
+		return {
+			sessionId,
+			lifecycleStatus: "open",
+		};
+	}
+	if (notification.method === "thread/name/updated") {
+		const thread = asRecord(params?.thread);
+		const title =
+			typeof params?.name === "string"
+				? params.name.trim()
+				: typeof thread?.name === "string"
+					? thread.name.trim()
+					: "";
+		if (!title) {
+			return undefined;
+		}
+		return {
+			sessionId,
+			title,
+		};
+	}
+
+	return undefined;
+}
+
+async function listCodexThreadMetadata(
+	client: CodexAppServerClient,
+	requested: Set<string>,
+	lifecycleStatus: "open" | "archived",
+): Promise<ProviderCodingSessionUpdate[]> {
+	const updates: ProviderCodingSessionUpdate[] = [];
+	const found = new Set<string>();
+	let cursor: string | undefined;
+	do {
+		const response = await client.request<CodexThreadListResult>(
+			"thread/list",
+			{
+				archived: lifecycleStatus === "archived",
+				limit: CODEX_THREAD_LIST_PAGE_SIZE,
+				sourceKinds: CODEX_THREAD_LIST_SOURCE_KINDS,
+				...(cursor ? { cursor } : {}),
+			},
+		);
+		for (const thread of response.data) {
+			if (!requested.has(thread.id) || found.has(thread.id)) {
+				continue;
+			}
+			found.add(thread.id);
+			updates.push(readCodexThreadMetadata(thread, lifecycleStatus));
+		}
+		cursor =
+			typeof response.nextCursor === "string" && response.nextCursor !== ""
+				? response.nextCursor
+				: undefined;
+	} while (cursor && found.size < requested.size);
+	return updates;
+}
+
+function readCodexThreadMetadata(
+	thread: CodexThread,
+	lifecycleStatus: "open" | "archived",
+): ProviderCodingSessionUpdate {
+	const title = thread.name?.trim();
+	return {
+		sessionId: thread.id,
+		lifecycleStatus,
+		...(title ? { title } : {}),
+	};
+}
+
+function readThreadId(
+	params: Record<string, unknown> | undefined,
+): string | undefined {
+	if (typeof params?.threadId === "string") {
+		return params.threadId;
+	}
+	const thread = asRecord(params?.thread);
+	return typeof thread?.id === "string" ? thread.id : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+	return typeof value === "object" && value !== null
+		? (value as Record<string, unknown>)
+		: undefined;
 }
 
 function buildThreadStartParams(params: RunParams): Record<string, unknown> {

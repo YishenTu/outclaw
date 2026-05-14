@@ -2,6 +2,7 @@ import {
 	type CodingSessionEvent,
 	extractError,
 	type Facade,
+	type ProviderCodingSessionUpdate,
 	type ProviderModelInfo,
 	type ProviderSkillInfo,
 } from "../../common/protocol.ts";
@@ -25,15 +26,32 @@ interface CreateCodingServiceOptions {
 
 export interface CodingService {
 	readonly runtime: CodingRuntime;
+	archiveSession(params: {
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<void>;
 	listModels(): Promise<ProviderModelInfo[]>;
 	listSkills(params: {
 		cwd: string;
 		forceReload?: boolean;
 	}): Promise<ProviderSkillInfo[]>;
+	renameSession(params: {
+		providerId: string;
+		sdkSessionId: string;
+		title: string;
+	}): Promise<void>;
+	reconcileSessions(params: {
+		providerId: string;
+		sdkSessionIds: string[];
+	}): Promise<void>;
 	rehydrateSessionEvents(params: {
 		providerId: string;
 		sdkSessionId: string;
 	}): Promise<CodingSessionEvent[]>;
+	restoreSession(params: {
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<void>;
 	stop(): Promise<void>;
 }
 
@@ -66,14 +84,49 @@ export function createCodingService(
 				}
 			: {}),
 	});
+	const unsubscribeProviderUpdates =
+		opts.facade.subscribeCodingSessionUpdates?.((update) => {
+			syncKnownCodingSessionUpdate(opts, update);
+		});
 	let stopPromise: Promise<void> | undefined;
 	return {
 		runtime,
+		async archiveSession(params) {
+			if (!isKnownFacadeCodingSession(opts, params)) {
+				return;
+			}
+			await opts.facade.archiveCodingSession?.(params.sdkSessionId);
+		},
 		async listModels() {
 			return (await opts.facade.listModels?.()) ?? [];
 		},
 		async listSkills(params) {
 			return (await opts.facade.listProviderSkills?.(params)) ?? [];
+		},
+		async renameSession(params) {
+			if (!isKnownFacadeCodingSession(opts, params)) {
+				return;
+			}
+			await opts.facade.renameCodingSession?.(
+				params.sdkSessionId,
+				params.title,
+			);
+		},
+		async reconcileSessions(params) {
+			if (params.providerId !== opts.facade.providerId) {
+				return;
+			}
+			const knownSessionIds = uniqueSessionIds(params.sdkSessionIds).filter(
+				(sessionId) => !!opts.sessions.get(params.providerId, sessionId),
+			);
+			if (knownSessionIds.length === 0) {
+				return;
+			}
+			const updates =
+				(await opts.facade.reconcileCodingSessions?.(knownSessionIds)) ?? [];
+			for (const update of updates) {
+				syncKnownCodingSessionUpdate(opts, update);
+			}
 		},
 		async rehydrateSessionEvents(params) {
 			if (params.providerId !== opts.facade.providerId) {
@@ -83,10 +136,17 @@ export function createCodingService(
 				(await opts.facade.readCodingSessionEvents?.(params.sdkSessionId)) ?? []
 			);
 		},
+		async restoreSession(params) {
+			if (!isKnownFacadeCodingSession(opts, params)) {
+				return;
+			}
+			await opts.facade.restoreCodingSession?.(params.sdkSessionId);
+		},
 		stop() {
 			if (!stopPromise) {
 				stopPromise = (async () => {
 					try {
+						unsubscribeProviderUpdates?.();
 						controller.beginShutdown();
 						await controller.drain();
 					} catch (err) {
@@ -103,4 +163,42 @@ export function createCodingService(
 			return stopPromise;
 		},
 	};
+}
+
+function uniqueSessionIds(sessionIds: string[]): string[] {
+	return [...new Set(sessionIds.map((sessionId) => sessionId.trim()))].filter(
+		Boolean,
+	);
+}
+
+function isKnownFacadeCodingSession(
+	opts: CreateCodingServiceOptions,
+	params: { providerId: string; sdkSessionId: string },
+): boolean {
+	return (
+		params.providerId === opts.facade.providerId &&
+		!!opts.sessions.get(params.providerId, params.sdkSessionId)
+	);
+}
+
+function syncKnownCodingSessionUpdate(
+	opts: CreateCodingServiceOptions,
+	update: ProviderCodingSessionUpdate,
+) {
+	const providerId = opts.facade.providerId;
+	const session = opts.sessions.get(providerId, update.sessionId);
+	if (!session) {
+		return;
+	}
+
+	if (update.lifecycleStatus === "archived") {
+		opts.sessions.archive(providerId, update.sessionId);
+	} else if (update.lifecycleStatus === "open") {
+		opts.sessions.restore(providerId, update.sessionId);
+	}
+
+	const title = update.title?.trim();
+	if (title) {
+		opts.sessions.rename(providerId, update.sessionId, title);
+	}
 }

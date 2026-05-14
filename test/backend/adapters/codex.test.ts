@@ -14,6 +14,8 @@ import type {
 } from "../../../src/common/protocol.ts";
 
 interface FakeCodexAppServerClientOptions {
+	archivedThreads?: Array<{ id: string; name?: string | null }>;
+	openThreads?: Array<{ id: string; name?: string | null }>;
 	skills?: Array<{
 		description?: string;
 		enabled?: boolean;
@@ -88,6 +90,27 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 			} as T;
 		}
 
+		if (
+			method === "thread/archive" ||
+			method === "thread/unarchive" ||
+			method === "thread/name/set"
+		) {
+			return {} as T;
+		}
+
+		if (method === "thread/list") {
+			const paramsRecord =
+				typeof params === "object" && params !== null
+					? (params as Record<string, unknown>)
+					: {};
+			return {
+				data: paramsRecord.archived
+					? (this.options.archivedThreads ?? [])
+					: (this.options.openThreads ?? []),
+				nextCursor: null,
+			} as T;
+		}
+
 		if (method === "turn/start") {
 			for (const notification of this.turnNotifications) {
 				this.emit(notification);
@@ -138,7 +161,7 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 		};
 	}
 
-	private emit(notification: CodexServerNotification): void {
+	emit(notification: CodexServerNotification): void {
 		for (const subscriber of this.subscribers) {
 			subscriber(notification);
 		}
@@ -169,6 +192,125 @@ async function waitForRequest(
 }
 
 describe("CodexAdapter", () => {
+	test("syncs coding session archive, restore, and rename to Codex threads", async () => {
+		const client = new FakeCodexAppServerClient([]);
+		const adapter = new CodexAdapter({ client });
+
+		await adapter.archiveCodingSession("codex-thread-123");
+		await adapter.restoreCodingSession("codex-thread-123");
+		await adapter.renameCodingSession("codex-thread-123", "Fix browser UX");
+
+		expect(client.initialize).toHaveBeenCalledTimes(3);
+		expect(client.requests).toEqual([
+			{
+				method: "thread/archive",
+				params: { threadId: "codex-thread-123" },
+			},
+			{
+				method: "thread/unarchive",
+				params: { threadId: "codex-thread-123" },
+			},
+			{
+				method: "thread/name/set",
+				params: {
+					threadId: "codex-thread-123",
+					name: "Fix browser UX",
+				},
+			},
+		]);
+	});
+
+	test("reconciles requested coding sessions from Codex thread lists without importing unknown threads", async () => {
+		const client = new FakeCodexAppServerClient([], {
+			openThreads: [
+				{ id: "known-open", name: " Renamed open " },
+				{ id: "external-open", name: "Do not import" },
+			],
+			archivedThreads: [
+				{ id: "known-archived", name: "Archived elsewhere" },
+				{ id: "external-archived", name: "Do not import either" },
+			],
+		});
+		const adapter = new CodexAdapter({ client });
+
+		await expect(
+			adapter.reconcileCodingSessions?.(["known-open", "known-archived"]),
+		).resolves.toEqual([
+			{
+				sessionId: "known-open",
+				lifecycleStatus: "open",
+				title: "Renamed open",
+			},
+			{
+				sessionId: "known-archived",
+				lifecycleStatus: "archived",
+				title: "Archived elsewhere",
+			},
+		]);
+		expect(
+			client.requests
+				.filter((request) => request.method === "thread/list")
+				.map((request) => request.params),
+		).toEqual([
+			expect.objectContaining({ archived: false }),
+			expect.objectContaining({ archived: true }),
+		]);
+	});
+
+	test("projects Codex thread lifecycle notifications into provider coding session updates", () => {
+		const client = new FakeCodexAppServerClient([]);
+		const adapter = new CodexAdapter({ client });
+		const updates: Array<{
+			lifecycleStatus?: "open" | "archived";
+			sessionId: string;
+			title?: string;
+		}> = [];
+
+		const unsubscribe = adapter.subscribeCodingSessionUpdates((update) => {
+			updates.push(update);
+		});
+		client.emit({
+			method: "thread/archived",
+			params: { threadId: "codex-thread-123" },
+		});
+		client.emit({
+			method: "thread/unarchived",
+			params: { threadId: "codex-thread-123" },
+		});
+		client.emit({
+			method: "thread/name/updated",
+			params: { threadId: "codex-thread-123", name: "Provider title" },
+		});
+		client.emit({
+			method: "thread/name/updated",
+			params: { threadId: "codex-thread-456", name: "" },
+		});
+		client.emit({
+			method: "thread/archived",
+			params: { threadId: 123 },
+		});
+		unsubscribe();
+		client.emit({
+			method: "thread/archived",
+			params: { threadId: "codex-thread-789" },
+		});
+
+		expect(updates).toEqual([
+			{
+				sessionId: "codex-thread-123",
+				lifecycleStatus: "archived",
+			},
+			{
+				sessionId: "codex-thread-123",
+				lifecycleStatus: "open",
+			},
+			{
+				sessionId: "codex-thread-123",
+				title: "Provider title",
+			},
+		]);
+	});
+
 	test("lists enabled Codex skills through the provider skill catalog", async () => {
 		const client = new FakeCodexAppServerClient([], {
 			skills: [

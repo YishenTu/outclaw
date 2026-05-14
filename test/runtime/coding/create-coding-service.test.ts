@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type {
 	CodingSessionEvent,
 	FacadeEvent,
+	ProviderCodingSessionUpdate,
 	RunParams,
 } from "../../../src/common/protocol.ts";
 import {
@@ -21,6 +22,8 @@ interface Harness {
 	cleanup(): Promise<void>;
 	codingFacade: MockFacade;
 	codingService: ReturnType<typeof createCodingService>;
+	codingSessions: CodingSessionStore;
+	codingSharedStore: SessionStore;
 	dbPath: string;
 }
 
@@ -46,6 +49,8 @@ function makeHarness(facade?: MockFacade): Harness {
 	const harness: Harness = {
 		codingFacade,
 		codingService,
+		codingSessions,
+		codingSharedStore,
 		dbPath,
 		async cleanup() {
 			await codingService.stop();
@@ -64,6 +69,64 @@ class SessionInitializingFacade extends MockFacade {
 	override async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		yield { type: "session_initialized", sessionId: "facade-session-1" };
 		yield* super.run(params);
+	}
+}
+
+class ProviderSyncFacade extends SessionInitializingFacade {
+	override providerId = "codex";
+	readonly archiveCalls: string[] = [];
+	readonly reconcileCalls: string[][] = [];
+	reconcileResponses: ProviderCodingSessionUpdate[] = [];
+	readonly restoreCalls: string[] = [];
+	readonly renameCalls: Array<{ sessionId: string; title: string }> = [];
+	private readonly updateHandlers = new Set<
+		(update: {
+			lifecycleStatus?: "open" | "archived";
+			sessionId: string;
+			title?: string;
+		}) => void
+	>();
+
+	async archiveCodingSession(sessionId: string): Promise<void> {
+		this.archiveCalls.push(sessionId);
+	}
+
+	async restoreCodingSession(sessionId: string): Promise<void> {
+		this.restoreCalls.push(sessionId);
+	}
+
+	async renameCodingSession(sessionId: string, title: string): Promise<void> {
+		this.renameCalls.push({ sessionId, title });
+	}
+
+	async reconcileCodingSessions(
+		sessionIds: string[],
+	): Promise<ProviderCodingSessionUpdate[]> {
+		this.reconcileCalls.push(sessionIds);
+		return this.reconcileResponses;
+	}
+
+	subscribeCodingSessionUpdates(
+		handler: (update: {
+			lifecycleStatus?: "open" | "archived";
+			sessionId: string;
+			title?: string;
+		}) => void,
+	): () => void {
+		this.updateHandlers.add(handler);
+		return () => {
+			this.updateHandlers.delete(handler);
+		};
+	}
+
+	emitCodingSessionUpdate(update: {
+		lifecycleStatus?: "open" | "archived";
+		sessionId: string;
+		title?: string;
+	}) {
+		for (const handler of this.updateHandlers) {
+			handler(update);
+		}
 	}
 }
 
@@ -114,6 +177,154 @@ describe("createCodingService", () => {
 
 		expect(codingFacade.lastParams?.model).toBe("gpt-5.5");
 		expect(codingFacade.lastParams?.effort).toBe("xhigh");
+	});
+
+	test("syncs provider-backed coding session mutations through the facade", async () => {
+		const facade = new ProviderSyncFacade();
+		const { codingService, codingSessions, codingSharedStore } =
+			makeHarness(facade);
+		codingSharedStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			title: "Known session",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			cwd: "/repo",
+			runStatus: "idle",
+			timestamp: 100,
+		});
+
+		await codingService.archiveSession({
+			providerId: "codex",
+			sdkSessionId: "unknown-thread",
+		});
+		await codingService.restoreSession({
+			providerId: "claude",
+			sdkSessionId: "known-thread",
+		});
+
+		await codingService.archiveSession({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+		});
+		await codingService.restoreSession({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+		});
+		await codingService.renameSession({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			title: "Known session",
+		});
+
+		expect(facade.archiveCalls).toEqual(["known-thread"]);
+		expect(facade.restoreCalls).toEqual(["known-thread"]);
+		expect(facade.renameCalls).toEqual([
+			{ sessionId: "known-thread", title: "Known session" },
+		]);
+	});
+
+	test("reconciles only known provider-backed coding sessions through the facade", async () => {
+		const facade = new ProviderSyncFacade();
+		facade.reconcileResponses = [
+			{
+				sessionId: "known-thread",
+				lifecycleStatus: "archived",
+				title: "Archived elsewhere",
+			},
+			{
+				sessionId: "unknown-thread",
+				lifecycleStatus: "archived",
+				title: "Should not import",
+			},
+		];
+		const { codingService, codingSessions, codingSharedStore } =
+			makeHarness(facade);
+		codingSharedStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			title: "Original title",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			cwd: "/repo",
+			runStatus: "idle",
+			timestamp: 100,
+		});
+
+		await codingService.reconcileSessions({
+			providerId: "codex",
+			sdkSessionIds: ["unknown-thread", "known-thread", "known-thread"],
+		});
+		await codingService.reconcileSessions({
+			providerId: "claude",
+			sdkSessionIds: ["known-thread"],
+		});
+
+		expect(facade.reconcileCalls).toEqual([["known-thread"]]);
+		expect(codingSessions.getDetail("codex", "known-thread")).toMatchObject({
+			lifecycleStatus: "archived",
+			title: "Archived elsewhere",
+		});
+		expect(codingSessions.getDetail("codex", "unknown-thread")).toBeUndefined();
+	});
+
+	test("applies provider-originated updates only to known coding sessions", () => {
+		const facade = new ProviderSyncFacade();
+		const { codingSessions, codingSharedStore } = makeHarness(facade);
+		codingSharedStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			title: "Original title",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+			cwd: "/repo",
+			runStatus: "idle",
+			timestamp: 100,
+		});
+
+		facade.emitCodingSessionUpdate({
+			sessionId: "known-thread",
+			lifecycleStatus: "archived",
+			title: "Provider title",
+		});
+		facade.emitCodingSessionUpdate({
+			sessionId: "unknown-thread",
+			lifecycleStatus: "archived",
+			title: "Should not import",
+		});
+
+		expect(codingSessions.getDetail("codex", "known-thread")).toMatchObject({
+			lifecycleStatus: "archived",
+			title: "Provider title",
+		});
+		expect(codingSessions.getDetail("codex", "unknown-thread")).toBeUndefined();
+
+		facade.emitCodingSessionUpdate({
+			sessionId: "known-thread",
+			lifecycleStatus: "open",
+		});
+		expect(codingSessions.getDetail("codex", "known-thread")).toMatchObject({
+			lifecycleStatus: "open",
+			title: "Provider title",
+		});
 	});
 
 	test("stop() is idempotent across multiple awaiters", async () => {

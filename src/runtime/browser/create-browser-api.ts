@@ -132,15 +132,32 @@ import {
 export interface BrowserCodingService
 	extends Pick<CodingRuntime, "startPrompt" | "resumePrompt" | "stopPrompt"> {
 	cancelPrompt?: CodingRuntime["cancelPrompt"];
+	archiveSession?(params: {
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<void>;
 	listModels?(): Promise<ProviderModelInfo[]>;
 	listSkills?(params: {
 		cwd: string;
 		forceReload?: boolean;
 	}): Promise<ProviderSkillInfo[]>;
+	renameSession?(params: {
+		providerId: string;
+		sdkSessionId: string;
+		title: string;
+	}): Promise<void>;
+	reconcileSessions?(params: {
+		providerId: string;
+		sdkSessionIds: string[];
+	}): Promise<void>;
 	rehydrateSessionEvents?(params: {
 		providerId: string;
 		sdkSessionId: string;
 	}): Promise<CodingSessionEvent[]>;
+	restoreSession?(params: {
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<void>;
 }
 
 interface CreateBrowserApiOptions {
@@ -578,6 +595,13 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			if (!chatSession || chatSession.tag !== "chat") {
 				return { sessions: [] };
 			}
+			const linkedSessions =
+				options.chatCodingLinks?.listForChat({
+					chatAgentId: params.agentId,
+					chatProviderId: params.providerId,
+					chatSdkSessionId: params.sdkSessionId,
+				}) ?? [];
+			await reconcileKnownCodingSessionRefs(options, linkedSessions);
 			return {
 				sessions:
 					options.chatCodingLinks
@@ -597,6 +621,11 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			if (!store) {
 				return { sessions: [] };
 			}
+			await reconcileKnownCodingSessions(options, {
+				linkedChatSessionId: params.linkedChatSessionId,
+				providerId: params.providerId,
+				repositoryId: params.repositoryId,
+			});
 			const query = params.query?.trim();
 			const result = store.list({
 				cursor: params.cursor,
@@ -714,6 +743,10 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			};
 		},
 		async getCodingSession(providerId, sdkSessionId) {
+			await reconcileKnownCodingSessions(options, {
+				providerId,
+				sdkSessionIds: [sdkSessionId],
+			});
 			const session = options.codingSessions?.getDetail(
 				providerId,
 				sdkSessionId,
@@ -733,6 +766,10 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			};
 		},
 		async getCodingSessionStatus(providerId, sdkSessionId) {
+			await reconcileKnownCodingSessions(options, {
+				providerId,
+				sdkSessionIds: [sdkSessionId],
+			});
 			const session = options.codingSessions?.getDetail(
 				providerId,
 				sdkSessionId,
@@ -798,6 +835,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					`Unknown coding session: ${providerId}/${sdkSessionId}`,
 				);
 			}
+			await options.coding?.archiveSession?.({ providerId, sdkSessionId });
 			store.archive(providerId, sdkSessionId);
 			const archived = store.getDetail(providerId, sdkSessionId);
 			if (!archived) {
@@ -843,6 +881,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					`Unknown coding session: ${providerId}/${sdkSessionId}`,
 				);
 			}
+			await options.coding?.restoreSession?.({ providerId, sdkSessionId });
 			store.restore(providerId, sdkSessionId);
 			const restored = store.getDetail(providerId, sdkSessionId);
 			if (!restored) {
@@ -872,6 +911,11 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					`Unknown coding session: ${providerId}/${sdkSessionId}`,
 				);
 			}
+			await options.coding?.renameSession?.({
+				providerId,
+				sdkSessionId,
+				title: trimmed,
+			});
 			store.rename(providerId, sdkSessionId, trimmed);
 			const renamed = store.getDetail(providerId, sdkSessionId);
 			if (!renamed) {
@@ -972,11 +1016,19 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					message: "Coding session resume requires a prompt",
 				};
 			}
+			await reconcileKnownCodingSessions(options, {
+				providerId: params.providerId,
+				sdkSessionIds: [params.sdkSessionId],
+			});
 			const session = options.codingSessions?.get(
 				params.providerId,
 				params.sdkSessionId,
 			);
 			if (session?.lifecycleStatus === "archived") {
+				await options.coding?.restoreSession?.({
+					providerId: params.providerId,
+					sdkSessionId: params.sdkSessionId,
+				});
 				options.codingSessions?.restore(params.providerId, params.sdkSessionId);
 			}
 			return coding.resumePrompt({
@@ -1287,6 +1339,60 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			);
 		},
 	};
+}
+
+async function reconcileKnownCodingSessions(
+	options: Pick<CreateBrowserApiOptions, "coding" | "codingSessions">,
+	params: {
+		linkedChatSessionId?: string;
+		providerId?: string;
+		repositoryId?: string;
+		sdkSessionIds?: string[];
+	} = {},
+): Promise<void> {
+	if (!options.coding?.reconcileSessions || !options.codingSessions) {
+		return;
+	}
+	const refs =
+		params.providerId && params.sdkSessionIds
+			? params.sdkSessionIds
+					.filter((sdkSessionId) =>
+						options.codingSessions?.get(params.providerId ?? "", sdkSessionId),
+					)
+					.map((sdkSessionId) => ({
+						providerId: params.providerId ?? "",
+						sdkSessionId,
+					}))
+			: options.codingSessions.listRefs({
+					...(params.linkedChatSessionId
+						? { linkedChatSessionId: params.linkedChatSessionId }
+						: {}),
+					...(params.providerId ? { providerId: params.providerId } : {}),
+					...(params.repositoryId ? { repositoryId: params.repositoryId } : {}),
+				});
+	await reconcileKnownCodingSessionRefs(options, refs);
+}
+
+async function reconcileKnownCodingSessionRefs(
+	options: Pick<CreateBrowserApiOptions, "coding">,
+	refs: Array<{ providerId: string; sdkSessionId: string }>,
+): Promise<void> {
+	const idsByProvider = new Map<string, string[]>();
+	for (const ref of refs) {
+		const current = idsByProvider.get(ref.providerId) ?? [];
+		if (!current.includes(ref.sdkSessionId)) {
+			current.push(ref.sdkSessionId);
+		}
+		idsByProvider.set(ref.providerId, current);
+	}
+	for (const [providerId, sdkSessionIds] of idsByProvider) {
+		try {
+			await options.coding?.reconcileSessions?.({ providerId, sdkSessionIds });
+		} catch {
+			// Reconciliation is a freshness pass; local catalog reads should still work
+			// when the provider is temporarily unavailable.
+		}
+	}
 }
 
 function normalizeTerminalRunCommand(command: string): string {

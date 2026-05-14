@@ -147,6 +147,7 @@ export interface CodingState {
 	archivedSessions: BrowserCodingSessionSummary[];
 	archivedNextCursor: SessionCursor | undefined;
 	archivedSearchState: RepositorySearchState | undefined;
+	archivedSessionsLoaded: boolean;
 	repositoriesLoaded: boolean;
 	codingModels: BrowserCodingModel[];
 	codingModelsLoaded: boolean;
@@ -507,6 +508,7 @@ export const useCodingStore = create<CodingState>()(
 			archivedSessions: [],
 			archivedNextCursor: undefined,
 			archivedSearchState: undefined,
+			archivedSessionsLoaded: false,
 			repositoriesLoaded: false,
 			codingModels: [],
 			codingModelsLoaded: false,
@@ -650,6 +652,7 @@ export const useCodingStore = create<CodingState>()(
 				set({
 					archivedSessions: sessions,
 					archivedNextCursor: nextCursor,
+					archivedSessionsLoaded: true,
 				});
 			},
 			appendArchivedSessions(sessions, nextCursor) {
@@ -791,6 +794,7 @@ export const useCodingStore = create<CodingState>()(
 							state.archivedSessions,
 							session,
 						),
+						archivedSessionsLoaded: true,
 					};
 				});
 			},

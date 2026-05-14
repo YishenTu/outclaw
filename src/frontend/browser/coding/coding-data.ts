@@ -14,6 +14,7 @@ import {
 	restoreCodingRepository,
 	restoreCodingSession,
 } from "../lib/api.ts";
+import { useCodingSessionReconciliationPolling } from "./coding-session-refresh.ts";
 import type { CodingTab } from "./coding-store.ts";
 import {
 	isCodingDiffTab,
@@ -96,6 +97,7 @@ export function createProvisionalCodingSessionSummary(
  * repository/session/model requests.
  */
 export function useCodingDataLoader(enabled = true) {
+	useCodingSessionReconciliationPolling(enabled);
 	const repositoriesLoaded = useCodingStore(
 		(state) => state.repositoriesLoaded,
 	);

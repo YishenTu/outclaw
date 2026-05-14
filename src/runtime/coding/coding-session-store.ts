@@ -51,6 +51,11 @@ export interface CodingSessionListResult {
 	nextCursor?: SessionCursor;
 }
 
+export interface CodingSessionRef {
+	providerId: string;
+	sdkSessionId: string;
+}
+
 export type CodingSessionRefResolution =
 	| {
 			status: "resolved";
@@ -389,6 +394,47 @@ export class CodingSessionStore {
 			sessions,
 			nextCursor: nextCodingSessionCursor(sessions, limit),
 		};
+	}
+
+	listRefs(
+		options: {
+			linkedChatSessionId?: string;
+			providerId?: string;
+			repositoryId?: string;
+		} = {},
+	): CodingSessionRef[] {
+		const conditions = ["agent_id = $agentId"];
+		const params: Record<string, string> = {
+			$agentId: this.storageOwnerId,
+		};
+		if (options.providerId) {
+			conditions.push("provider_id = $providerId");
+			params.$providerId = options.providerId;
+		}
+		if (options.repositoryId) {
+			conditions.push("repository_id = $repositoryId");
+			params.$repositoryId = options.repositoryId;
+		}
+		if (options.linkedChatSessionId) {
+			conditions.push("linked_chat_session_id = $linkedChatSessionId");
+			params.$linkedChatSessionId = options.linkedChatSessionId;
+		}
+		return (
+			this.db
+				.query(
+					`SELECT provider_id, sdk_session_id
+					 FROM coding_sessions
+					 WHERE ${conditions.join(" AND ")}
+					 ORDER BY last_active DESC, sdk_session_id ASC`,
+				)
+				.all(params) as Array<{
+				provider_id: string;
+				sdk_session_id: string;
+			}>
+		).map((row) => ({
+			providerId: row.provider_id,
+			sdkSessionId: row.sdk_session_id,
+		}));
 	}
 
 	get(

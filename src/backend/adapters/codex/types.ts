@@ -17,6 +17,7 @@ export interface CodexServerNotification {
 
 export interface CodexThread {
 	id: string;
+	name?: string | null;
 	sessionId?: string;
 	path?: string | null;
 }
@@ -27,6 +28,11 @@ export interface CodexThreadStartResult {
 
 export type CodexThreadResumeResult = CodexThreadStartResult;
 export type CodexThreadReadResult = CodexThreadStartResult;
+
+export interface CodexThreadListResult {
+	data: CodexThread[];
+	nextCursor?: string | null;
+}
 
 export interface CodexTurn {
 	id: string;

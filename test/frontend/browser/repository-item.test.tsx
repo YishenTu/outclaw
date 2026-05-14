@@ -93,7 +93,7 @@ describe("RepositoryItem", () => {
 			/>,
 		);
 
-		expect(repositoryToggleOpeningTag(html, longName)).toContain("pr-12");
+		expect(repositoryToggleOpeningTag(html, longName)).toContain("pr-16");
 		expect(html).toContain('aria-label="Open repository actions for ');
 		expect(html).toContain('aria-label="Start new session in ');
 	});
