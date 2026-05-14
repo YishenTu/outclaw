@@ -78,7 +78,7 @@ export async function handleCodingBrowserApiRequest(
 	}
 
 	const codingRepositoriesMatch = url.pathname.match(
-		/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive|restore|tree|workspace-files|files|skills))?)?$/,
+		/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive|restore|tree|workspace-files|files|skills|terminal-run-command))?)?$/,
 	);
 	if (codingRepositoriesMatch) {
 		return handleCodingRepositoryRequest(
@@ -181,6 +181,27 @@ async function handleCodingRepositoryRequest(
 		}
 		return Response.json(
 			await browserApi.restoreCodingRepository(repositoryId),
+		);
+	}
+
+	if (action === "terminal-run-command") {
+		if (req.method !== "PATCH") {
+			return jsonError("Method not allowed", 405);
+		}
+		if (!browserApi.writeCodingRepositoryTerminalRunCommand) {
+			return jsonError("Terminal run command API is not configured", 404);
+		}
+		const body = (await req.json().catch(() => undefined)) as
+			| { command?: unknown }
+			| undefined;
+		if (typeof body?.command !== "string") {
+			return jsonError("Missing terminal run command", 400);
+		}
+		return Response.json(
+			await browserApi.writeCodingRepositoryTerminalRunCommand(
+				repositoryId,
+				body.command,
+			),
 		);
 	}
 

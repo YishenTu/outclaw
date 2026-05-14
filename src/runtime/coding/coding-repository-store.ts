@@ -18,6 +18,7 @@ export interface CodingRepositoryRecord {
 	remoteUrl?: string;
 	source: CodingRepositorySource;
 	status: CodingRepositoryStatus;
+	terminalRunCommand: string;
 	createdAt: number;
 	lastActive: number;
 	archivedAt?: number;
@@ -34,9 +35,14 @@ interface CodingRepositoryDatabaseRow {
 	remote_url: string | null;
 	source: CodingRepositorySource;
 	status: CodingRepositoryStatus;
+	terminal_run_command: string;
 	created_at: number;
 	last_active: number;
 	archived_at: number | null;
+}
+
+interface TableColumnInfo {
+	name: string;
 }
 
 export class CodingRepositoryStore {
@@ -166,6 +172,7 @@ export class CodingRepositoryStore {
 						remote_url,
 						source,
 						status,
+						terminal_run_command,
 						created_at,
 						last_active,
 						archived_at
@@ -187,6 +194,7 @@ export class CodingRepositoryStore {
 						remote_url,
 						source,
 						status,
+						terminal_run_command,
 						created_at,
 						last_active,
 						archived_at
@@ -211,6 +219,7 @@ export class CodingRepositoryStore {
 						remote_url,
 						source,
 						status,
+						terminal_run_command,
 						created_at,
 						last_active,
 						archived_at
@@ -220,6 +229,28 @@ export class CodingRepositoryStore {
 				)
 				.all() as CodingRepositoryDatabaseRow[]
 		).map(mapRequiredCodingRepositoryRow);
+	}
+
+	writeTerminalRunCommand(
+		id: string,
+		command: string,
+		timestamp?: number,
+	): CodingRepositoryRecord {
+		const now = timestamp ?? Date.now();
+		this.db
+			.query(
+				`UPDATE coding_repositories
+				 SET terminal_run_command = $command,
+				     last_active = $now
+				 WHERE id = $id`,
+			)
+			.run({ $command: command, $id: id, $now: now });
+
+		const repository = this.get(id);
+		if (!repository) {
+			throw new Error(`Unknown coding repository: ${id}`);
+		}
+		return repository;
 	}
 
 	close() {
@@ -235,10 +266,18 @@ export function ensureCodingRepositoryStoreSchema(db: Database) {
 		remote_url TEXT,
 		source TEXT NOT NULL,
 		status TEXT NOT NULL,
+		terminal_run_command TEXT NOT NULL DEFAULT '',
 		created_at INTEGER NOT NULL,
 		last_active INTEGER NOT NULL,
 		archived_at INTEGER
 	)`);
+
+	const columns = getTableColumns(db, "coding_repositories");
+	if (!columns.some((column) => column.name === "terminal_run_command")) {
+		db.exec(
+			"ALTER TABLE coding_repositories ADD COLUMN terminal_run_command TEXT NOT NULL DEFAULT ''",
+		);
+	}
 }
 
 export function resolveCodingRepositoryRoot(cwd: string): string {
@@ -280,8 +319,13 @@ function mapRequiredCodingRepositoryRow(
 		remoteUrl: row.remote_url ?? undefined,
 		source: row.source,
 		status: row.status,
+		terminalRunCommand: row.terminal_run_command,
 		createdAt: row.created_at,
 		lastActive: row.last_active,
 		...(row.archived_at !== null ? { archivedAt: row.archived_at } : {}),
 	};
+}
+
+function getTableColumns(db: Database, tableName: string): TableColumnInfo[] {
+	return db.query(`PRAGMA table_info(${tableName})`).all() as TableColumnInfo[];
 }

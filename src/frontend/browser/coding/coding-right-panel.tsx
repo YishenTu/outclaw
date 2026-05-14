@@ -21,8 +21,24 @@ import {
 	RightPanelTabBar,
 } from "../components/right-panel/right-panel-shell.tsx";
 import { TerminalPanel } from "../components/right-panel/terminal/terminal-panel.tsx";
+import {
+	clearDispatchedTerminalRunRequest,
+	createTerminalRunRequest,
+	storeTerminalRunRequest,
+	type TerminalRunRequestsByAgent,
+} from "../components/right-panel/terminal/terminal-run-coordinator.ts";
+import { TerminalRunPanel } from "../components/right-panel/terminal/terminal-run-panel.tsx";
 import { TerminalTabs } from "../components/right-panel/terminal/terminal-tabs.tsx";
-import { fetchCodingRepositoryTree, initGitRepo } from "../lib/api.ts";
+import {
+	resolveHeaderTerminalRunAction,
+	resolveSavedTerminalRunCommand,
+	useTerminalRunCommand,
+} from "../components/right-panel/terminal/use-agent-terminal-run-command.ts";
+import {
+	fetchCodingRepositoryTree,
+	initGitRepo,
+	updateCodingRepositoryTerminalRunCommand,
+} from "../lib/api.ts";
 import { useLayoutStore } from "../stores/layout.ts";
 import {
 	selectGitRevision,
@@ -32,6 +48,7 @@ import {
 	selectActiveTerminalId,
 	selectActiveTerminalTab,
 	selectAgentTerminals,
+	selectRunTerminalCommand,
 	useTerminalStore,
 } from "../stores/terminal.ts";
 import {
@@ -130,11 +147,26 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	const activeTerminalTab = useTerminalStore((state) =>
 		selectActiveTerminalTab(state, terminalWorkspaceKey),
 	);
+	const runTerminalCommand = useTerminalStore((state) =>
+		selectRunTerminalCommand(state, terminalWorkspaceKey),
+	);
 	const createTerminal = useTerminalStore((state) => state.createTerminal);
 	const closeTerminal = useTerminalStore((state) => state.closeTerminal);
+	const executeRunTerminal = useTerminalStore(
+		(state) => state.executeRunTerminal,
+	);
 	const renameTerminal = useTerminalStore((state) => state.renameTerminal);
+	const setActiveRunTerminal = useTerminalStore(
+		(state) => state.setActiveRunTerminal,
+	);
 	const setActiveTerminal = useTerminalStore(
 		(state) => state.setActiveTerminal,
+	);
+	const updateRepository = useCodingStore((state) => state.updateRepository);
+	const runCommand = useTerminalRunCommand(
+		focusedRepositoryId ?? null,
+		repository?.terminalRunCommand ?? "",
+		updateCodingRepositoryTerminalRunCommand,
 	);
 
 	const [activeTab, setActiveTab] = useState<CodingRightTab>("files");
@@ -164,7 +196,12 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		workspaceKey,
 	});
 	const [isResizing, setIsResizing] = useState(false);
+	const [runRequestsByWorkspace, setRunRequestsByWorkspace] =
+		useState<TerminalRunRequestsByAgent>({});
+	const [editingRunCommandRepositoryId, setEditingRunCommandRepositoryId] =
+		useState<string | null>(null);
 	const contentRef = useRef<HTMLDivElement | null>(null);
+	const nextRunRequestIdRef = useRef(0);
 	if (latestWorkspaceKey.current !== workspaceKey) {
 		loadingTreeDirectoriesRef.current.clear();
 		latestWorkspaceKey.current = workspaceKey;
@@ -274,6 +311,16 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 
 	useEffect(() => {
 		if (
+			editingRunCommandRepositoryId === null ||
+			editingRunCommandRepositoryId === focusedRepositoryId
+		) {
+			return;
+		}
+		setEditingRunCommandRepositoryId(null);
+	}, [editingRunCommandRepositoryId, focusedRepositoryId]);
+
+	useEffect(() => {
+		if (
 			shouldClearSelectedGitCommit({
 				selectedCommitSha: selectedGitCommitSha,
 				status: gitStatus,
@@ -294,6 +341,121 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		});
 		acceptGitStatus(status);
 	}, [acceptGitStatus]);
+
+	const dispatchRunCommand = useCallback(
+		(workspaceKey: string, command: string) => {
+			executeRunTerminal(workspaceKey, command);
+			const { nextRequestId, request } = createTerminalRunRequest({
+				command,
+				nextRequestId: nextRunRequestIdRef.current,
+			});
+			nextRunRequestIdRef.current = nextRequestId;
+			setRunRequestsByWorkspace((current) =>
+				storeTerminalRunRequest(current, workspaceKey, request),
+			);
+		},
+		[executeRunTerminal],
+	);
+
+	const handleHeaderRunCommand = useCallback(() => {
+		if (!terminalWorkspaceKey) {
+			return;
+		}
+
+		setActiveRunTerminal(terminalWorkspaceKey);
+		const action = resolveHeaderTerminalRunAction({
+			command: runCommand.command,
+		});
+		if (action.type === "select") {
+			return;
+		}
+
+		dispatchRunCommand(terminalWorkspaceKey, action.command);
+	}, [
+		dispatchRunCommand,
+		runCommand.command,
+		setActiveRunTerminal,
+		terminalWorkspaceKey,
+	]);
+
+	const handleRunPanelCommand = useCallback(() => {
+		if (!terminalWorkspaceKey) {
+			return;
+		}
+
+		setActiveRunTerminal(terminalWorkspaceKey);
+		const command = resolveSavedTerminalRunCommand(runCommand.command);
+		if (!command) {
+			return;
+		}
+
+		dispatchRunCommand(terminalWorkspaceKey, command);
+	}, [
+		dispatchRunCommand,
+		runCommand.command,
+		setActiveRunTerminal,
+		terminalWorkspaceKey,
+	]);
+
+	const handleRunPanelSaveCommand = useCallback(async () => {
+		if (!repository || !terminalWorkspaceKey) {
+			return;
+		}
+
+		setActiveRunTerminal(terminalWorkspaceKey);
+		const savedCommand = await runCommand.saveDraftCommand();
+		if (!savedCommand) {
+			return;
+		}
+		updateRepository({
+			...repository,
+			terminalRunCommand: savedCommand,
+		});
+		setEditingRunCommandRepositoryId(null);
+	}, [
+		repository,
+		runCommand,
+		setActiveRunTerminal,
+		terminalWorkspaceKey,
+		updateRepository,
+	]);
+
+	const handleEditRunCommand = useCallback(() => {
+		if (!focusedRepositoryId || !terminalWorkspaceKey) {
+			return;
+		}
+
+		setActiveRunTerminal(terminalWorkspaceKey);
+		runCommand.setDraftCommand(runCommand.command);
+		setEditingRunCommandRepositoryId(focusedRepositoryId);
+	}, [
+		focusedRepositoryId,
+		runCommand,
+		setActiveRunTerminal,
+		terminalWorkspaceKey,
+	]);
+
+	const handleCancelEditRunCommand = useCallback(() => {
+		runCommand.setDraftCommand(runCommand.command);
+		setEditingRunCommandRepositoryId(null);
+	}, [runCommand]);
+
+	const handleRunRequestDispatched = useCallback(
+		(requestId: number) => {
+			if (!terminalWorkspaceKey) {
+				return;
+			}
+
+			setRunRequestsByWorkspace((current) =>
+				clearDispatchedTerminalRunRequest(
+					current,
+					terminalWorkspaceKey,
+					requestId,
+				),
+			);
+		},
+		[terminalWorkspaceKey],
+	);
 
 	const handleResizeMouseDown = useCallback(
 		(event: React.MouseEvent<HTMLButtonElement>) => {
@@ -443,7 +605,14 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 					<TerminalTabs
 						activeTerminalId={activeTerminalId}
 						activeTab={activeTerminalTab}
-						canRunCommand={false}
+						canEditRunCommand={shouldEnableCodingRunCommand({
+							saving: runCommand.saving,
+							workspaceKey: workspaceKey,
+						})}
+						canRunCommand={shouldEnableCodingRunCommand({
+							saving: runCommand.saving,
+							workspaceKey: workspaceKey,
+						})}
 						leadingContent={
 							<button
 								type="button"
@@ -464,13 +633,18 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 								createTerminal(terminalWorkspaceKey);
 							}
 						}}
+						onEditRunCommand={handleEditRunCommand}
 						onRenameTerminal={(terminalId, name) => {
 							if (terminalWorkspaceKey) {
 								renameTerminal(terminalWorkspaceKey, terminalId, name);
 							}
 						}}
-						onRunCommand={() => {}}
-						onSelectRun={() => {}}
+						onRunCommand={handleHeaderRunCommand}
+						onSelectRun={() => {
+							if (terminalWorkspaceKey) {
+								setActiveRunTerminal(terminalWorkspaceKey);
+							}
+						}}
 						onSelectTerminal={(terminalId) => {
 							if (terminalWorkspaceKey) {
 								setActiveTerminal(terminalWorkspaceKey, terminalId);
@@ -481,13 +655,46 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 				}
 				lowerContent={
 					workspaceTarget ? (
-						<TerminalPanel
-							agentId={workspaceTarget.workspaceKey}
-							active={activeTerminalTab === "terminal"}
-							providerId={workspaceTarget.providerId}
-							repositoryId={workspaceTarget.repositoryId}
-							sdkSessionId={workspaceTarget.sdkSessionId}
-						/>
+						<>
+							<TerminalRunPanel
+								active={activeTerminalTab === "run"}
+								agentId={workspaceTarget.workspaceKey}
+								command={runCommand.command}
+								draftCommand={runCommand.draftCommand}
+								editingCommand={
+									editingRunCommandRepositoryId === workspaceTarget.repositoryId
+								}
+								error={runCommand.error}
+								executedCommand={runTerminalCommand}
+								onCancelEditCommand={handleCancelEditRunCommand}
+								onDraftCommandChange={runCommand.setDraftCommand}
+								onRun={handleRunPanelCommand}
+								onSave={() => {
+									void handleRunPanelSaveCommand();
+								}}
+								onRunRequestDispatched={handleRunRequestDispatched}
+								providerId={workspaceTarget.providerId}
+								repositoryId={workspaceTarget.repositoryId}
+								runRequest={
+									runRequestsByWorkspace[workspaceTarget.workspaceKey] ?? null
+								}
+								saving={runCommand.saving}
+								sdkSessionId={workspaceTarget.sdkSessionId}
+							/>
+							<div
+								className={
+									activeTerminalTab === "terminal" ? "h-full" : "hidden h-full"
+								}
+							>
+								<TerminalPanel
+									agentId={workspaceTarget.workspaceKey}
+									active={activeTerminalTab === "terminal"}
+									providerId={workspaceTarget.providerId}
+									repositoryId={workspaceTarget.repositoryId}
+									sdkSessionId={workspaceTarget.sdkSessionId}
+								/>
+							</div>
+						</>
 					) : focusedRepositoryId ? (
 						workspaceLoadingState
 					) : (
@@ -537,6 +744,16 @@ export function shouldLoadCodingRepositoryGitStatus({
 		loadedGitWorkspaceKey !== focusedWorkspaceKey ||
 		loadedGitRevision !== gitRevision
 	);
+}
+
+export function shouldEnableCodingRunCommand({
+	saving,
+	workspaceKey,
+}: {
+	saving: boolean;
+	workspaceKey: string | undefined;
+}): boolean {
+	return workspaceKey !== undefined && !saving;
 }
 
 export function shouldApplyCodingRepositoryDirectoryChildren({

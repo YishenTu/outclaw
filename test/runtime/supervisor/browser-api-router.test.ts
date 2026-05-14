@@ -139,6 +139,13 @@ describe("handleBrowserApiRequest", () => {
 					},
 				};
 			},
+			writeCodingRepositoryTerminalRunCommand: async (
+				repositoryId: string,
+				command: string,
+			) => {
+				calls.push(`repo:run-command:${repositoryId}:${command}`);
+				return { command };
+			},
 		} as unknown as BrowserApi;
 
 		const listUrl = new URL(
@@ -217,6 +224,23 @@ describe("handleBrowserApiRequest", () => {
 			restored: true,
 			repository: { status: "active" },
 		});
+		const runCommandUrl = new URL(
+			"http://localhost/api/coding/repositories/repo-1/terminal-run-command",
+		);
+		await expect(
+			(
+				await handleBrowserApiRequest(
+					new Request(runCommandUrl, {
+						method: "PATCH",
+						body: JSON.stringify({ command: "bun run check" }),
+					}),
+					runCommandUrl,
+					browserApi,
+				)
+			).json(),
+		).resolves.toEqual({
+			command: "bun run check",
+		});
 
 		expect(calls).toEqual([
 			"repo:list:true",
@@ -224,6 +248,7 @@ describe("handleBrowserApiRequest", () => {
 			"repo:get:repo-1",
 			"repo:archive:repo-1",
 			"repo:restore:repo-1",
+			"repo:run-command:repo-1:bun run check",
 		]);
 	});
 

@@ -84,6 +84,32 @@ describe("TerminalRunPanel", () => {
 		expect(html).not.toContain("bun test");
 	});
 
+	test("shows the configured command form while editing", () => {
+		const html = renderToStaticMarkup(
+			<TerminalRunPanel
+				active={true}
+				agentId="agent-a"
+				command="bun test"
+				draftCommand="bun run check"
+				editingCommand={true}
+				error={null}
+				executedCommand={null}
+				onCancelEditCommand={() => {}}
+				onDraftCommandChange={() => {}}
+				onRun={() => {}}
+				onSave={() => {}}
+				onRunRequestDispatched={() => {}}
+				runRequest={null}
+				saving={false}
+			/>,
+		);
+
+		expect(html).toContain("Edit run command");
+		expect(html).toContain('value="bun run check"');
+		expect(html).toContain('aria-label="Cancel editing run command"');
+		expect(html).not.toContain('aria-label="Run saved command"');
+	});
+
 	test("shows setup when the runtime command is empty", () => {
 		const html = renderToStaticMarkup(
 			<TerminalRunPanel

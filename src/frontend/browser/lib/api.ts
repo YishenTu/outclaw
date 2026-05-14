@@ -399,6 +399,26 @@ export async function restoreCodingRepository(
 	);
 }
 
+export async function updateCodingRepositoryTerminalRunCommand(
+	repositoryId: string,
+	command: string,
+): Promise<BrowserTerminalRunCommandResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/repositories/${encodeURIComponent(repositoryId)}/terminal-run-command`,
+			{
+				method: "PATCH",
+				headers: {
+					"content-type": "application/json",
+				},
+				body: JSON.stringify({
+					command,
+				}),
+			},
+		),
+	);
+}
+
 export async function fetchRuntimeLatency(
 	signal?: AbortSignal,
 ): Promise<BrowserLatencyResponse> {

@@ -1043,11 +1043,26 @@ describe("createBrowserApi", () => {
 		await expect(api.getCodingRepository(registered.id)).resolves.toEqual(
 			registered,
 		);
+		await expect(
+			api.writeCodingRepositoryTerminalRunCommand(
+				registered.id,
+				"  bun run check  ",
+			),
+		).resolves.toEqual({
+			command: "bun run check",
+		});
+		await expect(api.getCodingRepository(registered.id)).resolves.toMatchObject(
+			{
+				id: registered.id,
+				terminalRunCommand: "bun run check",
+			},
+		);
 
 		await expect(api.archiveCodingRepository(registered.id)).resolves.toEqual({
 			archived: true,
 			repository: {
 				...registered,
+				terminalRunCommand: "bun run check",
 				status: "archived",
 				lastActive: expect.any(Number),
 				archivedAt: expect.any(Number),
@@ -1070,6 +1085,7 @@ describe("createBrowserApi", () => {
 			restored: true,
 			repository: {
 				...registered,
+				terminalRunCommand: "bun run check",
 				status: "active",
 				lastActive: expect.any(Number),
 			},

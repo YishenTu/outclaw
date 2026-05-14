@@ -782,6 +782,7 @@ export interface BrowserCodingRepositorySummary {
 	remoteUrl?: string;
 	source: BrowserCodingRepositorySource;
 	status: BrowserCodingRepositoryStatus;
+	terminalRunCommand?: string;
 	createdAt: number;
 	lastActive: number;
 	archivedAt?: number;

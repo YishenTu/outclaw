@@ -27,6 +27,7 @@ import {
 	restoreCodingSession,
 	stopCodingSession,
 	updateAgentCronEnabled,
+	updateCodingRepositoryTerminalRunCommand,
 	updateConfigFile,
 	uploadPromptImages,
 } from "../../../src/frontend/browser/lib/api.ts";
@@ -313,6 +314,13 @@ describe("browser API client integration", () => {
 						lastActive: 500,
 					},
 				};
+			},
+			writeCodingRepositoryTerminalRunCommand: async (
+				repositoryId,
+				command,
+			) => {
+				calls.push(`repo:run-command:${repositoryId}:${command}`);
+				return { command };
 			},
 			listCodingRepositoryWorkspaceFiles: async (repositoryId) => {
 				calls.push(`repo:workspace-files:${repositoryId}`);
@@ -658,6 +666,11 @@ describe("browser API client integration", () => {
 			},
 		});
 		await expect(
+			updateCodingRepositoryTerminalRunCommand("repo-1", "bun run check"),
+		).resolves.toEqual({
+			command: "bun run check",
+		});
+		await expect(
 			fetchAgentFile("agent-railly", "notes/today.md"),
 		).resolves.toMatchObject({
 			content: "# Agent\n",
@@ -715,6 +728,7 @@ describe("browser API client integration", () => {
 			"repo:register:/workspace/outclaw:Outclaw",
 			"repo:archive:repo-1",
 			"repo:restore:repo-1",
+			"repo:run-command:repo-1:bun run check",
 			"file:agent-railly:notes/today.md",
 			"diff:src/index.ts",
 			"commit:abc123",

@@ -1,4 +1,4 @@
-import { Play, TerminalSquare } from "lucide-react";
+import { Play, TerminalSquare, X } from "lucide-react";
 import type { FormEvent } from "react";
 import type { TerminalRunRequest } from "./terminal-view.tsx";
 import { TerminalView } from "./terminal-view.tsx";
@@ -12,14 +12,19 @@ interface TerminalRunPanelProps {
 	agentId: string | null;
 	command: string;
 	draftCommand: string;
+	editingCommand?: boolean;
 	error: string | null;
 	executedCommand: string | null;
+	onCancelEditCommand?: () => void;
 	onDraftCommandChange: (command: string) => void;
 	onRun: () => void;
 	onSave: () => void;
 	onRunRequestDispatched: (requestId: number) => void;
+	providerId?: string;
+	repositoryId?: string;
 	runRequest: TerminalRunRequest | null;
 	saving: boolean;
+	sdkSessionId?: string;
 }
 
 export function TerminalRunPanel({
@@ -27,14 +32,19 @@ export function TerminalRunPanel({
 	agentId,
 	command,
 	draftCommand,
+	editingCommand = false,
 	error,
 	executedCommand,
+	onCancelEditCommand,
 	onDraftCommandChange,
 	onRun,
 	onSave,
 	onRunRequestDispatched,
+	providerId,
+	repositoryId,
 	runRequest,
 	saving,
+	sdkSessionId,
 }: TerminalRunPanelProps) {
 	if (!agentId) {
 		return null;
@@ -43,8 +53,11 @@ export function TerminalRunPanel({
 	const configuredCommand = command.trim();
 	const hasConfiguredCommand = configuredCommand.length > 0;
 	const canSave = draftCommand.trim().length > 0 && !saving;
+	const shouldShowCommandForm = !hasConfiguredCommand || editingCommand;
 	const shouldRenderTerminal =
-		hasConfiguredCommand && executedCommand === configuredCommand;
+		hasConfiguredCommand &&
+		!editingCommand &&
+		executedCommand === configuredCommand;
 
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -61,7 +74,7 @@ export function TerminalRunPanel({
 				}`}
 			>
 				<div className="flex h-full w-full items-center justify-center px-5 py-6">
-					{hasConfiguredCommand ? (
+					{hasConfiguredCommand && !editingCommand ? (
 						<div className="flex flex-col items-center gap-4">
 							<TerminalSquare
 								size={RUN_PANEL_ICON_SIZE}
@@ -78,7 +91,7 @@ export function TerminalRunPanel({
 								Run command
 							</button>
 						</div>
-					) : (
+					) : shouldShowCommandForm ? (
 						<form
 							onSubmit={handleSubmit}
 							className="flex w-full max-w-md flex-col items-center gap-4"
@@ -87,7 +100,11 @@ export function TerminalRunPanel({
 								size={RUN_PANEL_ICON_SIZE}
 								className="text-dark-500"
 							/>
-							<div className={MONO_CAPS}>Set up run command</div>
+							<div className={MONO_CAPS}>
+								{editingCommand && hasConfiguredCommand
+									? "Edit run command"
+									: "Set up run command"}
+							</div>
 							<div className="flex h-11 w-full items-stretch overflow-hidden rounded-md border border-dark-700 transition-colors focus-within:border-brand/70">
 								<input
 									type="text"
@@ -107,12 +124,23 @@ export function TerminalRunPanel({
 								>
 									{saving ? "Saving" : "Save"}
 								</button>
+								{editingCommand && onCancelEditCommand ? (
+									<button
+										type="button"
+										onClick={onCancelEditCommand}
+										disabled={saving}
+										className="inline-flex shrink-0 items-center border-l border-dark-700 px-3 text-dark-400 transition-colors hover:bg-dark-900 hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-dark-400"
+										aria-label="Cancel editing run command"
+									>
+										<X size={14} />
+									</button>
+								) : null}
 							</div>
 							{error ? (
 								<div className="font-mono-ui text-xs text-danger">{error}</div>
 							) : null}
 						</form>
-					)}
+					) : null}
 				</div>
 			</div>
 		);
@@ -129,7 +157,10 @@ export function TerminalRunPanel({
 				active={active}
 				agentId={agentId}
 				onRunRequestDispatched={onRunRequestDispatched}
+				providerId={providerId}
+				repositoryId={repositoryId}
 				runRequest={runRequest}
+				sdkSessionId={sdkSessionId}
 				terminalId={`${agentId}:run`}
 			/>
 		</div>

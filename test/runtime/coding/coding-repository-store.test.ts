@@ -112,4 +112,37 @@ describe("CodingRepositoryStore", () => {
 
 		repositories.close();
 	});
+
+	test("stores a terminal run command on the registered repository", () => {
+		const { repositories } = createStore();
+		const root = mkdtempSync(join(tmpdir(), "outclaw-run-command-repo-"));
+		const repository = repositories.register({
+			displayName: "Outclaw",
+			rootCwd: root,
+			source: "manual",
+			timestamp: 10,
+		});
+
+		repositories.writeTerminalRunCommand(repository.id, "bun run check", 20);
+
+		expect(repositories.get(repository.id)).toMatchObject({
+			id: repository.id,
+			terminalRunCommand: "bun run check",
+			lastActive: 20,
+		});
+
+		const autoRegistered = repositories.registerForCwd({
+			cwd: root,
+			timestamp: 30,
+		});
+
+		expect(autoRegistered).toMatchObject({
+			id: repository.id,
+			source: "manual",
+			terminalRunCommand: "bun run check",
+			lastActive: 30,
+		});
+
+		repositories.close();
+	});
 });

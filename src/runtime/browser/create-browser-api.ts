@@ -335,6 +335,10 @@ export interface BrowserApi {
 		agentId: string,
 		command: string,
 	): Promise<BrowserTerminalRunCommandResponse>;
+	writeCodingRepositoryTerminalRunCommand(
+		repositoryId: string,
+		command: string,
+	): Promise<BrowserTerminalRunCommandResponse>;
 	readAgentFile(
 		agentId: string,
 		relativePath: string,
@@ -694,6 +698,19 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			return {
 				restored: true,
 				repository: toBrowserCodingRepositorySummary(repository),
+			};
+		},
+		async writeCodingRepositoryTerminalRunCommand(repositoryId, command) {
+			if (!options.codingRepositories) {
+				throw new Error("Coding repository API is not configured");
+			}
+			const nextCommand = normalizeTerminalRunCommand(command);
+			const repository = options.codingRepositories.writeTerminalRunCommand(
+				repositoryId,
+				nextCommand,
+			);
+			return {
+				command: repository.terminalRunCommand,
 			};
 		},
 		async getCodingSession(providerId, sdkSessionId) {
@@ -1400,6 +1417,9 @@ function toBrowserCodingRepositorySummary(
 		...(repository.remoteUrl ? { remoteUrl: repository.remoteUrl } : {}),
 		source: repository.source,
 		status: repository.status,
+		...(repository.terminalRunCommand
+			? { terminalRunCommand: repository.terminalRunCommand }
+			: {}),
 		createdAt: repository.createdAt,
 		lastActive: repository.lastActive,
 		...(repository.archivedAt ? { archivedAt: repository.archivedAt } : {}),

@@ -205,6 +205,9 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	const [undoArchive, setUndoArchive] = useState<InboxUndoArchive | null>(null);
 	const [runRequestsByAgent, setRunRequestsByAgent] =
 		useState<TerminalRunRequestsByAgent>({});
+	const [editingRunCommandAgentId, setEditingRunCommandAgentId] = useState<
+		string | null
+	>(null);
 	const contentRef = useRef<HTMLDivElement | null>(null);
 	const nextRunRequestIdRef = useRef(0);
 	const previousInboxAgentIdRef = useRef<string | null>(activeAgentId);
@@ -270,6 +273,16 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		setUndoArchive(null);
 		setInboxActionError(null);
 	}, [activeAgentId, clearUndoArchiveTimer]);
+
+	useEffect(() => {
+		if (
+			editingRunCommandAgentId === null ||
+			editingRunCommandAgentId === activeAgentId
+		) {
+			return;
+		}
+		setEditingRunCommandAgentId(null);
+	}, [activeAgentId, editingRunCommandAgentId]);
 
 	useEffect(() => {
 		if (
@@ -468,8 +481,25 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		}
 
 		setActiveRunTerminal(activeAgentId);
-		await runCommand.saveDraftCommand();
+		const savedCommand = await runCommand.saveDraftCommand();
+		if (savedCommand) {
+			setEditingRunCommandAgentId(null);
+		}
 	}, [activeAgentId, runCommand, setActiveRunTerminal]);
+
+	const handleEditRunCommand = useCallback(() => {
+		if (!activeAgentId) {
+			return;
+		}
+		setActiveRunTerminal(activeAgentId);
+		runCommand.setDraftCommand(runCommand.command);
+		setEditingRunCommandAgentId(activeAgentId);
+	}, [activeAgentId, runCommand, setActiveRunTerminal]);
+
+	const handleCancelEditRunCommand = useCallback(() => {
+		runCommand.setDraftCommand(runCommand.command);
+		setEditingRunCommandAgentId(null);
+	}, [runCommand]);
 
 	const handleRunRequestDispatched = useCallback(
 		(requestId: number) => {
@@ -691,6 +721,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 					<TerminalTabs
 						activeTerminalId={activeTerminalId}
 						activeTab={activeTerminalTab}
+						canEditRunCommand={Boolean(activeAgentId) && !runCommand.saving}
 						canRunCommand={Boolean(activeAgentId) && !runCommand.saving}
 						leadingContent={
 							<button
@@ -712,6 +743,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 								createTerminal(activeAgentId);
 							}
 						}}
+						onEditRunCommand={handleEditRunCommand}
 						onRenameTerminal={(terminalId, name) => {
 							if (activeAgentId) {
 								renameTerminal(activeAgentId, terminalId, name);
@@ -740,8 +772,10 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 							agentId={activeAgentId}
 							command={runCommand.command}
 							draftCommand={runCommand.draftCommand}
+							editingCommand={editingRunCommandAgentId === activeAgentId}
 							error={runCommand.error}
 							executedCommand={runTerminalCommand}
+							onCancelEditCommand={handleCancelEditRunCommand}
 							onDraftCommandChange={runCommand.setDraftCommand}
 							onRun={() => {
 								void handleRunPanelCommand();

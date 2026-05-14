@@ -8,6 +8,10 @@ interface AgentTerminalRunCommandState {
 }
 
 type TerminalRunCommandSaveEffect = () => string | null;
+type TerminalRunCommandSave = (
+	scopeId: string,
+	command: string,
+) => Promise<{ command: string }>;
 
 const EMPTY_STATE: AgentTerminalRunCommandState = {
 	error: null,
@@ -44,12 +48,26 @@ export function useAgentTerminalRunCommand(
 	runtimeCommand: string,
 	onSaveSucceeded?: TerminalRunCommandSaveEffect,
 ) {
+	return useTerminalRunCommand(
+		agentId,
+		runtimeCommand,
+		updateAgentTerminalRunCommand,
+		onSaveSucceeded,
+	);
+}
+
+export function useTerminalRunCommand(
+	scopeId: string | null,
+	runtimeCommand: string,
+	saveCommand: TerminalRunCommandSave,
+	onSaveSucceeded?: TerminalRunCommandSaveEffect,
+) {
 	const [state, setState] = useState<AgentTerminalRunCommandState>(EMPTY_STATE);
 	const [draftCommand, setDraftCommandState] = useState("");
 	const command = typeof runtimeCommand === "string" ? runtimeCommand : "";
 
 	useEffect(() => {
-		if (!agentId || command.trim().length === 0) {
+		if (!scopeId || command.trim().length === 0) {
 			setState(EMPTY_STATE);
 			setDraftCommandState("");
 			return;
@@ -57,11 +75,11 @@ export function useAgentTerminalRunCommand(
 
 		setState(EMPTY_STATE);
 		setDraftCommandState(command);
-	}, [agentId, command]);
+	}, [scopeId, command]);
 
 	const setDraftCommand = useCallback(
 		(value: string) => {
-			if (!agentId) {
+			if (!scopeId) {
 				return;
 			}
 
@@ -71,11 +89,11 @@ export function useAgentTerminalRunCommand(
 				error: null,
 			}));
 		},
-		[agentId],
+		[scopeId],
 	);
 
 	const saveDraftCommand = useCallback(async (): Promise<string | null> => {
-		if (!agentId) {
+		if (!scopeId) {
 			return null;
 		}
 
@@ -95,7 +113,7 @@ export function useAgentTerminalRunCommand(
 		}));
 
 		try {
-			await updateAgentTerminalRunCommand(agentId, command);
+			await saveCommand(scopeId, command);
 			const saveEffectError = onSaveSucceeded?.() ?? null;
 			if (saveEffectError) {
 				setState({
@@ -117,7 +135,7 @@ export function useAgentTerminalRunCommand(
 			}));
 			return null;
 		}
-	}, [agentId, draftCommand, onSaveSucceeded]);
+	}, [draftCommand, onSaveSucceeded, saveCommand, scopeId]);
 
 	return {
 		command,

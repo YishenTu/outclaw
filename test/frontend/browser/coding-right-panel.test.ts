@@ -8,6 +8,7 @@ import {
 	mergeTreeDirectoryChildren,
 	resolveCodingRightPanelWorkspaceTarget,
 	shouldApplyCodingRepositoryDirectoryChildren,
+	shouldEnableCodingRunCommand,
 	shouldLoadCodingRepositoryGitStatus,
 	shouldLoadCodingRepositoryTree,
 	treeDirectoryLoaded,
@@ -44,6 +45,27 @@ function codingSession(
 }
 
 describe("coding right panel state", () => {
+	test("enables the run command button for a focused coding repository", () => {
+		expect(
+			shouldEnableCodingRunCommand({
+				saving: false,
+				workspaceKey: "/repo",
+			}),
+		).toBe(true);
+		expect(
+			shouldEnableCodingRunCommand({
+				saving: true,
+				workspaceKey: "/repo",
+			}),
+		).toBe(false);
+		expect(
+			shouldEnableCodingRunCommand({
+				saving: false,
+				workspaceKey: undefined,
+			}),
+		).toBe(false);
+	});
+
 	test("targets the focused coding session workspace when one is selected", () => {
 		const sessions = [
 			codingSession({

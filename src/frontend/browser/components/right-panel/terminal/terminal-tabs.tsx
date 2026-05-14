@@ -1,4 +1,4 @@
-import { Play, Plus, X } from "lucide-react";
+import { ChevronDown, Pencil, Play, Plus, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import type {
@@ -9,10 +9,12 @@ import type {
 interface TerminalTabsProps {
 	activeTerminalId: string | null;
 	activeTab: BrowserTerminalTab;
+	canEditRunCommand: boolean;
 	canRunCommand: boolean;
 	leadingContent?: ReactNode;
 	onCloseTerminal: (terminalId: string) => void;
 	onCreateTerminal: () => void;
+	onEditRunCommand: () => void;
 	onRenameTerminal: (terminalId: string, name: string) => void;
 	onRunCommand: () => void;
 	onSelectRun: () => void;
@@ -23,10 +25,12 @@ interface TerminalTabsProps {
 export function TerminalTabs({
 	activeTerminalId,
 	activeTab,
+	canEditRunCommand,
 	canRunCommand,
 	leadingContent,
 	onCloseTerminal,
 	onCreateTerminal,
+	onEditRunCommand,
 	onRenameTerminal,
 	onRunCommand,
 	onSelectRun,
@@ -101,7 +105,9 @@ export function TerminalTabs({
 						<Plus size={16} />
 					</button>
 					<RunCommandButton
+						canEditRunCommand={canEditRunCommand}
 						canRunCommand={canRunCommand}
+						onEditRunCommand={onEditRunCommand}
 						onRunCommand={onRunCommand}
 					/>
 				</div>
@@ -194,7 +200,9 @@ export function TerminalTabs({
 				<Plus size={16} />
 			</button>
 			<RunCommandButton
+				canEditRunCommand={canEditRunCommand}
 				canRunCommand={canRunCommand}
+				onEditRunCommand={onEditRunCommand}
 				onRunCommand={onRunCommand}
 			/>
 		</div>
@@ -232,21 +240,120 @@ function RunTab({
 }
 
 function RunCommandButton({
+	canEditRunCommand,
 	canRunCommand,
+	onEditRunCommand,
 	onRunCommand,
 }: {
+	canEditRunCommand: boolean;
 	canRunCommand: boolean;
+	onEditRunCommand: () => void;
 	onRunCommand: () => void;
 }) {
+	const [menuOpen, setMenuOpen] = useState(false);
+	const menuRef = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		if (!menuOpen) {
+			return;
+		}
+
+		function closeMenu() {
+			setMenuOpen(false);
+		}
+
+		function handlePointerDown(event: PointerEvent) {
+			if (menuRef.current?.contains(event.target as Node)) {
+				return;
+			}
+			closeMenu();
+		}
+
+		function handleKeyDown(event: KeyboardEvent) {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				closeMenu();
+			}
+		}
+
+		document.addEventListener("pointerdown", handlePointerDown);
+		window.addEventListener("blur", closeMenu);
+		window.addEventListener("keydown", handleKeyDown);
+		return () => {
+			document.removeEventListener("pointerdown", handlePointerDown);
+			window.removeEventListener("blur", closeMenu);
+			window.removeEventListener("keydown", handleKeyDown);
+		};
+	}, [menuOpen]);
+
+	useEffect(() => {
+		if (!canEditRunCommand) {
+			setMenuOpen(false);
+		}
+	}, [canEditRunCommand]);
+
 	return (
-		<button
-			type="button"
-			onClick={onRunCommand}
-			disabled={!canRunCommand}
-			className="flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-dark-500"
-			aria-label="Run command"
+		<div ref={menuRef} className="relative flex shrink-0 items-center">
+			<div className="font-mono-ui flex h-6 overflow-hidden rounded border border-dark-800 bg-dark-950 text-[11px] uppercase tracking-[0.12em] text-dark-400">
+				<button
+					type="button"
+					onClick={onRunCommand}
+					disabled={!canRunCommand}
+					className="flex items-center gap-1.5 px-2 transition-colors hover:bg-dark-900 hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-dark-400"
+					aria-label="Run command"
+				>
+					<Play size={12} fill="currentColor" />
+					<span>Run</span>
+				</button>
+				<button
+					type="button"
+					aria-label="Open run command menu"
+					aria-haspopup="menu"
+					aria-expanded={menuOpen}
+					disabled={!canEditRunCommand}
+					onClick={() => setMenuOpen((current) => !current)}
+					className="flex w-6 items-center justify-center border-l border-dark-800 transition-colors hover:bg-dark-900 hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-dark-400"
+				>
+					<ChevronDown size={12} />
+				</button>
+			</div>
+			{menuOpen ? (
+				<RunCommandMenu
+					canEditRunCommand={canEditRunCommand}
+					onEditRunCommand={() => {
+						setMenuOpen(false);
+						onEditRunCommand();
+					}}
+				/>
+			) : null}
+		</div>
+	);
+}
+
+export function RunCommandMenu({
+	canEditRunCommand,
+	onEditRunCommand,
+}: {
+	canEditRunCommand: boolean;
+	onEditRunCommand: () => void;
+}) {
+	return (
+		<div
+			role="menu"
+			aria-label="Run command menu"
+			className="absolute right-0 top-full z-40 mt-1 min-w-[11rem] overflow-hidden rounded-md border border-dark-800 bg-dark-900 py-1 shadow-lg"
 		>
-			<Play size={14} />
-		</button>
+			<button
+				type="button"
+				role="menuitem"
+				aria-label="Edit run command"
+				disabled={!canEditRunCommand}
+				onClick={onEditRunCommand}
+				className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-dark-300 transition-colors hover:bg-dark-800/70 hover:text-dark-100 disabled:cursor-not-allowed disabled:text-dark-600 disabled:hover:bg-transparent disabled:hover:text-dark-600"
+			>
+				<Pencil size={14} className="shrink-0" />
+				<span>Edit command</span>
+			</button>
+		</div>
 	);
 }

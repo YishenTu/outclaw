@@ -5,7 +5,10 @@ import {
 	TabBarView,
 } from "../../../src/frontend/browser/components/center/tab-bar.tsx";
 import { RightPanelUpperTabs } from "../../../src/frontend/browser/components/right-panel/right-panel.tsx";
-import { TerminalTabs } from "../../../src/frontend/browser/components/right-panel/terminal/terminal-tabs.tsx";
+import {
+	RunCommandMenu,
+	TerminalTabs,
+} from "../../../src/frontend/browser/components/right-panel/terminal/terminal-tabs.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 import { useTabsStore } from "../../../src/frontend/browser/stores/tabs.ts";
@@ -89,9 +92,11 @@ describe("browser tab strip active indicator", () => {
 			<TerminalTabs
 				activeTerminalId="terminal-1"
 				activeTab="terminal"
+				canEditRunCommand={true}
 				canRunCommand={true}
 				onCloseTerminal={() => {}}
 				onCreateTerminal={() => {}}
+				onEditRunCommand={() => {}}
 				onRenameTerminal={() => {}}
 				onRunCommand={() => {}}
 				onSelectRun={() => {}}
@@ -116,9 +121,11 @@ describe("browser tab strip active indicator", () => {
 			<TerminalTabs
 				activeTerminalId="terminal-1"
 				activeTab="terminal"
+				canEditRunCommand={true}
 				canRunCommand={true}
 				onCloseTerminal={() => {}}
 				onCreateTerminal={() => {}}
+				onEditRunCommand={() => {}}
 				onRenameTerminal={() => {}}
 				onRunCommand={() => {}}
 				onSelectRun={() => {}}
@@ -142,9 +149,11 @@ describe("browser tab strip active indicator", () => {
 			<TerminalTabs
 				activeTerminalId="terminal-1"
 				activeTab="terminal"
+				canEditRunCommand={true}
 				canRunCommand={true}
 				onCloseTerminal={() => {}}
 				onCreateTerminal={() => {}}
+				onEditRunCommand={() => {}}
 				onRenameTerminal={() => {}}
 				onRunCommand={() => {}}
 				onSelectRun={() => {}}
@@ -171,9 +180,11 @@ describe("browser tab strip active indicator", () => {
 			<TerminalTabs
 				activeTerminalId="terminal-1"
 				activeTab="run"
+				canEditRunCommand={true}
 				canRunCommand={true}
 				onCloseTerminal={() => {}}
 				onCreateTerminal={() => {}}
+				onEditRunCommand={() => {}}
 				onRenameTerminal={() => {}}
 				onRunCommand={() => {}}
 				onSelectRun={() => {}}
@@ -194,8 +205,27 @@ describe("browser tab strip active indicator", () => {
 		expect(html).toContain("relative flex shrink-0");
 		expect(html).toContain("h-full min-w-0 font-mono-ui");
 		expect(html).toContain('aria-label="Run command"');
-		expect(html).toContain("flex items-center justify-center");
+		expect(html).toContain('aria-label="Open run command menu"');
+		expect(html).toContain("lucide-chevron-down");
+		expect(html).toContain('aria-expanded="false"');
+		expect(html).toContain("font-mono-ui flex h-6");
+		expect(html).toContain("text-[11px] uppercase tracking-[0.12em]");
+		expect(html).toContain("rounded border border-dark-800");
+		expect(html).not.toContain("⌘R");
 		expect(html).toContain("h-0.5 bg-brand");
+	});
+
+	test("terminal run command menu exposes edit as the first action", () => {
+		const html = renderToStaticMarkup(
+			<RunCommandMenu canEditRunCommand={true} onEditRunCommand={() => {}} />,
+		);
+
+		expect(html).toContain('role="menu"');
+		expect(html).toContain('aria-label="Run command menu"');
+		expect(html).toContain('role="menuitem"');
+		expect(html).toContain('aria-label="Edit run command"');
+		expect(html).toContain("Edit command");
+		expect(html).toContain("lucide-pencil");
 	});
 
 	test("terminal tabs keep space between tab labels", () => {
@@ -203,9 +233,11 @@ describe("browser tab strip active indicator", () => {
 			<TerminalTabs
 				activeTerminalId="terminal-1"
 				activeTab="terminal"
+				canEditRunCommand={true}
 				canRunCommand={true}
 				onCloseTerminal={() => {}}
 				onCreateTerminal={() => {}}
+				onEditRunCommand={() => {}}
 				onRenameTerminal={() => {}}
 				onRunCommand={() => {}}
 				onSelectRun={() => {}}
