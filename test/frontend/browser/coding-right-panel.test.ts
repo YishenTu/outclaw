@@ -137,9 +137,29 @@ describe("coding right panel state", () => {
 					sdkSessionId: "missing-session",
 				},
 				repository: TEST_REPOSITORY,
+				repositorySessionsLoaded: false,
 				sessions: [],
 			}),
 		).toBeUndefined();
+	});
+
+	test("targets the repository root when a repo has no coding sessions yet", () => {
+		expect(
+			resolveCodingRightPanelWorkspaceTarget({
+				focusedRepositoryId: "repo-1",
+				focusedSession: {
+					providerId: "codex",
+					sdkSessionId: "missing-session",
+				},
+				repository: TEST_REPOSITORY,
+				repositorySessionsLoaded: true,
+				sessions: [],
+			}),
+		).toEqual({
+			repositoryId: "repo-1",
+			workspaceCwd: "/repo",
+			workspaceKey: "/repo",
+		});
 	});
 
 	test("loads the repository file tree only while the files tab is visible", () => {

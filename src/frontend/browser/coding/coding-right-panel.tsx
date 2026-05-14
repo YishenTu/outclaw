@@ -93,10 +93,14 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	const sessions = focusedRepositoryId
 		? (sessionsByRepository[focusedRepositoryId] ?? [])
 		: [];
+	const repositorySessionsLoaded = focusedRepositoryId
+		? Object.hasOwn(sessionsByRepository, focusedRepositoryId)
+		: false;
 	const workspaceTarget = resolveCodingRightPanelWorkspaceTarget({
 		focusedRepositoryId,
 		focusedSession,
 		repository,
+		repositorySessionsLoaded,
 		sessions,
 	});
 	const workspaceKey = workspaceTarget?.workspaceKey;
@@ -778,11 +782,13 @@ export function resolveCodingRightPanelWorkspaceTarget({
 	focusedRepositoryId,
 	focusedSession,
 	repository,
+	repositorySessionsLoaded,
 	sessions,
 }: {
 	focusedRepositoryId: string | undefined;
 	focusedSession: { providerId: string; sdkSessionId: string } | undefined;
 	repository: BrowserCodingRepositorySummary | undefined;
+	repositorySessionsLoaded?: boolean;
 	sessions: BrowserCodingSessionSummary[];
 }): CodingRightPanelWorkspaceTarget | undefined {
 	if (!focusedRepositoryId || !repository) {
@@ -800,6 +806,9 @@ export function resolveCodingRightPanelWorkspaceTarget({
 				entry.repositoryId === focusedRepositoryId),
 	);
 	if (!session) {
+		if (repositorySessionsLoaded && sessions.length === 0) {
+			return rootWorkspaceTarget(repository);
+		}
 		return undefined;
 	}
 
