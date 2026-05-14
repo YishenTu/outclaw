@@ -242,6 +242,8 @@ describe("CodexAdapter", () => {
 				params: {
 					model: "gpt-5.5",
 					cwd: "/work/repo",
+					approvalPolicy: "never",
+					sandbox: "danger-full-access",
 					experimentalRawEvents: true,
 				},
 			},
@@ -252,6 +254,8 @@ describe("CodexAdapter", () => {
 					input: [{ type: "text", text: "say hello", text_elements: [] }],
 					model: "gpt-5.5",
 					effort: "high",
+					approvalPolicy: "never",
+					sandboxPolicy: { type: "dangerFullAccess" },
 					summary: "auto",
 				},
 			},
@@ -539,6 +543,8 @@ describe("CodexAdapter", () => {
 						path: "/work/repo/.codex/skills/review/SKILL.md",
 					},
 				],
+				approvalPolicy: "never",
+				sandboxPolicy: { type: "dangerFullAccess" },
 				summary: "auto",
 			},
 		});
@@ -573,6 +579,8 @@ describe("CodexAdapter", () => {
 			params: {
 				threadId: "codex-thread-123",
 				cwd: "/work/repo",
+				approvalPolicy: "never",
+				sandbox: "danger-full-access",
 				experimentalRawEvents: true,
 			},
 		});

@@ -35,6 +35,9 @@ interface CodexAdapterOptions {
 }
 
 const DEFAULT_CODEX_REASONING_SUMMARY = "auto";
+const CODEX_CODE_MODE_APPROVAL_POLICY = "never";
+const CODEX_CODE_MODE_THREAD_SANDBOX = "danger-full-access";
+const CODEX_CODE_MODE_TURN_SANDBOX_POLICY = { type: "dangerFullAccess" };
 
 export class CodexAdapter implements Facade {
 	readonly providerId = "codex";
@@ -256,6 +259,8 @@ interface CodexActiveTurn {
 
 function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
+		approvalPolicy: CODEX_CODE_MODE_APPROVAL_POLICY,
+		sandbox: CODEX_CODE_MODE_THREAD_SANDBOX,
 		experimentalRawEvents: true,
 	};
 
@@ -281,6 +286,8 @@ function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 function buildThreadResumeParams(params: RunParams): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
 		threadId: params.resume,
+		approvalPolicy: CODEX_CODE_MODE_APPROVAL_POLICY,
+		sandbox: CODEX_CODE_MODE_THREAD_SANDBOX,
 		experimentalRawEvents: true,
 	};
 
@@ -308,6 +315,8 @@ function buildTurnStartParams(
 	const payload: Record<string, unknown> = {
 		threadId,
 		input,
+		approvalPolicy: CODEX_CODE_MODE_APPROVAL_POLICY,
+		sandboxPolicy: CODEX_CODE_MODE_TURN_SANDBOX_POLICY,
 		summary: DEFAULT_CODEX_REASONING_SUMMARY,
 	};
 
