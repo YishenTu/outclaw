@@ -11,9 +11,11 @@ interface TreeFetchParams {
 }
 
 interface GitFetchParams {
-	activeUpperTab: UpperRightPanelTab;
+	active: boolean;
 	gitRevision: number;
 	loadedRevision: number | null;
+	loadedScopeKey: string | null;
+	scopeKey: string | null;
 }
 
 interface InboxFetchParams {
@@ -40,8 +42,11 @@ export function shouldFetchAgentTree(params: TreeFetchParams): boolean {
 }
 
 export function shouldFetchGitStatus(params: GitFetchParams): boolean {
-	if (params.activeUpperTab !== "git") {
+	if (!params.active) {
 		return false;
+	}
+	if (params.loadedScopeKey !== params.scopeKey) {
+		return true;
 	}
 	return params.loadedRevision !== params.gitRevision;
 }

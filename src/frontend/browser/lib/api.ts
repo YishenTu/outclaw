@@ -441,6 +441,7 @@ export async function fetchAgentTree(
 export async function fetchCodingRepositoryTree(
 	repositoryId: string,
 	path?: string,
+	params?: { providerId?: string; sdkSessionId?: string },
 ): Promise<BrowserTreeEntry[]> {
 	const url = new URL(
 		`/api/coding/repositories/${encodeURIComponent(repositoryId)}/tree`,
@@ -449,6 +450,7 @@ export async function fetchCodingRepositoryTree(
 	if (path) {
 		url.searchParams.set("path", path);
 	}
+	appendCodingWorkspaceParams(url, params);
 	return parseJsonResponse(await fetch(url));
 }
 
@@ -700,20 +702,40 @@ export async function writeAgentFile(
 	return parseJsonResponse(response);
 }
 
-function appendRepositoryIdParam(
+function appendCodingWorkspaceParams(
 	url: URL,
-	params?: { repositoryId?: string },
+	params?: { providerId?: string; sdkSessionId?: string },
 ): URL {
-	if (params?.repositoryId) {
-		url.searchParams.set("repositoryId", params.repositoryId);
+	if (params?.providerId) {
+		url.searchParams.set("providerId", params.providerId);
+	}
+	if (params?.sdkSessionId) {
+		url.searchParams.set("sdkSessionId", params.sdkSessionId);
 	}
 	return url;
 }
 
+function appendGitScopeParams(
+	url: URL,
+	params?: {
+		providerId?: string;
+		repositoryId?: string;
+		sdkSessionId?: string;
+	},
+): URL {
+	if (params?.repositoryId) {
+		url.searchParams.set("repositoryId", params.repositoryId);
+	}
+	appendCodingWorkspaceParams(url, params);
+	return url;
+}
+
 export async function fetchGitStatus(params?: {
+	providerId?: string;
 	repositoryId?: string;
+	sdkSessionId?: string;
 }): Promise<BrowserGitStatusResponse> {
-	const url = appendRepositoryIdParam(
+	const url = appendGitScopeParams(
 		new URL("/api/git/status", window.location.origin),
 		params,
 	);
@@ -721,11 +743,13 @@ export async function fetchGitStatus(params?: {
 }
 
 export async function fetchGitHistory(params?: {
-	repositoryId?: string;
 	cursor?: string;
 	limit?: number;
+	providerId?: string;
+	repositoryId?: string;
+	sdkSessionId?: string;
 }): Promise<BrowserGitHistory> {
-	const url = appendRepositoryIdParam(
+	const url = appendGitScopeParams(
 		new URL("/api/git/history", window.location.origin),
 		params,
 	);
@@ -739,9 +763,11 @@ export async function fetchGitHistory(params?: {
 }
 
 export async function initGitRepo(params?: {
+	providerId?: string;
 	repositoryId?: string;
+	sdkSessionId?: string;
 }): Promise<BrowserGitStatusResponse> {
-	const url = appendRepositoryIdParam(
+	const url = appendGitScopeParams(
 		new URL("/api/git/init", window.location.origin),
 		params,
 	);
@@ -754,9 +780,13 @@ export async function initGitRepo(params?: {
 
 export async function fetchGitDiff(
 	path: string,
-	params?: { repositoryId?: string },
+	params?: {
+		providerId?: string;
+		repositoryId?: string;
+		sdkSessionId?: string;
+	},
 ): Promise<BrowserGitDiffResponse> {
-	const url = appendRepositoryIdParam(
+	const url = appendGitScopeParams(
 		new URL("/api/git/diff", window.location.origin),
 		params,
 	);
@@ -766,9 +796,13 @@ export async function fetchGitDiff(
 
 export async function fetchGitCommit(
 	sha: string,
-	params?: { repositoryId?: string },
+	params?: {
+		providerId?: string;
+		repositoryId?: string;
+		sdkSessionId?: string;
+	},
 ): Promise<BrowserGitCommitResponse> {
-	const url = appendRepositoryIdParam(
+	const url = appendGitScopeParams(
 		new URL("/api/git/commit", window.location.origin),
 		params,
 	);
@@ -778,9 +812,13 @@ export async function fetchGitCommit(
 
 export async function fetchGitCommitStats(
 	sha: string,
-	params?: { repositoryId?: string },
+	params?: {
+		providerId?: string;
+		repositoryId?: string;
+		sdkSessionId?: string;
+	},
 ): Promise<BrowserGitCommitStats> {
-	const url = appendRepositoryIdParam(
+	const url = appendGitScopeParams(
 		new URL("/api/git/commit/stats", window.location.origin),
 		params,
 	);

@@ -3,24 +3,25 @@ import type {
 	BrowserGitHistoryCommit,
 } from "../../../../../common/protocol.ts";
 import { GitCommitHistoryItem } from "./git-commit-history-item.tsx";
+import type { GitCommitStatsScope } from "./git-commit-stats-cache.ts";
 
 interface GitCommitHistoryProps {
+	gitScope?: GitCommitStatsScope;
 	history: BrowserGitHistory;
 	loadingMore?: boolean;
 	loadError?: string | null;
 	onOpenCommit?: (commit: BrowserGitHistoryCommit) => void;
 	onSelectCommit?: (sha: string | null) => void;
-	repositoryId?: string;
 	selectedCommitSha?: string | null;
 }
 
 export function GitCommitHistory({
+	gitScope,
 	history,
 	loadingMore = false,
 	loadError = null,
 	onOpenCommit,
 	onSelectCommit,
-	repositoryId,
 	selectedCommitSha = null,
 }: GitCommitHistoryProps) {
 	if (history.commits.length === 0) {
@@ -39,11 +40,11 @@ export function GitCommitHistory({
 					<li key={commit.sha}>
 						<GitCommitHistoryItem
 							commit={commit}
+							gitScope={gitScope}
 							onOpenCommit={onOpenCommit}
 							onToggleSelect={() =>
 								onSelectCommit?.(selected ? null : commit.sha)
 							}
-							repositoryId={repositoryId}
 							selected={selected}
 						/>
 					</li>

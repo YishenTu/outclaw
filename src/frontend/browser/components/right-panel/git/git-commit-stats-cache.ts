@@ -3,24 +3,35 @@ import { fetchGitCommitStats } from "../../../lib/api.ts";
 
 const statsRequests = new Map<string, Promise<BrowserGitCommitStats>>();
 
+export interface GitCommitStatsScope {
+	providerId?: string;
+	repositoryId?: string;
+	sdkSessionId?: string;
+	workspaceKey?: string;
+}
+
 function cacheKey({
 	repositoryId,
 	sha,
+	workspaceKey,
 }: {
 	repositoryId?: string;
 	sha: string;
+	workspaceKey?: string;
 }): string {
-	return `${repositoryId ?? ""}:${sha}`;
+	return `${workspaceKey ?? repositoryId ?? ""}:${sha}`;
 }
 
 export function readCachedGitCommitStats({
+	providerId,
 	repositoryId,
 	sha,
-}: {
-	repositoryId?: string;
+	sdkSessionId,
+	workspaceKey,
+}: GitCommitStatsScope & {
 	sha: string;
 }): Promise<BrowserGitCommitStats> {
-	const key = cacheKey({ repositoryId, sha });
+	const key = cacheKey({ repositoryId, sha, workspaceKey });
 	const cached = statsRequests.get(key);
 	if (cached) {
 		return cached;
@@ -28,7 +39,13 @@ export function readCachedGitCommitStats({
 
 	const request = fetchGitCommitStats(
 		sha,
-		repositoryId ? { repositoryId } : undefined,
+		repositoryId
+			? {
+					repositoryId,
+					...(providerId ? { providerId } : {}),
+					...(sdkSessionId ? { sdkSessionId } : {}),
+				}
+			: undefined,
 	).catch((error: unknown) => {
 		statsRequests.delete(key);
 		throw error;
@@ -38,8 +55,11 @@ export function readCachedGitCommitStats({
 }
 
 export function prefetchGitCommitStats(params: {
+	providerId?: string;
 	repositoryId?: string;
+	sdkSessionId?: string;
 	sha: string;
+	workspaceKey?: string;
 }): void {
 	void readCachedGitCommitStats(params).catch(() => {});
 }

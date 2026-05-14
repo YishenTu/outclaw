@@ -25,10 +25,15 @@ export function handleTerminalGatewayRequest(
 	}
 
 	const repositoryId = url.searchParams.get("repositoryId") ?? undefined;
+	const providerId = url.searchParams.get("providerId") ?? undefined;
+	const sdkSessionId = url.searchParams.get("sdkSessionId") ?? undefined;
 	const agentId = url.searchParams.get("agentId") ?? undefined;
 	const terminalCwd = browserApi
 		? repositoryId
-			? browserApi.getCodingRepositoryCwd?.(repositoryId)
+			? browserApi.getCodingRepositoryCwd?.(repositoryId, {
+					...(providerId ? { providerId } : {}),
+					...(sdkSessionId ? { sdkSessionId } : {}),
+				})
 			: agentId
 				? browserApi.getAgentTerminalCwd(agentId)
 				: undefined

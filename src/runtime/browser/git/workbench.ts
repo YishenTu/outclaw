@@ -27,6 +27,10 @@ const MAX_GIT_HISTORY_COMMITS = 30;
 const MAX_GIT_HISTORY_PAGE_SIZE = 100;
 const MAX_GIT_NUMSTAT_PATHS_PER_BATCH = 200;
 
+interface GitWorkspaceOptions {
+	rootCwd?: string;
+}
+
 export function normalizeGitPaths(paths: readonly string[]): string[] {
 	return paths
 		.map((path) => normalizeBrowserPath(path))
@@ -34,45 +38,50 @@ export function normalizeGitPaths(paths: readonly string[]): string[] {
 }
 
 export function readGitStatus(
-	gitRoot: string,
+	cwd: string,
 	ignoredGitPaths: readonly string[],
+	options: GitWorkspaceOptions = {},
 ): BrowserGitStatusResponse {
-	if (!isGitRepo(gitRoot)) {
-		return { initialized: false, root: gitRoot };
+	const scope = resolveGitScope(cwd, options);
+	if (!scope) {
+		return { initialized: false, root: cwd };
 	}
 	const output = runGit(
-		gitRoot,
+		scope.root,
 		[
 			"status",
 			"--porcelain=v1",
 			"--branch",
 			"--untracked-files=all",
-			...gitStatusPathspecArgs(".", ignoredGitPaths),
+			...gitStatusPathspecArgs(scope.pathspec, ignoredGitPaths),
 		],
 		false,
 	);
 	return parseGitStatus(
 		output,
-		gitRoot,
-		readGitHistory(gitRoot),
+		scope.root,
+		readGitHistory(cwd, options),
 		ignoredGitPaths,
 	);
 }
 
 export function initGitRepo(
-	gitRoot: string,
+	cwd: string,
 	ignoredGitPaths: readonly string[],
+	options: GitWorkspaceOptions = {},
 ): BrowserGitStatusResponse {
-	if (!isGitRepo(gitRoot)) {
-		runGit(gitRoot, ["init"], false);
+	if (!resolveGitScope(cwd, options)) {
+		runGit(options.rootCwd ?? cwd, ["init"], false);
 	}
-	return readGitStatus(gitRoot, ignoredGitPaths);
+	return readGitStatus(cwd, ignoredGitPaths, options);
 }
 
 export function readGitDiff(
-	gitRoot: string,
+	cwd: string,
 	path: string,
+	options: GitWorkspaceOptions = {},
 ): BrowserGitDiffResponse {
+	const gitRoot = resolveGitScope(cwd, options)?.root ?? options.rootCwd ?? cwd;
 	const absolutePath = resolveWithinRoot(gitRoot, path);
 	const relativePath = toRelativePath(gitRoot, absolutePath);
 	let diff = runGit(
@@ -104,10 +113,12 @@ export function readGitDiff(
 }
 
 export function readGitCommitStats(
-	root: string,
+	cwd: string,
 	sha: string,
+	options: GitWorkspaceOptions = {},
 ): BrowserGitCommitStats {
-	const { parentSha, resolvedSha } = readCommitIdentity(root, sha);
+	const scope = requireGitScope(cwd, options);
+	const { parentSha, resolvedSha } = readCommitIdentity(scope.root, sha);
 	const statsArgs: string[] =
 		parentSha === undefined
 			? [
@@ -118,6 +129,8 @@ export function readGitCommitStats(
 					"--no-ext-diff",
 					"--format=",
 					resolvedSha,
+					"--",
+					scope.pathspec,
 				]
 			: [
 					"diff",
@@ -127,10 +140,12 @@ export function readGitCommitStats(
 					"--no-ext-diff",
 					parentSha,
 					resolvedSha,
+					"--",
+					scope.pathspec,
 				];
 
 	const { numstatByPath, statusByPath } = parseGitRawNumstatZ(
-		runGit(root, statsArgs, false),
+		runGit(scope.root, statsArgs, false),
 	);
 
 	const files: BrowserGitCommitFileStat[] = [];
@@ -318,12 +333,14 @@ function mapGitStatusCode(
 }
 
 export function readGitCommit(
-	root: string,
+	cwd: string,
 	sha: string,
+	options: GitWorkspaceOptions = {},
 ): BrowserGitCommitResponse {
-	const resolvedSha = resolveGitCommitSha(root, sha);
+	const scope = requireGitScope(cwd, options);
+	const resolvedSha = resolveGitCommitSha(scope.root, sha);
 	const metadata = runGit(
-		root,
+		scope.root,
 		[
 			"show",
 			"--no-patch",
@@ -354,13 +371,29 @@ export function readGitCommit(
 	const diff =
 		parents[0] === undefined
 			? runGit(
-					root,
-					["show", "--format=", "--no-ext-diff", "--binary", resolvedSha],
+					scope.root,
+					[
+						"show",
+						"--format=",
+						"--no-ext-diff",
+						"--binary",
+						resolvedSha,
+						"--",
+						scope.pathspec,
+					],
 					false,
 				)
 			: runGit(
-					root,
-					["diff", "--no-ext-diff", "--binary", parents[0].sha, resolvedSha],
+					scope.root,
+					[
+						"diff",
+						"--no-ext-diff",
+						"--binary",
+						parents[0].sha,
+						resolvedSha,
+						"--",
+						scope.pathspec,
+					],
 					false,
 				);
 
@@ -453,7 +486,7 @@ function gitProcessEnv(): Record<string, string> {
 	return env;
 }
 
-function isGitRepo(cwd: string): boolean {
+function findGitRoot(cwd: string): string | undefined {
 	const result = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
 		cwd,
 		env: gitProcessEnv(),
@@ -461,12 +494,40 @@ function isGitRepo(cwd: string): boolean {
 		stdout: "pipe",
 	});
 	if (result.exitCode !== 0) {
-		return false;
+		return undefined;
 	}
+	return canonicalizePath(result.stdout.toString().trim());
+}
 
-	return (
-		canonicalizePath(result.stdout.toString().trim()) === canonicalizePath(cwd)
-	);
+function resolveGitScope(
+	cwd: string,
+	options: GitWorkspaceOptions = {},
+): { root: string; pathspec: string } | undefined {
+	const root = findGitRoot(cwd);
+	if (!root) {
+		return undefined;
+	}
+	if (
+		options.rootCwd &&
+		canonicalizePath(options.rootCwd) !== canonicalizePath(root)
+	) {
+		return undefined;
+	}
+	return {
+		root,
+		pathspec: toRelativeDescendantPath(root, cwd) || ".",
+	};
+}
+
+function requireGitScope(
+	cwd: string,
+	options: GitWorkspaceOptions = {},
+): { root: string; pathspec: string } {
+	const scope = resolveGitScope(cwd, options);
+	if (!scope) {
+		throw new Error(`Not a git repository: ${cwd}`);
+	}
+	return scope;
 }
 
 function canonicalizePath(path: string): string {
@@ -862,14 +923,19 @@ function gitStatusPathspecArgs(
 }
 
 export function readGitHistory(
-	root: string,
-	options: { cursor?: string; limit?: number } = {},
+	cwd: string,
+	options: { cursor?: string; limit?: number; rootCwd?: string } = {},
 ): BrowserGitHistory {
+	const scope = resolveGitScope(cwd, options);
+	if (!scope) {
+		return { commits: [] };
+	}
 	const limit = normalizeGitHistoryLimit(options.limit);
 	const offset = parseGitHistoryCursor(options.cursor);
-	const commits = readGitHistoryCommits(root, {
+	const commits = readGitHistoryCommits(scope.root, {
 		limit: limit + 1,
 		offset,
+		pathspec: scope.pathspec,
 	});
 	return {
 		commits: commits.slice(0, limit),
@@ -903,7 +969,7 @@ function parseGitHistoryCursor(cursor: string | undefined): number {
 
 function readGitHistoryCommits(
 	root: string,
-	options: { limit: number; offset: number },
+	options: { limit: number; offset: number; pathspec: string },
 ): BrowserGitHistoryCommit[] {
 	const result = Bun.spawnSync(
 		[
@@ -916,6 +982,8 @@ function readGitHistoryCommits(
 			`--skip=${options.offset}`,
 			"--format=%H%x1f%P%x1f%an%x1f%aI%x1f%s",
 			"--no-color",
+			"--",
+			options.pathspec,
 		],
 		{
 			cwd: root,

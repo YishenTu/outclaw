@@ -321,9 +321,12 @@ export interface BrowserApi {
 	): Promise<WorkspaceFileEntry[]>;
 	listCodingRepositoryTree(
 		repositoryId: string,
-		params?: { path?: string },
+		params?: { path?: string; providerId?: string; sdkSessionId?: string },
 	): Promise<BrowserTreeEntry[]>;
-	getCodingRepositoryCwd(repositoryId: string): string | undefined;
+	getCodingRepositoryCwd(
+		repositoryId: string,
+		params?: { providerId?: string; sdkSessionId?: string },
+	): string | undefined;
 	readConfigFile(): Promise<BrowserConfigResponse>;
 	writeConfigFile(
 		document: Record<string, unknown>,
@@ -344,26 +347,44 @@ export interface BrowserApi {
 	): Promise<BrowserFileResponse>;
 	initGitRepo(params?: {
 		repositoryId?: string;
+		providerId?: string;
+		sdkSessionId?: string;
 	}): Promise<BrowserGitStatusResponse>;
 	readGitCommit(
 		sha: string,
-		params?: { repositoryId?: string },
+		params?: {
+			repositoryId?: string;
+			providerId?: string;
+			sdkSessionId?: string;
+		},
 	): Promise<BrowserGitCommitResponse>;
 	readGitCommitStats(
 		sha: string,
-		params?: { repositoryId?: string },
+		params?: {
+			repositoryId?: string;
+			providerId?: string;
+			sdkSessionId?: string;
+		},
 	): Promise<BrowserGitCommitStats>;
 	readGitDiff(
 		path: string,
-		params?: { repositoryId?: string },
+		params?: {
+			repositoryId?: string;
+			providerId?: string;
+			sdkSessionId?: string;
+		},
 	): Promise<BrowserGitDiffResponse>;
 	readGitHistory(params?: {
 		repositoryId?: string;
+		providerId?: string;
+		sdkSessionId?: string;
 		cursor?: string;
 		limit?: number;
 	}): Promise<BrowserGitHistory>;
 	readGitStatus(params?: {
 		repositoryId?: string;
+		providerId?: string;
+		sdkSessionId?: string;
 	}): Promise<BrowserGitStatusResponse>;
 	restoreAgentInboxItem(
 		agentId: string,
@@ -400,11 +421,55 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		return repository.rootCwd;
 	}
 
-	function resolveGitCwd(params?: { repositoryId?: string }): string {
-		if (params?.repositoryId) {
-			return resolveRepositoryCwd(params.repositoryId);
+	function resolveCodingWorkspaceCwd(
+		repositoryId: string,
+		params?: { providerId?: string; sdkSessionId?: string },
+	): { cwd: string; rootCwd: string } {
+		const rootCwd = resolveRepositoryCwd(repositoryId);
+		if (!params?.providerId && !params?.sdkSessionId) {
+			return { cwd: rootCwd, rootCwd };
 		}
-		return options.gitRoot;
+		if (!params.providerId || !params.sdkSessionId) {
+			throw new Error(
+				"Coding session workspace requires provider and session id",
+			);
+		}
+		const resolution = options.codingSessions?.resolveRef({
+			providerId: params.providerId,
+			sdkSessionId: params.sdkSessionId,
+		});
+		if (!resolution || resolution.status === "not_found") {
+			throw new Error(
+				`Unknown coding session: ${params.providerId}/${params.sdkSessionId}`,
+			);
+		}
+		if (resolution.status === "ambiguous") {
+			throw new Error(`Ambiguous coding session: ${params.sdkSessionId}`);
+		}
+		const session = resolution.session;
+		if (session.repositoryId && session.repositoryId !== repositoryId) {
+			throw new Error(
+				`Coding session does not belong to repository: ${repositoryId}`,
+			);
+		}
+		const sessionCwd = canonicalizeForCompare(session.cwd);
+		if (!isPathWithin(rootCwd, sessionCwd)) {
+			throw new Error(
+				`Coding session cwd must be within repository root: ${rootCwd}`,
+			);
+		}
+		return { cwd: sessionCwd, rootCwd };
+	}
+
+	function resolveGitWorkspace(params?: {
+		repositoryId?: string;
+		providerId?: string;
+		sdkSessionId?: string;
+	}): { cwd: string; rootCwd: string } {
+		if (params?.repositoryId) {
+			return resolveCodingWorkspaceCwd(params.repositoryId, params);
+		}
+		return { cwd: options.gitRoot, rootCwd: options.gitRoot };
 	}
 
 	function resolveGitIgnoredPaths(params?: {
@@ -417,8 +482,11 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		getAgentTerminalCwd(agentId) {
 			return agentsById.get(agentId)?.homeDir;
 		},
-		getCodingRepositoryCwd(repositoryId) {
-			return options.codingRepositories?.get(repositoryId)?.rootCwd;
+		getCodingRepositoryCwd(repositoryId, params) {
+			if (!options.codingRepositories?.get(repositoryId)) {
+				return undefined;
+			}
+			return resolveCodingWorkspaceCwd(repositoryId, params).cwd;
 		},
 		listAgents(params) {
 			return listBrowserAgents({
@@ -1123,45 +1191,68 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			};
 		},
 		async readGitStatus(params) {
+			const workspace = resolveGitWorkspace(params);
 			return readGitStatusWorkbench(
-				resolveGitCwd(params),
+				workspace.cwd,
 				resolveGitIgnoredPaths(params),
+				{ rootCwd: workspace.rootCwd },
 			);
 		},
 		async initGitRepo(params) {
+			const workspace = resolveGitWorkspace(params);
 			return initGitRepoWorkbench(
-				resolveGitCwd(params),
+				workspace.cwd,
 				resolveGitIgnoredPaths(params),
+				{ rootCwd: workspace.rootCwd },
 			);
 		},
 		async readGitCommit(sha, params) {
-			return readGitCommitWorkbench(resolveGitCwd(params), sha);
+			const workspace = resolveGitWorkspace(params);
+			return readGitCommitWorkbench(workspace.cwd, sha, {
+				rootCwd: workspace.rootCwd,
+			});
 		},
 		async readGitCommitStats(sha, params) {
-			return readGitCommitStatsWorkbench(resolveGitCwd(params), sha);
+			const workspace = resolveGitWorkspace(params);
+			return readGitCommitStatsWorkbench(workspace.cwd, sha, {
+				rootCwd: workspace.rootCwd,
+			});
 		},
 		async readGitDiff(path, params) {
-			return readGitDiffWorkbench(resolveGitCwd(params), path);
+			const workspace = resolveGitWorkspace(params);
+			return readGitDiffWorkbench(workspace.cwd, path, {
+				rootCwd: workspace.rootCwd,
+			});
 		},
 		async readGitHistory(params) {
-			return readGitHistoryWorkbench(resolveGitCwd(params), {
+			const workspace = resolveGitWorkspace(params);
+			return readGitHistoryWorkbench(workspace.cwd, {
 				cursor: params?.cursor,
 				limit: params?.limit,
+				rootCwd: workspace.rootCwd,
 			});
 		},
 		async listCodingRepositoryTree(repositoryId, params) {
-			const cwd = resolveRepositoryCwd(repositoryId);
+			const workspace = resolveCodingWorkspaceCwd(repositoryId, params);
 			const currentDir = params?.path
-				? resolveExistingPathWithinRoot(cwd, params.path)
-				: cwd;
+				? resolveExistingPathWithinRoot(workspace.rootCwd, params.path)
+				: workspace.cwd;
+			if (!isPathWithin(workspace.cwd, currentDir)) {
+				throw new Error("Path escapes coding session cwd");
+			}
 			const gitStatuses = readAgentTreeGitStatuses(
-				cwd,
-				cwd,
+				workspace.rootCwd,
+				workspace.rootCwd,
 				repositoryIgnoredGitPaths,
 			);
-			return await listRepositoryTreeEntries(cwd, currentDir, gitStatuses, {
-				maxDepth: 1,
-			});
+			return await listRepositoryTreeEntries(
+				workspace.rootCwd,
+				currentDir,
+				gitStatuses,
+				{
+					maxDepth: 1,
+				},
+			);
 		},
 		async uploadImages(images) {
 			if (!options.filesRoot) {

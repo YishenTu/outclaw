@@ -19,6 +19,7 @@ import {
 } from "../../../stores/right-panel-refresh.ts";
 import { gitCommitSubject, shortGitSha } from "./git-commit-format.ts";
 import {
+	type GitCommitStatsScope,
 	prefetchGitCommitStats,
 	readCachedGitCommitStats,
 } from "./git-commit-stats-cache.ts";
@@ -55,17 +56,17 @@ function splitCommitMessage(message: string): {
 
 interface GitCommitHistoryItemProps {
 	commit: BrowserGitHistoryCommit;
+	gitScope?: GitCommitStatsScope;
 	onOpenCommit?: (commit: BrowserGitHistoryCommit) => void;
 	onToggleSelect: () => void;
-	repositoryId?: string;
 	selected: boolean;
 }
 
 export function GitCommitHistoryItem({
 	commit,
+	gitScope,
 	onOpenCommit,
 	onToggleSelect,
-	repositoryId,
 	selected,
 }: GitCommitHistoryItemProps) {
 	return (
@@ -82,7 +83,7 @@ export function GitCommitHistoryItem({
 				onPrimeDetails={() =>
 					prefetchGitCommitStats({
 						sha: commit.sha,
-						...(repositoryId ? { repositoryId } : {}),
+						...gitScope,
 					})
 				}
 				selected={selected}
@@ -90,8 +91,8 @@ export function GitCommitHistoryItem({
 			{selected ? (
 				<CommitItemDetails
 					commit={commit}
+					gitScope={gitScope}
 					onOpenCommit={onOpenCommit}
-					repositoryId={repositoryId}
 				/>
 			) : null}
 		</article>
@@ -154,14 +155,18 @@ function CommitItemHeader({
 
 function CommitItemDetails({
 	commit,
+	gitScope,
 	onOpenCommit,
-	repositoryId,
 }: {
 	commit: BrowserGitHistoryCommit;
+	gitScope?: GitCommitStatsScope;
 	onOpenCommit?: (commit: BrowserGitHistoryCommit) => void;
-	repositoryId?: string;
 }) {
 	const { body } = splitCommitMessage(commit.commit.message);
+	const providerId = gitScope?.providerId;
+	const repositoryId = gitScope?.repositoryId;
+	const sdkSessionId = gitScope?.sdkSessionId;
+	const workspaceKey = gitScope?.workspaceKey;
 	const [stats, setStats] = useState<BrowserGitCommitStats | null>(null);
 	const [statsError, setStatsError] = useState<string | null>(null);
 	const [statsLoading, setStatsLoading] = useState(true);
@@ -176,7 +181,10 @@ function CommitItemDetails({
 
 		void readCachedGitCommitStats({
 			sha: commit.sha,
+			...(providerId ? { providerId } : {}),
 			...(repositoryId ? { repositoryId } : {}),
+			...(sdkSessionId ? { sdkSessionId } : {}),
+			...(workspaceKey ? { workspaceKey } : {}),
 		})
 			.then((next) => {
 				if (!cancelled) {
@@ -199,7 +207,14 @@ function CommitItemDetails({
 		return () => {
 			cancelled = true;
 		};
-	}, [commit.sha, gitRevision, repositoryId]);
+	}, [
+		commit.sha,
+		gitRevision,
+		providerId,
+		repositoryId,
+		sdkSessionId,
+		workspaceKey,
+	]);
 
 	return (
 		<div className="px-3 pb-3">

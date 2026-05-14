@@ -6,6 +6,7 @@ import type {
 	BrowserGitStatusResponse,
 } from "../../../../../common/protocol.ts";
 import { GitCommitHistory } from "./git-commit-history.tsx";
+import type { GitCommitStatsScope } from "./git-commit-stats-cache.ts";
 import { gitPanelFileToneClass } from "./git-status-tone.ts";
 import { GitUninitializedCard } from "./git-uninitialized-card.tsx";
 
@@ -18,12 +19,12 @@ const GIT_PANEL_TOGGLE_CLASS =
 const GIT_HISTORY_LOAD_MORE_THRESHOLD_PX = 120;
 
 interface GitPanelProps {
+	gitScope?: GitCommitStatsScope;
 	historyCollapsed?: boolean;
 	onCommit?: () => void;
 	onInitialize?: () => Promise<void>;
 	onLoadMoreHistory?: () => void;
 	onOpenCommit?: (commit: BrowserGitHistoryCommit) => void;
-	repositoryId?: string;
 	status: BrowserGitStatusResponse | null;
 	historyLoadError?: string | null;
 	historyLoadingMore?: boolean;
@@ -170,6 +171,7 @@ export function GitPanelHeader({
 }
 
 export function GitPanel({
+	gitScope,
 	historyCollapsed = false,
 	historyLoadError = null,
 	historyLoadingMore = false,
@@ -177,7 +179,6 @@ export function GitPanel({
 	onInitialize,
 	onLoadMoreHistory,
 	onOpenCommit,
-	repositoryId,
 	status,
 	loading,
 	error,
@@ -283,12 +284,12 @@ export function GitPanel({
 					}
 				>
 					<GitCommitHistory
+						gitScope={gitScope}
 						history={status.history}
 						loadError={historyLoadError}
 						loadingMore={historyLoadingMore}
 						onOpenCommit={onOpenCommit}
 						onSelectCommit={onSelectCommit}
-						repositoryId={repositoryId}
 						selectedCommitSha={selectedCommitSha}
 					/>
 				</GitPanelSection>

@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef } from "react";
 interface TerminalViewProps {
 	active: boolean;
 	agentId?: string;
+	providerId?: string;
 	repositoryId?: string;
+	sdkSessionId?: string;
 	onRunRequestDispatched?: (requestId: number) => void;
 	runRequest?: TerminalRunRequest | null;
 	terminalId: string;
@@ -22,12 +24,20 @@ export function toTerminalRunInput(command: string): string {
 
 function buildTerminalUrl(params: {
 	agentId?: string;
+	providerId?: string;
 	repositoryId?: string;
+	sdkSessionId?: string;
 }): string {
 	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const url = new URL(`${protocol}//${window.location.host}/terminal`);
 	if (params.repositoryId) {
 		url.searchParams.set("repositoryId", params.repositoryId);
+		if (params.providerId) {
+			url.searchParams.set("providerId", params.providerId);
+		}
+		if (params.sdkSessionId) {
+			url.searchParams.set("sdkSessionId", params.sdkSessionId);
+		}
 	} else if (params.agentId) {
 		url.searchParams.set("agentId", params.agentId);
 	}
@@ -37,7 +47,9 @@ function buildTerminalUrl(params: {
 export function TerminalView({
 	active,
 	agentId,
+	providerId,
 	repositoryId,
+	sdkSessionId,
 	onRunRequestDispatched,
 	runRequest,
 	terminalId,
@@ -49,6 +61,19 @@ export function TerminalView({
 	const activeRef = useRef(active);
 	const onRunRequestDispatchedRef = useRef(onRunRequestDispatched);
 	const pendingRunRequestRef = useRef<TerminalRunRequest | null>(null);
+	const connectionParamsRef = useRef({
+		agentId,
+		providerId,
+		repositoryId,
+		sdkSessionId,
+	});
+	connectionParamsRef.current = {
+		agentId,
+		providerId,
+		repositoryId,
+		sdkSessionId,
+	};
+	const connectionKey = agentId ?? "";
 
 	useEffect(() => {
 		activeRef.current = active;
@@ -85,7 +110,7 @@ export function TerminalView({
 	}, []);
 
 	useEffect(() => {
-		if (!containerRef.current) {
+		if (!containerRef.current || connectionKey === "") {
 			return;
 		}
 
@@ -125,7 +150,7 @@ export function TerminalView({
 		};
 		container.addEventListener("pointerdown", handlePointerDown);
 
-		const socket = new WebSocket(buildTerminalUrl({ agentId, repositoryId }));
+		const socket = new WebSocket(buildTerminalUrl(connectionParamsRef.current));
 		socketRef.current = socket;
 		socket.onopen = () => {
 			sendResize();
@@ -164,7 +189,7 @@ export function TerminalView({
 			resizeObserver.disconnect();
 			terminal.dispose();
 		};
-	}, [agentId, repositoryId, sendResize, sendTerminalInput]);
+	}, [connectionKey, sendResize, sendTerminalInput]);
 
 	useEffect(() => {
 		if (!runRequest) {

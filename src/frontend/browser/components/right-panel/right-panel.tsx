@@ -238,7 +238,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 		gitStatus,
 		loadMoreGitHistory,
 	} = useGitStatusLoader({
-		activeUpperTab,
+		active: activeUpperTab === "git",
 		gitRevision,
 	});
 	const { inbox, inboxError, inboxLoading } = useInboxLoader({

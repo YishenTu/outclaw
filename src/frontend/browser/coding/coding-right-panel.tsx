@@ -1,16 +1,17 @@
 import { ChevronDown, FolderTree, GitBranch } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-	BrowserGitStatusResponse,
+	BrowserCodingRepositorySummary,
+	BrowserCodingSessionSummary,
 	BrowserTreeEntry,
 } from "../../../common/protocol.ts";
 import {
 	FileTree,
 	FileTreeHeader,
 } from "../components/right-panel/file-tree.tsx";
-import { useGitHistoryPagination } from "../components/right-panel/git/git-history-pagination.ts";
 import { GitPanel } from "../components/right-panel/git/git-panel.tsx";
 import { shouldClearSelectedGitCommit } from "../components/right-panel/git/git-selection-state.ts";
+import { useGitStatusLoader } from "../components/right-panel/right-panel-data-loaders.ts";
 import {
 	applyRightPanelResizeBodyStyles,
 	calculateRightPanelSplitRatio,
@@ -21,11 +22,7 @@ import {
 } from "../components/right-panel/right-panel-shell.tsx";
 import { TerminalPanel } from "../components/right-panel/terminal/terminal-panel.tsx";
 import { TerminalTabs } from "../components/right-panel/terminal/terminal-tabs.tsx";
-import {
-	fetchCodingRepositoryTree,
-	fetchGitStatus,
-	initGitRepo,
-} from "../lib/api.ts";
+import { fetchCodingRepositoryTree, initGitRepo } from "../lib/api.ts";
 import { useLayoutStore } from "../stores/layout.ts";
 import {
 	selectGitRevision,
@@ -38,6 +35,9 @@ import {
 	useTerminalStore,
 } from "../stores/terminal.ts";
 import {
+	isCodingDiffTab,
+	isCodingFileTab,
+	isPendingCodingTab,
 	makeCodingDiffTab,
 	makeCodingFileTab,
 	useCodingStore,
@@ -66,9 +66,25 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	const focusedRepositoryId = useCodingStore(
 		(state) => state.focusedRepositoryId,
 	);
+	const focusedSession = useCodingStore((state) => state.focusedSession);
+	const sessionsByRepository = useCodingStore(
+		(state) => state.sessionsByRepository,
+	);
 	const repository = useCodingStore((state) =>
 		state.repositories.find((entry) => entry.id === state.focusedRepositoryId),
 	);
+	const sessions = focusedRepositoryId
+		? (sessionsByRepository[focusedRepositoryId] ?? [])
+		: [];
+	const workspaceTarget = resolveCodingRightPanelWorkspaceTarget({
+		focusedRepositoryId,
+		focusedSession,
+		repository,
+		sessions,
+	});
+	const workspaceKey = workspaceTarget?.workspaceKey;
+	const latestWorkspaceTarget = useRef(workspaceTarget);
+	latestWorkspaceTarget.current = workspaceTarget;
 	const openCodingTab = useCodingStore((state) => state.openTab);
 	const handleOpenFile = useCallback(
 		(params: { agentId: string; path: string }) => {
@@ -104,14 +120,15 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	const setRightTerminalCollapsed = useLayoutStore(
 		(state) => state.setRightTerminalCollapsed,
 	);
+	const terminalWorkspaceKey = workspaceKey ?? null;
 	const terminals = useTerminalStore((state) =>
-		selectAgentTerminals(state, focusedRepositoryId ?? null),
+		selectAgentTerminals(state, terminalWorkspaceKey),
 	);
 	const activeTerminalId = useTerminalStore((state) =>
-		selectActiveTerminalId(state, focusedRepositoryId ?? null),
+		selectActiveTerminalId(state, terminalWorkspaceKey),
 	);
 	const activeTerminalTab = useTerminalStore((state) =>
-		selectActiveTerminalTab(state, focusedRepositoryId ?? null),
+		selectActiveTerminalTab(state, terminalWorkspaceKey),
 	);
 	const createTerminal = useTerminalStore((state) => state.createTerminal);
 	const closeTerminal = useTerminalStore((state) => state.closeTerminal);
@@ -125,50 +142,62 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	const [treeLoading, setTreeLoading] = useState(false);
 	const [treeError, setTreeError] = useState<string | null>(null);
 	const loadingTreeDirectoriesRef = useRef(new Set<string>());
-	const latestFocusedRepositoryId = useRef(focusedRepositoryId);
-	const [gitStatus, setGitStatus] = useState<BrowserGitStatusResponse | null>(
-		null,
-	);
-	const [gitLoading, setGitLoading] = useState(false);
-	const [gitError, setGitError] = useState<string | null>(null);
-	const [loadedGitRepositoryId, setLoadedGitRepositoryId] = useState<
-		string | null
-	>(null);
-	const [loadedGitRevision, setLoadedGitRevision] = useState<number | null>(
-		null,
-	);
+	const latestWorkspaceKey = useRef(workspaceKey);
 	const [selectedGitCommitSha, setSelectedGitCommitSha] = useState<
 		string | null
 	>(null);
 	const gitRevision = useRightPanelRefreshStore(selectGitRevision);
-	const { gitHistoryLoadError, gitHistoryLoadingMore, loadMoreGitHistory } =
-		useGitHistoryPagination({
-			repositoryId: focusedRepositoryId,
-			setStatus: setGitStatus,
-			status: gitStatus,
-		});
+	const {
+		acceptGitStatus,
+		gitError,
+		gitHistoryLoadError,
+		gitHistoryLoadingMore,
+		gitLoading,
+		gitStatus,
+		loadMoreGitHistory,
+	} = useGitStatusLoader({
+		active: activeTab === "git" && workspaceKey !== undefined,
+		gitRevision,
+		providerId: workspaceTarget?.providerId,
+		repositoryId: workspaceTarget?.repositoryId,
+		sdkSessionId: workspaceTarget?.sdkSessionId,
+		workspaceKey,
+	});
 	const [isResizing, setIsResizing] = useState(false);
 	const contentRef = useRef<HTMLDivElement | null>(null);
-	if (latestFocusedRepositoryId.current !== focusedRepositoryId) {
+	if (latestWorkspaceKey.current !== workspaceKey) {
 		loadingTreeDirectoriesRef.current.clear();
-		latestFocusedRepositoryId.current = focusedRepositoryId;
+		latestWorkspaceKey.current = workspaceKey;
 	}
 
 	useEffect(() => {
-		if (!focusedRepositoryId) {
+		if (!workspaceKey) {
 			setTree([]);
 			setTreeError(null);
 			setTreeLoading(false);
 			return;
 		}
-		if (!shouldLoadCodingRepositoryTree({ activeTab, focusedRepositoryId })) {
+		if (
+			!shouldLoadCodingRepositoryTree({
+				activeTab,
+				focusedWorkspaceKey: workspaceKey,
+			})
+		) {
 			return;
 		}
 
+		const requestTarget = latestWorkspaceTarget.current;
+		if (!requestTarget) {
+			return;
+		}
 		let cancelled = false;
 		setTreeLoading(true);
 		setTreeError(null);
-		void fetchCodingRepositoryTree(focusedRepositoryId)
+		void fetchCodingRepositoryTree(
+			requestTarget.repositoryId,
+			undefined,
+			workspaceSessionParams(requestTarget),
+		)
 			.then((entries) => {
 				if (!cancelled) {
 					setTree(entries);
@@ -193,13 +222,15 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		return () => {
 			cancelled = true;
 		};
-	}, [activeTab, focusedRepositoryId]);
+	}, [activeTab, workspaceKey]);
 
 	const handleOpenTreeDirectory = useCallback(
 		(params: { path: string }) => {
-			const requestRepositoryId = focusedRepositoryId;
+			const requestTarget = latestWorkspaceTarget.current;
+			const requestWorkspaceKey = requestTarget?.workspaceKey;
 			if (
-				!requestRepositoryId ||
+				!requestTarget ||
+				!requestWorkspaceKey ||
 				loadingTreeDirectoriesRef.current.has(params.path)
 			) {
 				return;
@@ -208,12 +239,16 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 				return;
 			}
 			loadingTreeDirectoriesRef.current.add(params.path);
-			void fetchCodingRepositoryTree(requestRepositoryId, params.path)
+			void fetchCodingRepositoryTree(
+				requestTarget.repositoryId,
+				params.path,
+				workspaceSessionParams(requestTarget),
+			)
 				.then((entries) => {
 					if (
 						!shouldApplyCodingRepositoryDirectoryChildren({
-							focusedRepositoryId: latestFocusedRepositoryId.current,
-							requestRepositoryId,
+							focusedWorkspaceKey: latestWorkspaceKey.current,
+							requestWorkspaceKey,
 						})
 					) {
 						return;
@@ -229,73 +264,13 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 					loadingTreeDirectoriesRef.current.delete(params.path);
 				});
 		},
-		[focusedRepositoryId, tree],
+		[tree],
 	);
 
 	useEffect(() => {
-		void focusedRepositoryId;
+		void workspaceKey;
 		setSelectedGitCommitSha(null);
-	}, [focusedRepositoryId]);
-
-	useEffect(() => {
-		if (activeTab !== "git" || !focusedRepositoryId) {
-			setGitLoading(false);
-			return;
-		}
-
-		const shouldLoadGitStatus = shouldLoadCodingRepositoryGitStatus({
-			activeTab,
-			focusedRepositoryId,
-			gitRevision,
-			loadedGitRepositoryId,
-			loadedGitRevision,
-		});
-		if (!shouldLoadGitStatus) {
-			return;
-		}
-
-		let cancelled = false;
-		const requestGitRevision = gitRevision;
-		const requestRepositoryId = focusedRepositoryId;
-		setGitLoading(true);
-		setGitError(null);
-		void fetchGitStatus({ repositoryId: requestRepositoryId })
-			.then((status) => {
-				if (!cancelled) {
-					setGitStatus(status);
-					setGitError(null);
-					setLoadedGitRepositoryId(requestRepositoryId);
-					setLoadedGitRevision(requestGitRevision);
-				}
-			})
-			.catch((error) => {
-				if (!cancelled) {
-					setGitStatus(null);
-					setGitError(
-						error instanceof Error
-							? error.message
-							: "Failed to load git status",
-					);
-					setLoadedGitRepositoryId(requestRepositoryId);
-					setLoadedGitRevision(requestGitRevision);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setGitLoading(false);
-				}
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [
-		activeTab,
-		focusedRepositoryId,
-		gitRevision,
-		loadedGitRepositoryId,
-		loadedGitRevision,
-	]);
+	}, [workspaceKey]);
 
 	useEffect(() => {
 		if (
@@ -309,14 +284,16 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	}, [gitStatus, selectedGitCommitSha]);
 
 	const handleInitialize = useCallback(async () => {
-		if (!focusedRepositoryId) {
+		const target = latestWorkspaceTarget.current;
+		if (!target) {
 			return;
 		}
-		const status = await initGitRepo({ repositoryId: focusedRepositoryId });
-		setGitStatus(status);
-		setLoadedGitRepositoryId(focusedRepositoryId);
-		setLoadedGitRevision(gitRevision);
-	}, [focusedRepositoryId, gitRevision]);
+		const status = await initGitRepo({
+			repositoryId: target.repositoryId,
+			...workspaceSessionParams(target),
+		});
+		acceptGitStatus(status);
+	}, [acceptGitStatus]);
 
 	const handleResizeMouseDown = useCallback(
 		(event: React.MouseEvent<HTMLButtonElement>) => {
@@ -369,29 +346,23 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 
 	const upperHeight = `${splitRatio * 100}%`;
 	const lowerHeight = `${(1 - splitRatio) * 100}%`;
-	const gitStatusNeedsLoad = shouldLoadCodingRepositoryGitStatus({
-		activeTab,
-		focusedRepositoryId,
-		gitRevision,
-		loadedGitRepositoryId,
-		loadedGitRevision,
-	});
-	const visibleGitStatus = gitStatusNeedsLoad ? null : gitStatus;
-	const visibleGitError = gitStatusNeedsLoad ? null : gitError;
-	const visibleGitLoading =
-		activeTab === "git" && focusedRepositoryId
-			? gitLoading || gitStatusNeedsLoad
-			: gitLoading;
-
 	const noRepoState = (
 		<div className="flex h-full items-center justify-center px-6 text-center text-sm text-dark-500">
 			Select a project to view files, git, and terminal.
+		</div>
+	);
+	const workspaceLoadingState = (
+		<div className="flex h-full items-center justify-center px-6 text-center text-sm text-dark-500">
+			Loading workspace…
 		</div>
 	);
 
 	function renderUpperContent() {
 		if (!focusedRepositoryId) {
 			return noRepoState;
+		}
+		if (!workspaceTarget) {
+			return workspaceLoadingState;
 		}
 		if (activeTab === "files") {
 			return (
@@ -406,7 +377,7 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 							<div className="px-4 py-4 text-sm text-danger">{treeError}</div>
 						) : (
 							<FileTree
-								agentId={focusedRepositoryId}
+								agentId={workspaceTarget.workspaceKey}
 								entries={tree}
 								onOpenDirectory={handleOpenTreeDirectory}
 								onOpenFile={handleOpenFile}
@@ -418,15 +389,24 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		}
 		return (
 			<GitPanel
+				gitScope={{
+					repositoryId: workspaceTarget.repositoryId,
+					...(workspaceTarget.providerId
+						? { providerId: workspaceTarget.providerId }
+						: {}),
+					...(workspaceTarget.sdkSessionId
+						? { sdkSessionId: workspaceTarget.sdkSessionId }
+						: {}),
+					workspaceKey: workspaceTarget.workspaceKey,
+				}}
 				historyCollapsed={rightGitHistoryCollapsed}
 				historyLoadError={gitHistoryLoadError}
 				historyLoadingMore={gitHistoryLoadingMore}
 				onInitialize={handleInitialize}
 				onLoadMoreHistory={loadMoreGitHistory}
-				repositoryId={focusedRepositoryId}
-				status={visibleGitStatus}
-				loading={visibleGitLoading}
-				error={visibleGitError}
+				status={gitStatus}
+				loading={gitLoading}
+				error={gitError}
 				onOpenDiff={handleOpenDiff}
 				onSelectCommit={setSelectedGitCommitSha}
 				onToggleHistoryCollapsed={() =>
@@ -475,37 +455,41 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 							</button>
 						}
 						onCloseTerminal={(terminalId) => {
-							if (focusedRepositoryId) {
-								closeTerminal(focusedRepositoryId, terminalId);
+							if (terminalWorkspaceKey) {
+								closeTerminal(terminalWorkspaceKey, terminalId);
 							}
 						}}
 						onCreateTerminal={() => {
-							if (focusedRepositoryId) {
-								createTerminal(focusedRepositoryId);
+							if (terminalWorkspaceKey) {
+								createTerminal(terminalWorkspaceKey);
 							}
 						}}
 						onRenameTerminal={(terminalId, name) => {
-							if (focusedRepositoryId) {
-								renameTerminal(focusedRepositoryId, terminalId, name);
+							if (terminalWorkspaceKey) {
+								renameTerminal(terminalWorkspaceKey, terminalId, name);
 							}
 						}}
 						onRunCommand={() => {}}
 						onSelectRun={() => {}}
 						onSelectTerminal={(terminalId) => {
-							if (focusedRepositoryId) {
-								setActiveTerminal(focusedRepositoryId, terminalId);
+							if (terminalWorkspaceKey) {
+								setActiveTerminal(terminalWorkspaceKey, terminalId);
 							}
 						}}
 						terminals={terminals}
 					/>
 				}
 				lowerContent={
-					focusedRepositoryId ? (
+					workspaceTarget ? (
 						<TerminalPanel
-							agentId={focusedRepositoryId}
-							repositoryId={focusedRepositoryId}
+							agentId={workspaceTarget.workspaceKey}
 							active={activeTerminalTab === "terminal"}
+							providerId={workspaceTarget.providerId}
+							repositoryId={workspaceTarget.repositoryId}
+							sdkSessionId={workspaceTarget.sdkSessionId}
 						/>
+					) : focusedRepositoryId ? (
+						workspaceLoadingState
 					) : (
 						noRepoState
 					)
@@ -525,44 +509,118 @@ export function treeDirectoryLoaded(
 
 export function shouldLoadCodingRepositoryTree({
 	activeTab,
-	focusedRepositoryId,
+	focusedWorkspaceKey,
 }: {
 	activeTab: CodingRightTab;
-	focusedRepositoryId: string | undefined;
+	focusedWorkspaceKey: string | undefined;
 }): boolean {
-	return activeTab === "files" && focusedRepositoryId !== undefined;
+	return activeTab === "files" && focusedWorkspaceKey !== undefined;
 }
 
 export function shouldLoadCodingRepositoryGitStatus({
 	activeTab,
-	focusedRepositoryId,
+	focusedWorkspaceKey,
 	gitRevision,
-	loadedGitRepositoryId,
+	loadedGitWorkspaceKey,
 	loadedGitRevision,
 }: {
 	activeTab: CodingRightTab;
-	focusedRepositoryId: string | undefined;
+	focusedWorkspaceKey: string | undefined;
 	gitRevision: number;
-	loadedGitRepositoryId: string | null;
+	loadedGitWorkspaceKey: string | null;
 	loadedGitRevision: number | null;
 }): boolean {
-	if (activeTab !== "git" || focusedRepositoryId === undefined) {
+	if (activeTab !== "git" || focusedWorkspaceKey === undefined) {
 		return false;
 	}
 	return (
-		loadedGitRepositoryId !== focusedRepositoryId ||
+		loadedGitWorkspaceKey !== focusedWorkspaceKey ||
 		loadedGitRevision !== gitRevision
 	);
 }
 
 export function shouldApplyCodingRepositoryDirectoryChildren({
+	focusedWorkspaceKey,
+	requestWorkspaceKey,
+}: {
+	focusedWorkspaceKey: string | undefined;
+	requestWorkspaceKey: string;
+}): boolean {
+	return focusedWorkspaceKey === requestWorkspaceKey;
+}
+
+export interface CodingRightPanelWorkspaceTarget {
+	providerId?: string;
+	repositoryId: string;
+	sdkSessionId?: string;
+	workspaceCwd: string;
+	workspaceKey: string;
+}
+
+export function resolveCodingRightPanelWorkspaceTarget({
 	focusedRepositoryId,
-	requestRepositoryId,
+	focusedSession,
+	repository,
+	sessions,
 }: {
 	focusedRepositoryId: string | undefined;
-	requestRepositoryId: string;
-}): boolean {
-	return focusedRepositoryId === requestRepositoryId;
+	focusedSession: { providerId: string; sdkSessionId: string } | undefined;
+	repository: BrowserCodingRepositorySummary | undefined;
+	sessions: BrowserCodingSessionSummary[];
+}): CodingRightPanelWorkspaceTarget | undefined {
+	if (!focusedRepositoryId || !repository) {
+		return undefined;
+	}
+	if (!focusedSession || isNonSessionCodingTab(focusedSession)) {
+		return rootWorkspaceTarget(repository);
+	}
+
+	const session = sessions.find(
+		(entry) =>
+			entry.providerId === focusedSession.providerId &&
+			entry.sdkSessionId === focusedSession.sdkSessionId &&
+			(entry.repositoryId === undefined ||
+				entry.repositoryId === focusedRepositoryId),
+	);
+	if (!session) {
+		return undefined;
+	}
+
+	return {
+		providerId: session.providerId,
+		repositoryId: focusedRepositoryId,
+		sdkSessionId: session.sdkSessionId,
+		workspaceCwd: session.cwd,
+		workspaceKey: session.cwd,
+	};
+}
+
+function isNonSessionCodingTab(tab: { providerId: string }): boolean {
+	return (
+		isPendingCodingTab(tab) || isCodingFileTab(tab) || isCodingDiffTab(tab)
+	);
+}
+
+function rootWorkspaceTarget(
+	repository: BrowserCodingRepositorySummary,
+): CodingRightPanelWorkspaceTarget {
+	return {
+		repositoryId: repository.id,
+		workspaceCwd: repository.rootCwd,
+		workspaceKey: repository.rootCwd,
+	};
+}
+
+function workspaceSessionParams(target: CodingRightPanelWorkspaceTarget): {
+	providerId?: string;
+	sdkSessionId?: string;
+} {
+	return target.providerId && target.sdkSessionId
+		? {
+				providerId: target.providerId,
+				sdkSessionId: target.sdkSessionId,
+			}
+		: {};
 }
 
 export function mergeTreeDirectoryChildren(

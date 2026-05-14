@@ -505,18 +505,32 @@ export async function handleBrowserApiRequest(
 
 function readRepositoryIdParams(
 	url: URL,
-): { repositoryId?: string } | undefined {
+):
+	| { providerId?: string; repositoryId?: string; sdkSessionId?: string }
+	| undefined {
 	const repositoryId = url.searchParams.get("repositoryId");
-	if (!repositoryId) {
+	const providerId = url.searchParams.get("providerId");
+	const sdkSessionId = url.searchParams.get("sdkSessionId");
+	if (!repositoryId && !providerId && !sdkSessionId) {
 		return undefined;
 	}
-	return { repositoryId };
+	return {
+		...(repositoryId ? { repositoryId } : {}),
+		...(providerId ? { providerId } : {}),
+		...(sdkSessionId ? { sdkSessionId } : {}),
+	};
 }
 
 function readGitHistoryParams(url: URL):
 	| {
 			status: "valid";
-			value: { repositoryId?: string; cursor?: string; limit?: number };
+			value: {
+				providerId?: string;
+				repositoryId?: string;
+				sdkSessionId?: string;
+				cursor?: string;
+				limit?: number;
+			};
 	  }
 	| { status: "invalid"; message: string } {
 	const repositoryParams = readRepositoryIdParams(url) ?? {};

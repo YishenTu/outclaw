@@ -1990,6 +1990,161 @@ describe("createBrowserApi", () => {
 		repositories.close();
 	});
 
+	test("lists coding repository tree from the focused coding session cwd", async () => {
+		const root = createTempDir("outclaw-browser-coding-session-tree-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "coding.sqlite");
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const repositories = new CodingRepositoryStore(dbPath);
+		const codingSessions = new CodingSessionStore(dbPath);
+		const repositoryRoot = join(root, "repo");
+		const packageDir = join(repositoryRoot, "packages", "app");
+		mkdirSync(packageDir, { recursive: true });
+		writeFileSync(join(repositoryRoot, "README.md"), "# Repository\n");
+		writeFileSync(join(packageDir, "index.ts"), "export {};\n");
+		const repository = repositories.register({
+			rootCwd: repositoryRoot,
+			displayName: "repo",
+			source: "manual",
+		});
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "thread-app",
+			title: "Package session",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "thread-app",
+			repositoryId: repository.id,
+			cwd: packageDir,
+			runStatus: "idle",
+		});
+		const api = createBrowserApi({
+			agents: [],
+			codingRepositories: repositories,
+			codingSessions,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.listCodingRepositoryTree(repository.id, {
+				providerId: "codex",
+				sdkSessionId: "thread-app",
+			}),
+		).resolves.toEqual([
+			{
+				kind: "file",
+				name: "index.ts",
+				path: "packages/app/index.ts",
+			},
+		]);
+
+		codingSessions.close();
+		sessionStore.close();
+		repositories.close();
+	});
+
+	test("reads git status scoped to the focused coding session cwd", async () => {
+		const root = createTempDir("outclaw-browser-coding-session-git-");
+		cleanupPaths.push(root);
+		const dbPath = join(root, "coding.sqlite");
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const repositories = new CodingRepositoryStore(dbPath);
+		const codingSessions = new CodingSessionStore(dbPath);
+		const repositoryRoot = join(root, "repo");
+		const packageDir = join(repositoryRoot, "packages", "app");
+		mkdirSync(packageDir, { recursive: true });
+		runGit(repositoryRoot, ["init", "--initial-branch=main"]);
+		runGit(repositoryRoot, ["config", "user.email", "test@example.com"]);
+		runGit(repositoryRoot, ["config", "user.name", "Test User"]);
+		writeFileSync(join(repositoryRoot, "README.md"), "# Repository\n");
+		runGit(repositoryRoot, ["add", "README.md"]);
+		runGit(repositoryRoot, ["commit", "-m", "Initial commit"]);
+		writeFileSync(join(repositoryRoot, "root-history.txt"), "root\n");
+		runGit(repositoryRoot, ["add", "root-history.txt"]);
+		runGit(repositoryRoot, ["commit", "-m", "Root history"]);
+		writeFileSync(join(packageDir, "history.ts"), "export const value = 1;\n");
+		runGit(repositoryRoot, ["add", "packages/app/history.ts"]);
+		runGit(repositoryRoot, ["commit", "-m", "Package history"]);
+		writeFileSync(join(repositoryRoot, "root-mixed.txt"), "root\n");
+		writeFileSync(join(packageDir, "mixed.ts"), "export const mixed = 1;\n");
+		runGit(repositoryRoot, ["add", "root-mixed.txt", "packages/app/mixed.ts"]);
+		runGit(repositoryRoot, ["commit", "-m", "Mixed history"]);
+		writeFileSync(join(repositoryRoot, "root-only.txt"), "root\n");
+		writeFileSync(join(packageDir, "index.ts"), "export {};\n");
+		const repository = repositories.register({
+			rootCwd: repositoryRoot,
+			displayName: "repo",
+			source: "manual",
+		});
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "thread-app",
+			title: "Package session",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "thread-app",
+			repositoryId: repository.id,
+			cwd: packageDir,
+			runStatus: "idle",
+		});
+		const api = createBrowserApi({
+			agents: [],
+			codingRepositories: repositories,
+			codingSessions,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		const status = await api.readGitStatus({
+			repositoryId: repository.id,
+			providerId: "codex",
+			sdkSessionId: "thread-app",
+		});
+
+		if (!status.initialized) {
+			throw new Error("expected initialized git status");
+		}
+		expect(status.files.map((file) => file.path)).toEqual([
+			"packages/app/index.ts",
+		]);
+		expect(
+			status.history.commits.map((commit) => commit.commit.message),
+		).toEqual(["Mixed history", "Package history"]);
+		const mixedCommit = status.history.commits[0];
+		if (!mixedCommit) {
+			throw new Error("expected scoped history commit");
+		}
+		const mixedStats = await api.readGitCommitStats(mixedCommit.sha, {
+			repositoryId: repository.id,
+			providerId: "codex",
+			sdkSessionId: "thread-app",
+		});
+		expect(mixedStats.files.map((file) => file.path)).toEqual([
+			"packages/app/mixed.ts",
+		]);
+
+		codingSessions.close();
+		sessionStore.close();
+		repositories.close();
+	});
+
 	test("rejects coding repository skills when the coding service has no skill catalog", async () => {
 		const root = createTempDir("outclaw-browser-coding-skills-missing-");
 		cleanupPaths.push(root);

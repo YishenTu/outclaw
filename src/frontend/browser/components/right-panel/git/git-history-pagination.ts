@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	type RefObject,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import type {
 	BrowserGitHistory,
 	BrowserGitStatusResponse,
@@ -30,11 +36,15 @@ export function appendGitHistoryPage(
 }
 
 export function useGitHistoryPagination({
-	repositoryId,
+	requestParamsRef,
 	setStatus,
 	status,
 }: {
-	repositoryId?: string | null;
+	requestParamsRef: RefObject<{
+		providerId?: string;
+		repositoryId?: string;
+		sdkSessionId?: string;
+	}>;
 	setStatus: (
 		updater: (
 			current: BrowserGitStatusResponse | null,
@@ -75,9 +85,10 @@ export function useGitHistoryPagination({
 		loadingMoreRef.current = true;
 		setGitHistoryLoadingMore(true);
 		setGitHistoryLoadError(null);
+		const requestParams = requestParamsRef.current;
 
 		void fetchGitHistory({
-			...(repositoryId ? { repositoryId } : {}),
+			...requestParams,
 			cursor,
 		})
 			.then((page) => {
@@ -99,7 +110,7 @@ export function useGitHistoryPagination({
 				loadingMoreRef.current = false;
 				setGitHistoryLoadingMore(false);
 			});
-	}, [repositoryId, setStatus, status]);
+	}, [requestParamsRef, setStatus, status]);
 
 	return {
 		gitHistoryLoadError,

@@ -93,8 +93,10 @@ describe("right panel fetch policy", () => {
 	test("fetches git status on first git-tab open", () => {
 		expect(
 			shouldFetchGitStatus({
-				activeUpperTab: "git",
+				active: true,
 				gitRevision: 0,
+				scopeKey: null,
+				loadedScopeKey: null,
 				loadedRevision: null,
 			}),
 		).toBe(true);
@@ -103,8 +105,10 @@ describe("right panel fetch policy", () => {
 	test("does not refetch git status when re-entering git with the same revision", () => {
 		expect(
 			shouldFetchGitStatus({
-				activeUpperTab: "git",
+				active: true,
 				gitRevision: 4,
+				scopeKey: null,
+				loadedScopeKey: null,
 				loadedRevision: 4,
 			}),
 		).toBe(false);
@@ -113,8 +117,10 @@ describe("right panel fetch policy", () => {
 	test("refetches git status when the git revision changes", () => {
 		expect(
 			shouldFetchGitStatus({
-				activeUpperTab: "git",
+				active: true,
 				gitRevision: 5,
+				scopeKey: null,
+				loadedScopeKey: null,
 				loadedRevision: 4,
 			}),
 		).toBe(true);
@@ -123,9 +129,32 @@ describe("right panel fetch policy", () => {
 	test("does not fetch git status while another tab is active", () => {
 		expect(
 			shouldFetchGitStatus({
-				activeUpperTab: "files",
+				active: false,
 				gitRevision: 1,
+				scopeKey: null,
+				loadedScopeKey: null,
 				loadedRevision: null,
+			}),
+		).toBe(false);
+	});
+
+	test("refetches git status when the workspace scope changes", () => {
+		expect(
+			shouldFetchGitStatus({
+				active: true,
+				gitRevision: 4,
+				scopeKey: "/repo/packages/api",
+				loadedScopeKey: "/repo/packages/app",
+				loadedRevision: 4,
+			}),
+		).toBe(true);
+		expect(
+			shouldFetchGitStatus({
+				active: true,
+				gitRevision: 4,
+				scopeKey: "/repo/packages/api",
+				loadedScopeKey: "/repo/packages/api",
+				loadedRevision: 4,
 			}),
 		).toBe(false);
 	});

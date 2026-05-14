@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
 	BrowserGitStatusResponse,
 	BrowserInboxResponse,
@@ -120,50 +120,79 @@ export function useAgentTreeLoader(params: {
 }
 
 export function useGitStatusLoader(params: {
-	activeUpperTab: UpperRightPanelTab;
+	active: boolean;
 	gitRevision: number;
+	providerId?: string | null;
+	repositoryId?: string | null;
+	sdkSessionId?: string | null;
+	workspaceKey?: string | null;
 }) {
+	const repositoryId = params.repositoryId ?? null;
+	const providerId = params.providerId ?? null;
+	const sdkSessionId = params.sdkSessionId ?? null;
+	const scopeKey = params.workspaceKey ?? repositoryId;
+	const requestParamsRef = useRef<{
+		providerId?: string;
+		repositoryId?: string;
+		sdkSessionId?: string;
+	}>({});
+	requestParamsRef.current = {
+		...(providerId ? { providerId } : {}),
+		...(repositoryId ? { repositoryId } : {}),
+		...(sdkSessionId ? { sdkSessionId } : {}),
+	};
 	const [gitStatus, setGitStatus] = useState<BrowserGitStatusResponse | null>(
 		null,
 	);
 	const [gitLoading, setGitLoading] = useState(false);
 	const [gitError, setGitError] = useState<string | null>(null);
+	const [loadedGitScopeKey, setLoadedGitScopeKey] = useState<string | null>(
+		null,
+	);
 	const [loadedGitRevision, setLoadedGitRevision] = useState<number | null>(
 		null,
 	);
 	const { gitHistoryLoadError, gitHistoryLoadingMore, loadMoreGitHistory } =
 		useGitHistoryPagination({
+			requestParamsRef,
 			setStatus: setGitStatus,
 			status: gitStatus,
 		});
+	const gitStatusNeedsLoad = shouldFetchGitStatus({
+		active: params.active,
+		gitRevision: params.gitRevision,
+		loadedScopeKey: loadedGitScopeKey,
+		loadedRevision: loadedGitRevision,
+		scopeKey,
+	});
 
 	useEffect(() => {
 		void params.gitRevision;
 
-		if (params.activeUpperTab !== "git") {
+		if (!params.active) {
 			setGitLoading(false);
 			return;
 		}
 
-		if (
-			!shouldFetchGitStatus({
-				activeUpperTab: params.activeUpperTab,
-				gitRevision: params.gitRevision,
-				loadedRevision: loadedGitRevision,
-			})
-		) {
+		if (!gitStatusNeedsLoad) {
 			return;
 		}
 
 		let cancelled = false;
+		const requestGitRevision = params.gitRevision;
+		const requestScopeKey = scopeKey;
+		const requestParams = requestParamsRef.current;
 		setGitLoading(true);
 		setGitError(null);
-		void fetchGitStatus()
+		void fetchGitStatus(
+			requestParams.repositoryId !== undefined ? requestParams : undefined,
+		)
 			.then((nextStatus) => {
 				if (!cancelled) {
 					setGitStatus(nextStatus);
 					setGitError(null);
-					setLoadedGitRevision(params.gitRevision);
+					setLoadedGitScopeKey(requestScopeKey);
+					setLoadedGitRevision(requestGitRevision);
 				}
 			})
 			.catch((error) => {
@@ -174,7 +203,8 @@ export function useGitStatusLoader(params: {
 							? error.message
 							: "Failed to load git status",
 					);
-					setLoadedGitRevision(params.gitRevision);
+					setLoadedGitScopeKey(requestScopeKey);
+					setLoadedGitRevision(requestGitRevision);
 				}
 			})
 			.finally(() => {
@@ -186,14 +216,25 @@ export function useGitStatusLoader(params: {
 		return () => {
 			cancelled = true;
 		};
-	}, [params.activeUpperTab, params.gitRevision, loadedGitRevision]);
+	}, [params.active, params.gitRevision, scopeKey, gitStatusNeedsLoad]);
+
+	const acceptGitStatus = useCallback(
+		(nextStatus: BrowserGitStatusResponse) => {
+			setGitStatus(nextStatus);
+			setGitError(null);
+			setLoadedGitScopeKey(scopeKey);
+			setLoadedGitRevision(params.gitRevision);
+		},
+		[params.gitRevision, scopeKey],
+	);
 
 	return {
+		acceptGitStatus,
 		gitError,
 		gitHistoryLoadError,
 		gitHistoryLoadingMore,
-		gitLoading,
-		gitStatus,
+		gitLoading: params.active ? gitLoading || gitStatusNeedsLoad : gitLoading,
+		gitStatus: gitStatusNeedsLoad ? null : gitStatus,
 		loadMoreGitHistory,
 	};
 }

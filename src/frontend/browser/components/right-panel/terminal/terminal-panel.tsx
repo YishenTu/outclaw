@@ -10,13 +10,17 @@ import { TerminalView } from "./terminal-view.tsx";
 interface TerminalPanelProps {
 	agentId: string | null;
 	active: boolean;
+	providerId?: string;
 	repositoryId?: string;
+	sdkSessionId?: string;
 }
 
 export function TerminalPanel({
 	agentId,
 	active,
+	providerId,
 	repositoryId,
+	sdkSessionId,
 }: TerminalPanelProps) {
 	const terminals = useTerminalStore((state) =>
 		selectAgentTerminals(state, agentId),
@@ -54,7 +58,9 @@ export function TerminalPanel({
 					key={terminal.id}
 					active={active && terminal.id === activeTerminalId}
 					agentId={agentId}
+					providerId={providerId}
 					repositoryId={repositoryId}
+					sdkSessionId={sdkSessionId}
 					terminalId={terminal.id}
 				/>
 			))}

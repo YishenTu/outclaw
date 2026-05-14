@@ -194,6 +194,8 @@ async function handleCodingRepositoryRequest(
 		return Response.json(
 			await browserApi.listCodingRepositoryTree(repositoryId, {
 				path: url.searchParams.get("path") ?? undefined,
+				providerId: url.searchParams.get("providerId") ?? undefined,
+				sdkSessionId: url.searchParams.get("sdkSessionId") ?? undefined,
 			}),
 		);
 	}

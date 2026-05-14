@@ -1,109 +1,220 @@
 import { describe, expect, test } from "bun:test";
-import type { BrowserTreeEntry } from "../../../src/common/protocol.ts";
+import type {
+	BrowserCodingRepositorySummary,
+	BrowserCodingSessionSummary,
+	BrowserTreeEntry,
+} from "../../../src/common/protocol.ts";
 import {
 	mergeTreeDirectoryChildren,
+	resolveCodingRightPanelWorkspaceTarget,
 	shouldApplyCodingRepositoryDirectoryChildren,
 	shouldLoadCodingRepositoryGitStatus,
 	shouldLoadCodingRepositoryTree,
 	treeDirectoryLoaded,
 } from "../../../src/frontend/browser/coding/coding-right-panel.tsx";
 
+const TEST_REPOSITORY: BrowserCodingRepositorySummary = {
+	id: "repo-1",
+	rootCwd: "/repo",
+	displayName: "Repo",
+	source: "manual",
+	status: "active",
+	createdAt: 1,
+	lastActive: 1,
+};
+
+function codingSession(
+	overrides: Partial<BrowserCodingSessionSummary>,
+): BrowserCodingSessionSummary {
+	return {
+		providerId: "codex",
+		sdkSessionId: "session-1",
+		repositoryId: "repo-1",
+		title: "Session",
+		model: "gpt-5.5",
+		lastActive: 1,
+		cwd: "/repo/packages/app",
+		lifecycleStatus: "open",
+		runStatus: "idle",
+		createdAt: 1,
+		source: "code",
+		tag: "code",
+		...overrides,
+	};
+}
+
 describe("coding right panel state", () => {
+	test("targets the focused coding session workspace when one is selected", () => {
+		const sessions = [
+			codingSession({
+				sdkSessionId: "session-1",
+				title: "Session 1",
+			}),
+			codingSession({
+				sdkSessionId: "session-2",
+				title: "Session 2",
+				lastActive: 2,
+				createdAt: 2,
+			}),
+		];
+		const sessionOneTarget = resolveCodingRightPanelWorkspaceTarget({
+			focusedRepositoryId: "repo-1",
+			focusedSession: {
+				providerId: "codex",
+				sdkSessionId: "session-1",
+			},
+			repository: TEST_REPOSITORY,
+			sessions,
+		});
+
+		const sessionTwoTarget = resolveCodingRightPanelWorkspaceTarget({
+			focusedRepositoryId: "repo-1",
+			focusedSession: {
+				providerId: "codex",
+				sdkSessionId: "session-2",
+			},
+			repository: TEST_REPOSITORY,
+			sessions,
+		});
+
+		expect(sessionOneTarget).toEqual({
+			providerId: "codex",
+			repositoryId: "repo-1",
+			sdkSessionId: "session-1",
+			workspaceCwd: "/repo/packages/app",
+			workspaceKey: "/repo/packages/app",
+		});
+		expect(sessionTwoTarget).toEqual({
+			providerId: "codex",
+			repositoryId: "repo-1",
+			sdkSessionId: "session-2",
+			workspaceCwd: "/repo/packages/app",
+			workspaceKey: "/repo/packages/app",
+		});
+		expect(sessionTwoTarget?.workspaceKey).toBe(sessionOneTarget?.workspaceKey);
+		expect(
+			resolveCodingRightPanelWorkspaceTarget({
+				focusedRepositoryId: "repo-1",
+				focusedSession: {
+					providerId: "__file__",
+					sdkSessionId: "src/index.ts",
+				},
+				repository: TEST_REPOSITORY,
+				sessions: [],
+			}),
+		).toEqual({
+			repositoryId: "repo-1",
+			workspaceCwd: "/repo",
+			workspaceKey: "/repo",
+		});
+		expect(
+			resolveCodingRightPanelWorkspaceTarget({
+				focusedRepositoryId: "repo-1",
+				focusedSession: {
+					providerId: "codex",
+					sdkSessionId: "missing-session",
+				},
+				repository: TEST_REPOSITORY,
+				sessions: [],
+			}),
+		).toBeUndefined();
+	});
+
 	test("loads the repository file tree only while the files tab is visible", () => {
 		expect(
 			shouldLoadCodingRepositoryTree({
 				activeTab: "files",
-				focusedRepositoryId: "repo-1",
+				focusedWorkspaceKey: "repo-1",
 			}),
 		).toBe(true);
 		expect(
 			shouldLoadCodingRepositoryTree({
 				activeTab: "git",
-				focusedRepositoryId: "repo-1",
+				focusedWorkspaceKey: "repo-1",
 			}),
 		).toBe(false);
 		expect(
 			shouldLoadCodingRepositoryTree({
 				activeTab: "files",
-				focusedRepositoryId: undefined,
+				focusedWorkspaceKey: undefined,
 			}),
 		).toBe(false);
 	});
 
-	test("loads repository git status only when the visible git panel is stale", () => {
+	test("loads repository git status only when the visible git workspace is stale", () => {
 		expect(
 			shouldLoadCodingRepositoryGitStatus({
 				activeTab: "git",
-				focusedRepositoryId: "repo-1",
+				focusedWorkspaceKey: "repo-1",
 				gitRevision: 1,
-				loadedGitRepositoryId: null,
+				loadedGitWorkspaceKey: null,
 				loadedGitRevision: null,
 			}),
 		).toBe(true);
 		expect(
 			shouldLoadCodingRepositoryGitStatus({
 				activeTab: "files",
-				focusedRepositoryId: "repo-1",
+				focusedWorkspaceKey: "repo-1",
 				gitRevision: 1,
-				loadedGitRepositoryId: null,
+				loadedGitWorkspaceKey: null,
 				loadedGitRevision: null,
 			}),
 		).toBe(false);
 		expect(
 			shouldLoadCodingRepositoryGitStatus({
 				activeTab: "git",
-				focusedRepositoryId: undefined,
+				focusedWorkspaceKey: undefined,
 				gitRevision: 1,
-				loadedGitRepositoryId: null,
+				loadedGitWorkspaceKey: null,
 				loadedGitRevision: null,
 			}),
 		).toBe(false);
 		expect(
 			shouldLoadCodingRepositoryGitStatus({
 				activeTab: "git",
-				focusedRepositoryId: "repo-1",
+				focusedWorkspaceKey: "repo-1",
 				gitRevision: 1,
-				loadedGitRepositoryId: "repo-1",
+				loadedGitWorkspaceKey: "repo-1",
 				loadedGitRevision: 1,
 			}),
 		).toBe(false);
 		expect(
 			shouldLoadCodingRepositoryGitStatus({
 				activeTab: "git",
-				focusedRepositoryId: "repo-1",
+				focusedWorkspaceKey: "repo-1",
 				gitRevision: 2,
-				loadedGitRepositoryId: "repo-1",
+				loadedGitWorkspaceKey: "repo-1",
 				loadedGitRevision: 1,
 			}),
 		).toBe(true);
 		expect(
 			shouldLoadCodingRepositoryGitStatus({
 				activeTab: "git",
-				focusedRepositoryId: "repo-2",
+				focusedWorkspaceKey: "/repo/packages/app",
 				gitRevision: 1,
-				loadedGitRepositoryId: "repo-1",
+				loadedGitWorkspaceKey: "/repo/packages/app",
 				loadedGitRevision: 1,
 			}),
-		).toBe(true);
+		).toBe(false);
 	});
 
-	test("drops stale lazy directory responses after repository focus changes", () => {
+	test("drops stale lazy directory responses after workspace cwd changes", () => {
 		expect(
 			shouldApplyCodingRepositoryDirectoryChildren({
-				focusedRepositoryId: "repo-1",
-				requestRepositoryId: "repo-1",
+				focusedWorkspaceKey: "repo-1:codex/session-1",
+				requestWorkspaceKey: "repo-1:codex/session-1",
 			}),
 		).toBe(true);
 		expect(
 			shouldApplyCodingRepositoryDirectoryChildren({
-				focusedRepositoryId: "repo-2",
-				requestRepositoryId: "repo-1",
+				focusedWorkspaceKey: "repo-1:codex/session-2",
+				requestWorkspaceKey: "repo-1:codex/session-1",
 			}),
 		).toBe(false);
 		expect(
 			shouldApplyCodingRepositoryDirectoryChildren({
-				focusedRepositoryId: undefined,
-				requestRepositoryId: "repo-1",
+				focusedWorkspaceKey: undefined,
+				requestWorkspaceKey: "repo-1:codex/session-1",
 			}),
 		).toBe(false);
 	});
