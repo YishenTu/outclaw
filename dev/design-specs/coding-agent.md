@@ -520,17 +520,19 @@ Completed groundwork:
   through the daemon coding API, prints the accepted `providerId/sdkSessionId`
   ref, and exits after the turn is accepted. Archived sessions are restored by
   the daemon resume path before the prompt is accepted.
-- CLI `oc coding monitor <provider/session>` checks status first, replays
-  normalized prior coding events, follows live events only while the latest turn
-  is running, blocks until the observed turn reaches `done` or `error`, and
-  relies on the caller's shell/tool timeout for interruption.
-- CLI `oc coding status <provider/session>` reads the daemon coding-session
-  status. It prints `running` for an active latest turn, `error: <message>` for
-  a failed latest turn, or `done` plus the final assistant response after the
-  latest turn is idle.
+- CLI `oc coding list [--json] [--repo <repo-id-or-path>] [--all]
+  [--by repo|recent]` lists registered repositories and coding sessions.
+- CLI `oc coding cancel <provider/session>` requests interruption of the active
+  turn, preserves resumability, and does not roll back filesystem changes.
+- CLI `oc coding status <provider/session> [--block] [--timeout N] [--json]`
+  reads the daemon coding-session status. It prints `running` for an active
+  latest turn, `error: <message>` for a failed latest turn, `cancelled` for an
+  interrupted turn, or `done` plus the final assistant response after the latest
+  turn is idle. `--block` stays silent until `done`, `error`, or `cancelled`;
+  timeout exits 124 without conflating timeout with a session error.
 - When `oc coding` is invoked from an agent home, the CLI resolves the active
   chat session through the daemon and sends that chat identity as internal
-  headers. Start, resume, status, and monitor therefore upsert
+  headers. Start, resume, and status therefore upsert
   `chat_coding_links` after their target coding session has been accepted or
   validated.
 - Browser Code mode supports repo add from an existing local folder and
@@ -568,9 +570,8 @@ Current limitations and explicit deferrals:
 - Approval-modal UX is not implemented yet.
 - The right-panel workspace (files / git / terminal) is bound to the focused
   repository root, not to per-session sub-cwds inside a monorepo.
-- CLI `oc coding monitor` has no dedicated timeout, `--until`, or `--follow`
-  flags in the first slice. Human or agent callers control interruption at the
-  shell/tool layer.
+- CLI follow-style monitoring is deliberately not exposed. `transcript` is
+  replay-only, and `status --block --timeout N` is the bounded wait primitive.
 - Codex event normalization covers text, thinking, live/final usage, done,
   command executions, command output deltas, file changes, web search, subagent
   tool calls, and generic tool calls. Approvals are still missing. Richer item
@@ -756,21 +757,20 @@ Current limitations and explicit deferrals:
   initialize-and-return start command.
 - [x] Add `oc coding resume <provider/session> "<prompt>"` as the canonical
   validate-and-return resume command.
-- [x] Add `oc coding monitor <session-ref>` to replay prior progress and follow
-  live coding-session events.
-- [x] Keep CLI monitor session-scoped for the MVP; defer multi-session or
-  repo-filtered monitoring to Browser/TUI or a separately designed dashboard.
-- [x] Add `oc coding status <session-ref>` as a non-streaming snapshot.
+- [x] Add `oc coding list [--json] [--repo <repo-id-or-path>] [--all]
+  [--by repo|recent]` as the repository/session index.
+- [x] Add `oc coding cancel <session-ref>` as the canonical active-turn
+  interrupt command.
+- [x] Add `oc coding status <session-ref> [--block] [--timeout N] [--json]` as
+  a non-streaming snapshot and optional silent wait primitive.
 - [x] Make `oc coding` infer agent active-chat context from cwd and send it to
   daemon coding routes for link creation.
-- [x] Make CLI monitor replay-only for completed sessions and follow live events
-  only while the latest turn is running.
 - [ ] Add `/coding-session` list/switch/resume commands separate from
   `/session`.
-- [x] Render structured coding events in CLI monitor now that command, patch,
-  web-search, subagent, generic-tool, text, and status events exist.
-- [ ] Improve CLI monitor formatting only where the current compact renderer is
-  insufficient for real command output, patches, or long tool runs.
+- [x] Render structured coding events in CLI transcript now that command,
+  patch, web-search, subagent, generic-tool, text, and status events exist.
+- [ ] Improve CLI transcript formatting only where the current compact renderer
+  is insufficient for real command output, patches, or long tool runs.
 
 ### 7. Telegram
 
@@ -805,17 +805,16 @@ commands wait for the Codex turn to complete or stream the result inline. Agents
 that need progress or the final result attach explicitly:
 
 ```text
-oc coding monitor <session-ref>
-oc coding status <session-ref>
+oc coding transcript <session-ref> [--turns N|--full]
+oc coding status <session-ref> [--block] [--timeout N] [--json]
 ```
 
-`monitor` is a blocking attach command. It renders the normalized
-`CodingSessionEvent` stream, including assistant text and compact evidence for
-tool use such as commands, file changes, web search, subagents, and generic tool
-calls. It has no monitor-specific timeout or alternate termination flag in the
-MVP; callers should use their shell/tool timeout when they need one. `status`
-prints only the coarse turn state and final assistant response; it does not
-replay intermediate tool evidence.
+`transcript` renders normalized prior `CodingSessionEvent` history, including
+assistant text and compact evidence for tool use such as commands, file changes,
+web search, subagents, and generic tool calls. `status` prints only the coarse
+turn state and final assistant response; it does not replay intermediate tool
+evidence. `status --block` is the blocking primitive for agents that need to wait
+for a terminal state before reporting back.
 
 The stable user-facing ref is the provider session identity, preferably
 formatted as `providerId/sdkSessionId` when ambiguity is possible. Do not

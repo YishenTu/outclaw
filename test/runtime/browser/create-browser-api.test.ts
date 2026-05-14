@@ -677,7 +677,13 @@ describe("createBrowserApi", () => {
 		).resolves.toEqual({
 			providerId: "codex",
 			sdkSessionId: "code-status",
+			ref: "codex/code-status",
 			state: "done",
+			repo: join(root, "workspace"),
+			startedAt: "1970-01-01T00:00:00.100Z",
+			lastEventAt: "1970-01-01T00:00:00.100Z",
+			durationMs: 0,
+			lastPrompt: "follow up",
 			finalResponse: "final answer",
 		});
 
@@ -751,15 +757,83 @@ describe("createBrowserApi", () => {
 		).resolves.toEqual({
 			providerId: "codex",
 			sdkSessionId: "code-running",
+			ref: "codex/code-running",
 			state: "running",
+			repo: join(root, "workspace"),
+			startedAt: expect.any(String),
+			lastEventAt: expect.any(String),
+			durationMs: expect.any(Number),
 		});
 		await expect(
 			api.getCodingSessionStatus("codex", "code-failed"),
 		).resolves.toEqual({
 			providerId: "codex",
 			sdkSessionId: "code-failed",
+			ref: "codex/code-failed",
 			state: "error",
-			error: "boom",
+			repo: join(root, "workspace"),
+			startedAt: expect.any(String),
+			lastEventAt: expect.any(String),
+			durationMs: expect.any(Number),
+			error: { message: "boom" },
+		});
+
+		codingStore.close();
+		sessionStore.close();
+	});
+
+	test("reports cancelled coding session status", async () => {
+		const root = createTempDir(
+			"outclaw-browser-coding-session-cancelled-status-api-",
+		);
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const sessionStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		sessionStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-cancelled",
+			title: "code-cancelled",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-cancelled",
+			cwd: join(root, "workspace"),
+			runStatus: "running",
+			timestamp: 100,
+		});
+		codingStore.markCancelled({
+			providerId: "codex",
+			sdkSessionId: "code-cancelled",
+			timestamp: 300,
+		});
+		const api = createBrowserApi({
+			agents: [],
+			codingSessions: codingStore,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.getCodingSessionStatus("codex", "code-cancelled"),
+		).resolves.toEqual({
+			providerId: "codex",
+			sdkSessionId: "code-cancelled",
+			ref: "codex/code-cancelled",
+			state: "cancelled",
+			repo: join(root, "workspace"),
+			startedAt: "1970-01-01T00:00:00.100Z",
+			lastEventAt: "1970-01-01T00:00:00.300Z",
+			durationMs: 200,
 		});
 
 		codingStore.close();
@@ -1499,6 +1573,105 @@ describe("createBrowserApi", () => {
 
 		await expect(
 			api.stopCodingSession({
+				providerId: "codex",
+				sdkSessionId: "codex-thread-1",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
+		});
+		expect(calls).toEqual([
+			{
+				providerId: "codex",
+				sdkSessionId: "codex-thread-1",
+			},
+		]);
+	});
+
+	test("uses cancellation semantics for browser stop requests when available", async () => {
+		const root = createTempDir("outclaw-browser-coding-stop-cancel-");
+		cleanupPaths.push(root);
+		const calls: string[] = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt() {
+					throw new Error("start should not be called");
+				},
+				async resumePrompt() {
+					throw new Error("resume should not be called");
+				},
+				stopPrompt() {
+					calls.push("stop");
+					return {
+						status: "rejected",
+						message: "stop should not be called",
+					};
+				},
+				cancelPrompt(params) {
+					calls.push(`cancel:${params.providerId}/${params.sdkSessionId}`);
+					return {
+						status: "already_terminal",
+						providerId: params.providerId ?? "codex",
+						sdkSessionId: params.sdkSessionId,
+						state: "cancelled",
+					};
+				},
+			},
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.stopCodingSession({
+				providerId: "codex",
+				sdkSessionId: "codex-thread-1",
+			}),
+		).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
+		});
+		expect(calls).toEqual(["cancel:codex/codex-thread-1"]);
+	});
+
+	test("cancels a coding session by provider session identity", async () => {
+		const root = createTempDir("outclaw-browser-coding-cancel-");
+		cleanupPaths.push(root);
+		const calls: Array<{ providerId: string; sdkSessionId: string }> = [];
+		const api = createBrowserApi({
+			agents: [],
+			coding: {
+				async startPrompt() {
+					throw new Error("start should not be called");
+				},
+				async resumePrompt() {
+					throw new Error("resume should not be called");
+				},
+				stopPrompt: unusedStopPrompt,
+				cancelPrompt(params) {
+					calls.push({
+						providerId: params.providerId ?? "",
+						sdkSessionId: params.sdkSessionId,
+					});
+					return {
+						status: "accepted",
+						providerId: params.providerId ?? "codex",
+						sdkSessionId: params.sdkSessionId,
+					};
+				},
+			},
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(
+			api.cancelCodingSession({
 				providerId: "codex",
 				sdkSessionId: "codex-thread-1",
 			}),

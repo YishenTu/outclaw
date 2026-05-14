@@ -17,6 +17,7 @@ export {
 	resolveCodingRepositoryRoot,
 } from "./coding-repository-store.ts";
 export {
+	type CodePromptCancelResult,
 	type CodePromptRequest,
 	type CodePromptResumeRequest,
 	type CodePromptStartResult,

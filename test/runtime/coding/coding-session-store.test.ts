@@ -380,6 +380,17 @@ describe("CodingSessionStore", () => {
 			failureMessage: "Codex turn failed",
 		});
 
+		codingSessions.markCancelled({
+			providerId: "codex",
+			sdkSessionId: "code-status",
+			timestamp: 50,
+		});
+		expect(codingSessions.get("codex", "code-status")).toMatchObject({
+			lifecycleStatus: "open",
+			runStatus: "cancelled",
+			lastActive: 50,
+		});
+
 		codingSessions.delete("codex", "code-status");
 
 		expect(codingSessions.get("codex", "code-status")).toBeUndefined();

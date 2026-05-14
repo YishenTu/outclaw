@@ -234,14 +234,18 @@ export function formatCodingUsage() {
 		'Usage: oc coding <repo-id-or-path|provider/session> "<prompt>"',
 		'       oc coding start <repo-id-or-path> "<prompt>"',
 		'       oc coding resume <provider/session> "<prompt>"',
-		"       oc coding status <provider/session>",
+		"       oc coding list [--json] [--repo <repo-id-or-path>] [--all] [--by repo|recent]",
+		"       oc coding cancel <provider/session>",
+		"       oc coding status <provider/session> [--block] [--timeout N] [--json]",
 		"       oc coding transcript <provider/session> [--turns N|--full]",
 		"",
 		"Commands:",
 		"       <target>  start or resume based on the target",
 		"       start     start a cwd-bound coding session and print its ref",
 		"       resume    continue an existing coding session; running sessions are steered",
-		"       status    print running, error, or the final response",
+		"       list      list registered coding repositories and recent sessions",
+		"       cancel    interrupt the active coding turn; existing file changes remain",
+		"       status    print running, error, cancelled, or the final response",
 		"       transcript replay normalized coding-session history",
 	]);
 }
@@ -270,6 +274,27 @@ export function formatCodingResumeUsage() {
 	]);
 }
 
+export function formatCodingListUsage() {
+	return joinLines([
+		"Usage: oc coding list [--json] [--repo <repo-id-or-path>] [--all] [--by repo|recent]",
+		"",
+		"Lists registered coding repositories and coding sessions.",
+		"Default order is flat, most-recent sessions first.",
+		"Use --by repo to group sessions under registered repositories.",
+		"Use --all to include archived repositories and sessions.",
+		"--repo accepts either a registered repository id or a local path.",
+	]);
+}
+
+export function formatCodingCancelUsage() {
+	return joinLines([
+		"Usage: oc coding cancel <provider/session>",
+		"",
+		"Requests interruption of the active coding turn and exits immediately.",
+		"The session remains resumable and existing filesystem changes are not rolled back.",
+	]);
+}
+
 export function formatCodingTranscriptUsage() {
 	return joinLines([
 		"Usage: oc coding transcript <provider/session> [--turns N|--full]",
@@ -287,11 +312,14 @@ export function printCodingTranscriptUsage() {
 
 export function formatCodingStatusUsage() {
 	return joinLines([
-		"Usage: oc coding status <provider/session>",
+		"Usage: oc coding status <provider/session> [--block] [--timeout N] [--json]",
 		"",
 		"Prints running while a coding turn is active.",
 		"Prints error details for failed turns.",
+		"Prints cancelled when the active turn was interrupted.",
 		"Prints done and the final assistant response when the session is idle.",
+		"Use --block to wait silently until done, error, or cancelled.",
+		"Use --timeout N with --block to exit 124 after N seconds.",
 	]);
 }
 

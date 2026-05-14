@@ -550,6 +550,92 @@ describe("CodingRuntime", () => {
 		});
 	});
 
+	test("cancels an active resume turn and keeps late provider errors from overwriting cancellation", async () => {
+		let captured: PromptExecution | undefined;
+		let markedCancelled:
+			| {
+					providerId: string;
+					sdkSessionId: string;
+			  }
+			| undefined;
+		let markedFailed:
+			| {
+					providerId: string;
+					sdkSessionId: string;
+					message?: string;
+			  }
+			| undefined;
+		const runtime = createCodingRuntime({
+			codingSessions: {
+				resolveRef({ providerId, sdkSessionId }) {
+					if (providerId !== "codex" || sdkSessionId !== "codex-code") {
+						return { status: "not_found" };
+					}
+					return {
+						status: "resolved",
+						session: {
+							storageOwnerId: "__coding__",
+							providerId,
+							sdkSessionId,
+							cwd: "/repo",
+							lifecycleStatus: "open",
+							runStatus: "idle",
+							createdAt: 1,
+							lastActive: 2,
+						},
+					};
+				},
+				upsert() {},
+				markCancelled(params) {
+					markedCancelled = params;
+				},
+				markFailed(params) {
+					markedFailed = params;
+				},
+				markRunning() {},
+			},
+			providerId: "codex",
+			runDetachedPrompt(task) {
+				captured = task;
+				return {
+					status: "accepted",
+					ocSessionId: "codex-code",
+					abort() {
+						return true;
+					},
+				};
+			},
+		});
+
+		await runtime.resumePrompt({
+			providerId: "codex",
+			sdkSessionId: "codex-code",
+			prompt: "continue the fix",
+		});
+
+		expect(
+			runtime.cancelPrompt({
+				providerId: "codex",
+				sdkSessionId: "codex-code",
+			}),
+		).toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-code",
+		});
+		expect(markedCancelled).toEqual({
+			providerId: "codex",
+			sdkSessionId: "codex-code",
+		});
+
+		captured?.onEvent?.({
+			type: "error",
+			sessionId: "codex-code",
+			message: "provider abort surfaced later",
+		});
+		expect(markedFailed).toBeUndefined();
+	});
+
 	test("stops an active start turn after provider identity arrives", async () => {
 		let captured: PromptExecution | undefined;
 		let abortCount = 0;

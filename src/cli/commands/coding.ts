@@ -2,6 +2,10 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import type {
 	BrowserAgentActiveSessionResponse,
+	BrowserCodingRepositoryListResponse,
+	BrowserCodingRepositorySummary,
+	BrowserCodingSessionCancelResponse,
+	BrowserCodingSessionPageResponse,
 	BrowserCodingSessionResumeResponse,
 	BrowserCodingSessionStartResponse,
 	BrowserCodingSessionStatusResponse,
@@ -9,6 +13,8 @@ import type {
 } from "../../common/protocol.ts";
 import { loadGlobalConfig } from "../../runtime/config/index.ts";
 import {
+	formatCodingCancelUsage,
+	formatCodingListUsage,
 	formatCodingResumeUsage,
 	formatCodingStartUsage,
 	formatCodingStatusUsage,
@@ -53,6 +59,12 @@ export async function codingCommand(options: CodingCommandOptions) {
 			return;
 		case "resume":
 			await runCodingSubcommand(() => codingResumeCommand(options));
+			return;
+		case "list":
+			await runCodingSubcommand(() => codingListCommand(options));
+			return;
+		case "cancel":
+			await runCodingSubcommand(() => codingCancelCommand(options));
 			return;
 		case "monitor":
 			console.error(
@@ -134,6 +146,143 @@ async function codingResumeCommand(options: CodingCommandOptions) {
 	exitWithCodingResult(result);
 }
 
+async function codingListCommand(options: CodingCommandOptions) {
+	const args = options.argv.slice(4);
+	if (isHelpFlag(args[0])) {
+		console.log(formatCodingListUsage());
+		process.exit(0);
+	}
+	const listOptions = parseCodingListOptions(args);
+	if (listOptions.status === "invalid") {
+		console.error(listOptions.message);
+		process.exit(1);
+	}
+
+	const repositoriesResponse = await getCodingRepositories(options.homeDir, {
+		includeArchived: listOptions.value.all,
+	});
+	const repositoryFilter = resolveCodingRepositoryFilter(
+		listOptions.value.repo,
+		repositoriesResponse.repositories,
+	);
+	if (repositoryFilter?.unknown) {
+		console.error(`Unknown repo: ${repositoryFilter.unknown}`);
+		process.exit(1);
+	}
+	const repositories = filterCodingRepositories(
+		repositoriesResponse.repositories,
+		repositoryFilter,
+	);
+	const sessions =
+		repositoryFilter?.rootCwd && !repositoryFilter.repositoryId
+			? []
+			: await getCodingListSessions(options.homeDir, {
+					all: listOptions.value.all,
+					repositoryId: repositoryFilter?.repositoryId,
+				});
+	const statuses = await Promise.all(
+		sessions.map((session) =>
+			getCodingStatus(options.homeDir, {
+				providerId: session.providerId,
+				sdkSessionId: session.sdkSessionId,
+			}),
+		),
+	);
+	statuses.sort(compareCodingStatusRecency);
+	if (listOptions.value.json) {
+		console.log(
+			JSON.stringify(
+				{
+					repositories: repositories.map(toCodingRepositoryJson),
+					sessions: statuses.map(toCodingStatusJson),
+				},
+				null,
+				"\t",
+			),
+		);
+		process.exit(0);
+	}
+	printCodingList(repositories, statuses, listOptions.value.by);
+	process.exit(0);
+}
+
+function parseCodingListOptions(args: string[]):
+	| {
+			status: "valid";
+			value: {
+				all: boolean;
+				by: "recent" | "repo";
+				json: boolean;
+				repo?: string;
+			};
+	  }
+	| { status: "invalid"; message: string } {
+	let all = false;
+	let by: "recent" | "repo" = "recent";
+	let json = false;
+	let repo: string | undefined;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--all") {
+			all = true;
+			continue;
+		}
+		if (arg === "--json") {
+			json = true;
+			continue;
+		}
+		if (arg === "--repo") {
+			const value = args[index + 1];
+			if (!value) {
+				return { status: "invalid", message: "Missing --repo value" };
+			}
+			repo = value;
+			index += 1;
+			continue;
+		}
+		if (arg === "--by") {
+			const value = args[index + 1];
+			if (value !== "repo" && value !== "recent") {
+				return { status: "invalid", message: "Use --by repo or --by recent" };
+			}
+			by = value;
+			index += 1;
+			continue;
+		}
+		return {
+			status: "invalid",
+			message: formatCodingListUsage(),
+		};
+	}
+	return {
+		status: "valid",
+		value: { all, by, json, ...(repo ? { repo } : {}) },
+	};
+}
+
+async function codingCancelCommand(options: CodingCommandOptions) {
+	const args = options.argv.slice(4);
+	if (isHelpFlag(args[0])) {
+		console.log(formatCodingCancelUsage());
+		process.exit(0);
+	}
+
+	const sessionRef = args[0];
+	if (!sessionRef || args.length !== 1) {
+		console.error(formatCodingCancelUsage());
+		process.exit(1);
+	}
+
+	const ref = parseExplicitSessionRef(sessionRef);
+	if (!ref) {
+		console.error("Coding session ref must use provider/session format");
+		process.exit(1);
+	}
+
+	const result = await postCodingCancel(options.homeDir, ref);
+	exitWithCodingCancelResult(result);
+}
+
 async function codingStatusCommand(options: CodingCommandOptions) {
 	const args = options.argv.slice(4);
 	if (isHelpFlag(args[0])) {
@@ -142,8 +291,13 @@ async function codingStatusCommand(options: CodingCommandOptions) {
 	}
 
 	const sessionRef = args[0];
-	if (!sessionRef || args.length !== 1) {
-		console.error(formatCodingStatusUsage());
+	const statusOptions = parseCodingStatusOptions(args.slice(1));
+	if (!sessionRef || statusOptions.status === "invalid") {
+		console.error(
+			statusOptions.status === "invalid"
+				? statusOptions.message
+				: formatCodingStatusUsage(),
+		);
 		process.exit(1);
 	}
 
@@ -154,9 +308,84 @@ async function codingStatusCommand(options: CodingCommandOptions) {
 	}
 
 	const chatContext = await resolveCodingChatContext(options);
-	const result = await getCodingStatus(options.homeDir, ref, chatContext);
-	printCodingStatus(result);
+	const result = statusOptions.value.block
+		? await waitForCodingStatus(options.homeDir, ref, {
+				chatContext,
+				timeoutSeconds: statusOptions.value.timeoutSeconds,
+			})
+		: {
+				status: "terminal" as const,
+				value: await getCodingStatus(options.homeDir, ref, chatContext),
+			};
+	if (result.status === "timeout") {
+		console.error(
+			`coding status timed out after ${statusOptions.value.timeoutSeconds}s`,
+		);
+		process.exit(124);
+	}
+	if (statusOptions.value.json) {
+		printCodingStatusJson(result.value);
+	} else {
+		printCodingStatus(result.value);
+	}
 	process.exit(0);
+}
+
+function parseCodingStatusOptions(args: string[]):
+	| {
+			status: "valid";
+			value: { block: boolean; json: boolean; timeoutSeconds?: number };
+	  }
+	| { status: "invalid"; message: string } {
+	let block = false;
+	let json = false;
+	let timeoutSeconds: number | undefined;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--json") {
+			json = true;
+			continue;
+		}
+		if (arg === "--block") {
+			block = true;
+			continue;
+		}
+		if (arg === "--timeout") {
+			const value = args[index + 1];
+			if (!value) {
+				return { status: "invalid", message: formatCodingStatusUsage() };
+			}
+			const parsed = parsePositiveInteger(value);
+			if (parsed === undefined) {
+				return {
+					status: "invalid",
+					message: "Status timeout must be a positive integer",
+				};
+			}
+			timeoutSeconds = parsed;
+			index += 1;
+			continue;
+		}
+		if (arg?.startsWith("--timeout=")) {
+			const parsed = parsePositiveInteger(arg.slice("--timeout=".length));
+			if (parsed === undefined) {
+				return {
+					status: "invalid",
+					message: "Status timeout must be a positive integer",
+				};
+			}
+			timeoutSeconds = parsed;
+			continue;
+		}
+		return { status: "invalid", message: formatCodingStatusUsage() };
+	}
+	if (timeoutSeconds !== undefined && !block) {
+		return {
+			status: "invalid",
+			message: "Use --timeout only with --block",
+		};
+	}
+	return { status: "valid", value: { block, json, timeoutSeconds } };
 }
 
 async function codingTranscriptCommand(options: CodingCommandOptions) {
@@ -370,6 +599,61 @@ async function postCodingResume(
 	);
 }
 
+async function postCodingCancel(
+	homeDir: string,
+	ref: { providerId: string; sdkSessionId: string },
+): Promise<BrowserCodingSessionCancelResponse> {
+	return postJson(
+		homeDir,
+		`/api/coding/sessions/${encodeURIComponent(ref.providerId)}/${encodeURIComponent(ref.sdkSessionId)}/cancel`,
+		{},
+	);
+}
+
+async function getCodingRepositories(
+	homeDir: string,
+	options: { includeArchived: boolean },
+): Promise<BrowserCodingRepositoryListResponse> {
+	const params = new URLSearchParams();
+	if (options.includeArchived) {
+		params.set("includeArchived", "true");
+	}
+	const query = params.size > 0 ? `?${params}` : "";
+	return getJson(homeDir, `/api/coding/repositories${query}`);
+}
+
+async function getCodingListSessions(
+	homeDir: string,
+	options: { all: boolean; repositoryId?: string },
+): Promise<BrowserCodingSessionPageResponse["sessions"]> {
+	const open = await getCodingSessionPage(homeDir, {
+		repositoryId: options.repositoryId,
+	});
+	if (!options.all) {
+		return open.sessions;
+	}
+	const archived = await getCodingSessionPage(homeDir, {
+		lifecycleStatus: "archived",
+		repositoryId: options.repositoryId,
+	});
+	return [...open.sessions, ...archived.sessions];
+}
+
+async function getCodingSessionPage(
+	homeDir: string,
+	options: { lifecycleStatus?: "archived"; repositoryId?: string },
+): Promise<BrowserCodingSessionPageResponse> {
+	const params = new URLSearchParams();
+	params.set("limit", "100");
+	if (options.lifecycleStatus) {
+		params.set("lifecycleStatus", options.lifecycleStatus);
+	}
+	if (options.repositoryId) {
+		params.set("repositoryId", options.repositoryId);
+	}
+	return getJson(homeDir, `/api/coding/sessions?${params}`);
+}
+
 async function getCodingStatus(
 	homeDir: string,
 	ref: { providerId: string; sdkSessionId: string },
@@ -380,6 +664,40 @@ async function getCodingStatus(
 		`/api/coding/sessions/${encodeURIComponent(ref.providerId)}/${encodeURIComponent(ref.sdkSessionId)}/status`,
 		chatContext,
 	);
+}
+
+async function waitForCodingStatus(
+	homeDir: string,
+	ref: { providerId: string; sdkSessionId: string },
+	options: { chatContext?: CodingChatContext; timeoutSeconds?: number },
+): Promise<
+	| { status: "terminal"; value: BrowserCodingSessionStatusResponse }
+	| { status: "timeout" }
+> {
+	const deadline =
+		options.timeoutSeconds === undefined
+			? undefined
+			: Date.now() + options.timeoutSeconds * 1000;
+	while (true) {
+		const status = await getCodingStatus(homeDir, ref, options.chatContext);
+		if (status.state !== "running") {
+			return { status: "terminal", value: status };
+		}
+		const now = Date.now();
+		if (deadline !== undefined && now >= deadline) {
+			return { status: "timeout" };
+		}
+		const delayMs =
+			deadline === undefined ? 250 : Math.min(250, Math.max(0, deadline - now));
+		if (delayMs === 0) {
+			return { status: "timeout" };
+		}
+		await sleep(delayMs);
+	}
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function postJson<TResponse>(
@@ -651,7 +969,11 @@ function printCodingStatus(result: BrowserCodingSessionStatusResponse) {
 		return;
 	}
 	if (result.state === "error") {
-		console.log(`error: ${result.error ?? "Coding session failed"}`);
+		console.log(`error: ${readCodingStatusError(result)}`);
+		return;
+	}
+	if (result.state === "cancelled") {
+		console.log("cancelled");
 		return;
 	}
 	console.log("done");
@@ -659,6 +981,192 @@ function printCodingStatus(result: BrowserCodingSessionStatusResponse) {
 		console.log("");
 		console.log(result.finalResponse.trim());
 	}
+}
+
+function printCodingStatusJson(result: BrowserCodingSessionStatusResponse) {
+	console.log(JSON.stringify(toCodingStatusJson(result), null, "\t"));
+}
+
+function toCodingStatusJson(
+	result: BrowserCodingSessionStatusResponse,
+): Record<string, unknown> {
+	return {
+		ref: result.ref ?? `${result.providerId}/${result.sdkSessionId}`,
+		state: result.state,
+		...(result.repo ? { repo: result.repo } : {}),
+		...(result.startedAt ? { started_at: result.startedAt } : {}),
+		...(result.lastEventAt ? { last_event_at: result.lastEventAt } : {}),
+		...(result.durationMs !== undefined
+			? { duration_ms: result.durationMs }
+			: {}),
+		...(result.lastPrompt ? { last_prompt: result.lastPrompt } : {}),
+		...(result.finalResponse ? { final_response: result.finalResponse } : {}),
+		...(result.state === "error"
+			? { error: { message: readCodingStatusError(result) } }
+			: {}),
+	};
+}
+
+function toCodingRepositoryJson(
+	repository: BrowserCodingRepositorySummary,
+): Record<string, unknown> {
+	return {
+		id: repository.id,
+		root_cwd: repository.rootCwd,
+		display_name: repository.displayName,
+		source: repository.source,
+		status: repository.status,
+		created_at: new Date(repository.createdAt).toISOString(),
+		last_active: new Date(repository.lastActive).toISOString(),
+		...(repository.remoteUrl ? { remote_url: repository.remoteUrl } : {}),
+		...(repository.archivedAt
+			? { archived_at: new Date(repository.archivedAt).toISOString() }
+			: {}),
+	};
+}
+
+interface CodingRepositoryFilter {
+	repositoryId?: string;
+	rootCwd?: string;
+	unknown?: string;
+}
+
+function resolveCodingRepositoryFilter(
+	value: string | undefined,
+	repositories: BrowserCodingRepositorySummary[],
+): CodingRepositoryFilter | undefined {
+	if (!value) {
+		return undefined;
+	}
+	if (!isCodingRepositoryPathFilter(value)) {
+		const repository = repositories.find((candidate) => candidate.id === value);
+		return repository
+			? { repositoryId: repository.id, rootCwd: repository.rootCwd }
+			: { unknown: value };
+	}
+	const absolute = resolve(value);
+	const repository = repositories.find(
+		(candidate) => resolve(candidate.rootCwd) === absolute,
+	);
+	return repository
+		? { repositoryId: repository.id, rootCwd: repository.rootCwd }
+		: { unknown: value };
+}
+
+function isCodingRepositoryPathFilter(value: string): boolean {
+	return (
+		value.startsWith("/") ||
+		value.startsWith("./") ||
+		value.startsWith("../") ||
+		existsSync(resolve(value))
+	);
+}
+
+function filterCodingRepositories(
+	repositories: BrowserCodingRepositorySummary[],
+	filter: CodingRepositoryFilter | undefined,
+): BrowserCodingRepositorySummary[] {
+	if (!filter) {
+		return repositories;
+	}
+	return repositories.filter((repository) => {
+		if (filter.repositoryId) {
+			return repository.id === filter.repositoryId;
+		}
+		return filter.rootCwd
+			? resolve(repository.rootCwd) === filter.rootCwd
+			: true;
+	});
+}
+
+function compareCodingStatusRecency(
+	left: BrowserCodingSessionStatusResponse,
+	right: BrowserCodingSessionStatusResponse,
+): number {
+	const leftTime = left.lastEventAt ? Date.parse(left.lastEventAt) : 0;
+	const rightTime = right.lastEventAt ? Date.parse(right.lastEventAt) : 0;
+	return rightTime - leftTime;
+}
+
+function printCodingList(
+	repositories: BrowserCodingRepositorySummary[],
+	statuses: BrowserCodingSessionStatusResponse[],
+	by: "recent" | "repo",
+) {
+	if (statuses.length === 0 && repositories.length === 0) {
+		console.log("No coding sessions or repositories.");
+		return;
+	}
+	if (by === "repo") {
+		printCodingListByRepository(repositories, statuses);
+		return;
+	}
+	printRecentCodingList(statuses);
+	const sessionRepos = new Set(statuses.map((status) => status.repo));
+	const emptyRepositories = repositories.filter(
+		(repository) => !sessionRepos.has(repository.rootCwd),
+	);
+	if (emptyRepositories.length > 0) {
+		if (statuses.length > 0) {
+			console.log("");
+		}
+		console.log("Registered repositories:");
+		for (const repository of emptyRepositories) {
+			console.log(
+				`${repository.id}\t${repository.status}\t${repository.rootCwd}`,
+			);
+		}
+	}
+}
+
+function printRecentCodingList(statuses: BrowserCodingSessionStatusResponse[]) {
+	if (statuses.length === 0) {
+		return;
+	}
+	console.log("REF\tSTATE\tREPO\tLAST PROMPT");
+	for (const status of statuses) {
+		console.log(
+			`${status.ref ?? `${status.providerId}/${status.sdkSessionId}`}\t${status.state}\t${status.repo ?? ""}\t${truncateTableCell(status.lastPrompt ?? "", 60)}`,
+		);
+	}
+}
+
+function printCodingListByRepository(
+	repositories: BrowserCodingRepositorySummary[],
+	statuses: BrowserCodingSessionStatusResponse[],
+) {
+	const byRepo = new Map<string, BrowserCodingSessionStatusResponse[]>();
+	for (const status of statuses) {
+		const key = status.repo ?? "";
+		byRepo.set(key, [...(byRepo.get(key) ?? []), status]);
+	}
+	for (const repository of repositories) {
+		console.log(
+			`${repository.rootCwd} (${repository.id}, ${repository.status})`,
+		);
+		const sessions = byRepo.get(repository.rootCwd) ?? [];
+		for (const status of sessions) {
+			console.log(
+				`  ${status.ref ?? `${status.providerId}/${status.sdkSessionId}`}\t${status.state}\t${truncateTableCell(status.lastPrompt ?? "", 60)}`,
+			);
+		}
+	}
+}
+
+function truncateTableCell(value: string, maxLength: number): string {
+	if (value.length <= maxLength) {
+		return value;
+	}
+	return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function readCodingStatusError(
+	result: BrowserCodingSessionStatusResponse,
+): string {
+	if (typeof result.error === "string") {
+		return result.error;
+	}
+	return result.error?.message ?? "Coding session failed";
 }
 
 class CodingTranscriptRenderer {
@@ -819,6 +1327,23 @@ function exitWithCodingResult(
 	if (result.status === "rejected") {
 		console.error(result.message);
 		process.exit(1);
+	}
+	console.log(`${result.providerId}/${result.sdkSessionId}`);
+	process.exit(0);
+}
+
+function exitWithCodingCancelResult(
+	result: BrowserCodingSessionCancelResponse,
+) {
+	if (result.status === "rejected") {
+		console.error(result.message);
+		process.exit(1);
+	}
+	if (result.status === "already_terminal") {
+		console.log(
+			`session is already ${result.state}: ${result.providerId}/${result.sdkSessionId}`,
+		);
+		process.exit(0);
 	}
 	console.log(`${result.providerId}/${result.sdkSessionId}`);
 	process.exit(0);

@@ -14,7 +14,11 @@ import {
 import { ensureCodingRepositoryStoreSchema } from "./coding-repository-store.ts";
 
 export type CodingSessionLifecycleStatus = "open" | "archived";
-export type CodingSessionRunStatus = "idle" | "running" | "failed";
+export type CodingSessionRunStatus =
+	| "idle"
+	| "running"
+	| "failed"
+	| "cancelled";
 
 export const CODING_STORAGE_OWNER_ID = "__coding__";
 
@@ -229,6 +233,17 @@ export class CodingSessionStore {
 					$failureMessage: params.message ?? null,
 				});
 		})();
+	}
+
+	markCancelled(params: {
+		providerId: string;
+		sdkSessionId: string;
+		timestamp?: number;
+	}) {
+		this.updateRunStatus({
+			...params,
+			runStatus: "cancelled",
+		});
 	}
 
 	delete(providerId: string, sdkSessionId: string) {

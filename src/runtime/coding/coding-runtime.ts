@@ -55,6 +55,23 @@ export type CodePromptStopResult =
 			message: string;
 	  };
 
+export type CodePromptCancelResult =
+	| {
+			status: "accepted";
+			providerId: string;
+			sdkSessionId: string;
+	  }
+	| {
+			status: "already_terminal";
+			providerId: string;
+			sdkSessionId: string;
+			state: "done" | "error" | "cancelled";
+	  }
+	| {
+			status: "rejected";
+			message: string;
+	  };
+
 export interface CodingSessionRecorder {
 	resolveRef(params: {
 		providerId?: string;
@@ -74,6 +91,7 @@ export interface CodingSessionRecorder {
 		sdkSessionId: string;
 		message?: string;
 	}): void;
+	markCancelled?(params: { providerId: string; sdkSessionId: string }): void;
 	markRunning?(params: { providerId: string; sdkSessionId: string }): void;
 }
 
@@ -99,6 +117,7 @@ interface CodingRuntimeOptions {
 
 export class CodingRuntime {
 	private activeTurns = new Map<string, { abort: () => boolean }>();
+	private cancelledTurns = new Set<string>();
 
 	constructor(private readonly options: CodingRuntimeOptions) {}
 
@@ -163,6 +182,10 @@ export class CodingRuntime {
 					this.recordEvent(inFlightSessionId, event);
 				}
 				if (event.type === "done" && inFlightSessionId) {
+					if (this.consumeCancelledTurn(inFlightSessionId)) {
+						this.forgetActiveTurn(inFlightSessionId);
+						return;
+					}
 					this.markCompleted(
 						params.cwd,
 						inFlightSessionId,
@@ -173,6 +196,10 @@ export class CodingRuntime {
 					return;
 				}
 				if (event.type === "error" && inFlightSessionId) {
+					if (this.consumeCancelledTurn(inFlightSessionId)) {
+						this.forgetActiveTurn(inFlightSessionId);
+						return;
+					}
 					this.markFailed(
 						params.cwd,
 						inFlightSessionId,
@@ -264,6 +291,10 @@ export class CodingRuntime {
 					}
 				}
 				if (event.type === "done" && event.sessionId === params.sdkSessionId) {
+					if (this.consumeCancelledTurn(params.sdkSessionId)) {
+						this.forgetActiveTurn(params.sdkSessionId);
+						return;
+					}
 					this.markCompleted(
 						session.cwd,
 						params.sdkSessionId,
@@ -277,6 +308,10 @@ export class CodingRuntime {
 					event.type === "error" &&
 					(!event.sessionId || event.sessionId === params.sdkSessionId)
 				) {
+					if (this.consumeCancelledTurn(params.sdkSessionId)) {
+						this.forgetActiveTurn(params.sdkSessionId);
+						return;
+					}
 					this.markFailed(
 						session.cwd,
 						params.sdkSessionId,
@@ -377,6 +412,64 @@ export class CodingRuntime {
 			status: "accepted",
 			providerId: target.providerId,
 			sdkSessionId: target.sdkSessionId,
+		};
+	}
+
+	cancelPrompt(params: {
+		providerId?: string;
+		sdkSessionId: string;
+	}): CodePromptCancelResult {
+		if (params.providerId && params.providerId !== this.options.providerId) {
+			return {
+				status: "rejected",
+				message: `Coding provider mismatch: ${params.providerId}`,
+			};
+		}
+
+		const resolution = this.resolveSessionRef(params);
+		if (resolution.status === "rejected") {
+			return resolution;
+		}
+		const session = resolution.session;
+		if (session.providerId !== this.options.providerId) {
+			return {
+				status: "rejected",
+				message: `Coding provider mismatch: ${session.providerId}`,
+			};
+		}
+
+		const key = activeTurnKey(session.providerId, session.sdkSessionId);
+		const activeTurn = this.activeTurns.get(key);
+		if (!activeTurn) {
+			const state = terminalStateForRunStatus(session.runStatus);
+			if (state) {
+				return {
+					status: "already_terminal",
+					providerId: session.providerId,
+					sdkSessionId: session.sdkSessionId,
+					state,
+				};
+			}
+			return {
+				status: "rejected",
+				message: `Coding session is not running: ${session.providerId}/${session.sdkSessionId}`,
+			};
+		}
+		if (!activeTurn.abort()) {
+			this.activeTurns.delete(key);
+			return {
+				status: "rejected",
+				message: `Coding session is not running: ${session.providerId}/${session.sdkSessionId}`,
+			};
+		}
+
+		this.cancelledTurns.add(key);
+		this.activeTurns.delete(key);
+		this.markCancelled(session.sdkSessionId);
+		return {
+			status: "accepted",
+			providerId: session.providerId,
+			sdkSessionId: session.sdkSessionId,
 		};
 	}
 
@@ -507,6 +600,15 @@ export class CodingRuntime {
 		this.activeTurns.delete(activeTurnKey(this.options.providerId, sessionId));
 	}
 
+	private consumeCancelledTurn(sessionId: string): boolean {
+		const key = activeTurnKey(this.options.providerId, sessionId);
+		if (!this.cancelledTurns.has(key)) {
+			return false;
+		}
+		this.cancelledTurns.delete(key);
+		return true;
+	}
+
 	private markFailed(
 		cwd: string,
 		sessionId: string,
@@ -529,6 +631,13 @@ export class CodingRuntime {
 			"failed",
 			linkedChatSessionId,
 		);
+	}
+
+	private markCancelled(sessionId: string) {
+		this.options.codingSessions?.markCancelled?.({
+			providerId: this.options.providerId,
+			sdkSessionId: sessionId,
+		});
 	}
 }
 
@@ -574,4 +683,19 @@ function firstValue<T>(values: Iterable<T>): T | undefined {
 
 function activeTurnKey(providerId: string, sdkSessionId: string): string {
 	return `${providerId}\0${sdkSessionId}`;
+}
+
+function terminalStateForRunStatus(
+	runStatus: CodingSessionRunStatus,
+): "done" | "error" | "cancelled" | undefined {
+	if (runStatus === "idle") {
+		return "done";
+	}
+	if (runStatus === "failed") {
+		return "error";
+	}
+	if (runStatus === "cancelled") {
+		return "cancelled";
+	}
+	return undefined;
 }

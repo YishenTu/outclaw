@@ -182,6 +182,9 @@ function startMultiAgentDaemon(
 				stopPrompt: codingService.runtime.stopPrompt.bind(
 					codingService.runtime,
 				),
+				cancelPrompt: codingService.runtime.cancelPrompt.bind(
+					codingService.runtime,
+				),
 				listModels: () => codingService.listModels(),
 				listSkills: (params) => codingService.listSkills(params),
 				rehydrateSessionEvents: (params) =>

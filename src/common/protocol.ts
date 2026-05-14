@@ -630,7 +630,11 @@ export interface BrowserSessionPageResponse {
 }
 
 export type BrowserCodingSessionLifecycleStatus = "open" | "archived";
-export type BrowserCodingSessionRunStatus = "idle" | "running" | "failed";
+export type BrowserCodingSessionRunStatus =
+	| "idle"
+	| "running"
+	| "failed"
+	| "cancelled";
 
 export interface BrowserCodingSessionSummary {
 	providerId: string;
@@ -695,14 +699,24 @@ export interface BrowserCodingSessionRestoreResponse {
 	session: BrowserCodingSessionSummary;
 }
 
-export type BrowserCodingSessionStatusState = "running" | "done" | "error";
+export type BrowserCodingSessionStatusState =
+	| "running"
+	| "done"
+	| "error"
+	| "cancelled";
 
 export interface BrowserCodingSessionStatusResponse {
 	providerId: string;
 	sdkSessionId: string;
+	ref?: string;
 	state: BrowserCodingSessionStatusState;
+	repo?: string;
+	startedAt?: string;
+	lastEventAt?: string;
+	durationMs?: number;
+	lastPrompt?: string;
 	finalResponse?: string;
-	error?: string;
+	error?: string | { message: string };
 }
 
 export type BrowserCodingSessionStartResponse =
@@ -721,6 +735,23 @@ export type BrowserCodingSessionResumeResponse =
 
 export type BrowserCodingSessionStopResponse =
 	BrowserCodingSessionStartResponse;
+
+export type BrowserCodingSessionCancelResponse =
+	| {
+			status: "accepted";
+			providerId: string;
+			sdkSessionId: string;
+	  }
+	| {
+			status: "already_terminal";
+			providerId: string;
+			sdkSessionId: string;
+			state: Exclude<BrowserCodingSessionStatusState, "running">;
+	  }
+	| {
+			status: "rejected";
+			message: string;
+	  };
 
 export interface BrowserCodingModel {
 	id: string;

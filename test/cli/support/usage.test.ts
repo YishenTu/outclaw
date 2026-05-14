@@ -145,7 +145,7 @@ describe("CLI usage text", () => {
 				formatCodingUsage(),
 				[
 					"Usage: oc coding <repo-id-or-path|provider/session>",
-					"existing coding session",
+					"registered coding repositories",
 				],
 			],
 			[

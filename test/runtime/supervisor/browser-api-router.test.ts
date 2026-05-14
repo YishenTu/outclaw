@@ -1100,6 +1100,47 @@ describe("handleBrowserApiRequest", () => {
 		});
 	});
 
+	test("routes coding session cancel requests as POST /api/coding/sessions/:provider/:id/cancel", async () => {
+		let params:
+			| {
+					providerId: string;
+					sdkSessionId: string;
+			  }
+			| undefined;
+		const browserApi = {
+			cancelCodingSession: async (input: typeof params) => {
+				params = input;
+				return {
+					status: "accepted" as const,
+					providerId: input?.providerId ?? "",
+					sdkSessionId: input?.sdkSessionId ?? "",
+				};
+			},
+		} as unknown as BrowserApi;
+		const url = new URL(
+			"http://localhost/api/coding/sessions/codex/codex-thread-1/cancel",
+		);
+
+		const response = await handleBrowserApiRequest(
+			new Request(url, {
+				method: "POST",
+			}),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			status: "accepted",
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
+		});
+		expect(params).toEqual({
+			providerId: "codex",
+			sdkSessionId: "codex-thread-1",
+		});
+	});
+
 	test("routes coding session status requests as GET /api/coding/sessions/:provider/:id/status", async () => {
 		let params:
 			| {

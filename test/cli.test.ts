@@ -1572,6 +1572,142 @@ describe("CLI", () => {
 		}
 	});
 
+	test("coding status --json prints the structured status read model", async () => {
+		let requestSeen = false;
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/status"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				requestSeen = true;
+				expect(req.method).toBe("GET");
+				return Response.json({
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+					ref: "codex/codex-session-1",
+					state: "done",
+					repo: "/tmp/outclaw-playground",
+					startedAt: "2026-05-14T01:00:00.000Z",
+					lastEventAt: "2026-05-14T01:00:03.000Z",
+					durationMs: 3000,
+					lastPrompt: "fix the queue",
+					finalResponse: "final answer",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "status", "codex/codex-session-1", "--json"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(JSON.parse(result.stdout)).toEqual({
+				ref: "codex/codex-session-1",
+				state: "done",
+				repo: "/tmp/outclaw-playground",
+				started_at: "2026-05-14T01:00:00.000Z",
+				last_event_at: "2026-05-14T01:00:03.000Z",
+				duration_ms: 3000,
+				last_prompt: "fix the queue",
+				final_response: "final answer",
+			});
+			expect(result.stderr).toBe("");
+			expect(requestSeen).toBe(true);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding status --block waits silently until the session is terminal", async () => {
+		let requests = 0;
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/status"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				requests += 1;
+				expect(req.method).toBe("GET");
+				if (requests < 3) {
+					return Response.json({
+						providerId: "codex",
+						sdkSessionId: "codex-session-1",
+						state: "running",
+					});
+				}
+				return Response.json({
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+					state: "done",
+					finalResponse: "finished",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "status", "codex/codex-session-1", "--block"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("done\n\nfinished");
+			expect(result.stderr).toBe("");
+			expect(requests).toBe(3);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding status --block exits 124 when the wait times out", async () => {
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/status"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				expect(req.method).toBe("GET");
+				return Response.json({
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+					state: "running",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				[
+					"coding",
+					"status",
+					"codex/codex-session-1",
+					"--block",
+					"--timeout",
+					"1",
+				],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(124);
+			expect(result.stdout).toBe("");
+			expect(result.stderr).toBe("coding status timed out after 1s");
+		} finally {
+			server.stop();
+		}
+	});
+
 	test("coding status attaches active chat context when run from an agent home", async () => {
 		const agentHome = createAgentHome("railly", "agent-railly");
 		const seen: string[] = [];
@@ -1642,6 +1778,14 @@ describe("CLI", () => {
 					error: "boom",
 				},
 			],
+			[
+				"/api/coding/sessions/codex/cancelled-session/status",
+				{
+					providerId: "codex",
+					sdkSessionId: "cancelled-session",
+					state: "cancelled",
+				},
+			],
 		]);
 		const server = createTestServer({
 			port: 0,
@@ -1673,6 +1817,313 @@ describe("CLI", () => {
 			expect(failed.exitCode).toBe(0);
 			expect(failed.stdout).toBe("error: boom");
 			expect(failed.stderr).toBe("");
+
+			const cancelled = await runCliAsync(
+				["coding", "status", "codex/cancelled-session"],
+				{ cwd: TEST_HOME },
+			);
+			expect(cancelled.exitCode).toBe(0);
+			expect(cancelled.stdout).toBe("cancelled");
+			expect(cancelled.stderr).toBe("");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding cancel posts a cancel request and prints the session ref", async () => {
+		let requestSeen = false;
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/cancel"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				requestSeen = true;
+				expect(req.method).toBe("POST");
+				return Response.json({
+					status: "accepted",
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "cancel", "codex/codex-session-1"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("codex/codex-session-1");
+			expect(result.stderr).toBe("");
+			expect(requestSeen).toBe(true);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding cancel reports already-terminal sessions without failing", async () => {
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !== "/api/coding/sessions/codex/codex-session-1/cancel"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				expect(req.method).toBe("POST");
+				return Response.json({
+					status: "already_terminal",
+					providerId: "codex",
+					sdkSessionId: "codex-session-1",
+					state: "done",
+				});
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "cancel", "codex/codex-session-1"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe(
+				"session is already done: codex/codex-session-1",
+			);
+			expect(result.stderr).toBe("");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding list --json prints registered repositories and recent sessions", async () => {
+		const requests: string[] = [];
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				requests.push(`${req.method} ${url.pathname}${url.search}`);
+				if (url.pathname === "/api/coding/repositories") {
+					expect(req.method).toBe("GET");
+					return Response.json({
+						repositories: [
+							{
+								id: "repo-main",
+								rootCwd: "/tmp/outclaw-main",
+								displayName: "outclaw-main",
+								source: "manual",
+								status: "active",
+								createdAt: 1000,
+								lastActive: 4000,
+							},
+						],
+					});
+				}
+				if (url.pathname === "/api/coding/sessions") {
+					expect(req.method).toBe("GET");
+					return Response.json({
+						sessions: [
+							{
+								providerId: "codex",
+								sdkSessionId: "session-2",
+								repositoryId: "repo-main",
+								title: "Second",
+								model: "gpt-5.5",
+								lastActive: 4000,
+								cwd: "/tmp/outclaw-main",
+								lifecycleStatus: "open",
+								runStatus: "idle",
+								createdAt: 3000,
+								source: "code",
+								tag: "code",
+							},
+							{
+								providerId: "codex",
+								sdkSessionId: "session-1",
+								repositoryId: "repo-main",
+								title: "First",
+								model: "gpt-5.5",
+								lastActive: 2000,
+								cwd: "/tmp/outclaw-main",
+								lifecycleStatus: "open",
+								runStatus: "failed",
+								createdAt: 1000,
+								source: "code",
+								tag: "code",
+							},
+						],
+					});
+				}
+				if (url.pathname === "/api/coding/sessions/codex/session-2/status") {
+					return Response.json({
+						providerId: "codex",
+						sdkSessionId: "session-2",
+						ref: "codex/session-2",
+						state: "done",
+						repo: "/tmp/outclaw-main",
+						startedAt: "1970-01-01T00:00:03.000Z",
+						lastEventAt: "1970-01-01T00:00:04.000Z",
+						durationMs: 1000,
+						lastPrompt: "finish the queue",
+						finalResponse: "done",
+					});
+				}
+				if (url.pathname === "/api/coding/sessions/codex/session-1/status") {
+					return Response.json({
+						providerId: "codex",
+						sdkSessionId: "session-1",
+						ref: "codex/session-1",
+						state: "error",
+						repo: "/tmp/outclaw-main",
+						startedAt: "1970-01-01T00:00:01.000Z",
+						lastEventAt: "1970-01-01T00:00:02.000Z",
+						durationMs: 1000,
+						lastPrompt: "fix the queue",
+						error: { message: "boom" },
+					});
+				}
+				return new Response("not found", { status: 404 });
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(["coding", "list", "--json"], {
+				cwd: TEST_HOME,
+			});
+			expect(result.exitCode).toBe(0);
+			expect(JSON.parse(result.stdout)).toEqual({
+				repositories: [
+					{
+						id: "repo-main",
+						root_cwd: "/tmp/outclaw-main",
+						display_name: "outclaw-main",
+						source: "manual",
+						status: "active",
+						created_at: "1970-01-01T00:00:01.000Z",
+						last_active: "1970-01-01T00:00:04.000Z",
+					},
+				],
+				sessions: [
+					{
+						ref: "codex/session-2",
+						state: "done",
+						repo: "/tmp/outclaw-main",
+						started_at: "1970-01-01T00:00:03.000Z",
+						last_event_at: "1970-01-01T00:00:04.000Z",
+						duration_ms: 1000,
+						last_prompt: "finish the queue",
+						final_response: "done",
+					},
+					{
+						ref: "codex/session-1",
+						state: "error",
+						repo: "/tmp/outclaw-main",
+						started_at: "1970-01-01T00:00:01.000Z",
+						last_event_at: "1970-01-01T00:00:02.000Z",
+						duration_ms: 1000,
+						last_prompt: "fix the queue",
+						error: { message: "boom" },
+					},
+				],
+			});
+			expect(result.stderr).toBe("");
+			expect(requests).toContain("GET /api/coding/repositories");
+			expect(requests).toContain("GET /api/coding/sessions?limit=100");
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding list --repo accepts a repository path", async () => {
+		const requests: string[] = [];
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				requests.push(`${req.method} ${url.pathname}${url.search}`);
+				if (url.pathname === "/api/coding/repositories") {
+					return Response.json({
+						repositories: [
+							{
+								id: "repo-main",
+								rootCwd: "/tmp/outclaw-main",
+								displayName: "outclaw-main",
+								source: "manual",
+								status: "active",
+								createdAt: 1000,
+								lastActive: 4000,
+							},
+						],
+					});
+				}
+				if (url.pathname === "/api/coding/sessions") {
+					expect(url.searchParams.get("repositoryId")).toBe("repo-main");
+					return Response.json({ sessions: [] });
+				}
+				return new Response("not found", { status: 404 });
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "list", "--repo", "/tmp/outclaw-main", "--json"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(JSON.parse(result.stdout)).toEqual({
+				repositories: [
+					{
+						id: "repo-main",
+						root_cwd: "/tmp/outclaw-main",
+						display_name: "outclaw-main",
+						source: "manual",
+						status: "active",
+						created_at: "1970-01-01T00:00:01.000Z",
+						last_active: "1970-01-01T00:00:04.000Z",
+					},
+				],
+				sessions: [],
+			});
+			expect(requests).toContain(
+				"GET /api/coding/sessions?limit=100&repositoryId=repo-main",
+			);
+		} finally {
+			server.stop();
+		}
+	});
+
+	test("coding list --repo rejects an unknown repository path", async () => {
+		const requests: string[] = [];
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				requests.push(`${req.method} ${url.pathname}${url.search}`);
+				if (url.pathname === "/api/coding/repositories") {
+					return Response.json({ repositories: [] });
+				}
+				return new Response("not found", { status: 404 });
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsync(
+				["coding", "list", "--repo", "/bogus", "--json"],
+				{ cwd: TEST_HOME },
+			);
+			expect(result.exitCode).toBe(1);
+			expect(result.stdout).toBe("");
+			expect(result.stderr).toBe("Unknown repo: /bogus");
+			expect(requests).toEqual(["GET /api/coding/repositories"]);
 		} finally {
 			server.stop();
 		}

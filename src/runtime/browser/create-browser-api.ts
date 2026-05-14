@@ -15,6 +15,7 @@ import type {
 	BrowserCodingRepositorySource,
 	BrowserCodingRepositorySummary,
 	BrowserCodingSessionArchiveResponse,
+	BrowserCodingSessionCancelResponse,
 	BrowserCodingSessionDeleteResponse,
 	BrowserCodingSessionDetail,
 	BrowserCodingSessionEvent,
@@ -124,12 +125,13 @@ import {
 	resolveWritablePathWithinRoot,
 } from "./paths/path-safety.ts";
 
-// The browser API only needs the start/resume/stop slice of the coding runtime,
-// plus an optional model catalog supplied by the surrounding CodingService.
+// The browser API only needs the start/resume/interrupt slice of the coding
+// runtime, plus optional catalogs supplied by the surrounding CodingService.
 // Accept the full CodingRuntime slice directly so production wiring and tests
 // share one source of truth for method signatures.
 export interface BrowserCodingService
 	extends Pick<CodingRuntime, "startPrompt" | "resumePrompt" | "stopPrompt"> {
+	cancelPrompt?: CodingRuntime["cancelPrompt"];
 	listModels?(): Promise<ProviderModelInfo[]>;
 	listSkills?(params: {
 		cwd: string;
@@ -295,6 +297,10 @@ export interface BrowserApi {
 		providerId: string;
 		sdkSessionId: string;
 	}): Promise<BrowserCodingSessionStopResponse>;
+	cancelCodingSession(params: {
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<BrowserCodingSessionCancelResponse>;
 	listCodingModels(): Promise<BrowserCodingModelsResponse>;
 	listCodingRepositorySkills(
 		repositoryId: string,
@@ -651,8 +657,10 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					`Unknown coding session: ${providerId}/${sdkSessionId}`,
 				);
 			}
+			const base = toBrowserCodingSessionStatusBase(session, options);
 			if (session.runStatus === "running") {
 				return {
+					...base,
 					providerId,
 					sdkSessionId,
 					state: "running",
@@ -660,10 +668,21 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			}
 			if (session.runStatus === "failed") {
 				return {
+					...base,
 					providerId,
 					sdkSessionId,
 					state: "error",
-					error: session.failureMessage ?? "Coding session failed",
+					error: {
+						message: session.failureMessage ?? "Coding session failed",
+					},
+				};
+			}
+			if (session.runStatus === "cancelled") {
+				return {
+					...base,
+					providerId,
+					sdkSessionId,
+					state: "cancelled",
 				};
 			}
 			const events = (
@@ -673,9 +692,11 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				})
 			).map((item) => item.event);
 			return {
+				...base,
 				providerId,
 				sdkSessionId,
 				state: "done",
+				...lastCodingPromptField(events),
 				finalResponse: extractLatestAssistantResponse(events),
 			};
 		},
@@ -890,7 +911,34 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					message: "Coding service is not configured",
 				};
 			}
+			if (coding.cancelPrompt) {
+				const result = coding.cancelPrompt({
+					providerId: params.providerId,
+					sdkSessionId: params.sdkSessionId,
+				});
+				if (result.status === "rejected") {
+					return result;
+				}
+				return {
+					status: "accepted",
+					providerId: result.providerId,
+					sdkSessionId: result.sdkSessionId,
+				};
+			}
 			return coding.stopPrompt({
+				providerId: params.providerId,
+				sdkSessionId: params.sdkSessionId,
+			});
+		},
+		async cancelCodingSession(params) {
+			const coding = options.coding;
+			if (!coding?.cancelPrompt) {
+				return {
+					status: "rejected",
+					message: "Coding service is not configured",
+				};
+			}
+			return coding.cancelPrompt({
 				providerId: params.providerId,
 				sdkSessionId: params.sdkSessionId,
 			});
@@ -1187,6 +1235,40 @@ function extractLatestAssistantResponse(events: CodingSessionEvent[]): string {
 		}
 	}
 	return response.trim();
+}
+
+function lastCodingPromptField(events: CodingSessionEvent[]): {
+	lastPrompt?: string;
+} {
+	let lastPrompt: string | undefined;
+	for (const event of events) {
+		if (event.type === "user_prompt") {
+			lastPrompt = event.text;
+		}
+	}
+	return lastPrompt ? { lastPrompt } : {};
+}
+
+function toBrowserCodingSessionStatusBase(
+	session: CodingSessionDetail,
+	options: Pick<CreateBrowserApiOptions, "codingRepositories">,
+): {
+	ref: string;
+	repo: string;
+	startedAt: string;
+	lastEventAt: string;
+	durationMs: number;
+} {
+	const repositoryRoot = session.repositoryId
+		? options.codingRepositories?.get(session.repositoryId)?.rootCwd
+		: undefined;
+	return {
+		ref: `${session.providerId}/${session.sdkSessionId}`,
+		repo: repositoryRoot ?? session.cwd,
+		startedAt: new Date(session.createdAt).toISOString(),
+		lastEventAt: new Date(session.lastActive).toISOString(),
+		durationMs: Math.max(0, session.lastActive - session.createdAt),
+	};
 }
 
 function toBrowserCodingSessionSummary(

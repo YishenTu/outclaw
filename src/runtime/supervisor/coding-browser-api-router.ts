@@ -90,7 +90,7 @@ export async function handleCodingBrowserApiRequest(
 	}
 
 	const codingSessionsMatch = url.pathname.match(
-		/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(archive|restore|resume|events|stop|status))?)?$/,
+		/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(archive|restore|resume|events|stop|cancel|status))?)?$/,
 	);
 	if (codingSessionsMatch) {
 		return handleCodingSessionRequest(
@@ -411,6 +411,20 @@ async function handleTargetedCodingSessionRequest(
 		}
 		return Response.json(
 			await browserApi.stopCodingSession({
+				providerId: target.providerId,
+				sdkSessionId: target.sdkSessionId,
+			}),
+		);
+	}
+	if (target.action === "cancel") {
+		if (req.method !== "POST") {
+			return jsonError("Method not allowed", 405);
+		}
+		if (!browserApi.cancelCodingSession) {
+			return jsonError("Coding session API is not configured", 404);
+		}
+		return Response.json(
+			await browserApi.cancelCodingSession({
 				providerId: target.providerId,
 				sdkSessionId: target.sdkSessionId,
 			}),
