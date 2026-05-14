@@ -81,7 +81,9 @@ export function AppLayoutView({
 				{isCodeMode ? (
 					<CodingCenter
 						leftCollapsed={leftCollapsed}
+						rightCollapsed={rightCollapsed}
 						onExpandLeft={onExpandLeft}
+						onExpandRight={onExpandRight}
 					/>
 				) : showWelcomePage ? (
 					<WelcomePage />

@@ -12,8 +12,10 @@ interface CodingTabBarProps {
 	tabs: CodingTab[];
 	activeTabId: string | undefined;
 	leftCollapsed?: boolean;
+	rightCollapsed?: boolean;
 	canAdd?: boolean;
 	onExpandLeft?: () => void;
+	onExpandRight?: () => void;
 	onAdd?: () => void;
 	onSelect(tab: CodingTab): void;
 	onClose(tab: CodingTab): void;
@@ -24,8 +26,10 @@ export function CodingTabBar({
 	tabs,
 	activeTabId,
 	leftCollapsed = false,
+	rightCollapsed = false,
 	canAdd = true,
 	onExpandLeft,
+	onExpandRight,
 	onAdd,
 	onSelect,
 	onClose,
@@ -50,7 +54,9 @@ export function CodingTabBar({
 			})}
 			activeId={activeTabId}
 			leftCollapsed={leftCollapsed}
+			rightCollapsed={rightCollapsed}
 			onExpandLeft={onExpandLeft}
+			onExpandRight={onExpandRight}
 			onSelect={onSelect}
 			onClose={onClose}
 			onRename={onRename}

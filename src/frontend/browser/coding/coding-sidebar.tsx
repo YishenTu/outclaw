@@ -57,6 +57,45 @@ interface CodingSidebarProps {
 		title: string,
 	): void;
 	onCollapse?: () => void;
+	onActivateCenterPanel?: () => void;
+}
+
+interface OpenCodingSidebarSessionFromListParams {
+	repositoryId: string;
+	session: BrowserCodingSessionSummary;
+	onSelectSession(
+		repositoryId: string,
+		session: BrowserCodingSessionSummary,
+	): void;
+	onActivateCenterPanel?: () => void;
+}
+
+interface StartCodingSidebarSessionFromRepositoryParams {
+	repositoryId: string;
+	onNewSession?: (repositoryId: string) => void;
+	onActivateCenterPanel?: () => void;
+}
+
+export function openCodingSidebarSessionFromList({
+	repositoryId,
+	session,
+	onSelectSession,
+	onActivateCenterPanel,
+}: OpenCodingSidebarSessionFromListParams): void {
+	onSelectSession(repositoryId, session);
+	onActivateCenterPanel?.();
+}
+
+export function startCodingSidebarSessionFromRepository({
+	repositoryId,
+	onNewSession,
+	onActivateCenterPanel,
+}: StartCodingSidebarSessionFromRepositoryParams): void {
+	if (!onNewSession) {
+		return;
+	}
+	onNewSession(repositoryId);
+	onActivateCenterPanel?.();
 }
 
 export function CodingSidebar({
@@ -76,6 +115,7 @@ export function CodingSidebar({
 	onRestoreSession,
 	onRenameSession,
 	onCollapse,
+	onActivateCenterPanel,
 }: CodingSidebarProps) {
 	const [addPanelOpen, setAddPanelOpen] = useState(false);
 	const [addingRepository, setAddingRepository] = useState(false);
@@ -464,10 +504,21 @@ export function CodingSidebar({
 									}))
 								}
 								onSelectRepository={() => onSelectRepository(repository.id)}
-								onNewSession={() => onNewSession?.(repository.id)}
+								onNewSession={() =>
+									startCodingSidebarSessionFromRepository({
+										repositoryId: repository.id,
+										onNewSession,
+										onActivateCenterPanel,
+									})
+								}
 								onArchiveRepository={() => onArchiveRepository?.(repository.id)}
 								onSelectSession={(session) =>
-									onSelectSession(repository.id, session)
+									openCodingSidebarSessionFromList({
+										repositoryId: repository.id,
+										session,
+										onSelectSession,
+										onActivateCenterPanel,
+									})
 								}
 								onRenameSession={(session, title) =>
 									onRenameSession?.(
@@ -600,7 +651,12 @@ export function CodingSidebar({
 					onClose={closeArchivedSessions}
 					onSelectSession={(session) => {
 						if (session.repositoryId) {
-							onSelectSession(session.repositoryId, session);
+							openCodingSidebarSessionFromList({
+								repositoryId: session.repositoryId,
+								session,
+								onSelectSession,
+								onActivateCenterPanel,
+							});
 						}
 					}}
 					onRenameSession={(session, title) => {

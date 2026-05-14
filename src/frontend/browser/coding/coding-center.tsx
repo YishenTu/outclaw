@@ -12,12 +12,16 @@ import { CodingTabBar } from "./coding-tab-bar.tsx";
 
 interface CodingCenterProps {
 	leftCollapsed?: boolean;
+	rightCollapsed?: boolean;
 	onExpandLeft?: () => void;
+	onExpandRight?: () => void;
 }
 
 export function CodingCenter({
 	leftCollapsed = false,
+	rightCollapsed = false,
 	onExpandLeft,
+	onExpandRight,
 }: CodingCenterProps = {}) {
 	const {
 		focusedDiffPath,
@@ -60,7 +64,9 @@ export function CodingCenter({
 				tabs={visibleTabs}
 				activeTabId={activeTabId}
 				leftCollapsed={leftCollapsed}
+				rightCollapsed={rightCollapsed}
 				onExpandLeft={onExpandLeft}
+				onExpandRight={onExpandRight}
 				onSelect={handleSelectTab}
 				onClose={handleCloseTab}
 				onAdd={handleAddTab}

@@ -3,10 +3,12 @@ import { CodingSidebar } from "./coding-sidebar.tsx";
 
 interface CodingSidebarContainerProps {
 	onCollapse?: () => void;
+	onActivateCenterPanel?: () => void;
 }
 
 export function CodingSidebarContainer({
 	onCollapse,
+	onActivateCenterPanel,
 }: CodingSidebarContainerProps) {
 	const {
 		archivedRepositories,
@@ -46,6 +48,7 @@ export function CodingSidebarContainer({
 				onRestoreSession={handleRestoreSession}
 				onRenameSession={handleRenameSession}
 				{...(onCollapse ? { onCollapse } : {})}
+				{...(onActivateCenterPanel ? { onActivateCenterPanel } : {})}
 			/>
 			{!repositoriesLoaded && (
 				<div className="px-4 py-2 text-[11px] text-dark-500">Loading…</div>
