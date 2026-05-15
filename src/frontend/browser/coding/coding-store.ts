@@ -206,6 +206,10 @@ export interface CodingState {
 		session: BrowserCodingSessionSummary,
 	): void;
 	upsertArchivedSession(session: BrowserCodingSessionSummary): void;
+	moveSessionToArchive(
+		repositoryId: string,
+		session: BrowserCodingSessionSummary,
+	): void;
 	renameSession(
 		repositoryId: string,
 		providerId: string,
@@ -795,6 +799,47 @@ export const useCodingStore = create<CodingState>()(
 							session,
 						),
 						archivedSessionsLoaded: true,
+					};
+				});
+			},
+			moveSessionToArchive(repositoryId, session) {
+				set((state) => {
+					const ref = {
+						providerId: session.providerId,
+						sdkSessionId: session.sdkSessionId,
+					};
+					const sessions = state.sessionsByRepository[repositoryId];
+					const nextSessionsByRepository = sessions
+						? {
+								...state.sessionsByRepository,
+								[repositoryId]: removeCodingSession(sessions, ref),
+							}
+						: state.sessionsByRepository;
+					const search = state.searchByRepository[repositoryId];
+					const nextSearchByRepository = search
+						? {
+								...state.searchByRepository,
+								[repositoryId]: {
+									...search,
+									sessions: removeCodingSession(search.sessions, ref),
+								},
+							}
+						: state.searchByRepository;
+					const title = session.title.trim() || session.sdkSessionId;
+					return {
+						sessionsByRepository: nextSessionsByRepository,
+						searchByRepository: nextSearchByRepository,
+						archivedSessions: upsertCodingSession(
+							state.archivedSessions,
+							session,
+						),
+						archivedSessionsLoaded: true,
+						openTabs: state.openTabs.map((entry) =>
+							entry.providerId === session.providerId &&
+							entry.sdkSessionId === session.sdkSessionId
+								? { ...entry, title }
+								: entry,
+						),
 					};
 				});
 			},

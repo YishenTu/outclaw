@@ -90,4 +90,31 @@ describe("SessionItem", () => {
 			),
 		).not.toContain('aria-haspopup="dialog"');
 	});
+
+	test("can keep the timestamp and action visible together", () => {
+		const html = renderToStaticMarkup(
+			<SessionItem
+				title={SESSION.title}
+				lastActive={SESSION.lastActive}
+				isActive={false}
+				onSelect={() => {}}
+				onRename={() => {}}
+				onDelete={() => {}}
+				actionAriaLabel="Restore session Daily planning"
+				actionIcon="restore"
+				actionLabel="Restore"
+				actionRequiresConfirmation={false}
+				actionVisibility="always"
+			/>,
+		);
+
+		const restoreButton = buttonOpeningTagWithLabel(
+			html,
+			"Restore session Daily planning",
+		);
+		expect(html).toContain("2m");
+		expect(restoreButton).toContain("flex");
+		expect(restoreButton).not.toContain("hidden");
+		expect(html).not.toContain("group-hover:hidden");
+	});
 });

@@ -7,10 +7,7 @@ import {
 	CODING_SESSION_RECONCILE_INTERVAL_MS,
 	refreshLoadedCodingSessionState,
 } from "../../../src/frontend/browser/coding/coding-session-refresh.ts";
-import {
-	PENDING_CODING_PROVIDER,
-	useCodingStore,
-} from "../../../src/frontend/browser/coding/coding-store.ts";
+import { useCodingStore } from "../../../src/frontend/browser/coding/coding-store.ts";
 
 function session(
 	overrides: Partial<BrowserCodingSessionSummary> & {
@@ -62,7 +59,7 @@ describe("coding session refresh", () => {
 		expect(CODING_SESSION_RECONCILE_INTERVAL_MS).toBe(5_000);
 	});
 
-	test("moves an externally archived known open tab into archived sessions", async () => {
+	test("keeps an opened tab when its session is archived externally", async () => {
 		useCodingStore.setState({
 			focusedRepositoryId: "repo-a",
 			focusedSession: { providerId: "codex", sdkSessionId: "session-1" },
@@ -102,7 +99,15 @@ describe("coding session refresh", () => {
 			},
 		]);
 		expect(state.openTabs).toHaveLength(1);
-		expect(state.openTabs[0]?.providerId).toBe(PENDING_CODING_PROVIDER);
+		expect(state.openTabs[0]).toMatchObject({
+			providerId: "codex",
+			sdkSessionId: "session-1",
+			title: "Archived elsewhere",
+		});
+		expect(state.focusedSession).toEqual({
+			providerId: "codex",
+			sdkSessionId: "session-1",
+		});
 	});
 
 	test("refreshes loaded repository pages and open tab titles", async () => {
@@ -141,7 +146,7 @@ describe("coding session refresh", () => {
 		expect(state.openTabs[0]?.title).toBe("Renamed elsewhere");
 	});
 
-	test("refreshes an already loaded empty archived page", async () => {
+	test("does not refresh archived pages during reconcile polling", async () => {
 		const requests: Array<Parameters<FetchCodingSessionPage>[0]> = [];
 		useCodingStore.getState().setArchivedSessions([], undefined);
 
@@ -159,10 +164,8 @@ describe("coding session refresh", () => {
 			warn: () => {},
 		});
 
-		expect(requests).toEqual([{ limit: 10, lifecycleStatus: "archived" }]);
-		expect(useCodingStore.getState().archivedSessions).toMatchObject([
-			{ sdkSessionId: "session-1", lifecycleStatus: "archived" },
-		]);
+		expect(requests).toEqual([]);
+		expect(useCodingStore.getState().archivedSessions).toEqual([]);
 	});
 });
 

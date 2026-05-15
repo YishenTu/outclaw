@@ -41,6 +41,73 @@ interface ArchivedSessionProjectGroup {
 	sessions: BrowserCodingSessionSummary[];
 }
 
+export function shouldObserveArchivedLoadMore({
+	hasNextCursor,
+	intersectionObserverAvailable,
+	isOpen,
+}: {
+	hasNextCursor: boolean;
+	intersectionObserverAvailable: boolean;
+	isOpen: boolean;
+}): boolean {
+	return isOpen && hasNextCursor && intersectionObserverAvailable;
+}
+
+export function createArchivedLoadMoreRequestKey({
+	cursor,
+	searchQuery,
+}: {
+	cursor: SessionCursor | undefined;
+	searchQuery?: string;
+}): string | undefined {
+	if (!cursor) {
+		return undefined;
+	}
+	const query = searchQuery?.trim();
+	const scope = query ? `search:${query}` : "archive";
+	return `${scope}:${cursor.lastActive}:${cursor.sdkSessionId}`;
+}
+
+export function shouldRequestObservedArchivedLoadMore({
+	isIntersecting,
+	lastRequestedKey,
+	requestKey,
+}: {
+	isIntersecting: boolean;
+	lastRequestedKey: string | undefined;
+	requestKey: string | undefined;
+}): boolean {
+	return (
+		isIntersecting && Boolean(requestKey) && requestKey !== lastRequestedKey
+	);
+}
+
+type ArchivedSearchSubmission =
+	| { type: "clear" }
+	| { query: string; type: "search" }
+	| { type: "none" };
+
+export function resolveArchivedSearchSubmission({
+	currentSearchQuery,
+	draftQuery,
+	lastSubmittedQuery,
+}: {
+	currentSearchQuery: string | undefined;
+	draftQuery: string;
+	lastSubmittedQuery: string | undefined;
+}): ArchivedSearchSubmission {
+	const query = draftQuery.trim();
+	const current = currentSearchQuery?.trim();
+	const lastSubmitted = lastSubmittedQuery?.trim();
+	if (!query) {
+		return current || lastSubmitted ? { type: "clear" } : { type: "none" };
+	}
+	if (query === current || query === lastSubmitted) {
+		return { type: "none" };
+	}
+	return { query, type: "search" };
+}
+
 export function ArchivedSessionsItem({
 	isOpen,
 	repositories,
@@ -62,6 +129,8 @@ export function ArchivedSessionsItem({
 	const [draftSearch, setDraftSearch] = useState(searchState?.query ?? "");
 	const searchInputRef = useRef<HTMLInputElement | null>(null);
 	const loadMoreRef = useRef<HTMLDivElement | null>(null);
+	const observedLoadMoreRequestKeyRef = useRef<string | undefined>(undefined);
+	const lastSubmittedSearchRef = useRef<string | undefined>(searchState?.query);
 	const effectiveSearchQuery = draftSearch.trim();
 	const searchActive = isOpen && effectiveSearchQuery !== "";
 	const visibleSearchResults =
@@ -70,19 +139,32 @@ export function ArchivedSessionsItem({
 			: [];
 	const visibleSessions = searchActive ? visibleSearchResults : sessions;
 	const visibleNextCursor = searchActive ? searchState?.nextCursor : nextCursor;
+	const visibleLoadMoreRequestKey = createArchivedLoadMoreRequestKey({
+		cursor: visibleNextCursor,
+		searchQuery: searchActive ? effectiveSearchQuery : undefined,
+	});
 	const groupedSessions = useMemo(
 		() => groupArchivedSessionsByProject(visibleSessions, repositories),
 		[repositories, visibleSessions],
 	);
 
 	useEffect(() => {
-		if (searchState?.query) {
-			setDraftSearch(searchState.query);
+		const query = searchState?.query;
+		if (!query) {
+			return;
 		}
-	}, [searchState?.query]);
+		lastSubmittedSearchRef.current = query;
+		setDraftSearch((current) => {
+			if (!isOpen || !current.trim() || current.trim() === query) {
+				return query;
+			}
+			return current;
+		});
+	}, [isOpen, searchState?.query]);
 
 	useEffect(() => {
 		if (!isOpen) {
+			observedLoadMoreRequestKeyRef.current = undefined;
 			return;
 		}
 		const frameId = window.requestAnimationFrame(() => {
@@ -111,22 +193,34 @@ export function ArchivedSessionsItem({
 		if (!isOpen) {
 			return;
 		}
-		const query = draftSearch.trim();
+		const submission = resolveArchivedSearchSubmission({
+			currentSearchQuery: searchState?.query,
+			draftQuery: draftSearch,
+			lastSubmittedQuery: lastSubmittedSearchRef.current,
+		});
+		if (submission.type === "none") {
+			return;
+		}
 		const timer = setTimeout(() => {
-			if (!query) {
+			if (submission.type === "clear") {
+				lastSubmittedSearchRef.current = undefined;
 				onClearSearch();
 				return;
 			}
-			onSearch(query);
+			lastSubmittedSearchRef.current = submission.query;
+			onSearch(submission.query);
 		}, 150);
 		return () => clearTimeout(timer);
-	}, [draftSearch, isOpen, onClearSearch, onSearch]);
+	}, [draftSearch, isOpen, onClearSearch, onSearch, searchState?.query]);
 
 	useEffect(() => {
 		if (
-			!isOpen ||
-			!visibleNextCursor ||
-			typeof IntersectionObserver === "undefined"
+			!shouldObserveArchivedLoadMore({
+				hasNextCursor: Boolean(visibleNextCursor),
+				intersectionObserverAvailable:
+					typeof IntersectionObserver !== "undefined",
+				isOpen,
+			})
 		) {
 			return;
 		}
@@ -134,13 +228,23 @@ export function ArchivedSessionsItem({
 		if (!element) {
 			return;
 		}
+		const requestKey = visibleLoadMoreRequestKey;
 		const observer = new IntersectionObserver((entries) => {
-			if (entries.some((entry) => entry.isIntersecting)) {
-				if (searchActive) {
-					onLoadMoreSearch(effectiveSearchQuery);
-				} else {
-					onLoadMore();
-				}
+			const isIntersecting = entries.some((entry) => entry.isIntersecting);
+			if (
+				!shouldRequestObservedArchivedLoadMore({
+					isIntersecting,
+					lastRequestedKey: observedLoadMoreRequestKeyRef.current,
+					requestKey,
+				})
+			) {
+				return;
+			}
+			observedLoadMoreRequestKeyRef.current = requestKey;
+			if (searchActive) {
+				onLoadMoreSearch(effectiveSearchQuery);
+			} else {
+				onLoadMore();
 			}
 		});
 		observer.observe(element);
@@ -151,6 +255,7 @@ export function ArchivedSessionsItem({
 		onLoadMore,
 		onLoadMoreSearch,
 		searchActive,
+		visibleLoadMoreRequestKey,
 		visibleNextCursor,
 	]);
 
@@ -173,6 +278,7 @@ export function ArchivedSessionsItem({
 				actionLabel="Restore"
 				actionRequiresConfirmation={false}
 				actionTone="neutral"
+				actionVisibility="always"
 			/>
 		);
 	}
@@ -231,7 +337,10 @@ export function ArchivedSessionsItem({
 								<input
 									ref={searchInputRef}
 									value={draftSearch}
-									onChange={(event) => setDraftSearch(event.target.value)}
+									onChange={(event) => {
+										observedLoadMoreRequestKeyRef.current = undefined;
+										setDraftSearch(event.target.value);
+									}}
 									placeholder="Search archived sessions"
 									spellCheck={false}
 									className="min-w-0 flex-1 bg-transparent text-sm text-dark-50 outline-none placeholder:text-dark-600"

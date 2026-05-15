@@ -16,7 +16,7 @@ import {
 export const CODING_SESSION_RECONCILE_INTERVAL_MS = 5_000;
 
 const DEFAULT_REPOSITORY_SESSION_LIMIT = 20;
-const DEFAULT_ARCHIVED_SESSION_LIMIT = 10;
+const DEFAULT_SEARCH_SESSION_LIMIT = 10;
 
 type FetchCodingSessionPage = (params: {
 	limit: number;
@@ -33,16 +33,12 @@ type FetchCodingSessionDetail = (
 
 type CodingSessionRefreshStore = Pick<
 	CodingState,
-	| "archivedSearchState"
-	| "archivedSessions"
-	| "archivedSessionsLoaded"
 	| "openTabs"
 	| "searchByRepository"
 	| "sessionsByRepository"
+	| "moveSessionToArchive"
 	| "removeArchivedSession"
 	| "removeSession"
-	| "setArchivedSearchResults"
-	| "setArchivedSessions"
 	| "setRepositorySearchResults"
 	| "setRepositorySessions"
 	| "updateTabTitle"
@@ -190,60 +186,12 @@ async function refreshLoadedSessionPages(
 			warn,
 			async () => {
 				const page = await fetchSessionPage({
-					limit: Math.max(
-						DEFAULT_ARCHIVED_SESSION_LIMIT,
-						search.sessions.length,
-					),
+					limit: Math.max(DEFAULT_SEARCH_SESSION_LIMIT, search.sessions.length),
 					query: search.query,
 					repositoryId,
 				});
 				store.setRepositorySearchResults(
 					repositoryId,
-					page.query ?? search.query,
-					page.sessions,
-					page.nextCursor,
-				);
-				updateTabTitles(store, page.sessions);
-			},
-		);
-	}
-
-	if (store.archivedSessionsLoaded) {
-		await withRefreshWarning(
-			"Failed to refresh archived coding sessions",
-			warn,
-			async () => {
-				const page = await fetchSessionPage({
-					limit: Math.max(
-						DEFAULT_ARCHIVED_SESSION_LIMIT,
-						store.archivedSessions.length,
-					),
-					lifecycleStatus: "archived",
-				});
-				store.setArchivedSessions(page.sessions, page.nextCursor);
-				updateTabTitles(store, page.sessions);
-			},
-		);
-	}
-
-	if (store.archivedSearchState) {
-		await withRefreshWarning(
-			"Failed to refresh archived coding session search",
-			warn,
-			async () => {
-				const search = store.archivedSearchState;
-				if (!search) {
-					return;
-				}
-				const page = await fetchSessionPage({
-					limit: Math.max(
-						DEFAULT_ARCHIVED_SESSION_LIMIT,
-						search.sessions.length,
-					),
-					lifecycleStatus: "archived",
-					query: search.query,
-				});
-				store.setArchivedSearchResults(
 					page.query ?? search.query,
 					page.sessions,
 					page.nextCursor,
@@ -294,8 +242,7 @@ function syncSessionDetail(
 ) {
 	const repositoryId = session.repositoryId ?? fallbackRepositoryId;
 	if (session.lifecycleStatus === "archived") {
-		store.removeSession(repositoryId, session.providerId, session.sdkSessionId);
-		store.upsertArchivedSession(session);
+		store.moveSessionToArchive(repositoryId, session);
 		return;
 	}
 

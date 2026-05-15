@@ -580,7 +580,10 @@ export class CodingSessionStore {
 			.query(
 				`UPDATE coding_sessions
 				 SET lifecycle_status = $lifecycleStatus,
-				     last_active = $now
+				     last_active = CASE
+				       WHEN lifecycle_status = $lifecycleStatus THEN last_active
+				       ELSE $now
+				     END
 				 WHERE agent_id = $agentId
 				   AND provider_id = $providerId
 				   AND sdk_session_id = $sdkSessionId`,

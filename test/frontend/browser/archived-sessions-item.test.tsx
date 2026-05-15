@@ -3,7 +3,13 @@ import type {
 	BrowserCodingRepositorySummary,
 	BrowserCodingSessionSummary,
 } from "../../../src/common/protocol.ts";
-import { ArchivedSessionsItem } from "../../../src/frontend/browser/coding/archived-sessions-item.tsx";
+import {
+	ArchivedSessionsItem,
+	createArchivedLoadMoreRequestKey,
+	resolveArchivedSearchSubmission,
+	shouldObserveArchivedLoadMore,
+	shouldRequestObservedArchivedLoadMore,
+} from "../../../src/frontend/browser/coding/archived-sessions-item.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 
@@ -27,6 +33,16 @@ function session(
 }
 
 const NOOP = () => {};
+
+function buttonOpeningTagWithLabel(html: string, label: string): string {
+	const labelIndex = html.indexOf(`aria-label="${label}"`);
+	expect(labelIndex).toBeGreaterThan(-1);
+	const buttonStart = html.lastIndexOf("<button", labelIndex);
+	const buttonEnd = html.indexOf(">", labelIndex);
+	expect(buttonStart).toBeGreaterThan(-1);
+	expect(buttonEnd).toBeGreaterThan(labelIndex);
+	return html.slice(buttonStart, buttonEnd);
+}
 
 function repository(
 	overrides: Partial<BrowserCodingRepositorySummary>,
@@ -108,6 +124,9 @@ describe("ArchivedSessionsItem", () => {
 		expect(html).toContain("Archived work");
 		expect(html).toContain("Provider cleanup");
 		expect(html).toContain('aria-label="Restore session Archived work"');
+		expect(
+			buttonOpeningTagWithLabel(html, "Restore session Archived work"),
+		).not.toContain("hidden");
 	});
 
 	test("renders archived search results grouped by project in the modal", () => {
@@ -136,5 +155,63 @@ describe("ArchivedSessionsItem", () => {
 
 		expect(html).toContain("Auth cleanup");
 		expect(html).toContain("Load more archived results");
+	});
+
+	test("observes archived search load more without repeating the same cursor", () => {
+		const searchRequestKey = createArchivedLoadMoreRequestKey({
+			cursor: { lastActive: 100, sdkSessionId: "sdk-next" },
+			searchQuery: "auth",
+		});
+		const archiveRequestKey = createArchivedLoadMoreRequestKey({
+			cursor: { lastActive: 100, sdkSessionId: "sdk-next" },
+		});
+
+		expect(
+			shouldObserveArchivedLoadMore({
+				hasNextCursor: true,
+				intersectionObserverAvailable: true,
+				isOpen: true,
+			}),
+		).toBe(true);
+		expect(searchRequestKey).toBe("search:auth:100:sdk-next");
+		expect(archiveRequestKey).toBe("archive:100:sdk-next");
+		expect(
+			shouldRequestObservedArchivedLoadMore({
+				isIntersecting: true,
+				lastRequestedKey: undefined,
+				requestKey: searchRequestKey,
+			}),
+		).toBe(true);
+		expect(
+			shouldRequestObservedArchivedLoadMore({
+				isIntersecting: true,
+				lastRequestedKey: searchRequestKey,
+				requestKey: searchRequestKey,
+			}),
+		).toBe(false);
+	});
+
+	test("does not resubmit the current archived search after load more renders", () => {
+		expect(
+			resolveArchivedSearchSubmission({
+				currentSearchQuery: "auth",
+				draftQuery: "auth",
+				lastSubmittedQuery: "auth",
+			}),
+		).toEqual({ type: "none" });
+		expect(
+			resolveArchivedSearchSubmission({
+				currentSearchQuery: "auth",
+				draftQuery: "author",
+				lastSubmittedQuery: "auth",
+			}),
+		).toEqual({ query: "author", type: "search" });
+		expect(
+			resolveArchivedSearchSubmission({
+				currentSearchQuery: "auth",
+				draftQuery: "",
+				lastSubmittedQuery: "auth",
+			}),
+		).toEqual({ type: "clear" });
 	});
 });

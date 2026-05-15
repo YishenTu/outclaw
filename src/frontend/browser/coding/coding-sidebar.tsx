@@ -98,6 +98,14 @@ export function startCodingSidebarSessionFromRepository({
 	onActivateCenterPanel?.();
 }
 
+export function shouldLoadArchivedSessionsOnOpen({
+	archivedSessionsLoaded,
+}: {
+	archivedSessionsLoaded: boolean;
+}): boolean {
+	return !archivedSessionsLoaded;
+}
+
 export function CodingSidebar({
 	repositories,
 	archivedRepositories,
@@ -140,6 +148,9 @@ export function CodingSidebar({
 	);
 	const archivedSearchState = useCodingStore(
 		(state) => state.archivedSearchState,
+	);
+	const archivedSessionsLoaded = useCodingStore(
+		(state) => state.archivedSessionsLoaded,
 	);
 	const appendRepositorySessions = useCodingStore(
 		(state) => state.appendRepositorySessions,
@@ -359,10 +370,10 @@ export function CodingSidebar({
 
 	const openArchivedSessions = useCallback(() => {
 		setArchivedSessionsModalOpen(true);
-		if (archivedSessions.length === 0) {
+		if (shouldLoadArchivedSessionsOnOpen({ archivedSessionsLoaded })) {
 			void loadArchivedSessions();
 		}
-	}, [archivedSessions.length, loadArchivedSessions]);
+	}, [archivedSessionsLoaded, loadArchivedSessions]);
 
 	const closeArchivedSessions = useCallback(() => {
 		setArchivedSessionsModalOpen(false);

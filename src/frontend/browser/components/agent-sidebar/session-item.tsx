@@ -4,6 +4,7 @@ import { formatLastActive } from "./format-last-active.ts";
 
 type SessionItemActionIcon = "archive" | "restore" | "trash";
 type SessionItemActionTone = "danger" | "neutral";
+type SessionItemActionVisibility = "always" | "hover";
 
 interface SessionItemProps {
 	title: string;
@@ -21,6 +22,7 @@ interface SessionItemProps {
 	actionLabel?: string;
 	actionRequiresConfirmation?: boolean;
 	actionTone?: SessionItemActionTone;
+	actionVisibility?: SessionItemActionVisibility;
 }
 
 export function SessionItem({
@@ -39,6 +41,7 @@ export function SessionItem({
 	actionLabel = "Delete",
 	actionRequiresConfirmation = true,
 	actionTone = "danger",
+	actionVisibility = "hover",
 }: SessionItemProps) {
 	const titleInputRef = useRef<HTMLInputElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
@@ -73,6 +76,12 @@ export function SessionItem({
 		actionTone === "danger"
 			? "border-danger/40 bg-danger/15 text-danger hover:bg-danger/25"
 			: "border-dark-700 bg-dark-800 text-dark-100 hover:bg-dark-700";
+	const actionAlwaysVisible = actionVisibility === "always";
+	const titlePaddingClass = actionAlwaysVisible ? "pr-16" : "pr-8";
+	const timestampClass = actionAlwaysVisible ? "" : "group-hover:hidden";
+	const actionButtonVisibilityClass = actionAlwaysVisible
+		? "flex"
+		: "hidden group-hover:flex";
 
 	function startInlineRename() {
 		setDraftTitle(title);
@@ -187,7 +196,9 @@ export function SessionItem({
 					className="w-full rounded px-2 py-1 text-left text-sm text-dark-100"
 					style={{ paddingLeft: "16px" }}
 				>
-					<div className="flex min-w-0 items-center gap-1 pr-8">
+					<div
+						className={`flex min-w-0 items-center gap-1 ${titlePaddingClass}`}
+					>
 						<div className="flex w-[14px] shrink-0 items-center justify-start">
 							<div
 								aria-hidden="true"
@@ -238,7 +249,9 @@ export function SessionItem({
 						}`}
 						style={{ paddingLeft: "16px" }}
 					>
-						<div className="flex min-w-0 items-center gap-1 pr-8">
+						<div
+							className={`flex min-w-0 items-center gap-1 ${titlePaddingClass}`}
+						>
 							<div className="flex w-[14px] shrink-0 items-center justify-start">
 								<div
 									aria-hidden="true"
@@ -253,7 +266,9 @@ export function SessionItem({
 						</div>
 					</button>
 					<div className="absolute inset-y-0 right-2 flex items-center">
-						<div className="font-mono-ui w-8 shrink-0 text-right text-[10px] uppercase tracking-[0.12em] text-dark-500 group-hover:hidden">
+						<div
+							className={`font-mono-ui w-8 shrink-0 text-right text-[10px] uppercase tracking-[0.12em] text-dark-500 ${timestampClass}`}
+						>
 							{formatLastActive(lastActive)}
 						</div>
 						<button
@@ -267,7 +282,7 @@ export function SessionItem({
 								event.stopPropagation();
 								handleAction();
 							}}
-							className={`hidden h-6 w-6 shrink-0 items-center justify-center transition-colors group-hover:flex ${actionTextClass}`}
+							className={`${actionButtonVisibilityClass} h-6 w-6 shrink-0 items-center justify-center transition-colors ${actionTextClass}`}
 						>
 							<ActionIcon size={14} />
 						</button>

@@ -455,6 +455,34 @@ describe("CodingSessionStore", () => {
 		sessions.close();
 	});
 
+	test("does not rewrite last active when lifecycle status is unchanged", () => {
+		const { sessions, codingSessions, repositories } = createStores();
+		const repo = repositories.register({
+			rootCwd: mkdtempSync(join(tmpdir(), "outclaw-code-archive-repo-")),
+			source: "manual",
+			timestamp: 5,
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-archived",
+			title: "Archived task",
+			timestamp: 10,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+
+		codingSessions.archive("codex", "code-archived", 30);
+		codingSessions.archive("codex", "code-archived", 40);
+
+		expect(codingSessions.getDetail("codex", "code-archived")).toMatchObject({
+			lifecycleStatus: "archived",
+			lastActive: 30,
+		});
+
+		repositories.close();
+		codingSessions.close();
+		sessions.close();
+	});
+
 	test("renames coding sessions through the shared session row", () => {
 		const { sessions, codingSessions } = createStores();
 		insertCodingSession(sessions, codingSessions, {

@@ -3,6 +3,7 @@ import type { BrowserCodingSessionSummary } from "../../../src/common/protocol.t
 import {
 	CodingSidebar,
 	openCodingSidebarSessionFromList,
+	shouldLoadArchivedSessionsOnOpen,
 	startCodingSidebarSessionFromRepository,
 } from "../../../src/frontend/browser/coding/coding-sidebar.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
@@ -77,5 +78,14 @@ describe("CodingSidebar", () => {
 			"new:repo-1",
 			"center",
 		]);
+	});
+
+	test("loads archived sessions only until the archive page has been loaded once", () => {
+		expect(
+			shouldLoadArchivedSessionsOnOpen({ archivedSessionsLoaded: false }),
+		).toBe(true);
+		expect(
+			shouldLoadArchivedSessionsOnOpen({ archivedSessionsLoaded: true }),
+		).toBe(false);
 	});
 });
