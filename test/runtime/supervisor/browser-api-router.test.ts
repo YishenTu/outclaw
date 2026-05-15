@@ -492,6 +492,48 @@ describe("handleBrowserApiRequest", () => {
 		expect(calls).toEqual(["agent-railly"]);
 	});
 
+	test("routes agent chat-model catalog requests", async () => {
+		const calls: string[] = [];
+		const browserApi = {
+			listAgentChatModels: async (agentId: string) => {
+				calls.push(agentId);
+				return {
+					models: [
+						{
+							providerId: "codex",
+							providerDisplayName: "Codex",
+							model: "gpt-5.5",
+							displayName: "GPT-5.5",
+							description: "Codex model",
+							isDefault: true,
+							defaultReasoningEffort: "medium",
+							supportedReasoningEfforts: ["low", "medium"],
+							serviceTiers: [],
+						},
+					],
+				};
+			},
+		} as unknown as BrowserApi;
+		const url = new URL("http://localhost/api/agents/agent-railly/chat-models");
+
+		const response = await handleBrowserApiRequest(
+			new Request(url),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			models: [
+				expect.objectContaining({
+					providerId: "codex",
+					model: "gpt-5.5",
+				}),
+			],
+		});
+		expect(calls).toEqual(["agent-railly"]);
+	});
+
 	test("routes chat coding link requests by chat session identity", async () => {
 		let params:
 			| {

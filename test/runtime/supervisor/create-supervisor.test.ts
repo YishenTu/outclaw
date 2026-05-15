@@ -167,6 +167,7 @@ function createCronAgentHome(agentId: string, prompt: string) {
 		`
 name: daily
 schedule: "* * * * *"
+model: opus
 prompt: ${prompt}
 `.trim(),
 	);
@@ -428,6 +429,7 @@ describe("createSupervisor", () => {
 			type: "session_switched",
 			sdkSessionId: "sdk-target-abc",
 			title: "Target session",
+			providerId: "mock",
 		});
 		expect(
 			observed.filter((event) => event.type === "browser_agents_invalidated"),
@@ -1362,7 +1364,12 @@ describe("createSupervisor", () => {
 
 		expect(codingFacade.lastParams?.prompt).toBe("implement the parser");
 		expect(codingFacade.lastParams?.cwd).toBe(codeHome);
-		expect(codingFacade.lastParams?.systemPrompt).toBeUndefined();
+		expect(codingFacade.lastParams?.instructionPolicy?.mode).toBe(
+			"provider_default",
+		);
+		expect(
+			codingFacade.lastParams?.instructionPolicy?.systemPrompt,
+		).toBeUndefined();
 		expect(facade.lastParams?.prompt).toBeUndefined();
 		expect(store.getActiveSessionId("mock")).toBe("chat-session-123");
 		expect(store.get("mock", "chat-session-123")?.tag).toBe("chat");

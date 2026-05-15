@@ -536,7 +536,10 @@ describe("ClaudeAdapter", () => {
 				},
 				sessionId: "sdk-options",
 				stream: false,
-				systemPrompt: "system",
+				instructionPolicy: {
+					mode: "runtime_constructed",
+					systemPrompt: "system",
+				},
 			})) {
 				// Drain
 			}
@@ -750,7 +753,10 @@ describe("ClaudeAdapter", () => {
 
 		for await (const event of adapter.run({
 			prompt: "hello",
-			systemPrompt: "system",
+			instructionPolicy: {
+				mode: "runtime_constructed",
+				systemPrompt: "system",
+			},
 			resume: "sdk-123",
 			cwd: "/tmp/outclaw",
 			model: "claude-opus-4-7[1m]",
@@ -1283,73 +1289,6 @@ describe("ClaudeAdapter", () => {
 		} finally {
 			rmSync(tmp, { recursive: true, force: true });
 		}
-	});
-
-	test("getSkills probes once, maps descriptions, and caches the result", async () => {
-		const supportedCommands = mock(async () => [
-			{ name: "commit", description: "Create a git commit" },
-			{ name: "review", description: "Review changes" },
-		]);
-		const query = mock(() => ({
-			supportedCommands,
-			async *[Symbol.asyncIterator]() {
-				yield {
-					type: "system",
-					subtype: "init",
-					session_id: "skill-probe-1",
-					skills: ["commit"],
-				};
-			},
-		}));
-		const unlinkFile = mock(() => {});
-		const { adapter } = createAdapter({
-			query,
-			sleep: async () => {},
-			unlinkFile,
-		});
-
-		await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
-			{ name: "commit", description: "Create a git commit" },
-		]);
-		await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
-			{ name: "commit", description: "Create a git commit" },
-		]);
-
-		expect(query).toHaveBeenCalledTimes(1);
-		expect(supportedCommands).toHaveBeenCalledTimes(1);
-		expect(unlinkFile).toHaveBeenCalledTimes(1);
-	});
-
-	test("getSkills falls back to empty descriptions when supportedCommands fails", async () => {
-		const supportedCommands = mock(async () => {
-			throw new Error("commands unavailable");
-		});
-		const query = mock(() => ({
-			supportedCommands,
-			async *[Symbol.asyncIterator]() {
-				yield {
-					type: "system",
-					subtype: "init",
-					session_id: "skill-probe-2",
-					skills: ["commit", "review"],
-				};
-			},
-		}));
-		const unlinkFile = mock(() => {});
-		const { adapter } = createAdapter({
-			query,
-			sleep: async () => {},
-			unlinkFile,
-		});
-
-		await expect(adapter.getSkills("/tmp/outclaw")).resolves.toEqual([
-			{ name: "commit", description: "" },
-			{ name: "review", description: "" },
-		]);
-
-		expect(query).toHaveBeenCalledTimes(1);
-		expect(supportedCommands).toHaveBeenCalledTimes(1);
-		expect(unlinkFile).toHaveBeenCalledTimes(1);
 	});
 
 	test("inserts line break between assistant turns (streaming)", async () => {

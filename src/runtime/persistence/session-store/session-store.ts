@@ -13,7 +13,10 @@ import {
 	normalizeTitleSearchTokens,
 	titleMatchesSearchTokens,
 } from "../title-search.ts";
-import { SessionStateStore } from "./session-state-store.ts";
+import {
+	SessionStateStore,
+	type StoredBlankChatModelSelection,
+} from "./session-state-store.ts";
 import {
 	mapSessionRow,
 	mapSessionRows,
@@ -154,6 +157,42 @@ export class SessionStore {
 			});
 	}
 
+	/**
+	 * Look up a session by sdk session id alone, across providers. Returns
+	 * the row that owns this id for the current agent. Returns undefined
+	 * when no row exists. The primary key is `(agent_id, provider_id,
+	 * sdk_session_id)` so a single sdk session id is unique within an agent.
+	 */
+	findBySdkSessionId(sdkSessionId: string): SessionRow | undefined {
+		return mapSessionRow(
+			this.db
+				.query(
+					`SELECT
+						agent_id,
+						provider_id,
+						sdk_session_id,
+						oc_session_id,
+						title,
+						model,
+						source,
+						tag,
+						created_at,
+						last_active,
+						failed_at,
+						failure_message,
+						auto_title_attempted
+					FROM sessions
+					WHERE agent_id = $agentId
+					  AND sdk_session_id = $id
+					LIMIT 1`,
+				)
+				.get({
+					$agentId: this.agentId,
+					$id: sdkSessionId,
+				}) as Parameters<typeof mapSessionRow>[0],
+		);
+	}
+
 	get(providerId: string, sdkSessionId: string): SessionRow | undefined {
 		return mapSessionRow(
 			this.db
@@ -265,6 +304,97 @@ export class SessionStore {
 					LIMIT 1`,
 				)
 				.get(params) as Parameters<typeof mapSessionRow>[0],
+		);
+	}
+
+	findUniqueByPrefixAcrossProviders(
+		prefix: string,
+		tag?: SessionTag,
+	):
+		| { status: "found"; session: SessionRow }
+		| { status: "ambiguous" }
+		| {
+				status: "not_found";
+		  } {
+		const exactConditions = [
+			"agent_id = $agentId",
+			"(sdk_session_id = $id OR oc_session_id = $id)",
+		];
+		const params: Record<string, string | number> = {
+			$agentId: this.agentId,
+			$id: prefix,
+		};
+		if (tag) {
+			exactConditions.push("tag = $tag");
+			params.$tag = tag;
+		}
+		const exactMatches = this.findProviderPrefixMatches(
+			exactConditions,
+			params,
+			2,
+		);
+		if (exactMatches.length === 1) {
+			return { status: "found", session: exactMatches[0] as SessionRow };
+		}
+		if (exactMatches.length > 1) {
+			return { status: "ambiguous" };
+		}
+
+		const prefixConditions = [
+			"agent_id = $agentId",
+			"(sdk_session_id LIKE $prefix OR oc_session_id LIKE $prefix)",
+		];
+		const prefixParams: Record<string, string | number> = {
+			$agentId: this.agentId,
+			$prefix: `${prefix}%`,
+		};
+		if (tag) {
+			prefixConditions.push("tag = $tag");
+			prefixParams.$tag = tag;
+		}
+		const prefixMatches = this.findProviderPrefixMatches(
+			prefixConditions,
+			prefixParams,
+			2,
+		);
+		if (prefixMatches.length === 1) {
+			return { status: "found", session: prefixMatches[0] as SessionRow };
+		}
+		return prefixMatches.length > 1
+			? { status: "ambiguous" }
+			: { status: "not_found" };
+	}
+
+	private findProviderPrefixMatches(
+		conditions: string[],
+		params: Record<string, string | number>,
+		limit: number,
+	): SessionRow[] {
+		return mapSessionRows(
+			this.db
+				.query(
+					`SELECT
+						agent_id,
+						provider_id,
+						sdk_session_id,
+						oc_session_id,
+						title,
+						model,
+						source,
+						tag,
+						created_at,
+						last_active,
+						failed_at,
+						failure_message,
+						auto_title_attempted
+					FROM sessions
+					WHERE ${conditions.join(" AND ")}
+					ORDER BY last_active DESC
+					LIMIT $limit`,
+				)
+				.all({ ...params, $limit: limit }) as Parameters<
+				typeof mapSessionRows
+			>[0],
 		);
 	}
 
@@ -570,6 +700,16 @@ export class SessionStore {
 
 	setRolloverNotice(notice: RolloverNotice | undefined) {
 		this.stateStore.setRolloverNotice(notice);
+	}
+
+	getBlankChatModelSelection(): StoredBlankChatModelSelection | undefined {
+		return this.stateStore.getBlankChatModelSelection();
+	}
+
+	setBlankChatModelSelection(
+		selection: StoredBlankChatModelSelection | undefined,
+	) {
+		this.stateStore.setBlankChatModelSelection(selection);
 	}
 
 	getLastInteractiveAgentId(): string | undefined {

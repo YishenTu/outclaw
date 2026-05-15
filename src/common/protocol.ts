@@ -71,6 +71,20 @@ export interface CodePromptMessage {
 	prompt: string;
 }
 
+/**
+ * Typed model selection message sent by the browser composer instead of the
+ * older `/model <alias>` string. Sending the provider explicitly lets the
+ * runtime reject cross-provider switches during an active session — a
+ * provider change must go through a new-session boundary.
+ */
+export interface ModelSelectMessage {
+	type: "model_select";
+	providerId: string;
+	model: string;
+	effort?: string;
+	serviceTier?: string;
+}
+
 export type RuntimeClientType = "telegram" | "tui" | "browser" | "control";
 export type PromptSource =
 	| "telegram"
@@ -109,7 +123,8 @@ export type ClientMessage =
 	| AskMessage
 	| SendMessage
 	| CronRunMessage
-	| CodePromptMessage;
+	| CodePromptMessage
+	| ModelSelectMessage;
 
 // --- Server → Client events ---
 
@@ -117,6 +132,7 @@ export interface TextEvent {
 	type: "text";
 	text: string;
 	sessionId?: string;
+	timestamp?: number;
 }
 
 export interface ImageEvent {
@@ -137,6 +153,7 @@ export interface ThinkingEvent {
 	type: "thinking";
 	text: string;
 	sessionId?: string;
+	timestamp?: number;
 }
 
 export interface ErrorEvent {
@@ -160,6 +177,7 @@ export interface DoneEvent {
 	type: "done";
 	sessionId: string;
 	durationMs: number;
+	timestamp?: number;
 	costUsd?: number;
 	usage?: UsageInfo;
 }
@@ -315,11 +333,18 @@ export interface SessionClearedEvent {
 export interface ModelChangedEvent {
 	type: "model_changed";
 	model: string;
+	/**
+	 * Provider id this model belongs to. Carried explicitly so a fast switch
+	 * between Claude and Codex never lets the browser route by the wrong
+	 * (stale) runtime provider.
+	 */
+	providerId?: string;
 }
 
 export interface EffortChangedEvent {
 	type: "effort_changed";
 	effort: string;
+	providerId?: string;
 }
 
 export interface SessionInfoEvent {
@@ -334,39 +359,38 @@ export interface SessionCursor {
 	sdkSessionId: string;
 }
 
+/**
+ * One row in a chat session list/menu/search event. `providerId` is
+ * included so chat UIs can render mixed-provider lists and route
+ * switch/delete/rename actions through a fully-qualified provider session
+ * reference. Same-id sessions across providers never collide.
+ */
+export interface SessionRowSummary {
+	providerId?: string;
+	sdkSessionId: string;
+	title: string;
+	model: string;
+	lastActive: number;
+}
+
 export interface SessionListEvent {
 	type: "session_list";
 	activeSessionId?: string;
-	sessions: Array<{
-		sdkSessionId: string;
-		title: string;
-		model: string;
-		lastActive: number;
-	}>;
+	sessions: SessionRowSummary[];
 	nextCursor?: SessionCursor;
 }
 
 export interface SessionMenuEvent {
 	type: "session_menu";
 	activeSessionId?: string;
-	sessions: Array<{
-		sdkSessionId: string;
-		title: string;
-		model: string;
-		lastActive: number;
-	}>;
+	sessions: SessionRowSummary[];
 	nextCursor?: SessionCursor;
 }
 
 export interface SessionSearchResultEvent {
 	type: "session_search_result";
 	query: string;
-	sessions: Array<{
-		sdkSessionId: string;
-		title: string;
-		model: string;
-		lastActive: number;
-	}>;
+	sessions: SessionRowSummary[];
 	nextCursor?: SessionCursor;
 }
 
@@ -381,12 +405,24 @@ export interface SessionRenamedEvent {
 export interface SessionDeletedEvent {
 	type: "session_deleted";
 	sdkSessionId: string;
+	/**
+	 * Provider id this delete applied to. Without it, a browser sidebar that
+	 * mixes Claude and Codex sessions could accidentally drop the row from
+	 * the wrong provider on an sdk-session-id collision.
+	 */
+	providerId?: string;
 }
 
 export interface SessionSwitchedEvent {
 	type: "session_switched";
 	sdkSessionId: string;
 	title: string;
+	/**
+	 * Provider id of the session being activated. The browser uses this to
+	 * derive the visible provider/model selector context and to avoid
+	 * inferring provider from possibly stale runtime status.
+	 */
+	providerId?: string;
 }
 
 export interface AgentMenuEvent {
@@ -526,12 +562,14 @@ export interface TranscriptTurn {
 
 export interface HistoryReplayEvent {
 	type: "history_replay";
+	providerId?: string;
 	sdkSessionId: string;
 	messages: DisplayMessage[];
 }
 
 export interface StreamingSyncEvent {
 	type: "streaming_sync";
+	providerId?: string;
 	sdkSessionId: string;
 	text: string;
 	thinking: string;
@@ -620,6 +658,12 @@ export interface BrowserAgentActiveSessionResponse {
 	activeSession?: {
 		providerId: string;
 		sdkSessionId: string;
+	};
+	blankSelection?: {
+		providerId: string;
+		model: string;
+		effort: string;
+		serviceTier?: string;
 	};
 }
 
@@ -752,6 +796,29 @@ export type BrowserCodingSessionCancelResponse =
 			status: "rejected";
 			message: string;
 	  };
+
+/**
+ * One row in the provider-neutral chat model catalog. The chat composer
+ * presents these from all configured chat providers. `providerId` is the
+ * opaque routing identifier (`claude`, `codex`); `model` is the provider-
+ * local model id the runtime persists for sessions.
+ */
+export interface BrowserChatModel {
+	providerId: string;
+	providerDisplayName: string;
+	model: string;
+	displayName: string;
+	description: string;
+	isDefault: boolean;
+	defaultReasoningEffort: string;
+	supportedReasoningEfforts: string[];
+	serviceTiers: ProviderServiceTier[];
+	contextWindow?: number;
+}
+
+export interface BrowserChatModelsResponse {
+	models: BrowserChatModel[];
+}
 
 export interface BrowserCodingModel {
 	id: string;
@@ -1202,6 +1269,7 @@ export interface CodingUserPromptEvent {
 	type: "user_prompt";
 	text: string;
 	sessionId?: string;
+	timestamp?: number;
 }
 
 export interface TurnAbortedEvent {
@@ -1232,11 +1300,35 @@ export interface UsageUpdatedEvent {
 	sessionId?: string;
 }
 
+/**
+ * Provider-neutral instruction policy passed by the runtime to backend
+ * adapters on each run. The runtime never branches on provider identity to
+ * decide instruction sources — it states whether the adapter should use its
+ * provider default or the Outclaw-constructed system prompt, and the adapter
+ * owns the wire shape.
+ */
+export type RuntimeInstructionMode = "provider_default" | "runtime_constructed";
+
+export interface RuntimeInstructionPolicy {
+	mode: RuntimeInstructionMode;
+	/**
+	 * Outclaw-constructed system prompt. Required when `mode` is
+	 * `runtime_constructed`; ignored otherwise.
+	 */
+	systemPrompt?: string;
+}
+
 export interface RunParams {
 	prompt: string;
 	images?: ImageRef[];
 	replyContext?: ReplyContext;
-	systemPrompt?: string;
+	/**
+	 * How the adapter should source agent instructions for this run. When
+	 * omitted, adapters treat the run as `provider_default` with no Outclaw
+	 * system prompt. Replaces the older free-form `systemPrompt` field, which
+	 * conflated "provider default" with "no extra instructions".
+	 */
+	instructionPolicy?: RuntimeInstructionPolicy;
 	abortController?: AbortController;
 	resume?: string;
 	/**
@@ -1313,11 +1405,10 @@ export interface Facade {
 	 * provider transcript formats directly.
 	 */
 	readCodingSessionEvents?(sessionId: string): Promise<CodingSessionEvent[]>;
-	getSkills?(cwd?: string): Promise<SkillInfo[]>;
 	/**
 	 * Provider-owned skill catalog for cwd-bound coding sessions. This is
-	 * intentionally separate from getSkills(), which feeds the normal chat
-	 * slash-command transport.
+	 * intentionally separate from the provider-neutral chat slash-command
+	 * catalog, which is built by the runtime from the agent workspace.
 	 */
 	listProviderSkills?(params: {
 		cwd: string;

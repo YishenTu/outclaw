@@ -1,4 +1,5 @@
 import { ClaudeAdapter } from "../../backend/adapters/claude/index.ts";
+import { ensureCodexAgentWorkspace } from "../../backend/adapters/codex/setup.ts";
 import { createAgent } from "../../runtime/agents/create-agent.ts";
 import { ensureGlobalEnvFile } from "../../runtime/agents/ensure-global-env-file.ts";
 import { listAgents } from "../../runtime/agents/list-agents.ts";
@@ -66,8 +67,15 @@ export function createAgentCommand(options: AgentLifecycleCommandOptions) {
 				: undefined,
 		homeDir: options.homeDir,
 		name,
-		prepareWorkspace: (agentHomeDir) =>
-			claudeWorkspaceAdapter.prepareWorkspace(agentHomeDir),
+		prepareWorkspace: (agentHomeDir) => {
+			claudeWorkspaceAdapter.prepareWorkspace(agentHomeDir);
+			// `oc agent create` must materialize the Codex provider view
+			// alongside the Claude one — the daemon's per-agent
+			// codexAdapter.prepareWorkspace() handles existing agents on
+			// boot, but a brand-new agent created from the CLI between
+			// daemon restarts would otherwise be missing the Codex layer.
+			ensureCodexAgentWorkspace(agentHomeDir);
+		},
 		rolloverIdleMinutes:
 			flags["rollover-idle"] !== undefined
 				? parseRolloverIdleMinutes(flags["rollover-idle"])

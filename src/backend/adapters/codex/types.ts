@@ -22,12 +22,26 @@ export interface CodexThread {
 	path?: string | null;
 }
 
+/**
+ * One instruction file the Codex app-server reports it loaded when starting
+ * or resuming a thread. Outclaw uses this to verify that runtime-constructed
+ * Chat threads did not pick up the agent workspace `AGENTS.md` a second time
+ * as a project doc.
+ */
+export interface CodexInstructionSource {
+	kind?: string;
+	path?: string;
+}
+
 export interface CodexThreadStartResult {
 	thread: CodexThread;
+	instructionSources?: CodexInstructionSource[];
 }
 
 export type CodexThreadResumeResult = CodexThreadStartResult;
-export type CodexThreadReadResult = CodexThreadStartResult;
+export interface CodexThreadReadResult {
+	thread: CodexThread;
+}
 
 export interface CodexThreadListResult {
 	data: CodexThread[];

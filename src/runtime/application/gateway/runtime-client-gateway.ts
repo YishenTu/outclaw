@@ -2,6 +2,7 @@ import type {
 	DisplayMessage,
 	Facade,
 	RuntimeStatusEvent,
+	SkillInfo,
 	StreamingSyncEvent,
 	TranscriptTurn,
 	WorkspaceFileEntry,
@@ -13,10 +14,38 @@ import { ClientHub, type WsClient } from "../../transport/client-hub.ts";
 interface RuntimeClientGatewayOptions {
 	canSendToClient?: (ws: WsClient) => boolean;
 	cwd?: string;
+	/**
+	 * Primary/default facade. The gateway resolves provider-specific surfaces
+	 * through the optional resolver below when the current status includes a
+	 * provider id, and falls back here for single-provider runtimes. The
+	 * replay path resolves the per-session facade through
+	 * `resolveFacadeForSession` so a Codex chat session's history is read
+	 * by the Codex adapter, not Claude.
+	 */
 	facade: Facade;
-	getStreamingSyncEvent?: (sessionId: string) => StreamingSyncEvent | undefined;
+	resolveFacadeForProvider?: (providerId: string) => Facade | undefined;
+	/**
+	 * Resolve the facade that owns a given persisted chat session. Returns
+	 * undefined when the runtime has no record of the session — callers
+	 * fall back to the primary facade in that case (e.g. a fresh blank
+	 * session whose id only exists in the runtime status snapshot).
+	 */
+	resolveFacadeForSession?: (
+		providerId: string | undefined,
+		sessionId: string,
+	) => Facade | undefined;
+	getStreamingSyncEvent?: (
+		providerId: string | undefined,
+		sessionId: string,
+	) => StreamingSyncEvent | undefined;
 	getStatusEvent: () => RuntimeStatusEvent;
+	listSkills?: () => Promise<SkillInfo[]>;
 	listWorkspaceFiles?: () => Promise<WorkspaceFileEntry[]>;
+}
+
+interface ReplaySessionRef {
+	providerId?: string;
+	sdkSessionId: string;
 }
 
 export class RuntimeClientGateway {
@@ -56,18 +85,28 @@ export class RuntimeClientGateway {
 
 	replayHistory(
 		targets: Iterable<WsClient>,
-		sessionId = this.options.getStatusEvent().sessionId,
+		sessionRef: ReplaySessionRef | string | undefined = statusSessionRef(
+			this.options.getStatusEvent(),
+		),
 	) {
 		const targetList = [...targets];
-		if (
-			!sessionId ||
-			(!this.options.facade.readHistory && !this.options.facade.readReplay)
-		) {
+		const ref =
+			typeof sessionRef === "string"
+				? { sdkSessionId: sessionRef }
+				: sessionRef;
+		if (!ref?.sdkSessionId) {
+			return Promise.resolve();
+		}
+		const sessionId = ref.sdkSessionId;
+		const facade =
+			this.options.resolveFacadeForSession?.(ref.providerId, sessionId) ??
+			this.options.facade;
+		if (!facade.readHistory && !facade.readReplay) {
 			return Promise.resolve();
 		}
 
 		return safeInvoke(async () => {
-			return await readReplayMessages(this.options.facade, sessionId);
+			return await readReplayMessages(facade, sessionId);
 		})
 			.then((messages) => {
 				if (!messages) {
@@ -75,12 +114,19 @@ export class RuntimeClientGateway {
 				}
 				this.hub.sendMany(targetList, {
 					type: "history_replay",
+					providerId: facade.providerId,
 					sdkSessionId: sessionId,
 					messages,
 				});
-				const streamingSync = this.options.getStreamingSyncEvent?.(sessionId);
+				const streamingSync = this.options.getStreamingSyncEvent?.(
+					ref.providerId,
+					sessionId,
+				);
 				if (streamingSync) {
-					this.hub.sendMany(targetList, streamingSync);
+					this.hub.sendMany(targetList, {
+						...streamingSync,
+						providerId: streamingSync.providerId ?? facade.providerId,
+					});
 				}
 			})
 			.catch((error) => {
@@ -92,11 +138,11 @@ export class RuntimeClientGateway {
 	}
 
 	requestSkills(ws: WsClient) {
-		if (!this.options.facade.getSkills) {
+		if (!this.options.listSkills) {
 			return;
 		}
 
-		void safeInvoke(() => this.options.facade.getSkills?.(this.options.cwd))
+		void safeInvoke(() => this.options.listSkills?.())
 			.then((skills) => {
 				if (!skills) {
 					return;
@@ -150,15 +196,24 @@ export class RuntimeClientGateway {
 	}
 }
 
+function statusSessionRef(
+	status: RuntimeStatusEvent,
+): ReplaySessionRef | undefined {
+	return status.sessionId
+		? {
+				providerId: status.providerId,
+				sdkSessionId: status.sessionId,
+			}
+		: undefined;
+}
+
 async function readReplayMessages(
 	facade: Facade,
 	sessionId: string,
 ): Promise<DisplayMessage[] | undefined> {
-	if (facade.readReplay) {
-		return await facade.readReplay(sessionId);
-	}
-
-	const messages = await facade.readHistory?.(sessionId);
+	const messages = facade.readReplay
+		? await facade.readReplay(sessionId)
+		: await facade.readHistory?.(sessionId);
 	if (!messages) {
 		return undefined;
 	}

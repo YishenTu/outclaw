@@ -39,8 +39,12 @@ export function buildClaudeSdkOptions(
 	abortController: AbortController,
 	autoCompact: boolean,
 ): ClaudeSdkRunOptions {
+	const systemPrompt =
+		params.instructionPolicy?.mode === "runtime_constructed"
+			? params.instructionPolicy.systemPrompt
+			: undefined;
 	return {
-		systemPrompt: params.systemPrompt,
+		systemPrompt,
 		abortController,
 		resume: params.resume,
 		sessionId: params.sessionId,

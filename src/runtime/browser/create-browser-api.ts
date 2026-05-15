@@ -5,6 +5,7 @@ import type { EffortLevel } from "../../common/commands.ts";
 import type {
 	BrowserAgentActiveSessionResponse,
 	BrowserAgentsResponse,
+	BrowserChatModelsResponse,
 	BrowserCodingFolderPickerResponse,
 	BrowserCodingModelsResponse,
 	BrowserCodingRepositoryArchiveResponse,
@@ -82,6 +83,7 @@ import type { SessionStore } from "../persistence/session-store/session-store.ts
 import {
 	type BrowserApiAgent,
 	listBrowserAgents,
+	resolveVisibleActiveChatSession,
 	toBrowserSessionSummary,
 } from "./agent-sidebar/read-model.ts";
 import {
@@ -160,9 +162,19 @@ export interface BrowserCodingService
 	}): Promise<void>;
 }
 
+export interface BrowserChatProviderCatalog {
+	displayName: string;
+	listModels(): Promise<ProviderModelInfo[]>;
+	providerId: string;
+}
+
 interface CreateBrowserApiOptions {
 	agents: BrowserApiAgent[];
 	chatCodingLinks?: ChatCodingLinkStore;
+	chatProvidersByAgent?: Map<
+		string,
+		readonly BrowserChatProviderCatalog[] | undefined
+	>;
 	cloneCodingRepository?: CodingCloner;
 	coding?: BrowserCodingService;
 	codingEvents?: CodingSessionEventRecorder;
@@ -177,7 +189,11 @@ interface CreateBrowserApiOptions {
 	ignoredGitPaths?: readonly string[];
 	readTranscriptsByAgent?: Map<
 		string,
-		((sessionId: string) => Promise<TranscriptTurn[]>) | undefined
+		| ((
+				providerId: string,
+				sessionId: string,
+		  ) => Promise<TranscriptTurn[] | undefined>)
+		| undefined
 	>;
 	storesByAgent: Map<string, SessionStore | undefined>;
 }
@@ -185,6 +201,7 @@ interface CreateBrowserApiOptions {
 export interface BrowserApi {
 	getAgentActiveSession(agentId: string): BrowserAgentActiveSessionResponse;
 	getAgentTerminalCwd(agentId: string): string | undefined;
+	listAgentChatModels(agentId: string): Promise<BrowserChatModelsResponse>;
 	listAgents(params?: { browserClientId?: string }): BrowserAgentsResponse;
 	archiveAgentInboxItem(
 		agentId: string,
@@ -524,27 +541,45 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		getAgentActiveSession(agentId) {
 			const agent = requireAgent(agentsById, agentId);
 			const store = options.storesByAgent.get(agentId);
-			const activeSessionId = store?.getActiveSessionId(agent.providerId);
-			if (!activeSessionId) {
-				return {};
-			}
-			const activeSession = store?.get(agent.providerId, activeSessionId);
-			if (!activeSession || activeSession.tag !== "chat") {
-				return {};
-			}
+			const activeSession = resolveVisibleActiveChatSession(agent, store);
+			const blankSelection = store?.getBlankChatModelSelection();
 			return {
-				activeSession: {
-					providerId: agent.providerId,
-					sdkSessionId: activeSessionId,
-				},
+				...(activeSession ? { activeSession } : {}),
+				...(blankSelection ? { blankSelection } : {}),
 			};
+		},
+		async listAgentChatModels(agentId) {
+			requireAgent(agentsById, agentId);
+			const providers =
+				options.chatProvidersByAgent?.get(agentId) ??
+				options.chatProvidersByAgent?.get("*") ??
+				[];
+			const models = (
+				await Promise.all(
+					providers.map(async (provider) => {
+						const providerModels = await provider.listModels();
+						return providerModels.map((model) => ({
+							providerId: provider.providerId,
+							providerDisplayName: provider.displayName,
+							model: model.model,
+							displayName: model.displayName,
+							description: model.description,
+							isDefault: model.isDefault,
+							defaultReasoningEffort: model.defaultReasoningEffort,
+							supportedReasoningEfforts: model.supportedReasoningEfforts,
+							serviceTiers: model.serviceTiers,
+						}));
+					}),
+				)
+			).flat();
+			return { models };
 		},
 		async listAgentCron(agentId) {
 			const agent = requireAgent(agentsById, agentId);
 			return await listCronEntries(agent.homeDir);
 		},
 		async listAgentCronHistory(agentId, params) {
-			const agent = requireAgent(agentsById, agentId);
+			requireAgent(agentsById, agentId);
 			const store = options.storesByAgent.get(agentId);
 			if (!store) {
 				return { entries: [], hasMore: false };
@@ -554,10 +589,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				limit: params.limit,
 				before: params.before,
 				readTranscript: readTranscript
-					? (providerId, sessionId) =>
-							providerId === agent.providerId
-								? readTranscript(sessionId)
-								: Promise.resolve(undefined)
+					? (providerId, sessionId) => readTranscript(providerId, sessionId)
 					: undefined,
 			});
 		},
@@ -566,7 +598,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			return await listInboxEntries(agent.homeDir);
 		},
 		async listAgentSessions(agentId, params) {
-			const agent = requireAgent(agentsById, agentId);
+			requireAgent(agentsById, agentId);
 			const store = options.storesByAgent.get(agentId);
 			if (!store) {
 				return { sessions: [] };
@@ -575,7 +607,6 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const listOptions = {
 				cursor: params.cursor,
 				limit: params.limit,
-				providerId: agent.providerId,
 				tag: "chat" as const,
 			};
 			const rows = query

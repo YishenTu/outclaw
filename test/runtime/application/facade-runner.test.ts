@@ -75,8 +75,11 @@ describe("runFacadePrompt", () => {
 		expect(capturedParams).toHaveLength(1);
 		expect(capturedParams[0]).toMatchObject({
 			prompt: "Build the chart",
-			systemPrompt:
-				"<agents>\nAgent instructions\n</agents>\n\n<user>\nUser context\n</user>",
+			instructionPolicy: {
+				mode: "runtime_constructed",
+				systemPrompt:
+					"<agents>\nAgent instructions\n</agents>\n\n<user>\nUser context\n</user>",
+			},
 			abortController: expect.any(AbortController),
 			cwd: "/workspace/project",
 			model: "claude-opus",

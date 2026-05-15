@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type {
 	ClientMessage,
+	ModelSelectMessage,
 	ReplyContext,
 	ServerEvent,
 } from "../../../src/common/protocol.ts";
@@ -32,6 +33,7 @@ function createRouter(overrides?: {
 	const requestedSkills: WsClient[] = [];
 	const requestedFiles: WsClient[] = [];
 	const commands: Array<{ command: string; ws: WsClient }> = [];
+	const modelSelects: Array<{ message: ModelSelectMessage; ws: WsClient }> = [];
 	const router = new RuntimeMessageRouter({
 		clients: {
 			requestSkills(target) {
@@ -47,6 +49,9 @@ function createRouter(overrides?: {
 		controlPlane: {
 			handleCommand(target, command) {
 				commands.push({ command, ws: target });
+			},
+			handleModelSelect(target, message) {
+				modelSelects.push({ message, ws: target });
 			},
 		},
 		execution: {
@@ -66,7 +71,15 @@ function createRouter(overrides?: {
 		);
 	}
 
-	return { commands, enqueued, handle, requestedFiles, requestedSkills, ws };
+	return {
+		commands,
+		enqueued,
+		handle,
+		modelSelects,
+		requestedFiles,
+		requestedSkills,
+		ws,
+	};
 }
 
 describe("RuntimeMessageRouter", () => {
@@ -113,6 +126,37 @@ describe("RuntimeMessageRouter", () => {
 		handle({ type: "command", command: "/status" });
 
 		expect(commands).toEqual([{ command: "/status", ws }]);
+	});
+
+	test("routes typed model_select messages to the control plane", () => {
+		const { handle, modelSelects, ws } = createRouter();
+		handle({
+			type: "model_select",
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "low",
+		});
+
+		expect(modelSelects).toEqual([
+			{
+				message: {
+					type: "model_select",
+					providerId: "codex",
+					model: "gpt-5.5",
+					effort: "low",
+				},
+				ws,
+			},
+		]);
+	});
+
+	test("rejects model_select messages missing providerId or model", () => {
+		const { handle, modelSelects, ws } = createRouter();
+		handle({ type: "model_select" } as unknown as ClientMessage);
+
+		expect(modelSelects).toEqual([]);
+		const error = ws.events().find((event) => event.type === "error");
+		expect(error).toBeDefined();
 	});
 
 	test("enqueues prompt messages with normalized runtime metadata", () => {

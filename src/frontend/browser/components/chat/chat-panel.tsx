@@ -1,5 +1,3 @@
-import type { EffortLevel } from "../../../../common/commands.ts";
-import type { ModelAlias } from "../../../../common/models.ts";
 import { LinkedCodingSessionMenuButton } from "../../coding/linked-coding-session-menu-button.tsx";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import { useIsMobile } from "../../lib/use-is-mobile.ts";
@@ -13,6 +11,7 @@ import { useRuntimeStore } from "../../stores/runtime.ts";
 import { useSessionsStore } from "../../stores/sessions.ts";
 import { MessageInput } from "./composer/message-input.tsx";
 import { MessageList } from "./message-list.tsx";
+import type { ChatModelSelection } from "./model-selector.tsx";
 
 function hasRenderableTranscript(session: ChatSession | undefined): boolean {
 	if (!session) {
@@ -32,7 +31,7 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ active = true }: ChatPanelProps) {
-	const { sendBrowserPrompt, sendCommand } = useWs();
+	const { sendBrowserPrompt, sendModelSelect } = useWs();
 	const isMobile = useIsMobile();
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
 	const agents = useAgentsStore((state) => state.agents);
@@ -83,12 +82,12 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 		sessionTitleFromRuntime,
 	});
 
-	function handleModelChange(model: ModelAlias) {
-		return sendCommand(`/model ${model}`);
+	function handleModelChange(selection: ChatModelSelection) {
+		return sendModelSelect(selection);
 	}
 
-	function handleEffortChange(effort: EffortLevel) {
-		return sendCommand(`/thinking ${effort}`);
+	function handleEffortChange(selection: ChatModelSelection) {
+		return sendModelSelect(selection);
 	}
 
 	if (!activeAgentId || !activeAgent) {
@@ -111,6 +110,8 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 					interruptible={false}
 					active={active}
 					compact={isMobile}
+					agentId={activeAgentId}
+					providerId={providerId}
 					model={model}
 					effort={effort}
 					onModelChange={handleModelChange}
@@ -166,6 +167,8 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 				sessionKey={sessionKey}
 				disabled={connectionStatus !== "connected"}
 				compact={isMobile}
+				agentId={activeAgentId}
+				providerId={providerId}
 				model={model}
 				effort={effort}
 				onModelChange={handleModelChange}

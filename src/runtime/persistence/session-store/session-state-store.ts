@@ -15,6 +15,7 @@ import {
 } from "../last-user-target.ts";
 import {
 	activeSessionKey,
+	blankChatModelSelectionKey,
 	browserClientAgentKey,
 	FRONTEND_NOTICE_KEY,
 	LAST_INTERACTIVE_AGENT_KEY,
@@ -24,6 +25,20 @@ import {
 	lastUserTargetKey,
 	rolloverNoticeKey,
 } from "../state-keys.ts";
+
+/**
+ * Per-agent persisted blank-session model selection. This is the single
+ * source of truth for the provider/model/effort/service-tier that a new chat
+ * session will inherit, and it determines which provider's
+ * `active_session_id:{agentId}:{providerId}` row is the visible one after
+ * daemon restart.
+ */
+export interface StoredBlankChatModelSelection {
+	providerId: string;
+	model: string;
+	effort: string;
+	serviceTier?: string;
+}
 
 export class SessionStateStore {
 	constructor(
@@ -143,6 +158,44 @@ export class SessionStateStore {
 		this.setStateValue(key, agentId);
 	}
 
+	getBlankChatModelSelection(): StoredBlankChatModelSelection | undefined {
+		const raw = this.getStateValue(blankChatModelSelectionKey(this.agentId));
+		if (!raw) {
+			return undefined;
+		}
+		try {
+			const parsed = JSON.parse(raw) as Partial<StoredBlankChatModelSelection>;
+			if (
+				typeof parsed.providerId !== "string" ||
+				typeof parsed.model !== "string" ||
+				typeof parsed.effort !== "string"
+			) {
+				return undefined;
+			}
+			return {
+				providerId: parsed.providerId,
+				model: parsed.model,
+				effort: parsed.effort,
+				...(typeof parsed.serviceTier === "string"
+					? { serviceTier: parsed.serviceTier }
+					: {}),
+			};
+		} catch {
+			return undefined;
+		}
+	}
+
+	setBlankChatModelSelection(
+		selection: StoredBlankChatModelSelection | undefined,
+	) {
+		const key = blankChatModelSelectionKey(this.agentId);
+		if (!selection) {
+			this.deleteStateValue(key);
+			return;
+		}
+		this.setStateValue(key, JSON.stringify(selection));
+	}
+
 	getFrontendNotice(): FrontendNotice | undefined {
 		return parseFrontendNotice(this.getStateValue(FRONTEND_NOTICE_KEY));
 	}
@@ -173,6 +226,7 @@ export class SessionStateStore {
 		this.deleteStateValue(lastInteractiveAtKey(agentId));
 		this.deleteStateValue(lastHandledRolloverInteractiveAtKey(agentId));
 		this.deleteStateValue(rolloverNoticeKey(agentId));
+		this.deleteStateValue(blankChatModelSelectionKey(agentId));
 
 		if (this.getLastInteractiveAgentId() === agentId) {
 			this.deleteStateValue(LAST_INTERACTIVE_AGENT_KEY);

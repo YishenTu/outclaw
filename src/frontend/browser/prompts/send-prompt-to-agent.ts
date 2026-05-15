@@ -110,7 +110,9 @@ export async function sendBrowserPromptToAgent({
 			runtimeProviderId,
 			runtimeSessionId,
 		) &&
-		!params.sendCommand(`/session ${targetSession.sdkSessionId}`)
+		!params.sendCommand(
+			`/session ${targetSession.providerId}/${targetSession.sdkSessionId}`,
+		)
 	) {
 		return false;
 	}

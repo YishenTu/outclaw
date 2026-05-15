@@ -149,6 +149,23 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 			} as T;
 		}
 
+		// Default stubs for the Codex Chat project-trust handshake. These
+		// match the production behavior that ensureProjectTrusted expects:
+		// config/batchWrite is fire-and-forget, config/read reports the
+		// project layer values (personality + features) so the verification
+		// guard passes.
+		if (method === "config/batchWrite") {
+			return {} as T;
+		}
+		if (method === "config/read") {
+			return {
+				config: {
+					personality: "friendly",
+					features: { multi_agent: false, memories: false },
+				},
+			} as T;
+		}
+
 		throw new Error(`Unexpected request: ${method}`);
 	}
 
@@ -1199,6 +1216,65 @@ describe("CodexAdapter", () => {
 				type: "done",
 				sessionId: "codex-thread-123",
 				durationMs: 23624,
+			},
+		]);
+	});
+
+	test("preserves Codex JSONL row timestamps on chat-replay events", () => {
+		const userTimestamp = Date.parse("2026-05-14T02:46:08.444Z");
+		const assistantTimestamp = Date.parse("2026-05-14T02:46:11.012Z");
+		const doneTimestamp = Date.parse("2026-05-14T02:46:12.200Z");
+		const jsonl = [
+			{
+				timestamp: "2026-05-14T02:46:08.444Z",
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "user",
+					content: [{ type: "input_text", text: "hi" }],
+				},
+			},
+			{
+				timestamp: "2026-05-14T02:46:11.012Z",
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "assistant",
+					content: [{ type: "output_text", text: "hello" }],
+				},
+			},
+			{
+				timestamp: "2026-05-14T02:46:12.200Z",
+				type: "event_msg",
+				payload: {
+					type: "task_complete",
+					duration_ms: 3756,
+				},
+			},
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n");
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-123" }),
+		).toEqual([
+			{
+				type: "user_prompt",
+				text: "hi",
+				sessionId: "codex-thread-123",
+				timestamp: userTimestamp,
+			},
+			{
+				type: "text",
+				text: "hello",
+				sessionId: "codex-thread-123",
+				timestamp: assistantTimestamp,
+			},
+			{
+				type: "done",
+				sessionId: "codex-thread-123",
+				durationMs: 3756,
+				timestamp: doneTimestamp,
 			},
 		]);
 	});
@@ -2435,6 +2511,167 @@ describe("CodexAdapter", () => {
 		expect(client.dispose).toHaveBeenCalledTimes(1);
 	});
 
+	test("Code Mode start sends provider-default instructions and YOLO sandbox", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 1, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		await collectEvents(
+			adapter.run({
+				prompt: "fix",
+				cwd: "/work/repo",
+				model: "gpt-5.5",
+				instructionPolicy: { mode: "provider_default" },
+			}),
+		);
+
+		const start = client.requests.find((r) => r.method === "thread/start");
+		expect(start?.params).toEqual({
+			model: "gpt-5.5",
+			cwd: "/work/repo",
+			approvalPolicy: "never",
+			sandbox: "danger-full-access",
+			experimentalRawEvents: true,
+		});
+		// provider_default mode must not set baseInstructions or project-doc
+		// suppression — Codex's own coding instructions and project AGENTS.md
+		// must remain loadable for Code Mode.
+		const params = start?.params as Record<string, unknown>;
+		expect(params.baseInstructions).toBeUndefined();
+		expect(params.config).toBeUndefined();
+		// Adapter must not emit unsupported arbitrary builtin-tool keys.
+		expect(params.disabled_tools).toBeUndefined();
+		expect(params.enabled_tools).toBeUndefined();
+	});
+
+	test("Code Mode resume sends provider-default instructions and YOLO sandbox", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 1, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		await collectEvents(
+			adapter.run({
+				prompt: "continue",
+				resume: "codex-thread-123",
+				cwd: "/work/repo",
+				instructionPolicy: { mode: "provider_default" },
+			}),
+		);
+
+		const resume = client.requests.find((r) => r.method === "thread/resume");
+		expect(resume?.params).toEqual({
+			threadId: "codex-thread-123",
+			cwd: "/work/repo",
+			approvalPolicy: "never",
+			sandbox: "danger-full-access",
+			experimentalRawEvents: true,
+		});
+		const params = resume?.params as Record<string, unknown>;
+		expect(params.baseInstructions).toBeUndefined();
+		expect(params.config).toBeUndefined();
+	});
+
+	test("Codex Chat start maps the Outclaw system prompt to baseInstructions and suppresses project docs", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 1, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		await collectEvents(
+			adapter.run({
+				prompt: "hello",
+				cwd: "/home/agent",
+				model: "gpt-5.5",
+				instructionPolicy: {
+					mode: "runtime_constructed",
+					systemPrompt: "Outclaw chat instructions",
+				},
+			}),
+		);
+
+		const start = client.requests.find((r) => r.method === "thread/start");
+		const params = start?.params as Record<string, unknown>;
+		expect(params.baseInstructions).toBe("Outclaw chat instructions");
+		expect(params.config).toEqual({ project_doc_max_bytes: 0 });
+		// Codex Chat keeps the same YOLO/full-access request policy.
+		expect(params.approvalPolicy).toBe("never");
+		expect(params.sandbox).toBe("danger-full-access");
+		expect(params.experimentalRawEvents).toBe(true);
+		expect(params.disabled_tools).toBeUndefined();
+		expect(params.enabled_tools).toBeUndefined();
+	});
+
+	test("Codex Chat resume maps the Outclaw system prompt to baseInstructions and suppresses project docs", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 1, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		await collectEvents(
+			adapter.run({
+				prompt: "continue",
+				resume: "codex-thread-123",
+				cwd: "/home/agent",
+				instructionPolicy: {
+					mode: "runtime_constructed",
+					systemPrompt: "Outclaw chat instructions",
+				},
+			}),
+		);
+
+		const resume = client.requests.find((r) => r.method === "thread/resume");
+		const params = resume?.params as Record<string, unknown>;
+		expect(params.baseInstructions).toBe("Outclaw chat instructions");
+		expect(params.config).toEqual({ project_doc_max_bytes: 0 });
+		expect(params.approvalPolicy).toBe("never");
+		expect(params.sandbox).toBe("danger-full-access");
+	});
+
+	test("Codex Chat instruction policy without a system prompt fails loud", async () => {
+		const client = new FakeCodexAppServerClient([]);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({
+				prompt: "x",
+				cwd: "/home/agent",
+				instructionPolicy: { mode: "runtime_constructed" },
+			}),
+		);
+
+		const error = events.find((event) => event.type === "error");
+		expect(error?.type).toBe("error");
+		if (error?.type === "error") {
+			expect(error.message).toContain("runtime_constructed");
+		}
+	});
+
 	test("listModels() pages through model/list and returns visible models", async () => {
 		const client = new FakeModelListClient([
 			{
@@ -2508,7 +2745,7 @@ describe("CodexAdapter", () => {
 			{
 				id: "gpt-5.5",
 				model: "gpt-5.5",
-				displayName: "GPT-5.5",
+				displayName: "GPT 5.5",
 				description: "Frontier model.",
 				isDefault: true,
 				defaultReasoningEffort: "medium",
@@ -2524,7 +2761,7 @@ describe("CodexAdapter", () => {
 			{
 				id: "gpt-5.4-mini",
 				model: "gpt-5.4-mini",
-				displayName: "GPT-5.4-Mini",
+				displayName: "GPT 5.4 Mini",
 				description: "Small, fast.",
 				isDefault: false,
 				defaultReasoningEffort: "medium",

@@ -1,12 +1,10 @@
 import { Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { EffortLevel } from "../../../../../common/commands.ts";
 import {
 	detectMentionToken,
 	matchMentionEntries,
 	replaceMentionToken,
 } from "../../../../../common/mention.ts";
-import type { ModelAlias } from "../../../../../common/models.ts";
 import type { WorkspaceFileEntry } from "../../../../../common/protocol.ts";
 import {
 	type ComposerImageAttachment,
@@ -18,6 +16,7 @@ import {
 	clearSubmittedDraftIfUnchanged,
 } from "../../../chat/composer-draft.ts";
 import { useWs } from "../../../contexts/websocket-context.tsx";
+import { PENDING_SESSION_ID } from "../../../sessions/session.ts";
 import { useAgentFilesStore } from "../../../stores/agent-files.ts";
 import { useAgentsStore } from "../../../stores/agents.ts";
 import { useRuntimePopupStore } from "../../../stores/runtime-popup.ts";
@@ -28,7 +27,7 @@ import { useGlobalStopShortcut } from "../global-stop-shortcut.ts";
 import { HeartbeatIndicator } from "../heartbeat-indicator.tsx";
 import { getImageThumbnailClassName } from "../image-thumbnail-styles.ts";
 import { MentionMenu } from "../mention-menu.tsx";
-import { ModelSelector } from "../model-selector.tsx";
+import { type ChatModelSelection, ModelSelector } from "../model-selector.tsx";
 import { RuntimeCommandPopup } from "../runtime-command-popup.tsx";
 import { useRuntimePopupShortcuts } from "../runtime-popup-shortcuts.ts";
 import { SlashCommandMenu } from "../slash-command-menu.tsx";
@@ -52,10 +51,12 @@ interface MessageInputProps {
 	disabled?: boolean;
 	interruptible?: boolean;
 	sessionKey?: string | null;
+	agentId?: string | null;
+	providerId?: string | null;
 	model: string | null;
 	effort: string | null;
-	onModelChange: (model: ModelAlias) => boolean;
-	onEffortChange: (effort: EffortLevel) => boolean;
+	onModelChange: (selection: ChatModelSelection) => boolean;
+	onEffortChange: (selection: ChatModelSelection) => boolean;
 	active?: boolean;
 	headerSlot?: React.ReactNode;
 	compact?: boolean;
@@ -79,6 +80,8 @@ export function MessageInput({
 	disabled = false,
 	interruptible = false,
 	sessionKey = null,
+	agentId = null,
+	providerId = null,
 	model,
 	effort,
 	onModelChange,
@@ -150,6 +153,8 @@ export function MessageInput({
 		value,
 	});
 	const isInputDisabled = disabled || submitting;
+	const sessionActive =
+		sessionKey !== null && !sessionKey.endsWith(`:${PENDING_SESSION_ID}`);
 	const runtimePopupItemCount = resolveRuntimePopupItemCount(runtimePopup);
 
 	function focusTextarea() {
@@ -327,7 +332,10 @@ export function MessageInput({
 
 		if (runtimePopup.kind === "session") {
 			const session = runtimePopup.sessions[index];
-			if (session && sendCommand(`/session ${session.sdkSessionId}`)) {
+			const sessionRef = session
+				? `${session.providerId ?? ""}${session.providerId ? "/" : ""}${session.sdkSessionId}`
+				: undefined;
+			if (sessionRef && sendCommand(`/session ${sessionRef}`)) {
 				closeRuntimePopup();
 				focusTextarea();
 			}
@@ -536,8 +544,11 @@ export function MessageInput({
 						<div className="flex min-w-0 items-center gap-1 overflow-visible">
 							{modelSelectorSlot ?? (
 								<ModelSelector
+									agentId={agentId}
+									providerId={providerId}
 									model={model}
 									effort={effort}
+									sessionActive={sessionActive}
 									disabled={isInputDisabled}
 									onModelChange={onModelChange}
 									onEffortChange={onEffortChange}

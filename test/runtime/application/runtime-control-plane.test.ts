@@ -141,4 +141,33 @@ describe("RuntimeControlPlane", () => {
 		expect(calls.abort).toBe(2);
 		expect(ws.events()).toContainEqual({ type: "session_cleared" });
 	});
+
+	test("model_select validates effort before changing blank-session provider/model", () => {
+		const state = new RuntimeState("claude");
+		const clients = createGateway(state);
+		const ws = mockWs();
+		clients.handleOpen(ws);
+		const { execution } = createExecution(false);
+		const controlPlane = new RuntimeControlPlane({
+			clients,
+			createStatusEvent: () => state.createStatusEvent(),
+			execution,
+			sessions: new SessionService(state),
+			state,
+		});
+
+		controlPlane.handleModelSelect(ws, {
+			type: "model_select",
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "turbo",
+		});
+
+		expect(state.providerId).toBe("claude");
+		expect(state.resolvedModel).not.toBe("gpt-5.5");
+		expect(ws.events()).toContainEqual({
+			type: "error",
+			message: "Invalid effort: turbo",
+		});
+	});
 });

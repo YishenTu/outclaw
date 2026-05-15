@@ -44,7 +44,7 @@ export function applyBrowserChatEvent(
 		case "history_replay": {
 			const agentId = options.getActiveAgentId();
 			const runtime = useRuntimeStore.getState();
-			const providerId = runtime.providerId;
+			const providerId = event.providerId ?? runtime.providerId;
 			if (!agentId || !providerId) {
 				return true;
 			}
@@ -70,7 +70,8 @@ export function applyBrowserChatEvent(
 		}
 		case "streaming_sync": {
 			const agentId = options.getActiveAgentId();
-			const providerId = useRuntimeStore.getState().providerId;
+			const providerId =
+				event.providerId ?? useRuntimeStore.getState().providerId;
 			if (!agentId || !providerId) {
 				return true;
 			}

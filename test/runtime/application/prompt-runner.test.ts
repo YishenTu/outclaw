@@ -4,7 +4,10 @@ import type {
 	FacadeEvent,
 	RunParams,
 } from "../../../src/common/protocol.ts";
-import { PromptRunner } from "../../../src/runtime/application/prompt-execution/prompt-runner.ts";
+import {
+	PromptRunner,
+	singleFacadeResolver,
+} from "../../../src/runtime/application/prompt-execution/prompt-runner.ts";
 
 function createFacade(
 	scripts: FacadeEvent[][],
@@ -31,7 +34,10 @@ describe("PromptRunner OC_SESSION_ID stability", () => {
 			[[{ type: "done", sessionId: "sdk-first", durationMs: 1 }]],
 			(params) => captured.push(params),
 		);
-		const runner = new PromptRunner({ facade, promptHomeDir: "/home" });
+		const runner = new PromptRunner({
+			providers: singleFacadeResolver(facade),
+			promptHomeDir: "/home",
+		});
 
 		await runner.run({
 			abortController: new AbortController(),
@@ -39,6 +45,7 @@ describe("PromptRunner OC_SESSION_ID stability", () => {
 			emit: () => {},
 			model: "opus",
 			ocSessionId: "oc-stable",
+			providerId: "test",
 			task: { prompt: "hi" },
 		});
 
@@ -57,7 +64,10 @@ describe("PromptRunner OC_SESSION_ID stability", () => {
 			[[{ type: "done", sessionId: "sdk-stable", durationMs: 1 }]],
 			(params) => captured.push(params),
 		);
-		const runner = new PromptRunner({ facade, promptHomeDir: "/home" });
+		const runner = new PromptRunner({
+			providers: singleFacadeResolver(facade),
+			promptHomeDir: "/home",
+		});
 
 		await runner.run({
 			abortController: new AbortController(),
@@ -65,6 +75,7 @@ describe("PromptRunner OC_SESSION_ID stability", () => {
 			emit: () => {},
 			model: "opus",
 			ocSessionId: "sdk-stable",
+			providerId: "test",
 			resume: "sdk-stable",
 			task: { prompt: "resume me" },
 		});
@@ -84,7 +95,9 @@ describe("PromptRunner OC_SESSION_ID stability", () => {
 			[[{ type: "done", sessionId: "sdk", durationMs: 1 }]],
 			(params) => captured.push(params.sessionEnv),
 		);
-		const runner = new PromptRunner({ facade });
+		const runner = new PromptRunner({
+			providers: singleFacadeResolver(facade),
+		});
 
 		await runner.run({
 			abortController: new AbortController(),
@@ -92,9 +105,54 @@ describe("PromptRunner OC_SESSION_ID stability", () => {
 			emit: () => {},
 			model: "opus",
 			ocSessionId: "unused-when-no-home",
+			providerId: "test",
 			task: { prompt: "hi" },
 		});
 
 		expect(captured[0]).toBeUndefined();
+	});
+
+	test("routes the prompt to the facade matching the context providerId", async () => {
+		const claudeFacade: Facade = {
+			providerId: "claude",
+			async *run(): AsyncIterable<FacadeEvent> {
+				yield { type: "text", text: "claude" };
+				yield { type: "done", sessionId: "claude-sdk", durationMs: 1 };
+			},
+		};
+		const codexCalls: RunParams[] = [];
+		const codexFacade: Facade = {
+			providerId: "codex",
+			async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+				codexCalls.push(params);
+				yield { type: "done", sessionId: "codex-thread", durationMs: 1 };
+			},
+		};
+		const runner = new PromptRunner({
+			providers: {
+				getFacade(providerId) {
+					if (providerId === "claude") {
+						return claudeFacade;
+					}
+					if (providerId === "codex") {
+						return codexFacade;
+					}
+					throw new Error(`unknown provider ${providerId}`);
+				},
+			},
+		});
+
+		await runner.run({
+			abortController: new AbortController(),
+			effort: "medium",
+			emit: () => {},
+			model: "gpt-5.5",
+			ocSessionId: "oc-codex",
+			providerId: "codex",
+			task: { prompt: "hi codex" },
+		});
+
+		expect(codexCalls).toHaveLength(1);
+		expect(codexCalls[0]?.prompt).toBe("hi codex");
 	});
 });

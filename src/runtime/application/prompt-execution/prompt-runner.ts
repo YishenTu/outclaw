@@ -16,9 +16,19 @@ export interface PromptRunnerTask {
 	stream?: boolean;
 }
 
+/**
+ * Maps a runtime provider id to the backend facade that owns that provider's
+ * run/replay/transcript surface. Runtime code asks for a facade by opaque
+ * provider id; the resolver hides whether the daemon uses one shared adapter
+ * or per-provider instances. Constructed from the runtime provider set.
+ */
+export interface PromptProviderResolver {
+	getFacade(providerId: string): Facade;
+}
+
 interface PromptRunnerOptions {
 	cwd?: string;
-	facade: Facade;
+	providers: PromptProviderResolver;
 	promptHomeDir?: string;
 }
 
@@ -28,6 +38,7 @@ interface PromptRunOptions {
 	emit: (event: FacadeEvent) => void;
 	model?: string;
 	ocSessionId: string;
+	providerId: string;
 	resume?: string;
 	serviceTier?: string;
 	task: PromptRunnerTask;
@@ -37,12 +48,13 @@ export class PromptRunner {
 	constructor(private readonly options: PromptRunnerOptions) {}
 
 	async run(options: PromptRunOptions): Promise<void> {
+		const facade = this.options.providers.getFacade(options.providerId);
 		await runFacadePrompt({
 			abortController: options.abortController,
 			cwd: options.task.cwd ?? this.options.cwd,
 			effort: options.effort,
 			emit: options.emit,
-			facade: this.options.facade,
+			facade,
 			images: options.task.images,
 			includeSystemPrompt: options.task.includeRuntimeSystemPrompt,
 			model: options.model,
@@ -55,4 +67,20 @@ export class PromptRunner {
 			stream: options.task.stream,
 		});
 	}
+}
+
+/**
+ * Convenience: wrap a single Facade into a resolver. Single-provider
+ * runtimes have exactly one possible answer regardless of the requested
+ * provider id, so this resolver returns the wrapped facade for any id. The
+ * caller is responsible for configuring multi-provider resolvers when
+ * provider-aware routing actually matters; in production composition that
+ * is `buildProviderResolver` in `create-agent-runtime.ts`.
+ */
+export function singleFacadeResolver(facade: Facade): PromptProviderResolver {
+	return {
+		getFacade(_providerId: string): Facade {
+			return facade;
+		},
+	};
 }

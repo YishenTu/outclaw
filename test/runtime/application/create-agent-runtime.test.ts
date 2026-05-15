@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
 	Facade,
@@ -204,6 +211,50 @@ describe("createAgentRuntime", () => {
 		});
 
 		await runtime.stop();
+	});
+
+	test("serves chat slash-command skills from the agent ./skills directory", async () => {
+		const agentHome = mkdtempSync(join(tmpdir(), "outclaw-runtime-skills-"));
+		mkdirSync(join(agentHome, "skills", "review"), { recursive: true });
+		writeFileSync(
+			join(agentHome, "skills", "review", "SKILL.md"),
+			`---
+name: review
+description: Review the current changes.
+---
+
+# review
+`,
+		);
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: new MockFacade(),
+			cwd: agentHome,
+			promptHomeDir: agentHome,
+		});
+		const ws = mockWs();
+
+		try {
+			runtime.handleOpen(ws);
+			runtime.handleMessage(ws, JSON.stringify({ type: "request_skills" }));
+			await waitForCondition(() =>
+				ws.events().some((event) => event.type === "skills_update"),
+			);
+
+			expect(ws.events()).toContainEqual({
+				type: "skills_update",
+				skills: [
+					{
+						name: "review",
+						description: "Review the current changes.",
+					},
+				],
+			});
+		} finally {
+			await runtime.stop();
+			rmSync(agentHome, { recursive: true, force: true });
+		}
 	});
 
 	test("creates independent runtimes without opening network ports", async () => {
@@ -497,7 +548,15 @@ describe("createAgentRuntime", () => {
 		expect(codingFacade.seenParams[0]).toMatchObject({
 			cwd: "/repo",
 		});
-		expect(codingFacade.seenParams[0]?.systemPrompt).toBeUndefined();
+		// Code Mode runs use provider-default coding instructions; the runtime
+		// must never overlay an Outclaw-constructed prompt on top of Codex's
+		// default coding instructions.
+		expect(codingFacade.seenParams[0]?.instructionPolicy?.mode).toBe(
+			"provider_default",
+		);
+		expect(
+			codingFacade.seenParams[0]?.instructionPolicy?.systemPrompt,
+		).toBeUndefined();
 		expect(codingSharedStore.get("codex", "codex-code-456")).toMatchObject({
 			providerId: "codex",
 			sdkSessionId: "codex-code-456",

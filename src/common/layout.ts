@@ -12,6 +12,7 @@ export interface AgentLayout {
 	promptHomeDir: string;
 	cronDir: string;
 	claudeSkillsPath: string;
+	codexSkillsPath: string;
 }
 
 export interface OutclawLayout {
@@ -68,6 +69,7 @@ export function createOutclawLayout(
 				promptHomeDir: agentHomeDir,
 				cronDir: join(agentHomeDir, "cron"),
 				claudeSkillsPath: join(agentHomeDir, ".claude", "skills"),
+				codexSkillsPath: join(agentHomeDir, ".codex", "skills"),
 			};
 		},
 	};

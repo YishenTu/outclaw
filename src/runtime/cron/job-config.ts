@@ -4,13 +4,21 @@ import {
 	type EffortLevel,
 	isEffortLevel,
 } from "../../common/commands.ts";
+import { isModelAlias } from "../../common/models.ts";
 import { validateRunAt } from "./schedule.ts";
 
 export interface CronJobConfig {
 	name: string;
 	schedule?: string;
 	runAt?: string;
-	model?: string;
+	/**
+	 * Model id. Cron has no provider field, so this field is required and must
+	 * resolve to exactly one provider through the chat model catalog. A Claude
+	 * alias (`opus`/`sonnet`/`haiku`) routes to Claude; a recognized Codex model
+	 * id (e.g. `gpt-5.5`) routes to Codex. Unknown or ambiguous values are
+	 * rejected at parse time.
+	 */
+	model: string;
 	effort?: EffortLevel;
 	enabled: boolean;
 	telegramUserId?: number;
@@ -50,12 +58,23 @@ export function parseJobConfig(yamlContent: string): CronJobConfig {
 			`Invalid timezone: ${raw.timezone}. Use "UTC", "UTC+8", or "UTC-7".`,
 		);
 	}
+	if (raw.model === undefined || raw.model === null) {
+		throw new Error("Missing required field: model");
+	}
+	if (typeof raw.model !== "string" || raw.model === "") {
+		throw new Error("Invalid model: must be a non-empty string");
+	}
+	if (!resolvesToKnownProvider(raw.model)) {
+		throw new Error(
+			`Invalid model: ${raw.model}. Use a Claude alias (opus, sonnet, haiku) or a recognized Codex model id (gpt-5.5).`,
+		);
+	}
 
 	return {
 		name: raw.name,
 		schedule: hasSchedule ? raw.schedule : undefined,
 		runAt: hasRunAt ? validateRunAt(raw.runAt) : undefined,
-		model: raw.model ?? undefined,
+		model: raw.model,
 		effort: raw.effort ?? undefined,
 		enabled: raw.enabled ?? true,
 		telegramUserId:
@@ -82,6 +101,16 @@ export function parseUtcOffsetHours(value: unknown): number | null {
 	return match[1] === "-" ? -hours : hours;
 }
 
+function resolvesToKnownProvider(model: string): boolean {
+	if (isModelAlias(model)) {
+		return true;
+	}
+	// MVP Codex catalog mirror — only `gpt-5.5` is verified through
+	// `model/list`. When the chat model catalog gains broader Codex routing,
+	// this guard can defer to that catalog instead.
+	return model === "gpt-5.5";
+}
+
 export function serializeJobConfig(config: CronJobConfig): string {
 	const raw: Record<string, unknown> = {
 		name: config.name,
@@ -93,9 +122,7 @@ export function serializeJobConfig(config: CronJobConfig): string {
 		raw.runAt = config.runAt;
 	}
 
-	if (config.model) {
-		raw.model = config.model;
-	}
+	raw.model = config.model;
 
 	if (config.effort) {
 		raw.effort = config.effort;

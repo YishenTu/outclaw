@@ -105,6 +105,189 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("builds sidebar summaries and active session across chat providers", async () => {
+		const root = createTempDir("outclaw-browser-api-providers-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		store.upsert({
+			providerId: "claude",
+			sdkSessionId: "same-sdk-id",
+			title: "Claude session",
+			model: "opus",
+		});
+		store.upsert({
+			providerId: "codex",
+			sdkSessionId: "same-sdk-id",
+			title: "Codex session",
+			model: "gpt-5.5",
+		});
+		store.setActiveSessionId("claude", "same-sdk-id");
+		store.setActiveSessionId("codex", "same-sdk-id");
+		store.setBlankChatModelSelection({
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "medium",
+		});
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		expect(api.getAgentActiveSession("agent-railly")).toEqual({
+			activeSession: {
+				providerId: "codex",
+				sdkSessionId: "same-sdk-id",
+			},
+			blankSelection: {
+				providerId: "codex",
+				model: "gpt-5.5",
+				effort: "medium",
+			},
+		});
+		expect(api.listAgents().agents[0]?.activeSession).toEqual({
+			providerId: "codex",
+			sdkSessionId: "same-sdk-id",
+		});
+		expect(api.listAgents().agents[0]?.sessions).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					providerId: "claude",
+					sdkSessionId: "same-sdk-id",
+					title: "Claude session",
+				}),
+				expect.objectContaining({
+					providerId: "codex",
+					sdkSessionId: "same-sdk-id",
+					title: "Codex session",
+				}),
+			]),
+		);
+		await expect(
+			api.listAgentSessions("agent-railly", { limit: 10 }),
+		).resolves.toMatchObject({
+			sessions: expect.arrayContaining([
+				expect.objectContaining({ providerId: "claude" }),
+				expect.objectContaining({ providerId: "codex" }),
+			]),
+		});
+
+		store.close();
+	});
+
+	test("lists chat models across configured providers", async () => {
+		const root = createTempDir("outclaw-browser-api-chat-models-");
+		cleanupPaths.push(root);
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: join(root, "agents", "railly"),
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			chatProvidersByAgent: new Map([
+				[
+					"agent-railly",
+					[
+						{
+							providerId: "claude",
+							displayName: "Claude",
+							async listModels() {
+								return [
+									{
+										id: "sonnet",
+										model: "sonnet",
+										displayName: "Sonnet",
+										description: "Claude Sonnet",
+										isDefault: true,
+										defaultReasoningEffort: "medium",
+										supportedReasoningEfforts: ["low", "medium", "high"],
+										serviceTiers: [],
+									},
+								];
+							},
+						},
+						{
+							providerId: "codex",
+							displayName: "Codex",
+							async listModels() {
+								return [
+									{
+										id: "gpt-5.5",
+										model: "gpt-5.5",
+										displayName: "GPT-5.5",
+										description: "Codex model",
+										isDefault: true,
+										defaultReasoningEffort: "medium",
+										supportedReasoningEfforts: [
+											"low",
+											"medium",
+											"high",
+											"xhigh",
+										],
+										serviceTiers: [
+											{
+												id: "priority",
+												name: "Priority",
+												description: "Fast",
+											},
+										],
+									},
+								];
+							},
+						},
+					],
+				],
+			]),
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(api.listAgentChatModels("agent-railly")).resolves.toEqual({
+			models: [
+				expect.objectContaining({
+					providerId: "claude",
+					providerDisplayName: "Claude",
+					model: "sonnet",
+				}),
+				expect.objectContaining({
+					providerId: "codex",
+					providerDisplayName: "Codex",
+					model: "gpt-5.5",
+					serviceTiers: [
+						{
+							id: "priority",
+							name: "Priority",
+							description: "Fast",
+						},
+					],
+				}),
+			],
+		});
+	});
+
 	test("uses browser cookie binding for the sidebar active agent", () => {
 		const root = createTempDir("outclaw-browser-api-");
 		cleanupPaths.push(root);
@@ -3570,7 +3753,7 @@ describe("createBrowserApi", () => {
 			readTranscriptsByAgent: new Map([
 				[
 					"agent-railly",
-					async (sessionId) => [
+					async (_providerId, sessionId) => [
 						{
 							role: "assistant",
 							content: `result ${sessionId.slice("cron-".length)}`,
@@ -3634,10 +3817,10 @@ describe("createBrowserApi", () => {
 
 		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
 		store.upsert({
-			providerId: "claude",
+			providerId: "codex",
 			sdkSessionId: "cron-empty-index",
 			title: "daily-report",
-			model: "opus",
+			model: "gpt-5.5",
 			tag: "cron",
 			timestamp: 1000,
 		});
@@ -3658,7 +3841,8 @@ describe("createBrowserApi", () => {
 			readTranscriptsByAgent: new Map([
 				[
 					"agent-railly",
-					async (sessionId) => {
+					async (providerId, sessionId) => {
+						expect(providerId).toBe("codex");
 						expect(sessionId).toBe("cron-empty-index");
 						return [
 							{
@@ -3686,7 +3870,7 @@ describe("createBrowserApi", () => {
 		).resolves.toEqual({
 			entries: [
 				{
-					providerId: "claude",
+					providerId: "codex",
 					sessionId: "cron-empty-index",
 					ranAt: 1000,
 					resultText: "Recovered cron output",
@@ -3696,7 +3880,7 @@ describe("createBrowserApi", () => {
 		});
 		expect(store.listCronRunsByTitle("daily-report", { limit: 1 })).toEqual([
 			{
-				providerId: "claude",
+				providerId: "codex",
 				sessionId: "cron-empty-index",
 				ranAt: 1000,
 				resultText: "",
@@ -5145,7 +5329,7 @@ describe("createBrowserApi", () => {
 		const cronPath = join(cronDir, "once.yaml");
 		writeFileSync(
 			cronPath,
-			'name: Once\nrunAt: "2999-01-23T09:00:00+00:00"\nenabled: true\nprompt: Check inbox once\n',
+			'name: Once\nrunAt: "2999-01-23T09:00:00+00:00"\nmodel: haiku\nenabled: true\nprompt: Check inbox once\n',
 		);
 
 		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
@@ -5173,6 +5357,7 @@ describe("createBrowserApi", () => {
 			schedule: "2999-01-23T09:00:00+00:00",
 			scheduleKind: "once",
 			runAt: "2999-01-23T09:00:00+00:00",
+			model: "haiku",
 			enabled: false,
 			status: "disabled",
 		});
@@ -5194,7 +5379,7 @@ describe("createBrowserApi", () => {
 		mkdirSync(cronDir, { recursive: true });
 		writeFileSync(
 			join(cronDir, "expired.yaml"),
-			'name: Expired\nrunAt: "2000-01-23T09:00:00+00:00"\nenabled: true\nprompt: Check inbox once\n',
+			'name: Expired\nrunAt: "2000-01-23T09:00:00+00:00"\nmodel: haiku\nenabled: true\nprompt: Check inbox once\n',
 		);
 
 		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
@@ -5221,6 +5406,7 @@ describe("createBrowserApi", () => {
 				schedule: "2000-01-23T09:00:00+00:00",
 				scheduleKind: "once",
 				runAt: "2000-01-23T09:00:00+00:00",
+				model: "haiku",
 				enabled: true,
 				status: "expired",
 			},
@@ -5239,7 +5425,7 @@ describe("createBrowserApi", () => {
 		mkdirSync(cronDir, { recursive: true });
 		writeFileSync(
 			join(cronDir, "daily.yaml"),
-			"name: Daily\nschedule: 15 6 * * *\nenabled: true\nprompt: Check inbox\n",
+			"name: Daily\nschedule: 15 6 * * *\nmodel: haiku\nenabled: true\nprompt: Check inbox\n",
 		);
 		writeFileSync(
 			join(cronDir, "_template.yaml"),
@@ -5269,6 +5455,7 @@ describe("createBrowserApi", () => {
 				path: "cron/daily.yaml",
 				schedule: "15 6 * * *",
 				scheduleKind: "recurring",
+				model: "haiku",
 				enabled: true,
 				status: "scheduled",
 			},
@@ -5325,9 +5512,14 @@ describe("createBrowserApi", () => {
 		const agentHomeDir = join(root, "agents", "railly");
 		const skillsDir = join(agentHomeDir, "skills");
 		const claudeDir = join(agentHomeDir, ".claude");
-		const ignoredGitPath = "agents/railly/.claude/skills";
+		const codexDir = join(agentHomeDir, ".codex");
+		const ignoredGitPaths = [
+			"agents/railly/.claude/skills",
+			"agents/railly/.codex/skills",
+		];
 		mkdirSync(skillsDir, { recursive: true });
 		mkdirSync(claudeDir, { recursive: true });
+		mkdirSync(codexDir, { recursive: true });
 
 		runGit(root, ["init", "--initial-branch=main"]);
 		runGit(root, ["config", "user.email", "test@example.com"]);
@@ -5337,6 +5529,7 @@ describe("createBrowserApi", () => {
 		runGit(root, ["commit", "-m", "Initial commit"]);
 
 		symlinkSync("../skills", join(claudeDir, "skills"));
+		symlinkSync("../skills", join(codexDir, "skills"));
 		mkdirSync(join(skillsDir, "oc"), { recursive: true });
 		writeFileSync(join(skillsDir, "oc", "SKILL.md"), "name: oc\n");
 
@@ -5353,7 +5546,7 @@ describe("createBrowserApi", () => {
 			getRememberedAgentId: () => undefined,
 			gitRoot: root,
 			homeDir: root,
-			ignoredGitPaths: [ignoredGitPath],
+			ignoredGitPaths,
 			storesByAgent: new Map(),
 		});
 
@@ -5368,9 +5561,7 @@ describe("createBrowserApi", () => {
 		]);
 		expect(status.files).not.toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({
-					path: ignoredGitPath,
-				}),
+				...ignoredGitPaths.map((path) => expect.objectContaining({ path })),
 			]),
 		);
 	});

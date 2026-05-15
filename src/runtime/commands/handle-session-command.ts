@@ -10,7 +10,10 @@ interface HandleSessionCommandOptions {
 	arg: string;
 	createStatusEvent: () => RuntimeStatusEvent;
 	hub: ClientHub;
-	replayHistoryToAll: (sessionId: string) => Promise<void>;
+	replayHistoryToAll: (session: {
+		providerId: string;
+		sdkSessionId: string;
+	}) => Promise<void>;
 	sessions: SessionService;
 	sendError: (message: string) => void;
 	ws: WsClient;
@@ -33,18 +36,24 @@ export async function handleSessionCommand(
 	if (options.arg === "delete" || options.arg.startsWith("delete ")) {
 		const selector = options.arg.split(" ").slice(1).join(" ").trim();
 		if (!selector) {
-			options.sendError("Usage: /session delete <id>");
+			options.sendError("Usage: /session delete <provider>/<id>");
 			return;
 		}
-		const session = options.sessions.findSession(selector, "chat");
-		if (!session) {
+		const resolved = options.sessions.resolveSession(selector, "chat");
+		if (resolved.status === "ambiguous") {
+			options.sendError(`Ambiguous session matching: ${selector}`);
+			return;
+		}
+		if (resolved.status === "not_found") {
 			options.sendError(`No session matching: ${selector}`);
 			return;
 		}
-		const deletion = options.sessions.deleteSession(session.sdkSessionId);
+		const session = resolved.session;
+		const deletion = options.sessions.deleteResolvedSession(session);
 		options.hub.broadcast({
 			type: "session_deleted",
 			sdkSessionId: session.sdkSessionId,
+			providerId: session.providerId,
 		});
 		if (deletion.clearedActiveSession) {
 			options.hub.broadcast({ type: "session_cleared" });
@@ -57,10 +66,19 @@ export async function handleSessionCommand(
 		const renameId = parts[0]?.trim();
 		const newTitle = parts.slice(1).join(" ").trim();
 		if (!renameId || !newTitle) {
-			options.sendError("Usage: /session rename <id> <title>");
+			options.sendError("Usage: /session rename <provider>/<id> <title>");
 			return;
 		}
-		options.sessions.renameSession(renameId, newTitle);
+		const resolved = options.sessions.resolveSession(renameId, "chat");
+		if (resolved.status === "ambiguous") {
+			options.sendError(`Ambiguous session matching: ${renameId}`);
+			return;
+		}
+		if (resolved.status === "not_found") {
+			options.sendError(`No session matching: ${renameId}`);
+			return;
+		}
+		options.sessions.renameResolvedSession(resolved.session, newTitle);
 		return;
 	}
 
@@ -96,19 +114,28 @@ export async function handleSessionCommand(
 		return;
 	}
 
-	const match = options.sessions.switchToSession(options.arg);
-	if (!match) {
+	const resolved = options.sessions.resolveSession(options.arg, "chat");
+	if (resolved.status === "ambiguous") {
+		options.sendError(`Ambiguous session matching: ${options.arg}`);
+		return;
+	}
+	if (resolved.status === "not_found") {
 		options.sendError(`No session matching: ${options.arg}`);
 		return;
 	}
+	const match = options.sessions.switchToResolvedSession(resolved.session);
 
 	options.hub.broadcast({
 		type: "session_switched",
 		sdkSessionId: match.sdkSessionId,
 		title: match.title,
+		providerId: match.providerId,
 	});
 	options.hub.broadcast(options.createStatusEvent());
-	await options.replayHistoryToAll(match.sdkSessionId);
+	await options.replayHistoryToAll({
+		providerId: match.providerId,
+		sdkSessionId: match.sdkSessionId,
+	});
 }
 
 const LIST_USAGE =

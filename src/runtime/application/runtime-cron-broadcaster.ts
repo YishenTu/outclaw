@@ -11,6 +11,7 @@ interface CronExecutionResult {
 	model: string;
 	failureMessage?: string;
 	persistResultText?: boolean;
+	providerId?: string;
 	sessionId?: string;
 	suppressDelivery?: boolean;
 	telegramChatId?: number;
@@ -39,19 +40,23 @@ export class RuntimeCronBroadcaster {
 
 	async broadcastResult(result: CronExecutionResult) {
 		const ranAt = Date.now();
+		const providerId = result.providerId ?? this.options.sessions.providerId;
 		if (result.sessionId) {
 			this.options.sessions.recordCronRun({
+				providerId,
 				sessionId: result.sessionId,
 				jobName: result.jobName,
 				model: result.model,
 				ranAt,
-				resultText: result.persistResultText ? result.text : undefined,
-				failure: result.failureMessage
+				...(result.persistResultText ? { resultText: result.text } : {}),
+				...(result.failureMessage
 					? {
-							failedAt: ranAt,
-							message: result.failureMessage,
+							failure: {
+								failedAt: ranAt,
+								message: result.failureMessage,
+							},
 						}
-					: undefined,
+					: {}),
 			});
 			this.notifyBrowserCronChanged();
 		}
@@ -63,7 +68,7 @@ export class RuntimeCronBroadcaster {
 		const event: CronResultEvent = {
 			type: "cron_result",
 			jobName: result.jobName,
-			providerId: this.options.sessions.providerId,
+			providerId,
 			text: result.text,
 			sessionId: result.sessionId,
 			ranAt,

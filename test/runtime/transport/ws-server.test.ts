@@ -1171,6 +1171,7 @@ describe("Runtime server", () => {
 			[
 				"name: runtime-cron",
 				'schedule: "* * * * * *"',
+				"model: opus",
 				"prompt: say hello",
 			].join("\n"),
 		);
@@ -1205,7 +1206,7 @@ describe("Runtime server", () => {
 				expect.objectContaining({
 					type: "cron_result",
 					jobName: "runtime-cron",
-					providerId: "mock",
+					providerId: "claude",
 					text: "echo: say hello",
 					ranAt: expect.any(Number),
 				}),

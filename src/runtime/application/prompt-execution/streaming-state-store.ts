@@ -9,16 +9,16 @@ export interface StreamingStateSnapshot {
 export class StreamingStateStore {
 	private readonly snapshots = new Map<string, StreamingStateSnapshot>();
 
-	start(sessionId: string) {
-		this.snapshots.set(sessionId, {
+	start(providerId: string, sessionId: string) {
+		this.snapshots.set(streamingKey(providerId, sessionId), {
 			images: [],
 			text: "",
 			thinking: "",
 		});
 	}
 
-	recordEvent(sessionId: string, event: FacadeEvent) {
-		const snapshot = this.snapshots.get(sessionId);
+	recordEvent(providerId: string, sessionId: string, event: FacadeEvent) {
+		const snapshot = this.snapshots.get(streamingKey(providerId, sessionId));
 		if (!snapshot) {
 			return;
 		}
@@ -42,8 +42,11 @@ export class StreamingStateStore {
 		}
 	}
 
-	get(sessionId: string): StreamingStateSnapshot | undefined {
-		const snapshot = this.snapshots.get(sessionId);
+	get(
+		providerId: string,
+		sessionId: string,
+	): StreamingStateSnapshot | undefined {
+		const snapshot = this.snapshots.get(streamingKey(providerId, sessionId));
 		if (!snapshot) {
 			return undefined;
 		}
@@ -55,7 +58,11 @@ export class StreamingStateStore {
 		};
 	}
 
-	clear(sessionId: string) {
-		this.snapshots.delete(sessionId);
+	clear(providerId: string, sessionId: string) {
+		this.snapshots.delete(streamingKey(providerId, sessionId));
 	}
+}
+
+function streamingKey(providerId: string, sessionId: string): string {
+	return `${providerId}\0${sessionId}`;
 }

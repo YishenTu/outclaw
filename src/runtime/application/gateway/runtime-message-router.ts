@@ -1,4 +1,8 @@
-import type { ImageRef, ReplyContext } from "../../../common/protocol.ts";
+import type {
+	ImageRef,
+	ModelSelectMessage,
+	ReplyContext,
+} from "../../../common/protocol.ts";
 import { extractError, parseMessage } from "../../../common/protocol.ts";
 import type { WsClient } from "../../transport/client-hub.ts";
 import type { PromptExecution } from "../prompt-execution/prompt-dispatcher.ts";
@@ -14,6 +18,11 @@ interface IncomingMessage {
 	source?: string;
 	telegramChatId?: number;
 	type?: string;
+	// model_select fields
+	providerId?: string;
+	model?: string;
+	effort?: string;
+	serviceTier?: string;
 }
 
 interface RuntimeMessageRouterOptions {
@@ -21,7 +30,10 @@ interface RuntimeMessageRouterOptions {
 		RuntimeClientGateway,
 		"requestSkills" | "requestWorkspaceFiles" | "send"
 	>;
-	controlPlane: Pick<RuntimeControlPlane, "handleCommand">;
+	controlPlane: Pick<
+		RuntimeControlPlane,
+		"handleCommand" | "handleModelSelect"
+	>;
 	execution: Pick<
 		RuntimeExecutionCoordinator,
 		"enqueuePrompt" | "isShuttingDown"
@@ -66,6 +78,20 @@ export class RuntimeMessageRouter {
 			return;
 		}
 
+		if (data.type === "model_select") {
+			const select = toModelSelectMessage(data);
+			if (!select) {
+				this.options.clients.send(ws, {
+					type: "error",
+					message:
+						"model_select requires providerId and model fields (both strings)",
+				});
+				return;
+			}
+			this.options.controlPlane.handleModelSelect(ws, select);
+			return;
+		}
+
 		const promptExecution = toPromptExecution(data, ws);
 		if (!promptExecution) {
 			return;
@@ -73,6 +99,23 @@ export class RuntimeMessageRouter {
 
 		this.options.execution.enqueuePrompt(promptExecution);
 	}
+}
+
+function toModelSelectMessage(
+	data: IncomingMessage,
+): ModelSelectMessage | undefined {
+	if (typeof data.providerId !== "string" || typeof data.model !== "string") {
+		return undefined;
+	}
+	return {
+		type: "model_select",
+		providerId: data.providerId,
+		model: data.model,
+		...(typeof data.effort === "string" ? { effort: data.effort } : {}),
+		...(typeof data.serviceTier === "string"
+			? { serviceTier: data.serviceTier }
+			: {}),
+	};
 }
 
 function toPromptExecution(

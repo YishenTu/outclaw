@@ -1,4 +1,5 @@
 import type { Facade } from "../../common/protocol.ts";
+import type { PromptProviderResolver } from "./prompt-execution/prompt-runner.ts";
 import type { SessionService } from "./session-service.ts";
 import {
 	type RuntimePromptContext,
@@ -23,7 +24,14 @@ const AUTO_TITLE_SOURCES = new Set(["tui", "browser", "telegram"]);
 
 interface AutoTitleCoordinatorOptions {
 	cwd?: string;
-	facade: Facade;
+	/**
+	 * Provider resolver used to look up the title-generation facade by the
+	 * provider id implied by `model`. Title generation must not route through
+	 * the runtime's active chat facade — that would send a Codex `gpt-5.5`
+	 * model to Claude when the active chat happens to be Claude, and vice
+	 * versa.
+	 */
+	providers: PromptProviderResolver;
 	model: string;
 	sessions: SessionService;
 }
@@ -45,16 +53,19 @@ export class AutoTitleCoordinator {
 			return;
 		}
 
+		const providerId = providerIdForTitleModel(this.options.model);
+		const titleFacade = this.options.providers.getFacade(providerId);
 		const attempt = new AutoTitleAttempt({
 			cwd: this.options.cwd,
 			expectedTitle: resolveSessionTitleForPersistence(params.context),
-			facade: this.options.facade,
+			facade: titleFacade,
 			fallbackTitle:
 				params.context.fallbackSessionTitle ??
 				params.context.sessionTitle ??
 				"Untitled",
 			model: this.options.model,
 			prompt: params.prompt,
+			providerId: params.context.providerId,
 			sessions: this.options.sessions,
 		});
 		const run: AutoTitleRun = {
@@ -126,6 +137,7 @@ interface AutoTitleAttemptOptions {
 	fallbackTitle: string;
 	model: string;
 	prompt: string;
+	providerId: string;
 	sessions: SessionService;
 }
 
@@ -156,6 +168,7 @@ class AutoTitleAttempt {
 		if (!title) {
 			this.options.sessions.applyAutoTitle({
 				expectedTitle: this.options.expectedTitle,
+				providerId: this.options.providerId,
 				sessionId: sdkSessionId,
 				title: this.options.fallbackTitle,
 			});
@@ -164,6 +177,7 @@ class AutoTitleAttempt {
 
 		this.options.sessions.applyAutoTitle({
 			expectedTitle: this.options.expectedTitle,
+			providerId: this.options.providerId,
 			sessionId: sdkSessionId,
 			title,
 		});
@@ -182,7 +196,10 @@ class AutoTitleAttempt {
 				model: this.options.model,
 				prompt: buildAutoTitlePrompt(this.options.prompt),
 				stream: false,
-				systemPrompt: AUTO_TITLE_SYSTEM_PROMPT,
+				instructionPolicy: {
+					mode: "runtime_constructed",
+					systemPrompt: AUTO_TITLE_SYSTEM_PROMPT,
+				},
 				tools: [],
 			})) {
 				if (event.type === "text") {
@@ -206,6 +223,20 @@ class AutoTitleAttempt {
 		}
 		return normalizeAutoTitle(text);
 	}
+}
+
+/**
+ * Map a configured title model id to the provider id that owns it. Claude
+ * aliases route to Claude; `gpt-*` / `codex*` ids route to Codex. The chat
+ * model catalog will subsume this when the title-model field grows beyond
+ * the MVP set, but for now the inference is unambiguous.
+ */
+function providerIdForTitleModel(model: string): string {
+	const trimmed = model.trim();
+	if (trimmed.startsWith("gpt-") || trimmed.startsWith("codex")) {
+		return "codex";
+	}
+	return "claude";
 }
 
 export function normalizeAutoTitle(raw: string): string | undefined {

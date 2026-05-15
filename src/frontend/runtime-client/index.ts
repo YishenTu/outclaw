@@ -1,5 +1,6 @@
 import {
 	type ImageRef,
+	type ModelSelectMessage,
 	type ReplyContext,
 	type RuntimeClientType,
 	serialize,
@@ -113,6 +114,19 @@ export function sendRequestFiles(ws: WebSocket) {
 export function sendRuntimeCommand(ws: WebSocket, command: string) {
 	assertRuntimeSocketOpen(ws);
 	ws.send(serialize({ type: "command", command }));
+}
+
+export function sendRuntimeModelSelect(
+	ws: WebSocket,
+	selection: Omit<ModelSelectMessage, "type">,
+) {
+	assertRuntimeSocketOpen(ws);
+	ws.send(
+		serialize({
+			type: "model_select",
+			...selection,
+		}),
+	);
 }
 
 export function sendRuntimePrompt(

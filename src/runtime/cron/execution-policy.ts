@@ -7,6 +7,7 @@ import { extractError } from "../../common/protocol.ts";
 import type { CronJobConfig } from "./job-config.ts";
 
 export interface CronAgentRunResult {
+	providerId?: string;
 	sessionId?: string;
 	text: string;
 }
@@ -16,6 +17,7 @@ export interface CronExecutionResult {
 	model: string;
 	failureMessage?: string;
 	persistResultText?: boolean;
+	providerId?: string;
 	sessionId?: string;
 	suppressDelivery?: boolean;
 	telegramChatId?: number;
@@ -47,7 +49,6 @@ interface DisabledCronJob {
 
 interface CronExecutionPolicyOptions {
 	getDefaultEffort: () => EffortLevel;
-	getDefaultModel: () => string;
 	onResult: (result: CronExecutionResult) => Promise<void> | void;
 	runAgent: (
 		prompt: string,
@@ -86,7 +87,7 @@ export class CronExecutionPolicy {
 	}
 
 	async runScheduledJob(job: CronExecutableJob): Promise<void> {
-		const model = job.config.model ?? this.options.getDefaultModel();
+		const model = job.config.model;
 		const effort = normalizeCronEffort(
 			model,
 			job.config.effort ?? this.options.getDefaultEffort(),
@@ -101,6 +102,7 @@ export class CronExecutionPolicy {
 				await this.options.onResult({
 					jobName: job.config.name,
 					model,
+					...(runResult.providerId ? { providerId: runResult.providerId } : {}),
 					sessionId: runResult.sessionId,
 					suppressDelivery: true,
 					telegramChatId: job.telegramChatId,
@@ -112,6 +114,7 @@ export class CronExecutionPolicy {
 			await this.options.onResult({
 				jobName: job.config.name,
 				model,
+				...(runResult.providerId ? { providerId: runResult.providerId } : {}),
 				sessionId: runResult.sessionId,
 				telegramChatId: job.telegramChatId,
 				text: runResult.text,
@@ -123,12 +126,26 @@ export class CronExecutionPolicy {
 				jobName: job.config.name,
 				model,
 				persistResultText: true,
+				...(extractErrorProviderId(err)
+					? { providerId: extractErrorProviderId(err) }
+					: {}),
 				sessionId: extractErrorSessionId(err) ?? randomUUID(),
 				telegramChatId: job.telegramChatId,
 				text: `[error] ${failureMessage}`,
 			});
 		}
 	}
+}
+
+function extractErrorProviderId(err: unknown): string | undefined {
+	if (!err || typeof err !== "object" || !("providerId" in err)) {
+		return undefined;
+	}
+
+	const providerId = (err as { providerId?: unknown }).providerId;
+	return typeof providerId === "string" && providerId !== ""
+		? providerId
+		: undefined;
 }
 
 function extractErrorSessionId(err: unknown): string | undefined {

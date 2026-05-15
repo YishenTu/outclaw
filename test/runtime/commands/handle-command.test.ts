@@ -415,13 +415,20 @@ describe("handleRuntimeCommand", () => {
 			).toEqual({
 				type: "session_deleted",
 				sdkSessionId: "sdk-target-123",
+				providerId: PROVIDER_ID,
 			});
 
 			store.close();
 		});
 
 		test("/session rename sends session_renamed", async () => {
-			const { ws, run } = setup();
+			const { state, ws, run } = setup();
+			state.preparePrompt("Old title");
+			state.completeRun({
+				type: "done",
+				sessionId: "sdk-123",
+				durationMs: 10,
+			});
 			await run("/session rename sdk-123 New title");
 			const event = ws.events().find((e) => e.type === "session_renamed");
 			expect(event).toBeDefined();
@@ -540,13 +547,15 @@ describe("handleRuntimeCommand", () => {
 				await new Promise((resolve) => setTimeout(resolve, 2));
 			}
 
-			let replayedSessionId: string | undefined;
+			let replayedSession:
+				| { providerId: string; sdkSessionId: string }
+				| undefined;
 			await handleRuntimeCommand({
 				command: "/session sdk-00",
 				createStatusEvent: () => state.createStatusEvent(),
 				hub,
-				replayHistoryToAll: async (sessionId) => {
-					replayedSessionId = sessionId;
+				replayHistoryToAll: async (session) => {
+					replayedSession = session;
 				},
 				sessions,
 				state,
@@ -554,13 +563,66 @@ describe("handleRuntimeCommand", () => {
 			});
 
 			expect(state.sessionId).toBe("sdk-00");
-			expect(replayedSessionId).toBe("sdk-00");
+			expect(replayedSession).toEqual({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "sdk-00",
+			});
 			expect(
 				ws.events().find((event) => event.type === "session_switched"),
 			).toEqual({
 				type: "session_switched",
 				sdkSessionId: "sdk-00",
 				title: "Session 0",
+				providerId: PROVIDER_ID,
+			});
+		});
+
+		test("/session switches to a provider-qualified session outside the current provider", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state, store);
+			hub.add(ws);
+
+			store.upsert({
+				providerId: OTHER_PROVIDER_ID,
+				sdkSessionId: "sdk-codex-123",
+				title: "Codex session",
+				model: "gpt-5.5",
+				source: "browser",
+			});
+
+			let replayedSession:
+				| { providerId: string; sdkSessionId: string }
+				| undefined;
+			await handleRuntimeCommand({
+				command: "/session claude/sdk-codex",
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async (session) => {
+					replayedSession = session;
+				},
+				sessions,
+				state,
+				ws,
+			});
+
+			expect(state.providerId).toBe(OTHER_PROVIDER_ID);
+			expect(state.resolvedModel).toBe("gpt-5.5");
+			expect(state.sessionId).toBe("sdk-codex-123");
+			expect(replayedSession).toEqual({
+				providerId: OTHER_PROVIDER_ID,
+				sdkSessionId: "sdk-codex-123",
+			});
+			expect(
+				ws.events().find((event) => event.type === "session_switched"),
+			).toEqual({
+				type: "session_switched",
+				sdkSessionId: "sdk-codex-123",
+				title: "Codex session",
+				providerId: OTHER_PROVIDER_ID,
 			});
 		});
 	});
@@ -622,6 +684,7 @@ describe("handleRuntimeCommand", () => {
 				{
 					type: "session_deleted",
 					sdkSessionId: "sdk-active",
+					providerId: PROVIDER_ID,
 				},
 			);
 			expect(
@@ -629,6 +692,7 @@ describe("handleRuntimeCommand", () => {
 			).toEqual({
 				type: "session_deleted",
 				sdkSessionId: "sdk-active",
+				providerId: PROVIDER_ID,
 			});
 			expect(sender.events().find((e) => e.type === "session_cleared")).toEqual(
 				{
@@ -653,6 +717,12 @@ describe("handleRuntimeCommand", () => {
 			});
 			hub.add(sender);
 			hub.add(observer);
+			state.preparePrompt("Current chat");
+			state.completeRun({
+				type: "done",
+				sessionId: "sdk-123",
+				durationMs: 1,
+			});
 
 			await handleRuntimeCommand({
 				command: "/session rename sdk-123 Renamed",
@@ -670,7 +740,7 @@ describe("handleRuntimeCommand", () => {
 					sdkSessionId: "sdk-123",
 					title: "Renamed",
 					providerId: "mock",
-					active: false,
+					active: true,
 				},
 			);
 			expect(
@@ -680,7 +750,7 @@ describe("handleRuntimeCommand", () => {
 				sdkSessionId: "sdk-123",
 				title: "Renamed",
 				providerId: "mock",
-				active: false,
+				active: true,
 			});
 		});
 	});

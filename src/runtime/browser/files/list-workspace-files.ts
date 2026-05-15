@@ -11,6 +11,7 @@ const CHAT_WORKSPACE_IGNORED_NAMES = new Set([
 	".DS_Store",
 	".obsidian",
 	".claude",
+	".codex",
 	".agents",
 	".agent-id",
 	".gitkeep",

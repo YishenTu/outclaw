@@ -4,6 +4,7 @@ import type {
 	FacadeEvent,
 	ImageRef,
 	ReplyContext,
+	RuntimeInstructionPolicy,
 } from "../../../common/protocol.ts";
 import { extractError } from "../../../common/protocol.ts";
 import { assembleSystemPrompt } from "../../prompt/assemble-system-prompt.ts";
@@ -32,10 +33,10 @@ export async function runFacadePrompt(options: FacadePromptRun): Promise<void> {
 	const imageEventExtractor = new RuntimeImageEventExtractor();
 
 	try {
-		const systemPrompt =
-			options.promptHomeDir && options.includeSystemPrompt !== false
-				? await assembleSystemPrompt(options.promptHomeDir)
-				: undefined;
+		const instructionPolicy = await buildInstructionPolicy(
+			options.promptHomeDir,
+			options.includeSystemPrompt,
+		);
 		const sessionEnv = buildSessionEnv(
 			options.promptHomeDir,
 			options.ocSessionId,
@@ -45,7 +46,7 @@ export async function runFacadePrompt(options: FacadePromptRun): Promise<void> {
 			prompt: options.prompt,
 			images: options.images,
 			replyContext: options.replyContext,
-			systemPrompt,
+			instructionPolicy,
 			abortController: options.abortController,
 			resume: options.resume,
 			sessionId: options.resume ? undefined : options.ocSessionId,
@@ -71,4 +72,22 @@ export async function runFacadePrompt(options: FacadePromptRun): Promise<void> {
 			message: extractError(err),
 		});
 	}
+}
+
+async function buildInstructionPolicy(
+	promptHomeDir: string | undefined,
+	includeSystemPrompt: boolean | undefined,
+): Promise<RuntimeInstructionPolicy> {
+	if (!promptHomeDir || includeSystemPrompt === false) {
+		return { mode: "provider_default" };
+	}
+	const systemPrompt = await assembleSystemPrompt(promptHomeDir);
+	// An assembled prompt with no content is indistinguishable from
+	// "no Outclaw instructions at all"; treat it as provider_default so the
+	// adapter does not falsely advertise a runtime-constructed instruction
+	// source.
+	if (!systemPrompt) {
+		return { mode: "provider_default" };
+	}
+	return { mode: "runtime_constructed", systemPrompt };
 }

@@ -48,7 +48,20 @@ interface ExecutionLane {
 	detached?: boolean;
 	key: string;
 	queue: MessageQueue;
+	resolvedProviderId?: string;
 	resolvedSessionId?: string;
+}
+
+function laneKeyForSession(providerId: string, sdkSessionId: string): string {
+	return `${providerId}:${sdkSessionId}`;
+}
+
+function laneKeyForPending(providerId: string, generation: number): string {
+	return `pending:${providerId}:${generation}`;
+}
+
+function laneKeyForDetached(providerId: string, ocSessionId: string): string {
+	return `detached:${providerId}:${ocSessionId}`;
 }
 
 export class RuntimeExecutionCoordinator {
@@ -258,7 +271,10 @@ export class RuntimeExecutionCoordinator {
 			task.images,
 			{ resumeSessionId: task.resumeSessionId },
 		);
-		const lane = this.createDetachedLane(context.ocSessionId);
+		const lane = this.createDetachedLane(
+			context.providerId,
+			context.ocSessionId,
+		);
 		const queued = lane.queue.enqueue(() =>
 			this.runPromptInLane(lane, task, context),
 		);
@@ -403,16 +419,25 @@ export class RuntimeExecutionCoordinator {
 	}
 
 	private getOrCreateLane(context: RuntimePromptContext): ExecutionLane {
-		const key = context.sessionId ?? `pending:${context.generation}`;
+		// Lane keys include providerId so a Codex session never shares a queue
+		// with a Claude session that happens to have the same sdk session id,
+		// and a pending Codex blank-session lane never collides with a pending
+		// Claude blank-session lane in the same generation.
+		const key = context.sessionId
+			? laneKeyForSession(context.providerId, context.sessionId)
+			: laneKeyForPending(context.providerId, context.generation);
 		const existing =
 			context.sessionId === undefined
 				? this.lanes.get(key)
 				: [...this.lanes.values()].find(
 						(lane) =>
-							lane.resolvedSessionId === context.sessionId || lane.key === key,
+							(lane.resolvedProviderId === context.providerId &&
+								lane.resolvedSessionId === context.sessionId) ||
+							lane.key === key,
 					);
 		if (existing) {
 			if (context.sessionId) {
+				existing.resolvedProviderId = context.providerId;
 				existing.resolvedSessionId = context.sessionId;
 			}
 			return existing;
@@ -421,14 +446,18 @@ export class RuntimeExecutionCoordinator {
 		const lane: ExecutionLane = {
 			key,
 			queue: new MessageQueue(),
+			resolvedProviderId: context.sessionId ? context.providerId : undefined,
 			resolvedSessionId: context.sessionId,
 		};
 		this.lanes.set(key, lane);
 		return lane;
 	}
 
-	private createDetachedLane(ocSessionId: string): ExecutionLane {
-		const key = `detached:${ocSessionId}`;
+	private createDetachedLane(
+		providerId: string,
+		ocSessionId: string,
+	): ExecutionLane {
+		const key = laneKeyForDetached(providerId, ocSessionId);
 		const lane: ExecutionLane = {
 			detached: true,
 			key,
@@ -456,7 +485,10 @@ export class RuntimeExecutionCoordinator {
 
 		const resolvedSessionId = lane.resolvedSessionId ?? context.sessionId;
 		if (resolvedSessionId) {
-			return this.options.state.sessionId === resolvedSessionId;
+			return (
+				this.options.state.providerId === context.providerId &&
+				this.options.state.sessionId === resolvedSessionId
+			);
 		}
 
 		return this.options.state.matchesVisiblePromptContext(context);
@@ -486,6 +518,11 @@ export class RuntimeExecutionCoordinator {
 				if (event.type === "session_initialized") {
 					completedSessionId = event.sessionId;
 					lane.resolvedSessionId = event.sessionId;
+					// Back-fill resolvedProviderId on the pending→resolved
+					// transition so the next prompt's getOrCreateLane match
+					// finds this lane by (providerId, sessionId) instead of
+					// opening a duplicate lane for the same session.
+					lane.resolvedProviderId = context.providerId;
 					resolveAutoTitleEarly(event.sessionId);
 				}
 				if (event.type === "done") {
@@ -507,6 +544,7 @@ export class RuntimeExecutionCoordinator {
 		} finally {
 			if (completedSessionId) {
 				lane.resolvedSessionId = completedSessionId;
+				lane.resolvedProviderId = context.providerId;
 				resolveAutoTitleEarly(completedSessionId);
 			} else if (!context.sessionId) {
 				if (

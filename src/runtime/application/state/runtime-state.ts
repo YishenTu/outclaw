@@ -24,8 +24,14 @@ export interface RuntimePromptContext {
 	effort: EffortLevel;
 	fallbackSessionTitle?: string;
 	generation: number;
-	model: ModelAlias;
+	model: string;
 	ocSessionId: string;
+	/**
+	 * Provider id that owns this prompt run. Lane keys, prompt routing, and
+	 * session-storage writes must be scoped by this value — a Codex chat and
+	 * a Claude chat with the same sdk session id never share state.
+	 */
+	providerId: string;
 	resolvedModel: string;
 	sessionId?: string;
 	sessionSource: "tui" | "telegram" | "agent";
@@ -56,12 +62,14 @@ export function resolveSessionTitleForPersistence(params: {
 export class RuntimeState {
 	private readonly sessions = new RuntimeSessionState();
 	private readonly settings: RuntimeSettingsState;
+	private currentProviderId: string;
 
 	constructor(
-		private readonly currentProviderId: string,
+		initialProviderId: string,
 		private readonly agentName?: string,
 		options: RuntimeStateOptions = {},
 	) {
+		this.currentProviderId = initialProviderId;
 		this.settings = new RuntimeSettingsState({
 			defaultEffort: options.defaultEffort,
 		});
@@ -79,7 +87,7 @@ export class RuntimeState {
 		return this.settings.defaultEffort;
 	}
 
-	get model(): ModelAlias {
+	get model(): string {
 		return this.settings.model;
 	}
 
@@ -126,6 +134,7 @@ export class RuntimeState {
 			generation: this.sessions.generation,
 			model: this.settings.model,
 			ocSessionId: this.sessions.ensureOcSessionId(),
+			providerId: this.currentProviderId,
 			resolvedModel: this.settings.resolvedModel,
 			sessionId: this.sessions.sessionId,
 			sessionSource: this.sessions.sessionSource,
@@ -144,6 +153,7 @@ export class RuntimeState {
 			generation: this.sessions.generation,
 			model: this.settings.model,
 			ocSessionId: options.resumeSessionId ?? detached.ocSessionId,
+			providerId: this.currentProviderId,
 			resolvedModel: this.settings.resolvedModel,
 			sessionId: options.resumeSessionId,
 			sessionSource: "agent",
@@ -199,6 +209,15 @@ export class RuntimeState {
 		this.settings.setEffort(effort);
 	}
 
+	/**
+	 * Set the active provider-local model id. Use for non-Claude providers
+	 * whose model ids don't fit the `ModelAlias` registry (e.g. `gpt-5.5`).
+	 * Claude paths continue to call `setModel(alias)`.
+	 */
+	setProviderModel(model: string) {
+		this.settings.setProviderModel(model);
+	}
+
 	restorePersistedState(params: {
 		lastUserTarget?: LastUserTarget;
 		session?: SessionRow;
@@ -208,6 +227,8 @@ export class RuntimeState {
 		if (params.session && isModelAlias(params.session.model)) {
 			this.setModel(params.session.model);
 			usage = this.alignUsageToModel(usage, params.session.model);
+		} else if (params.session) {
+			this.setProviderModel(params.session.model);
 		}
 		this.sessions.restorePersistedState({
 			...params,
@@ -224,17 +245,34 @@ export class RuntimeState {
 	}
 
 	switchToSession(session: SessionRow, usage?: UsageInfo) {
-		if (session.providerId !== this.currentProviderId) {
-			throw new Error(
-				`Cannot activate ${session.providerId} session in ${this.currentProviderId} runtime`,
-			);
-		}
+		// The visible provider is derived from the session being activated.
+		// Multi-provider chat runtimes can hold sessions from any configured
+		// provider; resuming one switches the active provider so prompt
+		// routing, runtime status, and the model selector follow.
+		this.currentProviderId = session.providerId;
 
 		if (isModelAlias(session.model)) {
 			this.setModel(session.model);
 			usage = this.alignUsageToModel(usage, session.model);
+		} else {
+			this.setProviderModel(session.model);
 		}
 		this.sessions.switchToSession(session, usage);
+	}
+
+	/**
+	 * Set the runtime's active chat provider id. Only callable when there is
+	 * no visible session — provider changes through `/model` or
+	 * `model_select` while a session is active must be rejected; the runtime
+	 * crosses provider boundaries through `switchToSession()` or `/new`.
+	 */
+	setProvider(providerId: string) {
+		if (this.sessions.sessionId !== undefined) {
+			throw new Error(
+				"Cannot change provider while a chat session is active; start a new session first",
+			);
+		}
+		this.currentProviderId = providerId;
 	}
 
 	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
@@ -247,10 +285,14 @@ export class RuntimeState {
 
 	matchesVisiblePromptContext(context: RuntimePromptContext): boolean {
 		if (context.sessionId) {
-			return this.sessions.sessionId === context.sessionId;
+			return (
+				this.currentProviderId === context.providerId &&
+				this.sessions.sessionId === context.sessionId
+			);
 		}
 
 		return (
+			this.currentProviderId === context.providerId &&
 			this.sessions.sessionId === undefined &&
 			this.sessions.generation === context.generation &&
 			this.sessions.sessionTitle === context.sessionTitle

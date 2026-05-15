@@ -37,7 +37,7 @@ describe("browser switch dispatcher", () => {
 		});
 
 		expect(dispatcher.switchSession("beta", SESSION)).toBe(true);
-		expect(calls).toEqual(["/agent beta", "/session sdk-beta"]);
+		expect(calls).toEqual(["/agent beta", "/session claude/sdk-beta"]);
 	});
 
 	test("does not switch session when the agent switch fails", () => {
@@ -65,6 +65,6 @@ describe("browser switch dispatcher", () => {
 		});
 
 		expect(dispatcher.switchSession("beta", SESSION)).toBe(true);
-		expect(calls).toEqual(["/session sdk-beta"]);
+		expect(calls).toEqual(["/session claude/sdk-beta"]);
 	});
 });

@@ -94,7 +94,7 @@ describe("AutoTitleCoordinator", () => {
 			},
 		} as Pick<SessionService, "applyAutoTitle" | "canPersistSessions">;
 		const coordinator = new AutoTitleCoordinator({
-			facade,
+			providers: { getFacade: () => facade },
 			model: MODELS.haiku.id,
 			sessions: sessions as SessionService,
 		});
@@ -104,6 +104,7 @@ describe("AutoTitleCoordinator", () => {
 			generation: 0,
 			model: DEFAULT_MODEL,
 			ocSessionId: "oc-title",
+			providerId: "claude",
 			resolvedModel: MODELS[DEFAULT_MODEL].id,
 			sessionSource: "tui",
 		};
@@ -124,5 +125,71 @@ describe("AutoTitleCoordinator", () => {
 		await coordinator.drain();
 
 		expect(appliedTitles).toEqual(["Slow generated title"]);
+	});
+
+	test("routes title generation to the Codex facade when the title model is gpt-5.5", async () => {
+		const claudeCalls: RunParams[] = [];
+		const codexCalls: RunParams[] = [];
+		const claudeFacade: Facade = {
+			providerId: "claude",
+			async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+				claudeCalls.push(params);
+				yield { type: "done", sessionId: "claude-sdk", durationMs: 1 };
+			},
+		};
+		const codexFacade: Facade = {
+			providerId: "codex",
+			async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+				codexCalls.push(params);
+				yield { type: "text", text: "Codex Title" };
+				yield { type: "done", sessionId: "codex-thread", durationMs: 1 };
+			},
+		};
+		const appliedTitles: string[] = [];
+		const sessions = {
+			canPersistSessions: true,
+			applyAutoTitle(params: { title: string }) {
+				appliedTitles.push(params.title);
+				return true;
+			},
+		} as Pick<SessionService, "applyAutoTitle" | "canPersistSessions">;
+		const coordinator = new AutoTitleCoordinator({
+			providers: {
+				getFacade(providerId) {
+					if (providerId === "codex") {
+						return codexFacade;
+					}
+					return claudeFacade;
+				},
+			},
+			// gpt-5.5 must route through the Codex facade even though the
+			// active chat provider here is Claude — title routing is owned by
+			// the configured title model, not the live chat state.
+			model: "gpt-5.5",
+			sessions: sessions as SessionService,
+		});
+		const context: RuntimePromptContext = {
+			effort: DEFAULT_EFFORT,
+			fallbackSessionTitle: "Pending",
+			generation: 0,
+			model: DEFAULT_MODEL,
+			ocSessionId: "oc-title-codex",
+			providerId: "claude",
+			resolvedModel: MODELS[DEFAULT_MODEL].id,
+			sessionSource: "tui",
+		};
+
+		coordinator.start({
+			context,
+			prompt: "Investigate slow startup",
+			source: "tui",
+		});
+		coordinator.resolveSession("oc-title-codex", "sdk-codex-title");
+		await coordinator.drain();
+
+		expect(claudeCalls).toEqual([]);
+		expect(codexCalls).toHaveLength(1);
+		expect(codexCalls[0]?.model).toBe("gpt-5.5");
+		expect(appliedTitles).toEqual(["Codex Title"]);
 	});
 });

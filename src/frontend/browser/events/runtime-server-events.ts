@@ -295,7 +295,8 @@ export function handleBrowserServerEvent(
 		case "session_switched": {
 			useRuntimePopupStore.getState().closePopup();
 			const agentId = options.getActiveAgentId();
-			const providerId = useRuntimeStore.getState().providerId;
+			const providerId =
+				event.providerId ?? useRuntimeStore.getState().providerId;
 			if (!agentId) {
 				return;
 			}
@@ -342,7 +343,18 @@ export function handleBrowserServerEvent(
 		}
 		case "session_deleted": {
 			useRuntimePopupStore.getState().closePopup();
-			useSessionsStore.getState().deleteSessionBySdkId(event.sdkSessionId);
+			const agentId = options.getActiveAgentId();
+			const providerId =
+				event.providerId ?? useRuntimeStore.getState().providerId;
+			if (agentId && providerId) {
+				useSessionsStore.getState().deleteSession({
+					agentId,
+					providerId,
+					sdkSessionId: event.sdkSessionId,
+				});
+			} else {
+				useSessionsStore.getState().deleteSessionBySdkId(event.sdkSessionId);
+			}
 			options.refreshSidebar();
 			return;
 		}

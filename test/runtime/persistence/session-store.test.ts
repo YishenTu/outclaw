@@ -222,6 +222,59 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("persists and restores the blank-session model selection per agent", () => {
+		let store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		store.setBlankChatModelSelection({
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "medium",
+		});
+		store.close();
+
+		store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		expect(store.getBlankChatModelSelection()).toEqual({
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "medium",
+		});
+
+		store.setBlankChatModelSelection({
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "low",
+			serviceTier: "priority",
+		});
+		expect(store.getBlankChatModelSelection()).toEqual({
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "low",
+			serviceTier: "priority",
+		});
+
+		store.setBlankChatModelSelection(undefined);
+		expect(store.getBlankChatModelSelection()).toBeUndefined();
+		store.close();
+	});
+
+	test("scopes blank-session selection by agent id", () => {
+		const railly = createTestStore({ agentId: RAILLY_AGENT_ID });
+		railly.setBlankChatModelSelection({
+			providerId: "claude",
+			model: "opus",
+			effort: "high",
+		});
+		const mimi = createTestStore({ agentId: MIMI_AGENT_ID });
+		mimi.setBlankChatModelSelection({
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "medium",
+		});
+		expect(railly.getBlankChatModelSelection()?.providerId).toBe("claude");
+		expect(mimi.getBlankChatModelSelection()?.providerId).toBe("codex");
+		railly.close();
+		mimi.close();
+	});
+
 	test("reads legacy raw rollover notices as structured notices", () => {
 		let store = createTestStore({ agentId: RAILLY_AGENT_ID });
 		store.close();

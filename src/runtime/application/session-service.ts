@@ -1,3 +1,4 @@
+import { isModelAlias } from "../../common/models.ts";
 import type {
 	DoneEvent,
 	RolloverNotice,
@@ -18,6 +19,7 @@ import {
 } from "./state/runtime-state.ts";
 
 export interface SessionListEntry {
+	providerId: string;
 	sdkSessionId: string;
 	title: string;
 	model: string;
@@ -28,6 +30,11 @@ export interface SessionListResult {
 	sessions: SessionListEntry[];
 	nextCursor?: SessionCursor;
 }
+
+export type SessionResolveResult =
+	| { status: "found"; session: SessionRow }
+	| { status: "ambiguous" }
+	| { status: "not_found" };
 
 interface SessionServiceCallbacks {
 	onAcceptedInteractivePrompt?: () => void;
@@ -107,10 +114,42 @@ export class SessionService {
 		selector: string,
 		tag: SessionTag = "chat",
 	): SessionRow | undefined {
-		return (
-			this.store?.findByPrefix(this.state.providerId, selector, tag) ??
-			this.matchCurrentSession(selector, tag)
+		const result = this.resolveSession(selector, tag);
+		return result.status === "found" ? result.session : undefined;
+	}
+
+	resolveSession(
+		selector: string,
+		tag: SessionTag = "chat",
+	): SessionResolveResult {
+		const providerRef = parseProviderSessionRef(selector);
+		if (providerRef) {
+			const session =
+				this.store?.findByPrefix(
+					providerRef.providerId,
+					providerRef.sessionId,
+					tag,
+				) ??
+				(providerRef.providerId === this.state.providerId
+					? this.matchCurrentSession(providerRef.sessionId, tag)
+					: undefined);
+			return session ? { status: "found", session } : { status: "not_found" };
+		}
+
+		if (!this.store) {
+			const session = this.matchCurrentSession(selector, tag);
+			return session ? { status: "found", session } : { status: "not_found" };
+		}
+
+		const persisted = this.store.findUniqueByPrefixAcrossProviders(
+			selector,
+			tag,
 		);
+		if (persisted.status !== "not_found") {
+			return persisted;
+		}
+		const current = this.matchCurrentSession(selector, tag);
+		return current ? { status: "found", session: current } : persisted;
 	}
 
 	clearActiveSession() {
@@ -132,6 +171,28 @@ export class SessionService {
 		return { clearedActiveSession };
 	}
 
+	deleteResolvedSession(session: SessionRow): {
+		clearedActiveSession: boolean;
+	} {
+		const clearedActiveSession =
+			this.state.providerId === session.providerId &&
+			this.state.sessionId === session.sdkSessionId;
+		const clearedProviderActive =
+			this.store?.getActiveSessionId(session.providerId) ===
+			session.sdkSessionId;
+		this.store?.delete(session.providerId, session.sdkSessionId);
+		if (clearedProviderActive) {
+			this.store?.setActiveSessionId(session.providerId, undefined);
+		}
+		if (clearedActiveSession) {
+			this.state.clearSession();
+			this.callbacks.onSessionStateChange?.();
+			this.notifyActiveSessionChanged(undefined, session.providerId);
+		}
+		this.notifySessionCatalogChanged();
+		return { clearedActiveSession };
+	}
+
 	completeRun(event: DoneEvent, source?: string, telegramChatId?: number) {
 		this.state.completeRun(event, source, telegramChatId);
 		this.persistActiveSession();
@@ -140,17 +201,17 @@ export class SessionService {
 
 	recordBackgroundCompletion(params: {
 		event: DoneEvent;
+		providerId?: string;
 		title: string;
 		model: string;
 		ocSessionId?: string;
 		source: string;
 		tag?: SessionTag;
 	}) {
-		const existing = this.store?.get(
-			this.state.providerId,
-			params.event.sessionId,
-		);
+		const providerId = params.providerId ?? this.state.providerId;
+		const existing = this.store?.get(providerId, params.event.sessionId);
 		this.persistSession({
+			providerId,
 			sessionId: params.event.sessionId,
 			ocSessionId: params.ocSessionId,
 			title: existing?.title ?? params.title,
@@ -255,6 +316,23 @@ export class SessionService {
 		this.notifySessionCatalogChanged();
 	}
 
+	renameResolvedSession(session: SessionRow, title: string) {
+		const isActiveSession =
+			this.state.providerId === session.providerId &&
+			this.state.sessionId === session.sdkSessionId;
+		if (isActiveSession) {
+			this.state.renameSession(session.sdkSessionId, title);
+		}
+		this.store?.rename(session.providerId, session.sdkSessionId, title);
+		this.notifySessionRenamed(
+			session.sdkSessionId,
+			title,
+			isActiveSession,
+			session.providerId,
+		);
+		this.notifySessionCatalogChanged();
+	}
+
 	configureCallbacks(callbacks: SessionServiceCallbacks) {
 		this.callbacks.onAcceptedInteractivePrompt =
 			callbacks.onAcceptedInteractivePrompt ??
@@ -271,6 +349,7 @@ export class SessionService {
 	}
 
 	applyAutoTitle(params: {
+		providerId?: string;
 		sessionId: string;
 		expectedTitle: string;
 		title: string;
@@ -279,8 +358,9 @@ export class SessionService {
 			return false;
 		}
 
+		const providerId = params.providerId ?? this.state.providerId;
 		const renamed = this.store.applyAutoTitle({
-			providerId: this.state.providerId,
+			providerId,
 			sdkSessionId: params.sessionId,
 			expectedTitle: params.expectedTitle,
 			title: params.title,
@@ -293,7 +373,12 @@ export class SessionService {
 		if (isActiveSession) {
 			this.state.renameSession(params.sessionId, params.title);
 		}
-		this.notifySessionRenamed(params.sessionId, params.title, isActiveSession);
+		this.notifySessionRenamed(
+			params.sessionId,
+			params.title,
+			isActiveSession,
+			providerId,
+		);
 		if (isActiveSession) {
 			this.callbacks.onSessionStateChange?.();
 		}
@@ -301,23 +386,34 @@ export class SessionService {
 		return true;
 	}
 
-	markAutoTitleAttempted(sessionId: string) {
-		this.store?.markAutoTitleAttempted(this.state.providerId, sessionId);
+	markAutoTitleAttempted(
+		sessionId: string,
+		providerId = this.state.providerId,
+	) {
+		this.store?.markAutoTitleAttempted(providerId, sessionId);
 	}
 
 	switchToSession(selector: string): SessionRow | undefined {
-		const session = this.findSession(selector, "chat");
-		if (!session) {
+		const resolved = this.resolveSession(selector, "chat");
+		if (resolved.status !== "found") {
 			return undefined;
 		}
+		return this.switchToResolvedSession(resolved.session);
+	}
 
+	switchToResolvedSession(session: SessionRow): SessionRow {
 		this.state.switchToSession(
 			session,
-			this.store?.getUsage(this.state.providerId, session.sdkSessionId),
+			this.store?.getUsage(session.providerId, session.sdkSessionId),
 		);
-		this.store?.setActiveSessionId(this.state.providerId, session.sdkSessionId);
+		this.store?.setActiveSessionId(session.providerId, session.sdkSessionId);
+		this.store?.setBlankChatModelSelection({
+			providerId: session.providerId,
+			model: session.model,
+			effort: this.state.effort,
+		});
 		this.callbacks.onSessionStateChange?.();
-		this.notifyActiveSessionChanged(session.sdkSessionId);
+		this.notifyActiveSessionChanged(session.sdkSessionId, session.providerId);
 		return session;
 	}
 
@@ -356,6 +452,7 @@ export class SessionService {
 	}
 
 	recordCronRun(params: {
+		providerId?: string;
 		sessionId: string;
 		jobName: string;
 		model: string;
@@ -366,8 +463,9 @@ export class SessionService {
 			message: string;
 		};
 	}) {
+		const providerId = params.providerId ?? this.state.providerId;
 		this.store?.upsert({
-			providerId: this.state.providerId,
+			providerId,
 			sdkSessionId: params.sessionId,
 			title: params.jobName,
 			model: params.model,
@@ -376,7 +474,7 @@ export class SessionService {
 			failure: params.failure,
 		});
 		if (params.resultText !== undefined && params.resultText !== "") {
-			this.store?.replaceTranscript(this.state.providerId, params.sessionId, [
+			this.store?.replaceTranscript(providerId, params.sessionId, [
 				{
 					role: "assistant",
 					content: params.resultText,
@@ -387,6 +485,7 @@ export class SessionService {
 	}
 
 	async refreshTranscript(
+		providerId: string,
 		sessionId: string,
 		readTranscript?: (sessionId: string) => Promise<TranscriptTurn[]>,
 	) {
@@ -395,7 +494,7 @@ export class SessionService {
 		}
 
 		const turns = await readTranscript(sessionId);
-		this.store.replaceTranscript(this.state.providerId, sessionId, turns);
+		this.store.replaceTranscript(providerId, sessionId, turns);
 	}
 
 	private persistActiveSession() {
@@ -421,6 +520,7 @@ export class SessionService {
 	}
 
 	private persistSession(params: {
+		providerId?: string;
 		sessionId: string;
 		ocSessionId?: string;
 		title: string;
@@ -429,8 +529,9 @@ export class SessionService {
 		tag?: SessionTag;
 		usage?: DoneEvent["usage"];
 	}) {
+		const providerId = params.providerId ?? this.state.providerId;
 		this.store?.upsert({
-			providerId: this.state.providerId,
+			providerId,
 			sdkSessionId: params.sessionId,
 			ocSessionId: params.ocSessionId,
 			title: params.title,
@@ -440,17 +541,29 @@ export class SessionService {
 		});
 
 		if (params.usage) {
-			this.store?.setUsage(
-				this.state.providerId,
-				params.sessionId,
-				params.usage,
-			);
+			this.store?.setUsage(providerId, params.sessionId, params.usage);
 		}
 	}
 
 	private restorePersistedState() {
 		if (!this.store) {
 			return;
+		}
+
+		// First, honor any persisted blank-session selection so the runtime
+		// reflects the user's last provider/model choice across daemon
+		// restarts. The visible session — if any — overrides this below.
+		const blankSelection = this.store.getBlankChatModelSelection();
+		if (blankSelection) {
+			try {
+				this.state.setProvider(blankSelection.providerId);
+			} catch {
+				// Setting the provider only fails when a session is already
+				// active; restorePersistedState runs at startup, so we never
+				// expect that. Swallow defensively rather than crash startup
+				// if a future caller order changes.
+			}
+			this.applyBlankSelectionModel(blankSelection.model);
 		}
 
 		const activeSessionId = this.store.getActiveSessionId(
@@ -469,6 +582,17 @@ export class SessionService {
 			session,
 			usage,
 		});
+	}
+
+	private applyBlankSelectionModel(model: string) {
+		// Claude alias models keep alias-based state in sync; non-Claude
+		// providers carry their native model id through `setProviderModel`
+		// (e.g. `gpt-5.5`) without polluting the ModelAlias registry.
+		if (isModelAlias(model)) {
+			this.state.setModel(model);
+		} else {
+			this.state.setProviderModel(model);
+		}
 	}
 
 	private matchCurrentSession(
@@ -502,23 +626,27 @@ export class SessionService {
 		sessionId: string,
 		title: string,
 		active: boolean,
+		providerId = this.state.providerId,
 	) {
 		this.callbacks.onSessionRenamed?.({
 			type: "session_renamed",
 			sdkSessionId: sessionId,
 			title,
-			providerId: this.state.providerId,
+			providerId,
 			active,
 		});
 	}
 
-	private notifyActiveSessionChanged(activeSessionId: string | undefined) {
+	private notifyActiveSessionChanged(
+		activeSessionId: string | undefined,
+		providerId = this.state.providerId,
+	) {
 		if (!this.store) {
 			return;
 		}
 		this.callbacks.onActiveSessionChanged?.({
 			activeSessionId,
-			providerId: this.state.providerId,
+			providerId,
 		});
 	}
 
@@ -532,10 +660,24 @@ export class SessionService {
 
 function toSessionListEntry(session: SessionRow): SessionListEntry {
 	return {
+		providerId: session.providerId,
 		sdkSessionId: session.sdkSessionId,
 		title: session.title,
 		model: session.model,
 		lastActive: session.lastActive,
+	};
+}
+
+function parseProviderSessionRef(
+	selector: string,
+): { providerId: string; sessionId: string } | undefined {
+	const slash = selector.indexOf("/");
+	if (slash <= 0 || slash === selector.length - 1) {
+		return undefined;
+	}
+	return {
+		providerId: selector.slice(0, slash),
+		sessionId: selector.slice(slash + 1),
 	};
 }
 

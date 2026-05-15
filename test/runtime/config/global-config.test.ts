@@ -26,7 +26,10 @@ describe("loadGlobalConfig", () => {
 			expect(config.host).toBe("127.0.0.1");
 			expect(config.port).toBe(4000);
 			expect(config.thinkingEffort).toBe("medium");
-			expect(config.autoTitle).toEqual({ model: MODELS.haiku.id });
+			// When config.json has no autoTitle block, the runtime keeps the
+			// fallback title and skips AutoTitleCoordinator entirely. The
+			// config object reflects that by leaving autoTitle undefined.
+			expect(config.autoTitle).toBeUndefined();
 			expect(config.heartbeat).toEqual({
 				intervalMinutes: 30,
 				deferMinutes: 0,
@@ -200,7 +203,7 @@ describe("loadGlobalConfig", () => {
 		}
 	});
 
-	test("defaults autoTitle model to haiku when the block is omitted or empty", () => {
+	test("leaves autoTitle undefined when the block is omitted or blank", () => {
 		const dir = tmp();
 		try {
 			writeFileSync(
@@ -210,7 +213,21 @@ describe("loadGlobalConfig", () => {
 
 			const config = loadGlobalConfig(dir);
 
-			expect(config.autoTitle).toEqual({ model: MODELS.haiku.id });
+			expect(config.autoTitle).toBeUndefined();
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
+	test("accepts a Codex title model id like gpt-5.5", () => {
+		const dir = tmp();
+		try {
+			writeFileSync(
+				join(dir, "config.json"),
+				JSON.stringify({ autoTitle: { model: "gpt-5.5" } }),
+			);
+
+			expect(loadGlobalConfig(dir).autoTitle).toEqual({ model: "gpt-5.5" });
 		} finally {
 			rmSync(dir, { recursive: true });
 		}
@@ -426,7 +443,6 @@ describe("loadGlobalConfig", () => {
 
 			expect(config).toEqual({
 				autoCompact: false,
-				autoTitle: { model: MODELS.haiku.id },
 				host: "0.0.0.0",
 				heartbeat: {
 					intervalMinutes: 60,

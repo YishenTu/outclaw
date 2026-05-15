@@ -255,7 +255,7 @@ describe("RuntimeState", () => {
 			expect(state.generation).toBe(gen0 + 1);
 		});
 
-		test("ignores unknown model alias in stored session", () => {
+		test("restores provider-local model strings from stored sessions", () => {
 			const state = new RuntimeState(PROVIDER_ID);
 			state.switchToSession({
 				agentId: AGENT_ID,
@@ -268,7 +268,8 @@ describe("RuntimeState", () => {
 				createdAt: 0,
 				lastActive: 0,
 			});
-			expect(state.model).toBe(DEFAULT_MODEL);
+			expect(state.model).toBe("unknown-model");
+			expect(state.resolvedModel).toBe("unknown-model");
 		});
 	});
 
@@ -332,5 +333,34 @@ describe("RuntimeState", () => {
 				telegramChatId: 123,
 			});
 		});
+	});
+
+	test("visible prompt contexts include provider identity", () => {
+		const state = new RuntimeState(PROVIDER_ID);
+		state.switchToSession({
+			agentId: AGENT_ID,
+			providerId: PROVIDER_ID,
+			sdkSessionId: "same-sdk-id",
+			title: "Claude session",
+			model: "opus",
+			source: "tui",
+			tag: "chat",
+			createdAt: 0,
+			lastActive: 0,
+		});
+
+		expect(
+			state.matchesVisiblePromptContext({
+				effort: "medium",
+				generation: state.generation,
+				model: "gpt-5.5",
+				ocSessionId: "same-sdk-id",
+				providerId: "codex",
+				resolvedModel: "gpt-5.5",
+				sessionId: "same-sdk-id",
+				sessionSource: "tui",
+				sessionTitle: "Codex session",
+			}),
+		).toBe(false);
 	});
 });

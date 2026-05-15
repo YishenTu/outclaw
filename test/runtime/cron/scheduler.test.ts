@@ -58,6 +58,7 @@ prompt: say hello
 const DISABLED_JOB = `
 name: disabled-job
 schedule: "* * * * *"
+model: haiku
 enabled: false
 prompt: should not run
 `.trim();
@@ -81,7 +82,6 @@ describe("CronScheduler", () => {
 				effort?: EffortLevel,
 			) => Promise<string | { text: string; sessionId?: string }>;
 			onResult?: (event: ScheduledCronResult) => void;
-			getDefaultModel?: () => string;
 			getDefaultEffort?: () => EffortLevel;
 			watchPollIntervalMs?: number;
 			resolveTelegramChatId?: (config: {
@@ -98,7 +98,6 @@ describe("CronScheduler", () => {
 			cronDir,
 			runAgent: overrides.runAgent ?? (async () => "agent response"),
 			onResult: overrides.onResult ?? (() => {}),
-			getDefaultModel: overrides.getDefaultModel ?? (() => "opus"),
 			getDefaultEffort: overrides.getDefaultEffort ?? (() => "medium"),
 			resolveTelegramChatId: overrides.resolveTelegramChatId,
 			watchPollIntervalMs: overrides.watchPollIntervalMs ?? 10,
@@ -191,6 +190,7 @@ describe("CronScheduler", () => {
 			`
 name: one-time-job
 runAt: "${FUTURE_RUN_AT}"
+model: haiku
 enabled: true
 prompt: say hello once
 				`.trim(),
@@ -210,6 +210,7 @@ prompt: say hello once
 			`
 name: expired-job
 runAt: "2000-01-23T09:00:00+00:00"
+model: haiku
 enabled: true
 prompt: should not run on startup
 				`.trim(),
@@ -316,6 +317,7 @@ prompt: should not run on startup
 			`
 name: one-time-job
 runAt: "${FUTURE_RUN_AT}"
+model: haiku
 enabled: true
 prompt: say hello once
 				`.trim(),
@@ -345,6 +347,7 @@ prompt: say hello once
 			`
 name: one-time-job
 runAt: "${runAt}"
+model: haiku
 enabled: true
 prompt: say hello once
 				`.trim(),
@@ -404,6 +407,7 @@ prompt: say hello once
 			`
 name: notify-job
 schedule: "* * * * *"
+model: opus
 telegramUserId: 456
 prompt: say hello
 				`.trim(),
@@ -531,7 +535,7 @@ prompt: do something
 		expect(receivedEffort).toBe("high");
 	});
 
-	test("uses default model when job has no model", async () => {
+	test("skips jobs that omit model instead of falling back to runtime default", async () => {
 		const cronDir = makeCronDir();
 		const noModelJob = `
 name: no-model-job
@@ -546,13 +550,13 @@ prompt: do something
 				receivedModel = model;
 				return "ok";
 			},
-			getDefaultModel: () => "sonnet",
 		});
 		scheduler.start();
 
 		await scheduler.triggerJob("no-model-job");
 
-		expect(receivedModel).toBe("sonnet");
+		expect(scheduler.jobCount).toBe(0);
+		expect(receivedModel).toBeUndefined();
 	});
 
 	test("uses default effort when job has no effort", async () => {
@@ -560,8 +564,9 @@ prompt: do something
 		const noEffortJob = `
 name: no-effort-job
 schedule: "* * * * *"
+model: haiku
 prompt: do something
-	`.trim();
+		`.trim();
 		writeJob(cronDir, "job.yaml", noEffortJob);
 
 		let receivedEffort: string | undefined;
@@ -798,6 +803,7 @@ prompt: do something
 			`
 name: tz-job
 schedule: "0 9 * * *"
+model: haiku
 timezone: UTC+8
 prompt: say hello
 				`.trim(),

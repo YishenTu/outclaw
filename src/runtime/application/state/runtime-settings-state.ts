@@ -12,7 +12,7 @@ interface RuntimeSettingsStateOptions {
 
 export class RuntimeSettingsState {
 	private readonly configuredDefaultEffort: EffortLevel;
-	private activeModel: ModelAlias = DEFAULT_MODEL;
+	private activeModel: string = DEFAULT_MODEL;
 	private activeEffort: EffortLevel;
 
 	constructor(options: RuntimeSettingsStateOptions = {}) {
@@ -28,7 +28,7 @@ export class RuntimeSettingsState {
 		return this.activeEffort;
 	}
 
-	get model(): ModelAlias {
+	get model(): string {
 		return this.activeModel;
 	}
 
@@ -41,6 +41,15 @@ export class RuntimeSettingsState {
 	}
 
 	setModel(model: ModelAlias) {
+		this.activeModel = model;
+	}
+
+	/**
+	 * Set the provider-local model id directly. Use this for non-Claude
+	 * providers whose model ids don't fit the `ModelAlias` registry. Claude
+	 * paths should keep calling `setModel(alias)`.
+	 */
+	setProviderModel(model: string) {
 		this.activeModel = model;
 	}
 }

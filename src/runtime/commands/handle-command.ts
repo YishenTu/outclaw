@@ -12,7 +12,14 @@ interface HandleRuntimeCommandOptions {
 	createStatusEvent: () => RuntimeStatusEvent;
 	hub: ClientHub;
 	promptHomeDir?: string;
-	replayHistoryToAll: (sessionId: string) => Promise<void>;
+	replayHistoryToAll: (session: {
+		providerId: string;
+		sdkSessionId: string;
+	}) => Promise<void>;
+	selectProviderModel?: (selection: {
+		model: string;
+		providerId: string;
+	}) => void;
 	sessions: SessionService;
 	state: RuntimeState;
 	ws: WsClient;
@@ -72,6 +79,7 @@ export async function handleRuntimeCommand(
 			handleRuntimeSettingsCommand({
 				command,
 				hub: options.hub,
+				selectProviderModel: options.selectProviderModel,
 				state: options.state,
 				ws: options.ws,
 			})

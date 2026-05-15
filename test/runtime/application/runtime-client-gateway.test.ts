@@ -38,15 +38,14 @@ function createFacade(overrides: Partial<Facade> = {}): Facade {
 }
 
 describe("RuntimeClientGateway", () => {
-	test("requestSkills reports synchronous backend throws as error events", async () => {
+	test("requestSkills reports configured chat skill catalog errors", async () => {
 		const gateway = new RuntimeClientGateway({
 			cwd: "/tmp/outclaw",
-			facade: createFacade({
-				getSkills() {
-					throw new Error("skills exploded");
-				},
-			}),
+			facade: createFacade(),
 			getStatusEvent: createStatusEvent,
+			listSkills() {
+				throw new Error("skills exploded");
+			},
 		});
 		const ws = mockWs();
 
@@ -56,6 +55,33 @@ describe("RuntimeClientGateway", () => {
 		expect(ws.events()).toContainEqual({
 			type: "error",
 			message: "skills exploded",
+		});
+	});
+
+	test("requestSkills uses the provider-neutral chat skill catalog", async () => {
+		const chatSkills = mock(async () => [
+			{ name: "agent-skill", description: "Agent skill" },
+		]);
+		const gateway = new RuntimeClientGateway({
+			cwd: "/tmp/outclaw",
+			facade: createFacade({
+				providerId: "claude",
+			}),
+			getStatusEvent: () => ({
+				...createStatusEvent(),
+				providerId: "codex",
+			}),
+			listSkills: chatSkills,
+		});
+		const ws = mockWs();
+
+		gateway.requestSkills(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(chatSkills).toHaveBeenCalled();
+		expect(ws.events()).toContainEqual({
+			type: "skills_update",
+			skills: [{ name: "agent-skill", description: "Agent skill" }],
 		});
 	});
 
@@ -173,6 +199,7 @@ describe("RuntimeClientGateway", () => {
 
 		expect(ws.events()).toContainEqual({
 			type: "history_replay",
+			providerId: "mock",
 			sdkSessionId: "sdk-123",
 			messages: [
 				{
@@ -229,6 +256,7 @@ describe("RuntimeClientGateway", () => {
 
 		expect(ws.events()).toContainEqual({
 			type: "history_replay",
+			providerId: "mock",
 			sdkSessionId: "sdk-123",
 			messages: [
 				{
@@ -247,20 +275,34 @@ describe("RuntimeClientGateway", () => {
 		});
 	});
 
-	test("handleOpen prefers a prehydrated replay reader when available", async () => {
+	test("handleOpen annotates replay reader messages with transcript timestamps", async () => {
+		const turns: TranscriptTurn[] = [
+			{
+				role: "user",
+				content: "past question",
+				timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+			},
+			{
+				role: "assistant",
+				content: "past answer",
+				timestamp: Date.parse("2025-01-15T14:31:04.000Z"),
+			},
+		];
 		const readReplay = mock(async () => [
 			{
 				kind: "chat" as const,
 				role: "user" as const,
 				content: "past question",
-				timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+			},
+			{
+				kind: "chat" as const,
+				role: "assistant" as const,
+				content: "past answer",
 			},
 		]);
-		const readHistory = mock(async () => []);
-		const readTranscript = mock(async () => []);
+		const readTranscript = mock(async () => turns);
 		const gateway = new RuntimeClientGateway({
 			facade: createFacade({
-				readHistory,
 				readReplay,
 				readTranscript,
 			}),
@@ -275,10 +317,58 @@ describe("RuntimeClientGateway", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(readReplay).toHaveBeenCalledWith("sdk-123");
-		expect(readHistory).not.toHaveBeenCalled();
-		expect(readTranscript).not.toHaveBeenCalled();
+		expect(readTranscript).toHaveBeenCalledWith("sdk-123");
 		expect(ws.events()).toContainEqual({
 			type: "history_replay",
+			providerId: "mock",
+			sdkSessionId: "sdk-123",
+			messages: [
+				{
+					kind: "chat",
+					role: "user",
+					content: "past question",
+					timestamp: turns[0]?.timestamp,
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "past answer",
+					timestamp: turns[1]?.timestamp,
+				},
+			],
+		});
+	});
+
+	test("handleOpen prefers a replay reader over history when available", async () => {
+		const readReplay = mock(async () => [
+			{
+				kind: "chat" as const,
+				role: "user" as const,
+				content: "past question",
+				timestamp: Date.parse("2025-01-15T14:30:00.000Z"),
+			},
+		]);
+		const readHistory = mock(async () => []);
+		const gateway = new RuntimeClientGateway({
+			facade: createFacade({
+				readHistory,
+				readReplay,
+			}),
+			getStatusEvent: () => ({
+				...createStatusEvent(),
+				sessionId: "sdk-123",
+			}),
+		});
+		const ws = mockWs();
+
+		gateway.handleOpen(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(readReplay).toHaveBeenCalledWith("sdk-123");
+		expect(readHistory).not.toHaveBeenCalled();
+		expect(ws.events()).toContainEqual({
+			type: "history_replay",
+			providerId: "mock",
 			sdkSessionId: "sdk-123",
 			messages: [
 				{
@@ -304,7 +394,7 @@ describe("RuntimeClientGateway", () => {
 					];
 				},
 			}),
-			getStreamingSyncEvent: (sessionId) => ({
+			getStreamingSyncEvent: (_providerId, sessionId) => ({
 				type: "streaming_sync",
 				sdkSessionId: sessionId,
 				text: "streamed",
@@ -323,10 +413,66 @@ describe("RuntimeClientGateway", () => {
 
 		expect(ws.events()).toContainEqual({
 			type: "streaming_sync",
+			providerId: "mock",
 			sdkSessionId: "sdk-123",
 			text: "streamed",
 			thinking: "thinking",
 			images: [],
+		});
+	});
+
+	test("handleOpen resolves history by provider when sdk session ids collide", async () => {
+		const claudeRead = mock(async () => [
+			{
+				kind: "chat" as const,
+				role: "assistant" as const,
+				content: "claude history",
+			},
+		]);
+		const codexRead = mock(async () => [
+			{
+				kind: "chat" as const,
+				role: "assistant" as const,
+				content: "codex history",
+			},
+		]);
+		const codexFacade = createFacade({
+			providerId: "codex",
+			readHistory: codexRead,
+		});
+		const gateway = new RuntimeClientGateway({
+			facade: createFacade({
+				providerId: "claude",
+				readHistory: claudeRead,
+			}),
+			resolveFacadeForSession: (providerId, sessionId) =>
+				providerId === "codex" && sessionId === "same-sdk-id"
+					? codexFacade
+					: undefined,
+			getStatusEvent: () => ({
+				...createStatusEvent(),
+				providerId: "codex",
+				sessionId: "same-sdk-id",
+			}),
+		});
+		const ws = mockWs();
+
+		gateway.handleOpen(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(codexRead).toHaveBeenCalledWith("same-sdk-id");
+		expect(claudeRead).not.toHaveBeenCalled();
+		expect(ws.events()).toContainEqual({
+			type: "history_replay",
+			providerId: "codex",
+			sdkSessionId: "same-sdk-id",
+			messages: [
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "codex history",
+				},
+			],
 		});
 	});
 });

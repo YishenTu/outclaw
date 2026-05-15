@@ -22,7 +22,15 @@ function mockWs(): WsClient & { events: () => ServerEvent[] } {
 	return ws as unknown as WsClient & { events: () => ServerEvent[] };
 }
 
-function setup(options: { defaultEffort?: EffortLevel } = {}) {
+function setup(
+	options: {
+		defaultEffort?: EffortLevel;
+		selectProviderModel?: (selection: {
+			model: string;
+			providerId: string;
+		}) => void;
+	} = {},
+) {
 	const hub = new ClientHub();
 	const ws = mockWs();
 	const observer = mockWs();
@@ -36,6 +44,7 @@ function setup(options: { defaultEffort?: EffortLevel } = {}) {
 		return handleRuntimeSettingsCommand({
 			command,
 			hub,
+			selectProviderModel: options.selectProviderModel,
 			state,
 			ws,
 		});
@@ -61,6 +70,7 @@ describe("handleRuntimeSettingsCommand", () => {
 			).toEqual({
 				type: "model_changed",
 				model: state.model,
+				providerId: state.providerId,
 			});
 		});
 
@@ -74,12 +84,14 @@ describe("handleRuntimeSettingsCommand", () => {
 			).toEqual({
 				type: "model_changed",
 				model: "haiku",
+				providerId: state.providerId,
 			});
 			expect(
 				observer.events().find((event) => event.type === "model_changed"),
 			).toEqual({
 				type: "model_changed",
 				model: "haiku",
+				providerId: state.providerId,
 			});
 		});
 
@@ -199,6 +211,27 @@ describe("handleRuntimeSettingsCommand", () => {
 				message: `Invalid model: gpt-4. Valid: ${MODEL_ALIAS_LIST.join(", ")}`,
 			});
 		});
+
+		test("routes provider-qualified model ids through typed selection", () => {
+			let selection:
+				| {
+						model: string;
+						providerId: string;
+				  }
+				| undefined;
+			const { run } = setup({
+				selectProviderModel: (nextSelection) => {
+					selection = nextSelection;
+				},
+			});
+
+			expect(run("/model codex/gpt-5.5")).toBe(true);
+
+			expect(selection).toEqual({
+				providerId: "codex",
+				model: "gpt-5.5",
+			});
+		});
 	});
 
 	describe("/thinking", () => {
@@ -211,6 +244,7 @@ describe("handleRuntimeSettingsCommand", () => {
 			).toEqual({
 				type: "effort_changed",
 				effort: state.effort,
+				providerId: state.providerId,
 			});
 		});
 
@@ -224,12 +258,14 @@ describe("handleRuntimeSettingsCommand", () => {
 			).toEqual({
 				type: "effort_changed",
 				effort: "max",
+				providerId: state.providerId,
 			});
 			expect(
 				observer.events().find((event) => event.type === "effort_changed"),
 			).toEqual({
 				type: "effort_changed",
 				effort: "max",
+				providerId: state.providerId,
 			});
 		});
 
@@ -241,10 +277,18 @@ describe("handleRuntimeSettingsCommand", () => {
 			expect(state.effort).toBe("xhigh");
 			expect(
 				ws.events().find((event) => event.type === "effort_changed"),
-			).toEqual({ type: "effort_changed", effort: "xhigh" });
+			).toEqual({
+				type: "effort_changed",
+				effort: "xhigh",
+				providerId: state.providerId,
+			});
 			expect(
 				observer.events().find((event) => event.type === "effort_changed"),
-			).toEqual({ type: "effort_changed", effort: "xhigh" });
+			).toEqual({
+				type: "effort_changed",
+				effort: "xhigh",
+				providerId: state.providerId,
+			});
 		});
 
 		test("rejects xhigh when current model is not opus", () => {
@@ -275,6 +319,7 @@ describe("handleRuntimeSettingsCommand", () => {
 			expect(effortEvents.at(-1)).toEqual({
 				type: "effort_changed",
 				effort: "low",
+				providerId: state.providerId,
 			});
 		});
 

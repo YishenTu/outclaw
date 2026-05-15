@@ -160,9 +160,11 @@ export function AgentItem({
 					}
 				}}
 				onRename={(title) =>
-					sendCommand(`/session rename ${session.sdkSessionId} ${title}`)
+					sendCommand(`/session rename ${formatSessionRef(session)} ${title}`)
 				}
-				onDelete={() => sendCommand(`/session delete ${session.sdkSessionId}`)}
+				onDelete={() =>
+					sendCommand(`/session delete ${formatSessionRef(session)}`)
+				}
 			/>
 		);
 	}
@@ -300,6 +302,12 @@ export function AgentItem({
 			)}
 		</div>
 	);
+}
+
+function formatSessionRef(
+	session: Pick<SessionEntry, "providerId" | "sdkSessionId">,
+) {
+	return `${session.providerId}/${session.sdkSessionId}`;
 }
 
 function LoadMoreButton({

@@ -1,5 +1,11 @@
-import { extractError } from "../../common/protocol.ts";
+import { type EffortLevel, isEffortLevel } from "../../common/commands.ts";
+import { isModelAlias, type ModelAlias } from "../../common/models.ts";
+import {
+	extractError,
+	type ModelSelectMessage,
+} from "../../common/protocol.ts";
 import { handleRuntimeCommand } from "../commands/handle-command.ts";
+import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import type { WsClient } from "../transport/client-hub.ts";
 import type { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
 import type { RuntimeExecutionCoordinator } from "./runtime-execution-coordinator.ts";
@@ -7,13 +13,16 @@ import type { SessionService } from "./session-service.ts";
 import type { RuntimeState } from "./state/runtime-state.ts";
 
 interface RuntimeControlPlaneOptions {
+	agentId?: string;
 	clients: RuntimeClientGateway;
 	createStatusEvent: () => import("../../common/protocol.ts").RuntimeStatusEvent;
 	execution: RuntimeExecutionCoordinator;
+	isProviderConfigured?: (providerId: string) => boolean;
 	promptHomeDir?: string;
 	restart?: () => void;
 	sessions: SessionService;
 	state: RuntimeState;
+	store?: SessionStore;
 }
 
 export class RuntimeControlPlane {
@@ -37,11 +46,16 @@ export class RuntimeControlPlane {
 			createStatusEvent: this.options.createStatusEvent,
 			hub: this.options.clients.clientHub,
 			promptHomeDir: this.options.promptHomeDir,
-			replayHistoryToAll: (sessionId) =>
+			replayHistoryToAll: (session) =>
 				this.options.clients.replayHistory(
 					this.options.clients.listClients(),
-					sessionId,
+					session,
 				),
+			selectProviderModel: (selection) =>
+				this.handleModelSelect(ws, {
+					type: "model_select",
+					...selection,
+				}),
 			sessions: this.options.sessions,
 			state: this.options.state,
 			ws,
@@ -69,6 +83,91 @@ export class RuntimeControlPlane {
 				message: `Restart failed: ${extractError(err)}`,
 			});
 		}
+	}
+
+	handleModelSelect(ws: WsClient, message: ModelSelectMessage) {
+		const currentProviderId = this.options.state.providerId;
+		const visibleSessionId = this.options.state.sessionId;
+		// Cross-provider switches with an active session must come through an
+		// explicit new-session boundary. The browser model picker hides
+		// other-provider models while a session is live, but harden the
+		// runtime path too — text/Telegram callers should not be able to
+		// silently change providers mid-conversation.
+		if (
+			message.providerId !== currentProviderId &&
+			visibleSessionId !== undefined
+		) {
+			this.options.clients.send(ws, {
+				type: "error",
+				message: `Cannot switch to ${message.providerId} while a ${currentProviderId} session is active; start a new session first.`,
+			});
+			return;
+		}
+
+		const targetProvider = message.providerId;
+		const targetModel = message.model;
+		const effortArg = message.effort;
+
+		if (
+			this.options.isProviderConfigured &&
+			!this.options.isProviderConfigured(targetProvider)
+		) {
+			this.options.clients.send(ws, {
+				type: "error",
+				message: `Provider ${targetProvider} is not configured in this runtime.`,
+			});
+			return;
+		}
+
+		if (effortArg !== undefined && !isEffortLevel(effortArg)) {
+			this.options.clients.send(ws, {
+				type: "error",
+				message: `Invalid effort: ${effortArg}`,
+			});
+			return;
+		}
+
+		// Provider change with no visible session: update the active provider
+		// AND persist the blank-session selection so the choice survives a
+		// daemon restart.
+		if (targetProvider !== currentProviderId) {
+			this.options.state.setProvider(targetProvider);
+		}
+
+		if (isModelAlias(targetModel)) {
+			this.options.state.setModel(targetModel as ModelAlias);
+		} else {
+			this.options.state.setProviderModel(targetModel);
+		}
+
+		if (effortArg !== undefined) {
+			this.options.state.setEffort(effortArg as EffortLevel);
+		}
+
+		if (
+			visibleSessionId === undefined &&
+			this.options.store &&
+			this.options.agentId
+		) {
+			this.options.store.setBlankChatModelSelection({
+				providerId: targetProvider,
+				model: targetModel,
+				effort: this.options.state.effort,
+				...(message.serviceTier ? { serviceTier: message.serviceTier } : {}),
+			});
+		}
+
+		this.options.clients.broadcast({
+			type: "model_changed",
+			model: targetModel,
+			providerId: targetProvider,
+		});
+		this.options.clients.broadcast({
+			type: "effort_changed",
+			effort: this.options.state.effort,
+			providerId: targetProvider,
+		});
+		this.options.clients.broadcast(this.options.createStatusEvent());
 	}
 
 	private handleStop(ws: WsClient) {

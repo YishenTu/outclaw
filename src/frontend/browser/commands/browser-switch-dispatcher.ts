@@ -24,7 +24,11 @@ export function createBrowserSwitchDispatcher({
 				return false;
 			}
 
-			return sendCommand(`/session ${session.sdkSessionId}`);
+			return sendCommand(`/session ${formatSessionRef(session)}`);
 		},
 	};
+}
+
+function formatSessionRef(session: SessionEntry): string {
+	return `${session.providerId}/${session.sdkSessionId}`;
 }

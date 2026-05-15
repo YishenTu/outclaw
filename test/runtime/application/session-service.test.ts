@@ -242,6 +242,99 @@ describe("SessionService", () => {
 		store.close();
 	});
 
+	test("recordBackgroundCompletion writes to the run provider after visible provider changes", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		state.setProvider(OTHER_PROVIDER_ID);
+		sessions.recordBackgroundCompletion({
+			providerId: PROVIDER_ID,
+			event: makeDoneEvent("same-sdk-id"),
+			model: "opus",
+			source: "tui",
+			title: "Hidden provider run",
+		});
+
+		expect(store.get(PROVIDER_ID, "same-sdk-id")).toMatchObject({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "same-sdk-id",
+			title: "Hidden provider run",
+		});
+		expect(store.get(OTHER_PROVIDER_ID, "same-sdk-id")).toBeUndefined();
+
+		store.close();
+	});
+
+	test("refreshTranscript and applyAutoTitle write to the run provider", async () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		store.upsert({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "same-sdk-id",
+			title: "Pending",
+			model: "opus",
+		});
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "same-sdk-id",
+			title: "Other pending",
+			model: "gpt-5.5",
+		});
+		store.upsert({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "same-cron-id",
+			title: "Pending cron",
+			model: "opus",
+			tag: "cron",
+		});
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "same-cron-id",
+			title: "Other pending cron",
+			model: "gpt-5.5",
+			tag: "cron",
+		});
+		state.setProvider(OTHER_PROVIDER_ID);
+
+		await sessions.refreshTranscript(PROVIDER_ID, "same-cron-id", async () => [
+			{
+				role: "assistant",
+				content: "provider-owned transcript",
+				timestamp: 123,
+			},
+		]);
+		expect(
+			store
+				.listCronRunsByTitle("Pending cron", { limit: 10 })
+				.find((entry) => entry.providerId === PROVIDER_ID)?.resultText,
+		).toBe("provider-owned transcript");
+		expect(
+			store
+				.listCronRunsByTitle("Other pending cron", { limit: 10 })
+				.find((entry) => entry.providerId === OTHER_PROVIDER_ID)?.resultText,
+		).toBe("");
+
+		expect(
+			sessions.applyAutoTitle({
+				providerId: PROVIDER_ID,
+				sessionId: "same-sdk-id",
+				expectedTitle: "Pending",
+				title: "Renamed by run provider",
+			}),
+		).toBe(true);
+		expect(store.get(PROVIDER_ID, "same-sdk-id")?.title).toBe(
+			"Renamed by run provider",
+		);
+		expect(store.get(OTHER_PROVIDER_ID, "same-sdk-id")?.title).toBe(
+			"Other pending",
+		);
+
+		store.close();
+	});
+
 	test("accepted tui prompts overwrite a prior telegram target immediately", () => {
 		const store = createTestStore();
 		const state = new RuntimeState(PROVIDER_ID);
@@ -572,6 +665,40 @@ describe("SessionService", () => {
 				sessionId: "cron-session-error",
 				ranAt: 1234,
 				resultText: "[error] agent exploded",
+			},
+		]);
+
+		store.close();
+	});
+
+	test("recordCronRun writes to the cron result provider", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+		state.setProvider(OTHER_PROVIDER_ID);
+
+		sessions.recordCronRun({
+			providerId: PROVIDER_ID,
+			sessionId: "cron-session-provider",
+			jobName: "daily-summary",
+			model: "haiku",
+			ranAt: 1234,
+			resultText: "cron summary",
+		});
+
+		expect(store.get(PROVIDER_ID, "cron-session-provider")).toMatchObject({
+			title: "daily-summary",
+			tag: "cron",
+		});
+		expect(
+			store.get(OTHER_PROVIDER_ID, "cron-session-provider"),
+		).toBeUndefined();
+		expect(store.listCronRunsByTitle("daily-summary", { limit: 1 })).toEqual([
+			{
+				providerId: PROVIDER_ID,
+				sessionId: "cron-session-provider",
+				ranAt: 1234,
+				resultText: "cron summary",
 			},
 		]);
 

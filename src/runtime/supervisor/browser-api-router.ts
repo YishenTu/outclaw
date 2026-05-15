@@ -319,6 +319,20 @@ export async function handleBrowserApiRequest(
 			return Response.json(browserApi.getAgentActiveSession(agentId));
 		}
 
+		const chatModelsMatch = url.pathname.match(
+			/^\/api\/agents\/([^/]+)\/chat-models$/,
+		);
+		if (chatModelsMatch) {
+			if (req.method !== "GET") {
+				return jsonError("Method not allowed", 405);
+			}
+			if (!browserApi.listAgentChatModels) {
+				return jsonError("Chat model catalog is not configured", 404);
+			}
+			const agentId = decodeURIComponent(chatModelsMatch[1] ?? "");
+			return Response.json(await browserApi.listAgentChatModels(agentId));
+		}
+
 		const codingLinksMatch = url.pathname.match(
 			/^\/api\/agents\/([^/]+)\/sessions\/([^/]+)\/([^/]+)\/coding-links$/,
 		);

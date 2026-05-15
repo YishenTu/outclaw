@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
 	extractError,
+	type ModelSelectMessage,
 	parseMessage,
 	type ServerEvent,
 } from "../../../common/protocol.ts";
@@ -17,6 +18,7 @@ import {
 	openRuntimeSocket,
 	sendRequestSkills,
 	sendRuntimeCommand,
+	sendRuntimeModelSelect,
 	sendRuntimePrompt,
 } from "../../runtime-client/index.ts";
 import type { ComposerImageAttachment } from "../attachments/composer-images.ts";
@@ -68,6 +70,7 @@ export interface WebSocketContextValue {
 	) => Promise<boolean>;
 	sendPromptToAgent: (agent: AgentEntry, prompt: string) => boolean;
 	sendCommand: (command: string) => boolean;
+	sendModelSelect: (selection: Omit<ModelSelectMessage, "type">) => boolean;
 	switchAgent: (agentName: string) => boolean;
 	switchSession: (agentName: string, session: SessionEntry) => boolean;
 	refreshSidebar: () => void;
@@ -82,6 +85,7 @@ const WebSocketContext = createContext<WebSocketContextValue>({
 	sendBrowserPromptToAgent: async () => false,
 	sendPromptToAgent: () => false,
 	sendCommand: () => false,
+	sendModelSelect: () => false,
 	switchAgent: () => false,
 	switchSession: () => false,
 	refreshSidebar: () => {},
@@ -161,6 +165,25 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			return false;
 		}
 	}, []);
+
+	const sendModelSelect = useCallback(
+		(selection: Omit<ModelSelectMessage, "type">): boolean => {
+			const ws = wsRef.current;
+			if (!isRuntimeSocketOpen(ws)) {
+				useRuntimeStore.getState().setError("Runtime disconnected");
+				return false;
+			}
+
+			try {
+				sendRuntimeModelSelect(ws, selection);
+				return true;
+			} catch (error) {
+				useRuntimeStore.getState().setError(extractError(error));
+				return false;
+			}
+		},
+		[],
+	);
 
 	const sidebarRefreshCoordinator = useMemo(
 		() =>
@@ -394,6 +417,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			sendBrowserPromptToAgent,
 			sendPromptToAgent,
 			sendCommand,
+			sendModelSelect,
 			switchAgent,
 			switchSession,
 			refreshSidebar,
@@ -403,6 +427,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			refreshSidebar,
 			connectionStatus,
 			sendCommand,
+			sendModelSelect,
 			sendPrompt,
 			sendBrowserPrompt,
 			sendBrowserPromptToAgent,

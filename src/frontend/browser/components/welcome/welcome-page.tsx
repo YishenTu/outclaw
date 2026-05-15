@@ -1,6 +1,4 @@
 import { type ReactNode, useEffect, useMemo } from "react";
-import type { EffortLevel } from "../../../../common/commands.ts";
-import type { ModelAlias } from "../../../../common/models.ts";
 import { randomTagline } from "../../../../common/taglines.ts";
 import type { ComposerImageAttachment } from "../../attachments/composer-images.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
@@ -10,6 +8,7 @@ import { useRuntimeStore } from "../../stores/runtime.ts";
 import { useSessionsStore } from "../../stores/sessions.ts";
 import { useWorkspaceViewStore } from "../../stores/workspace-view.ts";
 import { MessageInput } from "../chat/composer/message-input.tsx";
+import type { ChatModelSelection } from "../chat/model-selector.tsx";
 import { WelcomeAgentPicker } from "./welcome-agent-picker.tsx";
 import { resolveWelcomeAgentId } from "./welcome-agent-selection.ts";
 
@@ -54,7 +53,7 @@ export function WelcomePageView({ input }: WelcomePageViewProps) {
 }
 
 export function WelcomePage() {
-	const { sendBrowserPromptToAgent, sendCommand } = useWs();
+	const { sendBrowserPromptToAgent, sendModelSelect } = useWs();
 	const openWorkspace = useWorkspaceViewStore((state) => state.openWorkspace);
 	const agents = useAgentsStore((state) => state.agents);
 	const activeAgentId = useAgentsStore((state) => state.activeAgentId);
@@ -116,12 +115,12 @@ export function WelcomePage() {
 		return sent;
 	}
 
-	function handleModelChange(nextModel: ModelAlias) {
-		return sendCommand(`/model ${nextModel}`);
+	function handleModelChange(selection: ChatModelSelection) {
+		return sendModelSelect(selection);
 	}
 
-	function handleEffortChange(nextEffort: EffortLevel) {
-		return sendCommand(`/thinking ${nextEffort}`);
+	function handleEffortChange(selection: ChatModelSelection) {
+		return sendModelSelect(selection);
 	}
 
 	return (
@@ -132,6 +131,8 @@ export function WelcomePage() {
 					disabled={connectionStatus !== "connected" || selectedAgent === null}
 					interruptible={false}
 					sessionKey={sessionKey}
+					agentId={selectedAgentId}
+					providerId={providerId}
 					model={model}
 					effort={effort}
 					onModelChange={handleModelChange}

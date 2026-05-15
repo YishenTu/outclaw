@@ -2,7 +2,6 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { EffortLevel } from "../../common/commands.ts";
 import {
 	getModelAliasMetadata,
-	MODELS,
 	modelAliasForModel,
 } from "../../common/models.ts";
 import {
@@ -16,7 +15,13 @@ import { loadSharedEnv } from "./env.ts";
 
 export interface GlobalConfig {
 	autoCompact: boolean;
-	autoTitle: {
+	/**
+	 * Optional global title-generation model. When omitted, the runtime
+	 * disables generated titles and keeps the deterministic fallback title.
+	 * The MVP supports any Claude alias and `gpt-5.5` as the Codex title
+	 * model; provider routing is inferred through the chat model catalog.
+	 */
+	autoTitle?: {
 		model: string;
 	};
 	heartbeat: {
@@ -101,9 +106,10 @@ export function updateGlobalConfig(
 }
 
 function globalConfigFromDocument(document: ConfigDocument): GlobalConfig {
+	const autoTitleModel = resolveAutoTitleModel(document);
 	return {
 		autoCompact: document.autoCompact ?? DEFAULTS.autoCompact,
-		autoTitle: { model: resolveAutoTitleModel(document) },
+		...(autoTitleModel ? { autoTitle: { model: autoTitleModel } } : {}),
 		heartbeat: {
 			intervalMinutes:
 				document.heartbeat?.intervalMinutes ??
@@ -117,14 +123,16 @@ function globalConfigFromDocument(document: ConfigDocument): GlobalConfig {
 	};
 }
 
-function resolveAutoTitleModel(document: ConfigDocument): string {
+function resolveAutoTitleModel(document: ConfigDocument): string | undefined {
 	const autoTitle = document.autoTitle;
 	const rawModel =
 		autoTitle && typeof autoTitle.model === "string"
 			? autoTitle.model.trim()
 			: "";
+	// Empty or omitted disables generated titles entirely. The runtime keeps
+	// the deterministic fallback title and skips AutoTitleCoordinator.
 	if (!rawModel) {
-		return MODELS.haiku.id;
+		return undefined;
 	}
 
 	const alias = getModelAliasMetadata(rawModel);
@@ -132,6 +140,12 @@ function resolveAutoTitleModel(document: ConfigDocument): string {
 		return alias.id;
 	}
 	if (modelAliasForModel(rawModel)) {
+		return rawModel;
+	}
+	// MVP Codex title model — locked to `gpt-5.5` because that is the only
+	// Codex id explicitly verified through `model/list`. Broader provider
+	// catalog routing arrives with the chat model catalog API.
+	if (rawModel === "gpt-5.5") {
 		return rawModel;
 	}
 

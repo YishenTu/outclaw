@@ -1,10 +1,12 @@
 import { unlinkSync } from "node:fs";
+import { effortLevelsForModel } from "../../../common/commands.ts";
+import { MODEL_ALIAS_LIST, type ModelAlias } from "../../../common/models.ts";
 import {
 	extractError,
 	type Facade,
 	type FacadeEvent,
+	type ProviderModelInfo,
 	type RunParams,
-	type SkillInfo,
 } from "../../../common/protocol.ts";
 import {
 	type LoadClaudeHistory,
@@ -18,7 +20,7 @@ import {
 } from "./prompt-input.ts";
 import { buildClaudeSdkOptions } from "./sdk-options.ts";
 import { ensureClaudeSkillsSymlink } from "./setup.ts";
-import { cleanupClaudeSessionFile, probeClaudeSkills } from "./skill-probe.ts";
+import { cleanupClaudeSessionFile } from "./skill-probe.ts";
 import { normalizeClaudeStream } from "./stream-normalizer.ts";
 
 type SdkQueryFn = (params: {
@@ -45,7 +47,6 @@ interface ClaudeAdapterOptions {
 
 export class ClaudeAdapter implements Facade {
 	readonly providerId = "claude";
-	private skills: SkillInfo[] = [];
 	private readonly sdk?: ClaudeAdapterSdk;
 	private cachedSdk?: ClaudeAdapterSdk;
 	private readonly claudeProjectsDir?: string;
@@ -62,15 +63,19 @@ export class ClaudeAdapter implements Facade {
 		this.unlinkFile = options.unlinkFile ?? unlinkSync;
 	}
 
-	async getSkills(cwd?: string): Promise<SkillInfo[]> {
-		if (this.skills.length > 0) {
-			return this.skills;
-		}
-		return this.probeSkills(cwd);
-	}
-
 	prepareWorkspace(promptHomeDir: string): void {
 		ensureClaudeSkillsSymlink(promptHomeDir);
+	}
+
+	/**
+	 * Static Claude model catalog. The Claude adapter has no remote
+	 * `model/list` to query — the runtime keeps the alias registry in
+	 * `src/common/models.ts`, and this method projects that registry into the
+	 * provider-neutral `ProviderModelInfo` shape so chat composers can offer
+	 * Claude and Codex models from one unified catalog.
+	 */
+	async listModels(): Promise<ProviderModelInfo[]> {
+		return MODEL_ALIAS_LIST.map((alias) => describeClaudeModel(alias));
 	}
 
 	async readHistory(sessionId: string) {
@@ -119,9 +124,6 @@ export class ClaudeAdapter implements Facade {
 				conversation,
 				model: params.model,
 				stream: params.stream,
-				onSkills: (skills) => {
-					this.skills = skills;
-				},
 			})) {
 				if (event.type === "session_initialized" || event.type === "done") {
 					ephemeralSessionId ??= event.sessionId;
@@ -144,17 +146,6 @@ export class ClaudeAdapter implements Facade {
 		}
 	}
 
-	private async probeSkills(cwd?: string): Promise<SkillInfo[]> {
-		const sdk = await this.loadSdk();
-		this.skills = await probeClaudeSkills({
-			cwd,
-			query: sdk.query,
-			sleep: this.sleep,
-			unlinkFile: this.unlinkFile,
-		});
-		return this.skills;
-	}
-
 	private async loadSdk(): Promise<ClaudeAdapterSdk> {
 		if (this.sdk) return this.sdk;
 		if (this.cachedSdk) return this.cachedSdk;
@@ -174,3 +165,34 @@ function waitFor(ms: number): Promise<void> {
 		setTimeout(resolve, ms);
 	});
 }
+
+function describeClaudeModel(alias: ModelAlias): ProviderModelInfo {
+	const supportedEfforts = effortLevelsForModel(alias);
+	const defaultEffort = supportedEfforts.includes("medium")
+		? "medium"
+		: (supportedEfforts[0] ?? "medium");
+	return {
+		id: alias,
+		model: alias,
+		displayName: CLAUDE_MODEL_DISPLAY_NAMES[alias] ?? alias,
+		description: CLAUDE_MODEL_DESCRIPTIONS[alias] ?? "",
+		isDefault: alias === DEFAULT_CLAUDE_MODEL,
+		defaultReasoningEffort: defaultEffort,
+		supportedReasoningEfforts: [...supportedEfforts],
+		serviceTiers: [],
+	};
+}
+
+const DEFAULT_CLAUDE_MODEL: ModelAlias = "opus";
+
+const CLAUDE_MODEL_DISPLAY_NAMES: Record<ModelAlias, string> = {
+	opus: "Claude Opus 4.7 (1M)",
+	sonnet: "Claude Sonnet",
+	haiku: "Claude Haiku",
+};
+
+const CLAUDE_MODEL_DESCRIPTIONS: Record<ModelAlias, string> = {
+	opus: "Most capable Claude model.",
+	sonnet: "Balanced Claude model.",
+	haiku: "Fast Claude model.",
+};

@@ -221,7 +221,7 @@ describe("sendBrowserPromptToAgent", () => {
 
 		expect(sent).toBe(true);
 		expect(calls).toEqual([
-			"command:/session sdk-existing",
+			"command:/session claude/sdk-existing",
 			"browser:hello again:1",
 		]);
 	});
@@ -261,7 +261,7 @@ describe("sendBrowserPromptToAgent", () => {
 			"active:agent-beta",
 			"name:beta",
 			"clear",
-			"command:/session sdk-existing",
+			"command:/session claude/sdk-existing",
 			"browser:hello beta:1",
 		]);
 	});
@@ -343,7 +343,7 @@ describe("sendBrowserPromptToAgent", () => {
 			runtimeSessionId: "sdk-other",
 			sendCommand: (command) => {
 				calls.push(`command:${command}`);
-				return command !== "/session sdk-existing";
+				return command !== "/session claude/sdk-existing";
 			},
 			sendBrowserPrompt: async (prompt, images) => {
 				calls.push(`browser:${prompt}:${images.length}`);
@@ -354,6 +354,6 @@ describe("sendBrowserPromptToAgent", () => {
 		});
 
 		expect(sent).toBe(false);
-		expect(calls).toEqual(["command:/session sdk-existing"]);
+		expect(calls).toEqual(["command:/session claude/sdk-existing"]);
 	});
 });

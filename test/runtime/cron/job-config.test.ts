@@ -31,32 +31,55 @@ describe("parseJobConfig", () => {
 		const yaml = `
 name: test-job
 schedule: "*/5 * * * *"
+model: haiku
 prompt: do something
 `.trim();
 		const job = parseJobConfig(yaml);
 		expect(job.enabled).toBe(true);
 	});
 
-	test("defaults model to undefined when omitted", () => {
+	test("requires an explicit model because cron uses it to resolve provider", () => {
 		const yaml = `
 name: test-job
 schedule: "*/5 * * * *"
 prompt: do something
+			`.trim();
+		expect(() => parseJobConfig(yaml)).toThrow("Missing required field: model");
+	});
+
+	test("rejects unknown or ambiguous cron models", () => {
+		const yaml = `
+name: test-job
+schedule: "*/5 * * * *"
+model: gpt-unknown
+prompt: do something
+		`.trim();
+		expect(() => parseJobConfig(yaml)).toThrow("Invalid model: gpt-unknown");
+	});
+
+	test("accepts the MVP Codex cron model gpt-5.5", () => {
+		const yaml = `
+name: codex-cron
+schedule: "*/5 * * * *"
+model: gpt-5.5
+prompt: do something
 		`.trim();
 		const job = parseJobConfig(yaml);
-		expect(job.model).toBeUndefined();
+		expect(job.model).toBe("gpt-5.5");
 	});
 
 	test("parses a one-time runAt job config", () => {
 		const yaml = `
 name: one-time-job
 runAt: "2026-04-29T09:00:00+08:00"
+model: haiku
 prompt: do something once
 		`.trim();
 		const job = parseJobConfig(yaml);
 		expect(job).toEqual({
 			name: "one-time-job",
 			runAt: "2026-04-29T09:00:00+08:00",
+			model: "haiku",
 			enabled: true,
 			prompt: "do something once",
 		});
@@ -89,6 +112,7 @@ prompt: do something
 		const yaml = `
 name: ambiguous-time-job
 runAt: "2026-04-29T09:00:00"
+model: haiku
 prompt: do something
 		`.trim();
 		expect(() => parseJobConfig(yaml)).toThrow(
@@ -112,6 +136,7 @@ prompt: do something
 		const yaml = `
 name: test-job
 schedule: "*/5 * * * *"
+model: haiku
 effort: high
 prompt: do something
 		`.trim();
@@ -123,6 +148,7 @@ prompt: do something
 		const yaml = `
 name: test-job
 schedule: "*/5 * * * *"
+model: haiku
 prompt: do something
 		`.trim();
 		const job = parseJobConfig(yaml);
@@ -133,6 +159,7 @@ prompt: do something
 		const yaml = `
 name: test-job
 schedule: "*/5 * * * *"
+model: haiku
 effort: turbo
 prompt: do something
 		`.trim();
@@ -145,6 +172,7 @@ prompt: do something
 		const yaml = `
 name: tz-job
 schedule: "0 9 * * *"
+model: haiku
 timezone: UTC+8
 prompt: do something
 		`.trim();
@@ -156,6 +184,7 @@ prompt: do something
 		const yaml = `
 name: tz-job
 schedule: "0 9 * * *"
+model: haiku
 timezone: UTC
 prompt: do something
 		`.trim();
@@ -167,6 +196,7 @@ prompt: do something
 		const yaml = `
 name: test-job
 schedule: "*/5 * * * *"
+model: haiku
 prompt: do something
 		`.trim();
 		const job = parseJobConfig(yaml);
@@ -177,6 +207,7 @@ prompt: do something
 		const yaml = `
 name: test-job
 schedule: "*/5 * * * *"
+model: haiku
 timezone: America/New_York
 prompt: do something
 		`.trim();
@@ -187,6 +218,7 @@ prompt: do something
 		const yaml = `
 name: test-job
 schedule: "*/5 * * * *"
+model: haiku
 timezone: UTC+99
 prompt: do something
 		`.trim();
@@ -197,6 +229,7 @@ prompt: do something
 		const yaml = `
 name: notify-job
 schedule: "*/5 * * * *"
+model: haiku
 telegramUserId: 123
 prompt: do something
 	`.trim();
@@ -236,6 +269,7 @@ schedule: "0 9 * * *"
 		const yaml = `
 name: disabled-job
 schedule: "0 9 * * *"
+model: haiku
 enabled: false
 prompt: do something
 `.trim();
@@ -261,6 +295,7 @@ prompt: do something
 			`
 name: one-time-job
 runAt: "2026-04-29T09:00:00+08:00"
+model: haiku
 enabled: true
 prompt: do something once
 		`.trim(),

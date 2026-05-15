@@ -10,7 +10,10 @@ import { copyTelegramFile } from "./frontend/telegram/files/storage.ts";
 import { createTelegramBotManager } from "./frontend/telegram/index.ts";
 import { discoverAgents } from "./runtime/agents/discover-agents.ts";
 import { createAgentRuntime } from "./runtime/application/create-agent-runtime.ts";
-import { createBrowserApi } from "./runtime/browser/create-browser-api.ts";
+import {
+	type BrowserChatProviderCatalog,
+	createBrowserApi,
+} from "./runtime/browser/create-browser-api.ts";
 import {
 	ChatCodingLinkStore,
 	CODING_STORAGE_OWNER_ID,
@@ -97,7 +100,14 @@ function startMultiAgentDaemon(
 	const codingRepositories = new CodingRepositoryStore(layout.dbPath);
 	const chatCodingLinks = new ChatCodingLinkStore(layout.dbPath);
 	const codingEvents = new CodingSessionEventHub();
-	const codingFacade = new CodexAdapter();
+	// Shared Codex adapter for both Chat mode and Code mode. A local probe
+	// against codex-cli 0.130.0 confirmed one app-server process can run
+	// concurrent Codex threads for the same and different agent cwds without
+	// cwd/config leakage. Each thread carries its own agent workspace cwd, so
+	// the topology choice is just an adapter-process choice — sharing avoids
+	// launching multiple app-server processes.
+	const codexAdapter = new CodexAdapter();
+	const codingFacade = codexAdapter;
 	const codingService = createCodingService({
 		facade: codingFacade,
 		repositories: codingRepositories,
@@ -107,16 +117,52 @@ function startMultiAgentDaemon(
 	});
 	const transcriptReadersByAgent = new Map<
 		string,
-		| ((sessionId: string) => ReturnType<ClaudeAdapter["readTranscript"]>)
+		| ((
+				providerId: string,
+				sessionId: string,
+		  ) => Promise<
+				Awaited<ReturnType<ClaudeAdapter["readTranscript"]>> | undefined
+		  >)
 		| undefined
+	>();
+	const chatProvidersByAgent = new Map<
+		string,
+		readonly BrowserChatProviderCatalog[]
 	>();
 	const runtimes = agents.map((agent) => {
 		const facade = new ClaudeAdapter({ autoCompact: config.autoCompact });
 		facade.prepareWorkspace(agent.promptHomeDir);
+		// Materialize the Codex provider view of the agent workspace (skills
+		// symlink + .codex/config.toml) so Codex Chat threads can load the
+		// Outclaw-owned project layer once the workspace is trusted. The
+		// trust step itself runs lazily inside CodexAdapter.run() before
+		// the first Codex Chat thread for the workspace — that path is
+		// async and the daemon entry is sync.
+		codexAdapter.prepareWorkspace(agent.promptHomeDir);
 		transcriptReadersByAgent.set(
 			agent.agentId,
-			facade.readTranscript?.bind(facade),
+			async (providerId, sessionId) => {
+				if (providerId === "claude") {
+					return await facade.readTranscript(sessionId);
+				}
+				if (providerId === "codex") {
+					return await codexAdapter.readTranscript(sessionId);
+				}
+				return undefined;
+			},
 		);
+		chatProvidersByAgent.set(agent.agentId, [
+			{
+				providerId: "claude",
+				displayName: "Claude",
+				listModels: () => facade.listModels(),
+			},
+			{
+				providerId: "codex",
+				displayName: "Codex",
+				listModels: () => codexAdapter.listModels(),
+			},
+		]);
 
 		return createAgentRuntime({
 			agentId: agent.agentId,
@@ -125,6 +171,11 @@ function startMultiAgentDaemon(
 			cronDir: join(agent.homeDir, "cron"),
 			defaultEffort: config.thinkingEffort,
 			facade,
+			providers: [
+				{ providerId: "claude", displayName: "Claude", facade },
+				{ providerId: "codex", displayName: "Codex", facade: codexAdapter },
+			],
+			defaultProviderId: "claude",
 			getFrontendNotice: () => {
 				const rolloverNotice = agentStores
 					.get(agent.agentId)
@@ -172,6 +223,7 @@ function startMultiAgentDaemon(
 				};
 			}),
 			chatCodingLinks,
+			chatProvidersByAgent,
 			coding: {
 				startPrompt: codingService.runtime.startPrompt.bind(
 					codingService.runtime,
@@ -203,11 +255,14 @@ function startMultiAgentDaemon(
 			getRememberedAgentId: () => stateStore.getLastInteractiveAgentId(),
 			gitRoot: layout.homeDir,
 			homeDir: layout.homeDir,
-			ignoredGitPaths: agents.map((agent) =>
+			ignoredGitPaths: agents.flatMap((agent) => [
 				relative(layout.homeDir, join(agent.promptHomeDir, ".claude", "skills"))
 					.split(sep)
 					.join("/"),
-			),
+				relative(layout.homeDir, join(agent.promptHomeDir, ".codex", "skills"))
+					.split(sep)
+					.join("/"),
+			]),
 			readTranscriptsByAgent: transcriptReadersByAgent,
 			storesByAgent: agentStores,
 		}),

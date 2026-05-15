@@ -1,16 +1,5 @@
 import type { SkillInfo } from "../../../common/protocol.ts";
 
-interface ClaudeSkillConversation extends AsyncIterable<unknown> {
-	supportedCommands(): Promise<{ name: string; description: string }[]>;
-}
-
-interface ClaudeSkillProbeOptions {
-	cwd?: string;
-	query(params: { prompt: string; options?: unknown }): ClaudeSkillConversation;
-	sleep: (ms: number) => Promise<void>;
-	unlinkFile: (path: string) => void;
-}
-
 const HIDDEN_SKILLS = new Set([
 	"batch",
 	"claude-api",
@@ -20,49 +9,6 @@ const HIDDEN_SKILLS = new Set([
 	"simplify",
 	"update-config",
 ]);
-
-export async function probeClaudeSkills(
-	options: ClaudeSkillProbeOptions,
-): Promise<SkillInfo[]> {
-	const abortController = new AbortController();
-	let sessionId: string | undefined;
-	let skills: SkillInfo[] = [];
-
-	try {
-		const conversation = options.query({
-			prompt: "",
-			options: {
-				abortController,
-				cwd: options.cwd,
-				permissionMode: "bypassPermissions",
-				allowDangerouslySkipPermissions: true,
-			},
-		});
-
-		for await (const event of conversation) {
-			if (isClaudeInitEvent(event)) {
-				sessionId = event.session_id;
-				skills = await extractClaudeSkills(conversation, event);
-				abortController.abort();
-				break;
-			}
-		}
-	} catch {
-		// Probe is best-effort; swallow abort errors.
-	}
-
-	if (sessionId) {
-		await cleanupClaudeSessionFile(
-			{
-				sleep: options.sleep,
-				unlinkFile: options.unlinkFile,
-			},
-			options.cwd,
-			sessionId,
-		);
-	}
-	return skills;
-}
 
 export async function extractClaudeSkills(
 	conversation: {
@@ -81,20 +27,6 @@ export async function extractClaudeSkills(
 	} catch {
 		return [...skillNames].map((name) => ({ name, description: "" }));
 	}
-}
-
-function isClaudeInitEvent(event: unknown): event is {
-	type: "system";
-	subtype: "init";
-	session_id?: string;
-	skills?: string[];
-} {
-	if (!event || typeof event !== "object") {
-		return false;
-	}
-
-	const record = event as Record<string, unknown>;
-	return record.type === "system" && record.subtype === "init";
 }
 
 export async function cleanupClaudeSessionFile(

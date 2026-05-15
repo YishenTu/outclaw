@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
 import {
 	type CodingSessionEvent,
+	type DisplayMessage,
 	extractError,
 	type Facade,
 	type FacadeEvent,
@@ -8,16 +8,22 @@ import {
 	type ProviderModelInfo,
 	type ProviderSkillInfo,
 	type RunParams,
+	type RuntimeInstructionPolicy,
+	type TranscriptTurn,
 } from "../../../common/protocol.ts";
 import {
 	type CodexAppServerClientOptions,
 	createCodexAppServerClient,
 } from "./app-server-client.ts";
-import { CodexNotificationQueue } from "./notification-queue.ts";
 import {
-	normalizeCodexJsonlEvents,
-	normalizeCodexTurnNotifications,
-} from "./stream-normalizer.ts";
+	loadCodexJsonlTranscript,
+	projectCodexChatDisplayMessages,
+	projectCodexChatTranscriptTurns,
+} from "./history.ts";
+import { formatGptDisplayName } from "./model-naming.ts";
+import { CodexNotificationQueue } from "./notification-queue.ts";
+import { ensureCodexAgentWorkspace } from "./setup.ts";
+import { normalizeCodexTurnNotifications } from "./stream-normalizer.ts";
 import type {
 	CodexAppServerClient,
 	CodexModelListResponse,
@@ -26,7 +32,6 @@ import type {
 	CodexSkillsListResult,
 	CodexThread,
 	CodexThreadListResult,
-	CodexThreadReadResult,
 	CodexThreadResumeResult,
 	CodexThreadStartResult,
 	CodexTurnStartResult,
@@ -40,9 +45,9 @@ interface CodexAdapterOptions {
 }
 
 const DEFAULT_CODEX_REASONING_SUMMARY = "auto";
-const CODEX_CODE_MODE_APPROVAL_POLICY = "never";
-const CODEX_CODE_MODE_THREAD_SANDBOX = "danger-full-access";
-const CODEX_CODE_MODE_TURN_SANDBOX_POLICY = { type: "dangerFullAccess" };
+const CODEX_YOLO_APPROVAL_POLICY = "never";
+const CODEX_YOLO_THREAD_SANDBOX = "danger-full-access";
+const CODEX_YOLO_TURN_SANDBOX_POLICY = { type: "dangerFullAccess" };
 const CODEX_THREAD_LIST_SOURCE_KINDS = [
 	"cli",
 	"vscode",
@@ -67,10 +72,59 @@ export class CodexAdapter implements Facade {
 		(update: ProviderCodingSessionUpdate) => void
 	>();
 	private codingSessionUpdateUnsubscribe?: () => void;
+	private readonly trustedAgentHomes = new Set<string>();
 
 	constructor(options: CodexAdapterOptions = {}) {
 		this.injectedClient = options.client;
 		this.appServerOptions = options.appServer;
+	}
+
+	prepareWorkspace(promptHomeDir: string): void {
+		ensureCodexAgentWorkspace(promptHomeDir);
+	}
+
+	/**
+	 * Idempotently mark an agent workspace as a trusted Codex project so the
+	 * agent-local `.codex/config.toml` is honored. The trust entry is persisted
+	 * into the active Codex home by upserting the `projects` table and reloaded
+	 * into the running app-server process. Writing the whole project map entry
+	 * keeps dotted directory names such as `.outclaw` inside one TOML key. After
+	 * writing, the adapter verifies the project layer is visible by reading
+	 * `config/read { cwd: agentHome }`.
+	 */
+	async ensureProjectTrusted(agentHome: string): Promise<void> {
+		if (this.trustedAgentHomes.has(agentHome)) {
+			return;
+		}
+		const client = await this.loadClient();
+		await client.initialize();
+		await client.request("config/batchWrite", {
+			edits: [
+				{
+					keyPath: "projects",
+					value: {
+						[agentHome]: {
+							trust_level: "trusted",
+						},
+					},
+					mergeStrategy: "upsert",
+				},
+			],
+			reloadUserConfig: true,
+		});
+		const readback = await client.request<unknown>("config/read", {
+			cwd: agentHome,
+		});
+		// Verify the project layer is actually loaded before caching the
+		// trust state. Without this, the cache could mark a workspace as
+		// trusted even though Codex silently fell back to the user-global
+		// config (e.g. if a future version changes the trust contract).
+		if (!projectLayerLoaded(readback)) {
+			throw new Error(
+				`Codex project layer not loaded for ${agentHome} after trust; expected personality and [features] from agent .codex/config.toml`,
+			);
+		}
+		this.trustedAgentHomes.add(agentHome);
 	}
 
 	async dispose(): Promise<void> {
@@ -98,8 +152,8 @@ export class CodexAdapter implements Facade {
 				}
 				models.push({
 					id: entry.id,
-					model: entry.model,
-					displayName: entry.displayName,
+					model: entry.model.toLowerCase(),
+					displayName: formatGptDisplayName(entry.displayName),
 					description: entry.description,
 					isDefault: entry.isDefault,
 					defaultReasoningEffort: entry.defaultReasoningEffort,
@@ -138,17 +192,38 @@ export class CodexAdapter implements Facade {
 	async readCodingSessionEvents(
 		sessionId: string,
 	): Promise<CodingSessionEvent[]> {
-		const client = await this.loadClient();
-		await client.initialize();
-		const thread = await client.request<CodexThreadReadResult>("thread/read", {
-			threadId: sessionId,
-			includeTurns: false,
-		});
-		if (!thread.thread.path) {
-			return [];
+		const { events } = await this.loadJsonlTranscript(sessionId);
+		return events;
+	}
+
+	/**
+	 * Chat-mode history. Reads the same Codex JSONL transcript Code Mode uses
+	 * but projects only chat-relevant rows (user/assistant text, reasoning).
+	 * Tool/command/file-change traces remain in the coding-session projection.
+	 */
+	async readHistory(sessionId: string): Promise<DisplayMessage[]> {
+		const { events } = await this.loadJsonlTranscript(sessionId);
+		return projectCodexChatDisplayMessages(events);
+	}
+
+	async readReplay(sessionId: string): Promise<DisplayMessage[]> {
+		return this.readHistory(sessionId);
+	}
+
+	async readTranscript(sessionId: string): Promise<TranscriptTurn[]> {
+		const { events } = await this.loadJsonlTranscript(sessionId);
+		const turns = projectCodexChatTranscriptTurns(events);
+		if (turns === null) {
+			throw new Error(
+				`Codex chat transcript export requires durable per-row timestamps; session ${sessionId} has none in its JSONL log`,
+			);
 		}
-		const content = await readFile(thread.thread.path, "utf8");
-		return normalizeCodexJsonlEvents(content, { sessionId: thread.thread.id });
+		return turns;
+	}
+
+	private async loadJsonlTranscript(sessionId: string) {
+		const client = await this.loadClient();
+		return loadCodexJsonlTranscript({ client, sessionId });
 	}
 
 	async steerCodingSession(params: {
@@ -267,6 +342,16 @@ export class CodexAdapter implements Facade {
 
 		try {
 			await client.initialize();
+			// Chat-mode threads load `cwd/.codex/config.toml` via Codex's
+			// trusted-project mechanism. Ensure the workspace is trusted
+			// before the first thread/start or thread/resume for it; the
+			// step is idempotent and cached per agent home.
+			if (
+				params.cwd &&
+				params.instructionPolicy?.mode === "runtime_constructed"
+			) {
+				await this.ensureProjectTrusted(params.cwd);
+			}
 			const threadResult = params.resume
 				? await client.request<CodexThreadResumeResult>(
 						"thread/resume",
@@ -476,10 +561,67 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 		: undefined;
 }
 
+/**
+ * Outclaw passes a provider-neutral instruction policy on every run. The Codex
+ * adapter owns the Codex-specific wire shape that policy maps to:
+ *
+ * - `provider_default` is the Code Mode / provider-default coding-instruction
+ *   path. Codex's own coding instructions, agent workspace `AGENTS.md`, and
+ *   `CODEX_HOME/AGENTS.md` may all load; the adapter sets no `baseInstructions`
+ *   and no project-doc suppression.
+ * - `runtime_constructed` is Chat mode. The Outclaw system prompt becomes
+ *   `baseInstructions`, and `config.project_doc_max_bytes = 0` suppresses the
+ *   agent workspace `AGENTS.md` so it is not loaded a second time as a Codex
+ *   project doc on top of the Outclaw prompt that already includes it.
+ *   `CODEX_HOME/AGENTS.md` is allowed for the MVP.
+ */
+function applyInstructionPolicy(
+	payload: Record<string, unknown>,
+	policy: RuntimeInstructionPolicy | undefined,
+): void {
+	if (!policy || policy.mode !== "runtime_constructed") {
+		return;
+	}
+	if (!policy.systemPrompt) {
+		throw new Error(
+			"Codex Chat instructionPolicy.mode is runtime_constructed but systemPrompt is empty",
+		);
+	}
+	payload.baseInstructions = policy.systemPrompt;
+	const existingConfig = (payload.config ?? {}) as Record<string, unknown>;
+	payload.config = {
+		...existingConfig,
+		project_doc_max_bytes: 0,
+	};
+}
+
+/**
+ * Inspect a `config/read { cwd: agentHome }` response and decide whether it
+ * reports the Outclaw-owned project layer (the `.codex/config.toml` written
+ * by `ensureCodexAgentWorkspace`). Check exact template values, not merely the
+ * presence of keys, because the user's global Codex config may also define
+ * `personality` and `[features]`.
+ */
+function projectLayerLoaded(readback: unknown): boolean {
+	const root = asRecord(readback);
+	if (!root) {
+		return false;
+	}
+	const config = asRecord(root.config) ?? root;
+	if (!config) {
+		return false;
+	}
+	if (config.personality !== "friendly") {
+		return false;
+	}
+	const features = asRecord(config.features);
+	return features?.multi_agent === false && features.memories === false;
+}
+
 function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
-		approvalPolicy: CODEX_CODE_MODE_APPROVAL_POLICY,
-		sandbox: CODEX_CODE_MODE_THREAD_SANDBOX,
+		approvalPolicy: CODEX_YOLO_APPROVAL_POLICY,
+		sandbox: CODEX_YOLO_THREAD_SANDBOX,
 		experimentalRawEvents: true,
 	};
 
@@ -489,9 +631,7 @@ function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 	if (params.cwd) {
 		payload.cwd = params.cwd;
 	}
-	if (params.systemPrompt) {
-		payload.baseInstructions = params.systemPrompt;
-	}
+	applyInstructionPolicy(payload, params.instructionPolicy);
 	if (params.ephemeral !== undefined) {
 		payload.ephemeral = params.ephemeral;
 	}
@@ -505,8 +645,8 @@ function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 function buildThreadResumeParams(params: RunParams): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
 		threadId: params.resume,
-		approvalPolicy: CODEX_CODE_MODE_APPROVAL_POLICY,
-		sandbox: CODEX_CODE_MODE_THREAD_SANDBOX,
+		approvalPolicy: CODEX_YOLO_APPROVAL_POLICY,
+		sandbox: CODEX_YOLO_THREAD_SANDBOX,
 		experimentalRawEvents: true,
 	};
 
@@ -516,9 +656,7 @@ function buildThreadResumeParams(params: RunParams): Record<string, unknown> {
 	if (params.cwd) {
 		payload.cwd = params.cwd;
 	}
-	if (params.systemPrompt) {
-		payload.baseInstructions = params.systemPrompt;
-	}
+	applyInstructionPolicy(payload, params.instructionPolicy);
 	if (params.serviceTier) {
 		payload.serviceTier = params.serviceTier;
 	}
@@ -534,8 +672,8 @@ function buildTurnStartParams(
 	const payload: Record<string, unknown> = {
 		threadId,
 		input,
-		approvalPolicy: CODEX_CODE_MODE_APPROVAL_POLICY,
-		sandboxPolicy: CODEX_CODE_MODE_TURN_SANDBOX_POLICY,
+		approvalPolicy: CODEX_YOLO_APPROVAL_POLICY,
+		sandboxPolicy: CODEX_YOLO_TURN_SANDBOX_POLICY,
 		summary: DEFAULT_CODEX_REASONING_SUMMARY,
 	};
 

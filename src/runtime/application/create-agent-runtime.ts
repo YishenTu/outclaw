@@ -17,10 +17,25 @@ import {
 import { startMemoryIndexWatcher } from "../memory/memory-index-watcher.ts";
 import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import { RolloverScheduler } from "../rollover/scheduler.ts";
+import { listAgentSkills } from "../skills/list-agent-skills.ts";
 import type { WsClient } from "../transport/client-hub.ts";
 import { createRuntimeController } from "./create-runtime-controller.ts";
+import {
+	type PromptProviderResolver,
+	singleFacadeResolver,
+} from "./prompt-execution/prompt-runner.ts";
 import { SessionService } from "./session-service.ts";
 import { RuntimeState } from "./state/runtime-state.ts";
+
+/**
+ * One backend chat provider available to a runtime. Composition owns the
+ * facade instances; runtime modules never import provider adapters directly.
+ */
+export interface RuntimeProvider {
+	providerId: string;
+	displayName: string;
+	facade: Facade;
+}
 
 interface CreateAgentRuntimeOptions {
 	agentId: string;
@@ -42,7 +57,24 @@ interface CreateAgentRuntimeOptions {
 		text: string;
 	}) => Promise<void> | void;
 	defaultEffort?: EffortLevel;
+	/**
+	 * Primary chat facade. With single-provider runtimes this is the only
+	 * facade. With multi-provider runtimes this is the default; the full
+	 * provider set is supplied via `providers`/`defaultProviderId`, and
+	 * `facade` MUST equal the default provider's facade.
+	 */
 	facade: Facade;
+	/**
+	 * Optional explicit provider set for multi-provider chat. When omitted,
+	 * the runtime treats `facade` as the only available provider.
+	 */
+	providers?: ReadonlyArray<RuntimeProvider>;
+	/**
+	 * Optional default chat provider id. When omitted, defaults to
+	 * `facade.providerId`. Must match one entry in `providers` when that
+	 * argument is provided.
+	 */
+	defaultProviderId?: string;
 	getFrontendNotice?: () => FrontendNotice | undefined;
 	heartbeat?: Config["heartbeat"];
 	name: string;
@@ -132,6 +164,7 @@ export function createAgentRuntime(
 	options: CreateAgentRuntimeOptions,
 ): AgentRuntime {
 	const facade = options.facade;
+	const providerResolver = buildProviderResolver(options);
 	let activeSessionChanged:
 		| ((event: {
 				activeSessionId?: string;
@@ -158,13 +191,18 @@ export function createAgentRuntime(
 		onSessionStateChange: () => noteRolloverStateChange(),
 	});
 	const workspaceCwd = options.cwd;
+	const promptHomeDir = options.promptHomeDir;
 	const controller = createRuntimeController({
 		agentId: options.agentId,
 		autoTitle: options.autoTitle,
 		canSendToClient: options.canSendToClient,
 		cwd: options.cwd,
 		facade,
+		providers: providerResolver,
 		getFrontendNotice: options.getFrontendNotice,
+		listSkills: promptHomeDir
+			? () => listAgentSkills(promptHomeDir)
+			: undefined,
 		listWorkspaceFiles: workspaceCwd
 			? () => listWorkspaceFiles(workspaceCwd)
 			: undefined,
@@ -173,12 +211,12 @@ export function createAgentRuntime(
 		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
 		deliverRolloverNotice: options.deliverRolloverNotice,
-		promptHomeDir: options.promptHomeDir,
+		promptHomeDir,
 		sessions,
 		state,
+		store: options.store,
 	});
 	const coding = options.coding ?? createUnconfiguredCodingRuntime();
-	const promptHomeDir = options.promptHomeDir;
 	const heartbeat =
 		promptHomeDir && options.heartbeat
 			? new HeartbeatScheduler({
@@ -223,12 +261,11 @@ export function createAgentRuntime(
 			? new CronScheduler({
 					cronDir: options.cronDir,
 					runAgent: createCronAgentRunner({
-						facade,
+						providers: providerResolver,
 						promptHomeDir: options.promptHomeDir,
 						cwd: options.cwd ?? process.cwd(),
 					}),
 					onResult: (event) => controller.broadcastCronResult(event),
-					getDefaultModel: () => controller.currentModel,
 					getDefaultEffort: () => state.defaultEffort,
 					resolveTelegramChatId: options.resolveCronTelegramChatId,
 				})
@@ -253,7 +290,7 @@ export function createAgentRuntime(
 			return controller.currentModel;
 		},
 		get providerId() {
-			return facade.providerId;
+			return controller.getStatusEvent().providerId ?? facade.providerId;
 		},
 		getStatusEvent() {
 			return controller.getStatusEvent();
@@ -305,6 +342,46 @@ export function createAgentRuntime(
 				})();
 			}
 			return stopPromise;
+		},
+	};
+}
+
+function buildProviderResolver(
+	options: CreateAgentRuntimeOptions,
+): PromptProviderResolver {
+	if (!options.providers || options.providers.length === 0) {
+		// Single-provider runtime: every providerId resolves to the same
+		// facade. Auto-title and cron routing infer a provider id from the
+		// model id (`claude` vs `codex`); when the caller wired only one
+		// facade there is no ambiguity to police, and rejecting the
+		// inferred id would crash on every Claude alias whose facade
+		// happens to advertise a different providerId (e.g. test mocks).
+		return singleFacadeResolver(options.facade);
+	}
+	const byId = new Map(
+		options.providers.map((provider) => [provider.providerId, provider.facade]),
+	);
+	const defaultProviderId =
+		options.defaultProviderId ?? options.facade.providerId;
+	if (!byId.has(defaultProviderId)) {
+		throw new Error(
+			`Default provider ${defaultProviderId} is not present in the runtime provider set`,
+		);
+	}
+	if (!byId.has(options.facade.providerId)) {
+		throw new Error(
+			`Primary facade providerId ${options.facade.providerId} must be one of the configured providers`,
+		);
+	}
+	return {
+		getFacade: (providerId: string) => {
+			const found = byId.get(providerId);
+			if (!found) {
+				throw new Error(
+					`Provider ${providerId} is not configured in this runtime`,
+				);
+			}
+			return found;
 		},
 	};
 }

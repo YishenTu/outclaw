@@ -366,6 +366,7 @@ export function normalizeCodexJsonlEvents(
 		if (!row || !payload) {
 			continue;
 		}
+		const timestamp = readJsonlRowTimestamp(row);
 		const rowType = typeof row.type === "string" ? row.type : undefined;
 		const payloadType =
 			typeof payload.type === "string" ? payload.type : undefined;
@@ -392,6 +393,7 @@ export function normalizeCodexJsonlEvents(
 							type: "user_prompt",
 							text: userPromptText,
 							sessionId: options.sessionId,
+							...(timestamp !== undefined ? { timestamp } : {}),
 						});
 					} else if (payload.role === "assistant") {
 						if (text) {
@@ -399,10 +401,11 @@ export function normalizeCodexJsonlEvents(
 								type: "text",
 								text,
 								sessionId: options.sessionId,
+								...(timestamp !== undefined ? { timestamp } : {}),
 							});
 						}
 						if (payload.phase === "final_answer") {
-							recordJsonlDone(events, options.sessionId, 0);
+							recordJsonlDone(events, options.sessionId, 0, timestamp);
 						}
 					}
 					break;
@@ -414,6 +417,7 @@ export function normalizeCodexJsonlEvents(
 							type: "thinking",
 							text,
 							sessionId: options.sessionId,
+							...(timestamp !== undefined ? { timestamp } : {}),
 						});
 					}
 					break;
@@ -586,6 +590,7 @@ export function normalizeCodexJsonlEvents(
 						events,
 						options.sessionId,
 						readJsonlDurationMs(payload),
+						timestamp,
 					);
 					break;
 				}
@@ -655,10 +660,41 @@ function readJsonlDurationMs(payload: Record<string, unknown>): number {
 	return typeof durationMs === "number" && durationMs >= 0 ? durationMs : 0;
 }
 
+function readJsonlRowTimestamp(
+	row: Record<string, unknown>,
+): number | undefined {
+	return readTimestampMs(row.timestamp ?? row.createdAt ?? row.created_at);
+}
+
+function readTimestampMs(value: unknown): number | undefined {
+	if (typeof value === "string") {
+		const parsedDate = Date.parse(value);
+		if (Number.isFinite(parsedDate)) {
+			return parsedDate;
+		}
+		const parsedNumber = Number(value);
+		return Number.isFinite(parsedNumber)
+			? normalizeUnixTimestampMs(parsedNumber)
+			: undefined;
+	}
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return normalizeUnixTimestampMs(value);
+	}
+	return undefined;
+}
+
+function normalizeUnixTimestampMs(value: number): number | undefined {
+	if (value < 0) {
+		return undefined;
+	}
+	return value < 10_000_000_000 ? Math.round(value * 1000) : Math.round(value);
+}
+
 function recordJsonlDone(
 	events: CodingSessionEvent[],
 	sessionId: string,
 	durationMs: number,
+	timestamp?: number,
 ): void {
 	const currentTurnDone = findCurrentTurnDone(events, sessionId);
 	if (currentTurnDone) {
@@ -666,12 +702,19 @@ function recordJsonlDone(
 			currentTurnDone.durationMs,
 			durationMs,
 		);
+		if (timestamp !== undefined) {
+			currentTurnDone.timestamp = Math.max(
+				currentTurnDone.timestamp ?? timestamp,
+				timestamp,
+			);
+		}
 		return;
 	}
 	events.push({
 		type: "done",
 		sessionId,
 		durationMs,
+		...(timestamp !== undefined ? { timestamp } : {}),
 	});
 }
 

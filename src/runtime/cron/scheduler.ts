@@ -40,7 +40,6 @@ interface CronSchedulerOptions {
 		effort?: EffortLevel,
 	) => Promise<string | { sessionId?: string; text: string }>;
 	onResult: (result: CronExecutionResult) => Promise<void> | void;
-	getDefaultModel: () => string;
 	getDefaultEffort: () => EffortLevel;
 	resolveTelegramChatId?: (config: CronJobConfig) => number | undefined;
 	watchPollIntervalMs?: number;
@@ -71,7 +70,6 @@ export class CronScheduler {
 		this.options = options;
 		this.executionPolicy = new CronExecutionPolicy({
 			getDefaultEffort: options.getDefaultEffort,
-			getDefaultModel: options.getDefaultModel,
 			onResult: options.onResult,
 			runAgent: options.runAgent,
 		});

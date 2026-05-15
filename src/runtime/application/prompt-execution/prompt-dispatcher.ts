@@ -87,7 +87,16 @@ interface PromptDispatcherOptions {
 		} & HeartbeatResult,
 	) => Promise<void> | void;
 	promptRunner: PromptRunner;
-	readTranscript?: (sessionId: string) => Promise<TranscriptTurn[]>;
+	/**
+	 * Per-prompt transcript reader. Called with the completed run's prompt
+	 * context so the dispatcher can resolve the right provider facade for
+	 * the session that just finished. Returning undefined skips the
+	 * transcript refresh for that run.
+	 */
+	readTranscript?: (
+		sessionId: string,
+		context: RuntimePromptContext,
+	) => Promise<TranscriptTurn[]> | undefined;
 	sessions: SessionService;
 	state: RuntimeState;
 	streamingState: StreamingStateStore;
@@ -124,7 +133,7 @@ export class PromptDispatcher {
 		const observedSessionId = context.resumeSessionId;
 		const isVisible = () => context.isVisible();
 		if (observedSessionId) {
-			this.options.streamingState.start(observedSessionId);
+			this.options.streamingState.start(context.providerId, observedSessionId);
 		}
 
 		if (
@@ -186,7 +195,11 @@ export class PromptDispatcher {
 
 			task.onEvent?.(event);
 			if (observedSessionId) {
-				this.options.streamingState.recordEvent(observedSessionId, event);
+				this.options.streamingState.recordEvent(
+					context.providerId,
+					observedSessionId,
+					event,
+				);
 			}
 			if (task.source === "heartbeat") {
 				heartbeatBuffer.push(event);
@@ -211,6 +224,7 @@ export class PromptDispatcher {
 				} else {
 					this.options.sessions.recordBackgroundCompletion({
 						event,
+						providerId: context.providerId,
 						model: storedModel,
 						ocSessionId: context.ocSessionId,
 						source: toStoredSessionSource(task),
@@ -228,13 +242,17 @@ export class PromptDispatcher {
 				emit,
 				model: runModel,
 				ocSessionId: context.ocSessionId,
+				providerId: context.providerId,
 				resume: context.resumeSessionId,
 				serviceTier: task.serviceTierOverride,
 				task,
 			});
 		} finally {
 			if (observedSessionId) {
-				this.options.streamingState.clear(observedSessionId);
+				this.options.streamingState.clear(
+					context.providerId,
+					observedSessionId,
+				);
 			}
 		}
 
@@ -255,10 +273,17 @@ export class PromptDispatcher {
 
 		if (completedEvent) {
 			try {
-				await this.options.sessions.refreshTranscript(
-					completedEvent.sessionId,
-					this.options.readTranscript,
-				);
+				const readTranscript = this.options.readTranscript;
+				if (readTranscript) {
+					await this.options.sessions.refreshTranscript(
+						context.providerId,
+						completedEvent.sessionId,
+						async (sessionId) => {
+							const turns = await readTranscript(sessionId, context);
+							return turns ?? [];
+						},
+					);
+				}
 			} catch (err) {
 				console.error(
 					`Failed to refresh transcript search snapshot: ${extractError(err)}`,

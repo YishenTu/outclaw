@@ -19,6 +19,10 @@ import type { ClientHub, WsClient } from "../transport/client-hub.ts";
 interface HandleRuntimeSettingsCommandOptions {
 	command: string;
 	hub: ClientHub;
+	selectProviderModel?: (selection: {
+		model: string;
+		providerId: string;
+	}) => void;
 	state: RuntimeState;
 	ws: WsClient;
 }
@@ -57,7 +61,24 @@ function handleModelCommand(
 	modelArg: string | undefined,
 ) {
 	if (!modelArg) {
-		options.hub.send(options.ws, buildModelChangedEvent(options.state.model));
+		options.hub.send(
+			options.ws,
+			buildModelChangedEvent(options.state.model, options.state.providerId),
+		);
+		return;
+	}
+
+	const providerSelection = parseProviderModelArg(modelArg);
+	if (providerSelection) {
+		if (!options.selectProviderModel) {
+			sendError(
+				options.hub,
+				options.ws,
+				`Invalid model: ${modelArg}. Valid: ${MODEL_ALIAS_LIST.join(", ")}`,
+			);
+			return;
+		}
+		options.selectProviderModel(providerSelection);
 		return;
 	}
 
@@ -93,10 +114,14 @@ function handleModelCommand(
 
 	const previousEffort = options.state.effort;
 	options.state.setModel(modelArg as ModelAlias);
-	options.hub.broadcast(buildModelChangedEvent(modelArg));
+	options.hub.broadcast(
+		buildModelChangedEvent(modelArg, options.state.providerId),
+	);
 
 	if (options.state.effort !== previousEffort) {
-		options.hub.broadcast(buildEffortChangedEvent(options.state.effort));
+		options.hub.broadcast(
+			buildEffortChangedEvent(options.state.effort, options.state.providerId),
+		);
 	}
 
 	options.hub.broadcast(options.state.createStatusEvent());
@@ -107,7 +132,10 @@ function handleThinkingCommand(
 	effortArg: string | undefined,
 ) {
 	if (!effortArg) {
-		options.hub.send(options.ws, buildEffortChangedEvent(options.state.effort));
+		options.hub.send(
+			options.ws,
+			buildEffortChangedEvent(options.state.effort, options.state.providerId),
+		);
 		return;
 	}
 
@@ -120,7 +148,10 @@ function handleThinkingCommand(
 		return;
 	}
 
-	if (!isEffortAllowedForModel(effortArg, options.state.model)) {
+	if (
+		isModelAlias(options.state.model) &&
+		!isEffortAllowedForModel(effortArg, options.state.model)
+	) {
 		sendError(
 			options.hub,
 			options.ws,
@@ -130,17 +161,39 @@ function handleThinkingCommand(
 	}
 
 	options.state.setEffort(effortArg);
-	options.hub.broadcast(buildEffortChangedEvent(effortArg));
+	options.hub.broadcast(
+		buildEffortChangedEvent(effortArg, options.state.providerId),
+	);
 }
 
 function sendError(hub: ClientHub, ws: WsClient, message: string) {
 	hub.send(ws, { type: "error", message });
 }
 
-function buildModelChangedEvent(model: string): ModelChangedEvent {
-	return { type: "model_changed", model };
+function parseProviderModelArg(
+	value: string,
+): { providerId: string; model: string } | undefined {
+	const separator = value.indexOf("/");
+	if (separator <= 0 || separator === value.length - 1) {
+		return undefined;
+	}
+
+	return {
+		providerId: value.slice(0, separator),
+		model: value.slice(separator + 1),
+	};
 }
 
-function buildEffortChangedEvent(effort: string): EffortChangedEvent {
-	return { type: "effort_changed", effort };
+function buildModelChangedEvent(
+	model: string,
+	providerId: string,
+): ModelChangedEvent {
+	return { type: "model_changed", model, providerId };
+}
+
+function buildEffortChangedEvent(
+	effort: string,
+	providerId: string,
+): EffortChangedEvent {
+	return { type: "effort_changed", effort, providerId };
 }

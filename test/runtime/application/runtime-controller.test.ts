@@ -648,19 +648,19 @@ describe("RuntimeController", () => {
 			expect(events[0]?.type).toBe("error");
 		});
 
-		test("request_skills sends skills_update when facade supports it", async () => {
+		test("request_skills sends skills_update when chat skill catalog is configured", async () => {
 			const facade = {
 				providerId: "mock",
 				run: async function* () {},
-				getSkills: async (cwd?: string) => [
-					{ name: "commit", description: `cwd=${cwd ?? "none"}` },
-				],
 			};
 			const state = new RuntimeState(facade.providerId);
 			const sessions = new SessionService(state);
 			const controller = createRuntimeController({
 				facade,
 				cwd: "/tmp/outclaw",
+				listSkills: async () => [
+					{ name: "commit", description: "Create a git commit" },
+				],
 				sessions,
 				state,
 			});
@@ -675,11 +675,11 @@ describe("RuntimeController", () => {
 				.find((event) => event.type === "skills_update");
 			expect(update).toEqual({
 				type: "skills_update",
-				skills: [{ name: "commit", description: "cwd=/tmp/outclaw" }],
+				skills: [{ name: "commit", description: "Create a git commit" }],
 			});
 		});
 
-		test("request_skills is ignored when facade does not expose skills", async () => {
+		test("request_skills is ignored when chat skill catalog is not configured", async () => {
 			const { controller } = createController();
 			const ws = mockWs();
 			controller.handleOpen(ws);
@@ -693,18 +693,18 @@ describe("RuntimeController", () => {
 			expect(updates).toHaveLength(0);
 		});
 
-		test("request_skills reports backend failures to the requester", async () => {
+		test("request_skills reports chat skill catalog failures to the requester", async () => {
 			const facade = {
 				providerId: "mock",
 				run: async function* () {},
-				getSkills: async () => {
-					throw new Error("skills lookup failed");
-				},
 			};
 			const state = new RuntimeState(facade.providerId);
 			const sessions = new SessionService(state);
 			const controller = createRuntimeController({
 				facade,
+				listSkills: async () => {
+					throw new Error("skills lookup failed");
+				},
 				sessions,
 				state,
 			});
@@ -746,7 +746,7 @@ describe("RuntimeController", () => {
 	});
 
 	describe("prompt execution", () => {
-		test("systemPrompt is undefined when promptHomeDir is not set", async () => {
+		test("instructionPolicy falls back to provider_default when promptHomeDir is not set", async () => {
 			const { controller, facade } = createController();
 			const ws = mockWs();
 			controller.handleOpen(ws);
@@ -755,10 +755,11 @@ describe("RuntimeController", () => {
 			await drain(controller, facade);
 
 			const call = facade.allParams.find((p) => p.prompt === "hello");
-			expect(call?.systemPrompt).toBeUndefined();
+			expect(call?.instructionPolicy?.mode).toBe("provider_default");
+			expect(call?.instructionPolicy?.systemPrompt).toBeUndefined();
 		});
 
-		test("passes systemPrompt to facade", async () => {
+		test("passes runtime_constructed instructionPolicy with Outclaw system prompt to facade", async () => {
 			const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
 			const { tmpdir } = await import("node:os");
 			const { join } = await import("node:path");
@@ -777,9 +778,10 @@ describe("RuntimeController", () => {
 				await drain(controller, facade);
 
 				const call = facade.allParams.find((p) => p.prompt === "hello");
-				expect(call?.systemPrompt).toBeDefined();
-				expect(call?.systemPrompt).toContain("be helpful");
-				expect(call?.systemPrompt).toContain("<agents>");
+				expect(call?.instructionPolicy?.mode).toBe("runtime_constructed");
+				expect(call?.instructionPolicy?.systemPrompt).toBeDefined();
+				expect(call?.instructionPolicy?.systemPrompt).toContain("be helpful");
+				expect(call?.instructionPolicy?.systemPrompt).toContain("<agents>");
 			} finally {
 				rmSync(tmp, { recursive: true });
 			}
@@ -946,7 +948,10 @@ describe("RuntimeController", () => {
 			);
 			expect(facade.titleCalls[0]?.images).toBeUndefined();
 			expect(facade.titleCalls[0]?.replyContext).toBeUndefined();
-			expect(facade.titleCalls[0]?.systemPrompt).toContain(
+			expect(facade.titleCalls[0]?.instructionPolicy?.mode).toBe(
+				"runtime_constructed",
+			);
+			expect(facade.titleCalls[0]?.instructionPolicy?.systemPrompt).toContain(
 				"Generate a 3-6 word title",
 			);
 			const latestStatus = browser
@@ -2313,6 +2318,7 @@ describe("RuntimeController", () => {
 			const replayEvents = ws.events().slice(eventCountBeforeReturn);
 			expect(replayEvents).toContainEqual({
 				type: "streaming_sync",
+				providerId: PROVIDER_ID,
 				sdkSessionId: "sdk-alpha",
 				text: "partial sdk-alpha",
 				thinking: "",
@@ -2733,6 +2739,7 @@ describe("RuntimeController", () => {
 
 			expect(restoredClient.events()).toContainEqual({
 				type: "history_replay",
+				providerId: PROVIDER_ID,
 				sdkSessionId: sessionId,
 				messages: [
 					{

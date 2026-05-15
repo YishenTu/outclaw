@@ -12,6 +12,7 @@ function makeJob(config: Partial<CronJobConfig> = {}): {
 			name: "test-job",
 			schedule: "* * * * *",
 			enabled: true,
+			model: "opus",
 			prompt: "say hello",
 			...config,
 		},
@@ -24,7 +25,6 @@ describe("CronExecutionPolicy", () => {
 		const releases: Array<() => void> = [];
 		const policy = new CronExecutionPolicy({
 			getDefaultEffort: () => "medium",
-			getDefaultModel: () => "opus",
 			onResult: () => {},
 			runAgent: async (prompt) => {
 				started.push(prompt);
@@ -53,7 +53,6 @@ describe("CronExecutionPolicy", () => {
 		let called = false;
 		const policy = new CronExecutionPolicy({
 			getDefaultEffort: () => "medium",
-			getDefaultModel: () => "opus",
 			onResult: () => {},
 			runAgent: async () => {
 				called = true;
@@ -81,7 +80,6 @@ describe("CronExecutionPolicy", () => {
 		let releaseAgent: (() => void) | undefined;
 		const policy = new CronExecutionPolicy({
 			getDefaultEffort: () => "medium",
-			getDefaultModel: () => "opus",
 			onResult: (result) => {
 				results.push(result);
 			},
@@ -107,7 +105,6 @@ describe("CronExecutionPolicy", () => {
 		const results: unknown[] = [];
 		const policy = new CronExecutionPolicy({
 			getDefaultEffort: () => "medium",
-			getDefaultModel: () => "opus",
 			onResult: (result) => {
 				results.push(result);
 			},
@@ -138,7 +135,6 @@ describe("CronExecutionPolicy", () => {
 		const results: unknown[] = [];
 		const policy = new CronExecutionPolicy({
 			getDefaultEffort: () => "medium",
-			getDefaultModel: () => "opus",
 			onResult: (result) => {
 				results.push(result);
 			},
@@ -168,7 +164,6 @@ describe("CronExecutionPolicy", () => {
 		const results: Array<{ sessionId?: string }> = [];
 		const policy = new CronExecutionPolicy({
 			getDefaultEffort: () => "medium",
-			getDefaultModel: () => "opus",
 			onResult: (result) => {
 				results.push(result);
 			},
@@ -188,7 +183,6 @@ describe("CronExecutionPolicy", () => {
 		const received: Array<{ model?: string; effort?: EffortLevel }> = [];
 		const policy = new CronExecutionPolicy({
 			getDefaultEffort: () => "xhigh",
-			getDefaultModel: () => "haiku",
 			onResult: () => {},
 			runAgent: async (_prompt, model, effort) => {
 				received.push({ model, effort });
@@ -196,7 +190,7 @@ describe("CronExecutionPolicy", () => {
 			},
 		});
 
-		await policy.runScheduledJob(makeJob());
+		await policy.runScheduledJob(makeJob({ model: "haiku" }));
 		await policy.runScheduledJob(makeJob({ model: "opus", effort: "xhigh" }));
 
 		expect(received).toEqual([

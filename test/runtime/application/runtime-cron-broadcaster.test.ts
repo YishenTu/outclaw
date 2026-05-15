@@ -39,6 +39,7 @@ function createSessionsRecorder() {
 	const recorded: Array<{
 		jobName: string;
 		model: string;
+		providerId?: string;
 		resultText?: string;
 		failure?: {
 			failedAt: number;
@@ -54,6 +55,7 @@ function createSessionsRecorder() {
 			recordCronRun(params: {
 				jobName: string;
 				model: string;
+				providerId?: string;
 				resultText?: string;
 				failure?: {
 					failedAt: number;
@@ -102,6 +104,7 @@ describe("RuntimeCronBroadcaster", () => {
 			{
 				jobName: "daily",
 				model: "haiku",
+				providerId: "mock",
 				sessionId: "cron-session-123",
 				ranAt: expect.any(Number),
 			},
@@ -170,6 +173,7 @@ describe("RuntimeCronBroadcaster", () => {
 			{
 				jobName: "daily",
 				model: "haiku",
+				providerId: "mock",
 				sessionId: "cron-session-123",
 				ranAt: expect.any(Number),
 			},
@@ -212,6 +216,7 @@ describe("RuntimeCronBroadcaster", () => {
 			{
 				jobName: "daily",
 				model: "haiku",
+				providerId: "mock",
 				sessionId: "cron-session-error",
 				ranAt: expect.any(Number),
 				resultText: "[error] agent exploded",
@@ -234,6 +239,42 @@ describe("RuntimeCronBroadcaster", () => {
 			agentId: "agent-railly",
 			sections: ["cron"],
 		});
+	});
+
+	test("uses the cron result provider when persisting and broadcasting", async () => {
+		const clients = createGateway();
+		const browser = mockWs("browser");
+		clients.handleOpen(browser);
+		const { recorded, sessions } = createSessionsRecorder();
+		const broadcaster = new RuntimeCronBroadcaster({
+			clients,
+			sessions,
+		});
+
+		await broadcaster.broadcastResult({
+			jobName: "daily",
+			model: "gpt-5.5",
+			providerId: "codex",
+			sessionId: "codex-cron-session",
+			text: "summary",
+		});
+
+		expect(recorded).toEqual([
+			{
+				jobName: "daily",
+				model: "gpt-5.5",
+				providerId: "codex",
+				sessionId: "codex-cron-session",
+				ranAt: expect.any(Number),
+			},
+		]);
+		expect(browser.events()).toContainEqual(
+			expect.objectContaining({
+				type: "cron_result",
+				providerId: "codex",
+				sessionId: "codex-cron-session",
+			}),
+		);
 	});
 
 	test("Telegram delivery failures are logged without failing the broadcast", async () => {

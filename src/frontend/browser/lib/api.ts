@@ -1,6 +1,7 @@
 import type { EffortLevel } from "../../../common/commands.ts";
 import type {
 	BrowserAgentsResponse,
+	BrowserChatModelsResponse,
 	BrowserCodingFolderPickerResponse,
 	BrowserCodingModelsResponse,
 	BrowserCodingRepositoryArchiveResponse,
@@ -120,6 +121,14 @@ export async function fetchAgentSessions(
 		url.searchParams.set("query", params.query.trim());
 	}
 	return parseJsonResponse(await fetch(url));
+}
+
+export async function fetchAgentChatModels(
+	agentId: string,
+): Promise<BrowserChatModelsResponse> {
+	return parseJsonResponse(
+		await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat-models`),
+	);
 }
 
 export async function fetchCodingSessions(params: {

@@ -48,6 +48,8 @@ describe("listWorkspaceFiles", () => {
 			writeFileSync(join(root, ".obsidian", "workspace.json"), "");
 			mkdirSync(join(root, ".claude"));
 			writeFileSync(join(root, ".claude", "settings.json"), "");
+			mkdirSync(join(root, ".codex"));
+			writeFileSync(join(root, ".codex", "config.toml"), "");
 			mkdirSync(join(root, ".agents"));
 			writeFileSync(join(root, ".agents", "agent.json"), "");
 			writeFileSync(join(root, ".agent-id"), "agent-railly\n");

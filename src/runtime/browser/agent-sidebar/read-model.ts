@@ -42,21 +42,15 @@ export function listBrowserAgents(params: {
 				const sessionRows =
 					store?.list({
 						limit: BROWSER_SESSION_PAGE_SIZE,
-						providerId: agent.providerId,
 						tag: "chat",
 					}) ?? [];
 				const sessions = sessionRows.map(toBrowserSessionSummary);
-				const activeSessionId = store?.getActiveSessionId(agent.providerId);
+				const activeSession = resolveVisibleActiveChatSession(agent, store);
 				return {
 					agentId: agent.agentId,
 					name: agent.name,
 					terminalRunCommand: agent.terminalRunCommand,
-					activeSession: activeSessionId
-						? {
-								providerId: agent.providerId,
-								sdkSessionId: activeSessionId,
-							}
-						: undefined,
+					activeSession,
 					nextSessionCursor: nextSessionCursor(
 						sessionRows,
 						BROWSER_SESSION_PAGE_SIZE,
@@ -64,5 +58,31 @@ export function listBrowserAgents(params: {
 					sessions,
 				};
 			}),
+	};
+}
+
+export function resolveVisibleActiveChatSession(
+	agent: BrowserApiAgent,
+	store: SessionStore | undefined,
+): { providerId: string; sdkSessionId: string } | undefined {
+	if (!store) {
+		return undefined;
+	}
+
+	const providerId =
+		store.getBlankChatModelSelection()?.providerId ?? agent.providerId;
+	const activeSessionId = store.getActiveSessionId(providerId);
+	if (!activeSessionId) {
+		return undefined;
+	}
+
+	const activeSession = store.get(providerId, activeSessionId);
+	if (!activeSession || activeSession.tag !== "chat") {
+		return undefined;
+	}
+
+	return {
+		providerId,
+		sdkSessionId: activeSessionId,
 	};
 }
