@@ -120,7 +120,6 @@ describe("handleBrowserApiRequest", () => {
 						status: "archived",
 						createdAt: 10,
 						lastActive: 40,
-						archivedAt: 40,
 					},
 				};
 			},

@@ -1023,9 +1023,6 @@ function toCodingRepositoryJson(
 		created_at: new Date(repository.createdAt).toISOString(),
 		last_active: new Date(repository.lastActive).toISOString(),
 		...(repository.remoteUrl ? { remote_url: repository.remoteUrl } : {}),
-		...(repository.archivedAt
-			? { archived_at: new Date(repository.archivedAt).toISOString() }
-			: {}),
 	};
 }
 

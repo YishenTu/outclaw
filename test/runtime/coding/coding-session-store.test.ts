@@ -92,6 +92,7 @@ describe("CodingSessionStore", () => {
 			cwd: "/workspace/outclaw",
 			linkedChatSessionId: "chat-session-1",
 			lifecycleStatus: "open",
+			cascadedFromRepo: false,
 			runStatus: "running",
 			createdAt: 20,
 			lastActive: 20,
@@ -157,6 +158,7 @@ describe("CodingSessionStore", () => {
 				tag: "code",
 				cwd: "/workspace/outclaw",
 				lifecycleStatus: "open",
+				cascadedFromRepo: false,
 				runStatus: "running",
 				createdAt: 30,
 				lastActive: 30,
@@ -400,7 +402,7 @@ describe("CodingSessionStore", () => {
 		sessions.close();
 	});
 
-	test("archives sessions out of the default list and restores them", () => {
+	test("archives sessions out of the default list and restores them without rewriting last_active", () => {
 		const { sessions, codingSessions, repositories } = createStores();
 		const repo = repositories.register({
 			rootCwd: mkdtempSync(join(tmpdir(), "outclaw-code-archive-repo-")),
@@ -422,11 +424,11 @@ describe("CodingSessionStore", () => {
 			runStatus: "idle",
 		});
 
-		codingSessions.archive("codex", "code-archived", 30);
+		codingSessions.archive("codex", "code-archived");
 
 		expect(codingSessions.getDetail("codex", "code-archived")).toMatchObject({
 			lifecycleStatus: "archived",
-			lastActive: 30,
+			lastActive: 10,
 		});
 		expect(
 			codingSessions
@@ -442,41 +444,168 @@ describe("CodingSessionStore", () => {
 				.sessions.map((session) => session.sdkSessionId),
 		).toEqual(["code-archived"]);
 
-		codingSessions.restore("codex", "code-archived", 40);
+		codingSessions.restore("codex", "code-archived");
 
-		expect(
-			codingSessions
-				.list({ repositoryId: repo.id })
-				.sessions.map((session) => session.sdkSessionId),
-		).toEqual(["code-archived", "code-open"]);
+		expect(codingSessions.getDetail("codex", "code-archived")).toMatchObject({
+			lifecycleStatus: "open",
+			lastActive: 10,
+		});
 
 		repositories.close();
 		codingSessions.close();
 		sessions.close();
 	});
 
-	test("does not rewrite last active when lifecycle status is unchanged", () => {
+	test("trashes sessions and restores them without rewriting last_active", () => {
 		const { sessions, codingSessions, repositories } = createStores();
 		const repo = repositories.register({
-			rootCwd: mkdtempSync(join(tmpdir(), "outclaw-code-archive-repo-")),
+			rootCwd: mkdtempSync(join(tmpdir(), "outclaw-code-trash-repo-")),
 			source: "manual",
 			timestamp: 5,
 		});
 		insertCodingSession(sessions, codingSessions, {
-			id: "code-archived",
-			title: "Archived task",
+			id: "code-open",
+			title: "Open task",
+			timestamp: 20,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-trashed",
+			title: "Trashed task",
 			timestamp: 10,
 			repositoryId: repo.id,
 			runStatus: "idle",
 		});
 
-		codingSessions.archive("codex", "code-archived", 30);
-		codingSessions.archive("codex", "code-archived", 40);
+		codingSessions.trash("codex", "code-trashed");
 
-		expect(codingSessions.getDetail("codex", "code-archived")).toMatchObject({
-			lifecycleStatus: "archived",
-			lastActive: 30,
+		expect(codingSessions.getDetail("codex", "code-trashed")).toMatchObject({
+			lifecycleStatus: "trashed",
+			lastActive: 10,
 		});
+		expect(
+			codingSessions
+				.list({ repositoryId: repo.id })
+				.sessions.map((session) => session.sdkSessionId),
+		).toEqual(["code-open"]);
+		expect(
+			codingSessions
+				.list({ repositoryId: repo.id, lifecycleStatus: "archived" })
+				.sessions.map((session) => session.sdkSessionId),
+		).toEqual([]);
+		expect(
+			codingSessions
+				.list({ repositoryId: repo.id, lifecycleStatus: "trashed" })
+				.sessions.map((session) => session.sdkSessionId),
+		).toEqual(["code-trashed"]);
+
+		codingSessions.restore("codex", "code-trashed");
+		expect(
+			codingSessions
+				.list({ repositoryId: repo.id })
+				.sessions.map((session) => session.sdkSessionId),
+		).toEqual(["code-open", "code-trashed"]);
+
+		repositories.close();
+		codingSessions.close();
+		sessions.close();
+	});
+
+	test("cascades archive across a repository's open sessions and restores only those", () => {
+		const { sessions, codingSessions, repositories } = createStores();
+		const repo = repositories.register({
+			rootCwd: mkdtempSync(join(tmpdir(), "outclaw-code-cascade-repo-")),
+			source: "manual",
+			timestamp: 5,
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-open-1",
+			title: "Open one",
+			timestamp: 30,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-open-2",
+			title: "Open two",
+			timestamp: 20,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-already-archived",
+			title: "Already archived",
+			timestamp: 10,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+		codingSessions.archive("codex", "code-already-archived");
+
+		codingSessions.archiveCascaded(repo.id);
+
+		const archivedIds = codingSessions
+			.list({ repositoryId: repo.id, lifecycleStatus: "archived" })
+			.sessions.map((session) => session.sdkSessionId);
+		expect(archivedIds.sort()).toEqual(
+			["code-already-archived", "code-open-1", "code-open-2"].sort(),
+		);
+
+		codingSessions.restoreCascaded(repo.id);
+
+		const openIds = codingSessions
+			.list({ repositoryId: repo.id })
+			.sessions.map((session) => session.sdkSessionId)
+			.sort();
+		expect(openIds).toEqual(["code-open-1", "code-open-2"]);
+		expect(
+			codingSessions
+				.list({ repositoryId: repo.id, lifecycleStatus: "archived" })
+				.sessions.map((session) => session.sdkSessionId),
+		).toEqual(["code-already-archived"]);
+
+		repositories.close();
+		codingSessions.close();
+		sessions.close();
+	});
+
+	test("purges trashed sessions older than the given threshold", () => {
+		const { sessions, codingSessions, repositories } = createStores();
+		const repo = repositories.register({
+			rootCwd: mkdtempSync(join(tmpdir(), "outclaw-code-purge-repo-")),
+			source: "manual",
+			timestamp: 5,
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-trashed-stale",
+			title: "Trashed stale",
+			timestamp: 10,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-trashed-fresh",
+			title: "Trashed fresh",
+			timestamp: 200,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-open",
+			title: "Open task",
+			timestamp: 50,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+		codingSessions.trash("codex", "code-trashed-stale");
+		codingSessions.trash("codex", "code-trashed-fresh");
+
+		const purged = codingSessions.purgeTrashedBefore(100);
+
+		expect(purged).toBe(1);
+		expect(codingSessions.get("codex", "code-trashed-stale")).toBeUndefined();
+		expect(codingSessions.get("codex", "code-trashed-fresh")).toBeDefined();
+		expect(codingSessions.get("codex", "code-open")).toBeDefined();
 
 		repositories.close();
 		codingSessions.close();

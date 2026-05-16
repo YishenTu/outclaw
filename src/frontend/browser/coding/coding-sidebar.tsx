@@ -1,11 +1,4 @@
-import {
-	FolderInput,
-	GitBranch,
-	PanelLeftOpen,
-	Plus,
-	RotateCcw,
-	X,
-} from "lucide-react";
+import { FolderInput, GitBranch, PanelLeftOpen, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
 	BrowserCodingRepositorySummary,
@@ -17,11 +10,15 @@ import { SidebarRuntimeStatus } from "../components/agent-sidebar/sidebar-runtim
 import { useWs } from "../contexts/websocket-context.tsx";
 import {
 	cloneCodingRepository,
+	fetchCodingRepositories,
 	fetchCodingSessions,
 	pickCodingRepositoryFolder,
 	registerCodingRepository,
 } from "../lib/api.ts";
-import { ArchivedSessionsItem } from "./archived-sessions-item.tsx";
+import {
+	type ArchiveCenterTab,
+	ArchivedSessionsItem,
+} from "./archived-sessions-item.tsx";
 import { ChatCodePillSwitcher } from "./chat-code-pill-switcher.tsx";
 import { CodingCloneModal } from "./coding-clone-modal.tsx";
 import { type RepositorySearchState, useCodingStore } from "./coding-store.ts";
@@ -30,8 +27,10 @@ import { RepositoryItem } from "./repository-item.tsx";
 interface CodingSidebarProps {
 	repositories: BrowserCodingRepositorySummary[];
 	archivedRepositories: BrowserCodingRepositorySummary[];
+	trashedRepositories: BrowserCodingRepositorySummary[];
 	sessionsByRepository: Record<string, BrowserCodingSessionSummary[]>;
 	archivedSessions: BrowserCodingSessionSummary[];
+	trashedSessions: BrowserCodingSessionSummary[];
 	focusedRepositoryId: string | undefined;
 	focusedSession: { providerId: string; sdkSessionId: string } | undefined;
 	onSelectRepository(repositoryId: string): void;
@@ -42,8 +41,13 @@ interface CodingSidebarProps {
 	onCreateRepository(repository: BrowserCodingRepositorySummary): void;
 	onNewSession?(repositoryId: string): void;
 	onArchiveRepository?(repositoryId: string): void;
+	onTrashRepository?(repositoryId: string): void;
 	onRestoreRepository?(repositoryId: string): void;
 	onArchiveSession?(
+		repositoryId: string,
+		session: { providerId: string; sdkSessionId: string },
+	): void;
+	onTrashSession?(
 		repositoryId: string,
 		session: { providerId: string; sdkSessionId: string },
 	): void;
@@ -106,11 +110,21 @@ export function shouldLoadArchivedSessionsOnOpen({
 	return !archivedSessionsLoaded;
 }
 
+export function shouldLoadTrashedSessionsOnOpen({
+	trashedSessionsLoaded,
+}: {
+	trashedSessionsLoaded: boolean;
+}): boolean {
+	return !trashedSessionsLoaded;
+}
+
 export function CodingSidebar({
 	repositories,
 	archivedRepositories,
+	trashedRepositories,
 	sessionsByRepository,
 	archivedSessions,
+	trashedSessions,
 	focusedRepositoryId,
 	focusedSession,
 	onSelectRepository,
@@ -118,8 +132,10 @@ export function CodingSidebar({
 	onCreateRepository,
 	onNewSession,
 	onArchiveRepository,
+	onTrashRepository,
 	onRestoreRepository,
 	onArchiveSession,
+	onTrashSession,
 	onRestoreSession,
 	onRenameSession,
 	onCollapse,
@@ -152,6 +168,13 @@ export function CodingSidebar({
 	const archivedSessionsLoaded = useCodingStore(
 		(state) => state.archivedSessionsLoaded,
 	);
+	const trashedNextCursor = useCodingStore((state) => state.trashedNextCursor);
+	const trashedSearchState = useCodingStore(
+		(state) => state.trashedSearchState,
+	);
+	const trashedSessionsLoaded = useCodingStore(
+		(state) => state.trashedSessionsLoaded,
+	);
 	const appendRepositorySessions = useCodingStore(
 		(state) => state.appendRepositorySessions,
 	);
@@ -160,6 +183,12 @@ export function CodingSidebar({
 	);
 	const appendArchivedSessions = useCodingStore(
 		(state) => state.appendArchivedSessions,
+	);
+	const setTrashedSessions = useCodingStore(
+		(state) => state.setTrashedSessions,
+	);
+	const appendTrashedSessions = useCodingStore(
+		(state) => state.appendTrashedSessions,
 	);
 	const setRepositorySearchResults = useCodingStore(
 		(state) => state.setRepositorySearchResults,
@@ -179,11 +208,13 @@ export function CodingSidebar({
 	const clearArchivedSearch = useCodingStore(
 		(state) => state.clearArchivedSearch,
 	);
+	const setRepositories = useCodingStore((state) => state.setRepositories);
 	const { sendCommand } = useWs();
 	const loadingMoreRepositoriesRef = useRef(new Set<string>());
 	const loadingMoreSearchRef = useRef(new Set<string>());
 	const loadingArchivedRepositoriesRef = useRef(new Set<string>());
 	const loadingMoreArchivedSearchRef = useRef(new Set<string>());
+	const loadingTrashedRef = useRef(false);
 	const pendingSearchByRepositoryRef = useRef<Record<string, string>>({});
 	const pendingArchivedSearchRef = useRef<string | undefined>(undefined);
 
@@ -368,16 +399,87 @@ export function CodingSidebar({
 		],
 	);
 
+	const loadTrashedSessions = useCallback(async () => {
+		if (loadingTrashedRef.current) {
+			return;
+		}
+		loadingTrashedRef.current = true;
+		try {
+			const page = await fetchCodingSessions({
+				limit: 10,
+				lifecycleStatus: "trashed",
+			});
+			setTrashedSessions(page.sessions, page.nextCursor);
+		} catch (error) {
+			console.warn("Failed to load trashed coding sessions", error);
+		} finally {
+			loadingTrashedRef.current = false;
+		}
+	}, [setTrashedSessions]);
+
+	const loadMoreTrashedSessions = useCallback(async () => {
+		const cursor = trashedNextCursor;
+		if (!cursor || loadingTrashedRef.current) {
+			return;
+		}
+		loadingTrashedRef.current = true;
+		try {
+			const page = await fetchCodingSessions({
+				cursor,
+				limit: 10,
+				lifecycleStatus: "trashed",
+			});
+			appendTrashedSessions(page.sessions, page.nextCursor);
+		} catch (error) {
+			console.warn("Failed to load more trashed coding sessions", error);
+		} finally {
+			loadingTrashedRef.current = false;
+		}
+	}, [appendTrashedSessions, trashedNextCursor]);
+
 	const openArchivedSessions = useCallback(() => {
 		setArchivedSessionsModalOpen(true);
 		if (shouldLoadArchivedSessionsOnOpen({ archivedSessionsLoaded })) {
 			void loadArchivedSessions();
 		}
-	}, [archivedSessionsLoaded, loadArchivedSessions]);
+		if (shouldLoadTrashedSessionsOnOpen({ trashedSessionsLoaded })) {
+			void loadTrashedSessions();
+		}
+	}, [
+		archivedSessionsLoaded,
+		loadArchivedSessions,
+		loadTrashedSessions,
+		trashedSessionsLoaded,
+	]);
 
 	const closeArchivedSessions = useCallback(() => {
 		setArchivedSessionsModalOpen(false);
 	}, []);
+
+	const refreshArchiveCenter = useCallback(
+		(tab: ArchiveCenterTab) => {
+			if (tab === "sessions") {
+				void loadArchivedSessions();
+				return;
+			}
+			if (tab === "trash") {
+				void loadTrashedSessions();
+				return;
+			}
+			// Projects tab: refetch the full repository list (including archived
+			// and trashed) so the modal sees Codex-side renames or status flips
+			// from the CLI without waiting for the next visibility change.
+			void fetchCodingRepositories({
+				includeArchived: true,
+				includeTrashed: true,
+			})
+				.then((result) => setRepositories(result.repositories))
+				.catch((error) => {
+					console.warn("Failed to refresh coding repositories", error);
+				});
+		},
+		[loadArchivedSessions, loadTrashedSessions, setRepositories],
+	);
 
 	const closeAddPanel = useCallback(() => {
 		setAddPanelOpen(false);
@@ -523,6 +625,7 @@ export function CodingSidebar({
 									})
 								}
 								onArchiveRepository={() => onArchiveRepository?.(repository.id)}
+								onTrashRepository={() => onTrashRepository?.(repository.id)}
 								onSelectSession={(session) =>
 									openCodingSidebarSessionFromList({
 										repositoryId: repository.id,
@@ -547,6 +650,12 @@ export function CodingSidebar({
 										sdkSessionId: session.sdkSessionId,
 									})
 								}
+								onTrashSession={(session) =>
+									onTrashSession?.(repository.id, {
+										providerId: session.providerId,
+										sdkSessionId: session.sdkSessionId,
+									})
+								}
 								onLoadMore={() => loadMoreSessions(repository.id)}
 								onSearch={(query) => searchSessions(repository.id, query)}
 								onLoadMoreSearch={(query) =>
@@ -563,33 +672,6 @@ export function CodingSidebar({
 							/>
 						);
 					})
-				)}
-				{archivedRepositories.length > 0 && (
-					<div className="mt-3 border-t border-dark-800 pt-2">
-						<div className="px-2 py-1 font-mono-ui text-[10px] uppercase tracking-[0.16em] text-dark-600">
-							Archived projects
-						</div>
-						<div className="space-y-0.5">
-							{archivedRepositories.map((repository) => (
-								<div
-									key={repository.id}
-									className="flex items-center gap-2 rounded px-2 py-1 text-sm text-dark-500"
-								>
-									<div className="min-w-0 flex-1 truncate">
-										{repository.displayName}
-									</div>
-									<button
-										type="button"
-										aria-label={`Restore repository ${repository.displayName}`}
-										onClick={() => onRestoreRepository?.(repository.id)}
-										className="flex shrink-0 items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
-									>
-										<RotateCcw size={13} />
-									</button>
-								</div>
-							))}
-						</div>
-					</div>
 				)}
 			</div>
 
@@ -653,52 +735,112 @@ export function CodingSidebar({
 				</button>
 				<ArchivedSessionsItem
 					isOpen={archivedSessionsModalOpen}
-					repositories={[...repositories, ...archivedRepositories]}
-					sessions={archivedSessions}
+					repositories={[
+						...repositories,
+						...archivedRepositories,
+						...trashedRepositories,
+					]}
+					archivedRepositories={archivedRepositories}
+					trashedRepositories={trashedRepositories}
 					triggerClassName="flex min-w-0 items-center justify-center gap-2 border-l border-dark-800 px-3 py-2 text-dark-400 transition-colors hover:bg-dark-900/40 hover:text-dark-100"
-					{...(archivedNextCursor ? { nextCursor: archivedNextCursor } : {})}
-					{...(archivedSearchState ? { searchState: archivedSearchState } : {})}
-					onOpen={openArchivedSessions}
-					onClose={closeArchivedSessions}
-					onSelectSession={(session) => {
-						if (session.repositoryId) {
-							openCodingSidebarSessionFromList({
-								repositoryId: session.repositoryId,
-								session,
-								onSelectSession,
-								onActivateCenterPanel,
-							});
-						}
-					}}
-					onRenameSession={(session, title) => {
-						if (session.repositoryId) {
-							onRenameSession?.(
-								session.repositoryId,
-								{
+					sessionsTab={{
+						sessions: archivedSessions,
+						emptyLabel: "No archived sessions.",
+						missingMatchLabel: "No matching archived sessions.",
+						loadMoreLabel: "Load more archived sessions",
+						loadMoreSearchLabel: "Load more archived results",
+						searchPlaceholder: "Search archived sessions",
+						...(archivedNextCursor ? { nextCursor: archivedNextCursor } : {}),
+						...(archivedSearchState
+							? { searchState: archivedSearchState }
+							: {}),
+						onSelectSession: (session) => {
+							if (session.repositoryId) {
+								openCodingSidebarSessionFromList({
+									repositoryId: session.repositoryId,
+									session,
+									onSelectSession,
+									onActivateCenterPanel,
+								});
+								setArchivedSessionsModalOpen(false);
+							}
+						},
+						onRenameSession: (session, title) => {
+							if (session.repositoryId) {
+								onRenameSession?.(
+									session.repositoryId,
+									{
+										providerId: session.providerId,
+										sdkSessionId: session.sdkSessionId,
+									},
+									title,
+								);
+							}
+						},
+						onRestoreSession: (session) => {
+							if (session.repositoryId) {
+								onRestoreSession?.(session.repositoryId, {
 									providerId: session.providerId,
 									sdkSessionId: session.sdkSessionId,
-								},
-								title,
-							);
-						}
+								});
+							}
+						},
+						onLoadMore: loadMoreArchivedSessions,
+						onSearch: searchArchivedSessions,
+						onLoadMoreSearch: (query) =>
+							searchArchivedSessions(query, archivedSearchState?.nextCursor),
+						onClearSearch: () => {
+							pendingArchivedSearchRef.current = undefined;
+							clearArchivedSearch();
+						},
 					}}
-					onRestoreSession={(session) => {
-						if (session.repositoryId) {
-							onRestoreSession?.(session.repositoryId, {
-								providerId: session.providerId,
-								sdkSessionId: session.sdkSessionId,
-							});
-						}
+					trashTab={{
+						sessions: trashedSessions,
+						emptyLabel: "Trash is empty.",
+						missingMatchLabel: "No matching trashed sessions.",
+						loadMoreLabel: "Load more trashed sessions",
+						loadMoreSearchLabel: "Load more trashed results",
+						...(trashedNextCursor ? { nextCursor: trashedNextCursor } : {}),
+						...(trashedSearchState ? { searchState: trashedSearchState } : {}),
+						onSelectSession: (session) => {
+							if (session.repositoryId) {
+								openCodingSidebarSessionFromList({
+									repositoryId: session.repositoryId,
+									session,
+									onSelectSession,
+									onActivateCenterPanel,
+								});
+								setArchivedSessionsModalOpen(false);
+							}
+						},
+						onRenameSession: (session, title) => {
+							if (session.repositoryId) {
+								onRenameSession?.(
+									session.repositoryId,
+									{
+										providerId: session.providerId,
+										sdkSessionId: session.sdkSessionId,
+									},
+									title,
+								);
+							}
+						},
+						onRestoreSession: (session) => {
+							if (session.repositoryId) {
+								onRestoreSession?.(session.repositoryId, {
+									providerId: session.providerId,
+									sdkSessionId: session.sdkSessionId,
+								});
+							}
+						},
+						onLoadMore: loadMoreTrashedSessions,
 					}}
-					onLoadMore={loadMoreArchivedSessions}
-					onSearch={searchArchivedSessions}
-					onLoadMoreSearch={(query) =>
-						searchArchivedSessions(query, archivedSearchState?.nextCursor)
+					onRestoreRepository={(repositoryId) =>
+						onRestoreRepository?.(repositoryId)
 					}
-					onClearSearch={() => {
-						pendingArchivedSearchRef.current = undefined;
-						clearArchivedSearch();
-					}}
+					onOpen={openArchivedSessions}
+					onClose={closeArchivedSessions}
+					onRefresh={refreshArchiveCenter}
 				/>
 			</div>
 

@@ -673,7 +673,10 @@ export interface BrowserSessionPageResponse {
 	sessions: BrowserSessionSummary[];
 }
 
-export type BrowserCodingSessionLifecycleStatus = "open" | "archived";
+export type BrowserCodingSessionLifecycleStatus =
+	| "open"
+	| "archived"
+	| "trashed";
 export type BrowserCodingSessionRunStatus =
 	| "idle"
 	| "running"
@@ -735,6 +738,11 @@ export interface BrowserCodingSessionDeleteResponse {
 
 export interface BrowserCodingSessionArchiveResponse {
 	archived: true;
+	session: BrowserCodingSessionSummary;
+}
+
+export interface BrowserCodingSessionTrashResponse {
+	trashed: true;
 	session: BrowserCodingSessionSummary;
 }
 
@@ -840,7 +848,7 @@ export interface BrowserCodingSkillsResponse {
 }
 
 export type BrowserCodingRepositorySource = "auto" | "manual" | "clone";
-export type BrowserCodingRepositoryStatus = "active" | "archived";
+export type BrowserCodingRepositoryStatus = "active" | "archived" | "trashed";
 
 export interface BrowserCodingRepositorySummary {
 	id: string;
@@ -852,7 +860,6 @@ export interface BrowserCodingRepositorySummary {
 	terminalRunCommand?: string;
 	createdAt: number;
 	lastActive: number;
-	archivedAt?: number;
 }
 
 export interface BrowserCodingRepositoryDetail
@@ -864,6 +871,11 @@ export interface BrowserCodingRepositoryListResponse {
 
 export interface BrowserCodingRepositoryArchiveResponse {
 	archived: true;
+	repository: BrowserCodingRepositorySummary;
+}
+
+export interface BrowserCodingRepositoryTrashResponse {
+	trashed: true;
 	repository: BrowserCodingRepositorySummary;
 }
 

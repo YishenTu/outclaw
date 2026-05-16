@@ -296,7 +296,6 @@ describe("browser API client integration", () => {
 						status: "archived",
 						createdAt: 100,
 						lastActive: 400,
-						archivedAt: 400,
 					},
 				};
 			},

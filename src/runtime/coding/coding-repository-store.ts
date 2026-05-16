@@ -9,7 +9,7 @@ import {
 } from "../persistence/session-store/sqlite-file-lifecycle.ts";
 
 export type CodingRepositorySource = "auto" | "manual" | "clone";
-export type CodingRepositoryStatus = "active" | "archived";
+export type CodingRepositoryStatus = "active" | "archived" | "trashed";
 
 export interface CodingRepositoryRecord {
 	id: string;
@@ -21,7 +21,6 @@ export interface CodingRepositoryRecord {
 	terminalRunCommand: string;
 	createdAt: number;
 	lastActive: number;
-	archivedAt?: number;
 }
 
 interface CodingRepositoryStoreOptions {
@@ -38,11 +37,6 @@ interface CodingRepositoryDatabaseRow {
 	terminal_run_command: string;
 	created_at: number;
 	last_active: number;
-	archived_at: number | null;
-}
-
-interface TableColumnInfo {
-	name: string;
 }
 
 export class CodingRepositoryStore {
@@ -82,8 +76,7 @@ export class CodingRepositoryStore {
 					source,
 					status,
 					created_at,
-					last_active,
-					archived_at
+					last_active
 				)
 				VALUES (
 					$id,
@@ -93,8 +86,7 @@ export class CodingRepositoryStore {
 					$source,
 					'active',
 					$now,
-					$now,
-					NULL
+					$now
 				)
 				ON CONFLICT(root_cwd) DO UPDATE SET
 					display_name = $displayName,
@@ -104,8 +96,7 @@ export class CodingRepositoryStore {
 						ELSE $source
 					END,
 					status = 'active',
-					last_active = $now,
-					archived_at = NULL`,
+					last_active = $now`,
 			)
 			.run({
 				$id: randomUUID(),
@@ -135,30 +126,34 @@ export class CodingRepositoryStore {
 		});
 	}
 
-	archive(id: string, timestamp?: number) {
-		const now = timestamp ?? Date.now();
+	archive(id: string) {
 		this.db
 			.query(
 				`UPDATE coding_repositories
-				 SET status = 'archived',
-				     archived_at = $now,
-				     last_active = $now
+				 SET status = 'archived'
 				 WHERE id = $id`,
 			)
-			.run({ $id: id, $now: now });
+			.run({ $id: id });
 	}
 
-	restore(id: string, timestamp?: number) {
-		const now = timestamp ?? Date.now();
+	trash(id: string) {
 		this.db
 			.query(
 				`UPDATE coding_repositories
-				 SET status = 'active',
-				     archived_at = NULL,
-				     last_active = $now
+				 SET status = 'trashed'
 				 WHERE id = $id`,
 			)
-			.run({ $id: id, $now: now });
+			.run({ $id: id });
+	}
+
+	restore(id: string) {
+		this.db
+			.query(
+				`UPDATE coding_repositories
+				 SET status = 'active'
+				 WHERE id = $id`,
+			)
+			.run({ $id: id });
 	}
 
 	get(id: string): CodingRepositoryRecord | undefined {
@@ -174,8 +169,7 @@ export class CodingRepositoryStore {
 						status,
 						terminal_run_command,
 						created_at,
-						last_active,
-						archived_at
+						last_active
 					FROM coding_repositories
 					WHERE id = $id`,
 				)
@@ -196,8 +190,7 @@ export class CodingRepositoryStore {
 						status,
 						terminal_run_command,
 						created_at,
-						last_active,
-						archived_at
+						last_active
 					FROM coding_repositories
 					WHERE root_cwd = $rootCwd`,
 				)
@@ -207,8 +200,21 @@ export class CodingRepositoryStore {
 		);
 	}
 
-	list(options: { includeArchived?: boolean } = {}): CodingRepositoryRecord[] {
-		const where = options.includeArchived ? "" : "WHERE status = 'active'";
+	list(
+		options: { includeArchived?: boolean; includeTrashed?: boolean } = {},
+	): CodingRepositoryRecord[] {
+		const allowed: CodingRepositoryStatus[] = ["active"];
+		if (options.includeArchived) {
+			allowed.push("archived");
+		}
+		if (options.includeTrashed) {
+			allowed.push("trashed");
+		}
+		const placeholders = allowed.map((_, index) => `$state${index}`).join(", ");
+		const params: Record<string, string> = {};
+		for (const [index, state] of allowed.entries()) {
+			params[`$state${index}`] = state;
+		}
 		return (
 			this.db
 				.query(
@@ -221,13 +227,12 @@ export class CodingRepositoryStore {
 						status,
 						terminal_run_command,
 						created_at,
-						last_active,
-						archived_at
+						last_active
 					FROM coding_repositories
-					${where}
+					WHERE status IN (${placeholders})
 					ORDER BY last_active DESC, display_name ASC`,
 				)
-				.all() as CodingRepositoryDatabaseRow[]
+				.all(params) as CodingRepositoryDatabaseRow[]
 		).map(mapRequiredCodingRepositoryRow);
 	}
 
@@ -268,11 +273,15 @@ export function ensureCodingRepositoryStoreSchema(db: Database) {
 		status TEXT NOT NULL,
 		terminal_run_command TEXT NOT NULL DEFAULT '',
 		created_at INTEGER NOT NULL,
-		last_active INTEGER NOT NULL,
-		archived_at INTEGER
+		last_active INTEGER NOT NULL
 	)`);
 
-	const columns = getTableColumns(db, "coding_repositories");
+	// Pre-existing migration for the terminal_run_command column added before
+	// this branch; kept separate from the archive redesign so anyone with an
+	// older local DB still upgrades cleanly.
+	const columns = db
+		.query("PRAGMA table_info(coding_repositories)")
+		.all() as Array<{ name: string }>;
 	if (!columns.some((column) => column.name === "terminal_run_command")) {
 		db.exec(
 			"ALTER TABLE coding_repositories ADD COLUMN terminal_run_command TEXT NOT NULL DEFAULT ''",
@@ -322,10 +331,5 @@ function mapRequiredCodingRepositoryRow(
 		terminalRunCommand: row.terminal_run_command,
 		createdAt: row.created_at,
 		lastActive: row.last_active,
-		...(row.archived_at !== null ? { archivedAt: row.archived_at } : {}),
 	};
-}
-
-function getTableColumns(db: Database, tableName: string): TableColumnInfo[] {
-	return db.query(`PRAGMA table_info(${tableName})`).all() as TableColumnInfo[];
 }

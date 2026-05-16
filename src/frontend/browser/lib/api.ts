@@ -9,6 +9,7 @@ import type {
 	BrowserCodingRepositoryDetail,
 	BrowserCodingRepositoryListResponse,
 	BrowserCodingRepositoryRestoreResponse,
+	BrowserCodingRepositoryTrashResponse,
 	BrowserCodingSessionArchiveResponse,
 	BrowserCodingSessionDeleteResponse,
 	BrowserCodingSessionDetail,
@@ -20,6 +21,7 @@ import type {
 	BrowserCodingSessionResumeResponse,
 	BrowserCodingSessionStartResponse,
 	BrowserCodingSessionStopResponse,
+	BrowserCodingSessionTrashResponse,
 	BrowserCodingSkillsResponse,
 	BrowserConfigResponse,
 	BrowserCronEntry,
@@ -201,6 +203,20 @@ export async function archiveCodingSession(
 	);
 }
 
+export async function trashCodingSession(
+	providerId: string,
+	sdkSessionId: string,
+): Promise<BrowserCodingSessionTrashResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/sessions/${encodeURIComponent(providerId)}/${encodeURIComponent(sdkSessionId)}/trash`,
+			{
+				method: "POST",
+			},
+		),
+	);
+}
+
 export async function deleteCodingSession(
 	providerId: string,
 	sdkSessionId: string,
@@ -325,10 +341,14 @@ export type CodingSessionEventStreamItem = BrowserCodingSessionEvent;
 
 export async function fetchCodingRepositories(params?: {
 	includeArchived?: boolean;
+	includeTrashed?: boolean;
 }): Promise<BrowserCodingRepositoryListResponse> {
 	const url = new URL("/api/coding/repositories", window.location.origin);
 	if (params?.includeArchived) {
 		url.searchParams.set("includeArchived", "true");
+	}
+	if (params?.includeTrashed) {
+		url.searchParams.set("includeTrashed", "true");
 	}
 	return parseJsonResponse(await fetch(url));
 }
@@ -388,6 +408,19 @@ export async function archiveCodingRepository(
 	return parseJsonResponse(
 		await fetch(
 			`/api/coding/repositories/${encodeURIComponent(repositoryId)}/archive`,
+			{
+				method: "POST",
+			},
+		),
+	);
+}
+
+export async function trashCodingRepository(
+	repositoryId: string,
+): Promise<BrowserCodingRepositoryTrashResponse> {
+	return parseJsonResponse(
+		await fetch(
+			`/api/coding/repositories/${encodeURIComponent(repositoryId)}/trash`,
 			{
 				method: "POST",
 			},

@@ -4,6 +4,7 @@ import {
 	ChevronRight,
 	MoreHorizontal,
 	Search,
+	Trash2,
 } from "lucide-react";
 import { type Ref, useEffect, useRef, useState } from "react";
 import type {
@@ -29,12 +30,14 @@ interface RepositoryItemProps {
 	onSelectRepository: () => void;
 	onNewSession: () => void;
 	onArchiveRepository: () => void;
+	onTrashRepository: () => void;
 	onSelectSession: (session: BrowserCodingSessionSummary) => void;
 	onRenameSession: (
 		session: BrowserCodingSessionSummary,
 		title: string,
 	) => void;
 	onArchiveSession: (session: BrowserCodingSessionSummary) => void;
+	onTrashSession: (session: BrowserCodingSessionSummary) => void;
 	onLoadMore: () => void;
 	onSearch: (query: string) => void;
 	onLoadMoreSearch: (query: string) => void;
@@ -52,9 +55,11 @@ export function RepositoryItem({
 	onSelectRepository,
 	onNewSession,
 	onArchiveRepository,
+	onTrashRepository,
 	onSelectSession,
 	onRenameSession,
 	onArchiveSession,
+	onTrashSession,
 	onLoadMore,
 	onSearch,
 	onLoadMoreSearch,
@@ -196,6 +201,10 @@ export function RepositoryItem({
 				actionLabel="Archive"
 				actionRequiresConfirmation={false}
 				actionTone="neutral"
+				onSecondaryAction={() => onTrashSession(session)}
+				secondaryActionLabel="Remove"
+				secondaryActionIcon="trash"
+				secondaryActionTone="danger"
 			/>
 		);
 	}
@@ -281,6 +290,19 @@ export function RepositoryItem({
 								>
 									<Archive size={14} className="shrink-0" />
 									<span>Archive repository</span>
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									aria-label={`Remove repository ${repository.displayName}`}
+									onClick={() => {
+										closeActionsMenu();
+										onTrashRepository();
+									}}
+									className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-danger transition-colors hover:bg-dark-800/70"
+								>
+									<Trash2 size={14} className="shrink-0" />
+									<span>Remove repository</span>
 								</button>
 							</div>
 						)}

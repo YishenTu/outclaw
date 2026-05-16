@@ -13,6 +13,8 @@ import {
 	renameCodingSession,
 	restoreCodingRepository,
 	restoreCodingSession,
+	trashCodingRepository,
+	trashCodingSession,
 } from "../lib/api.ts";
 import { useCodingSessionReconciliationPolling } from "./coding-session-refresh.ts";
 import type { CodingTab } from "./coding-store.ts";
@@ -44,6 +46,7 @@ export function resolveFocusedCodingRepository(
 
 export function resolveFocusedCodingSession(params: {
 	archivedSessions: BrowserCodingSessionSummary[];
+	trashedSessions: BrowserCodingSessionSummary[];
 	focusedSession:
 		| {
 				providerId: string;
@@ -62,6 +65,11 @@ export function resolveFocusedCodingSession(params: {
 				entry.sdkSessionId === params.focusedSession?.sdkSessionId,
 		) ??
 		params.archivedSessions.find(
+			(entry) =>
+				entry.providerId === params.focusedSession?.providerId &&
+				entry.sdkSessionId === params.focusedSession?.sdkSessionId,
+		) ??
+		params.trashedSessions.find(
 			(entry) =>
 				entry.providerId === params.focusedSession?.providerId &&
 				entry.sdkSessionId === params.focusedSession?.sdkSessionId,
@@ -120,7 +128,10 @@ export function useCodingDataLoader(enabled = true) {
 		if (!enabled || repositoriesLoaded) {
 			return;
 		}
-		void fetchCodingRepositories({ includeArchived: true })
+		void fetchCodingRepositories({
+			includeArchived: true,
+			includeTrashed: true,
+		})
 			.then((result) => {
 				setRepositories(result.repositories);
 			})
@@ -184,6 +195,7 @@ export function useCodingData() {
 		(state) => state.sessionsByRepository,
 	);
 	const archivedSessions = useCodingStore((state) => state.archivedSessions);
+	const trashedSessions = useCodingStore((state) => state.trashedSessions);
 	const focusedRepositoryId = useCodingStore(
 		(state) => state.focusedRepositoryId,
 	);
@@ -197,9 +209,15 @@ export function useCodingData() {
 	const upsertArchivedSession = useCodingStore(
 		(state) => state.upsertArchivedSession,
 	);
+	const upsertTrashedSession = useCodingStore(
+		(state) => state.upsertTrashedSession,
+	);
 	const removeSession = useCodingStore((state) => state.removeSession);
 	const removeArchivedSession = useCodingStore(
 		(state) => state.removeArchivedSession,
+	);
+	const removeTrashedSession = useCodingStore(
+		(state) => state.removeTrashedSession,
 	);
 	const renameSession = useCodingStore((state) => state.renameSession);
 	const updateRepository = useCodingStore((state) => state.updateRepository);
@@ -214,6 +232,9 @@ export function useCodingData() {
 	const archivedRepositories = repositories.filter(
 		(entry) => entry.status === "archived",
 	);
+	const trashedRepositories = repositories.filter(
+		(entry) => entry.status === "trashed",
+	);
 	const repository = resolveFocusedCodingRepository(
 		repositories,
 		focusedRepositoryId,
@@ -223,6 +244,7 @@ export function useCodingData() {
 		: [];
 	const session = resolveFocusedCodingSession({
 		archivedSessions,
+		trashedSessions,
 		focusedSession,
 		sessions,
 	});
@@ -244,6 +266,9 @@ export function useCodingData() {
 				// slice, so cache the chosen summary before focusing its tab.
 				upsertArchivedSession(selected);
 			}
+			if (selected.lifecycleStatus === "trashed") {
+				upsertTrashedSession(selected);
+			}
 			openTab({
 				providerId: selected.providerId,
 				sdkSessionId: selected.sdkSessionId,
@@ -254,7 +279,7 @@ export function useCodingData() {
 				}),
 			});
 		},
-		[openTab, upsertArchivedSession],
+		[openTab, upsertArchivedSession, upsertTrashedSession],
 	);
 
 	const handleSelectTab = useCallback(
@@ -393,12 +418,35 @@ export function useCodingData() {
 				return;
 			}
 			removeArchivedSession(target.providerId, target.sdkSessionId);
+			removeTrashedSession(target.providerId, target.sdkSessionId);
 			upsertSession(
 				restored.session.repositoryId ?? repositoryId,
 				restored.session,
 			);
 		},
-		[removeArchivedSession, upsertSession],
+		[removeArchivedSession, removeTrashedSession, upsertSession],
+	);
+
+	const handleTrashSession = useCallback(
+		async (
+			repositoryId: string,
+			target: { providerId: string; sdkSessionId: string },
+		) => {
+			let trashed: Awaited<ReturnType<typeof trashCodingSession>>;
+			try {
+				trashed = await trashCodingSession(
+					target.providerId,
+					target.sdkSessionId,
+				);
+			} catch (error) {
+				console.warn("Failed to trash coding session", error);
+				return;
+			}
+			removeSession(repositoryId, target.providerId, target.sdkSessionId);
+			removeArchivedSession(target.providerId, target.sdkSessionId);
+			upsertTrashedSession(trashed.session);
+		},
+		[removeArchivedSession, removeSession, upsertTrashedSession],
 	);
 
 	const handleArchiveRepository = useCallback(
@@ -408,6 +456,18 @@ export function useCodingData() {
 				updateRepository(result.repository);
 			} catch (error) {
 				console.warn("Failed to archive coding repository", error);
+			}
+		},
+		[updateRepository],
+	);
+
+	const handleTrashRepository = useCallback(
+		async (repositoryId: string) => {
+			try {
+				const result = await trashCodingRepository(repositoryId);
+				updateRepository(result.repository);
+			} catch (error) {
+				console.warn("Failed to trash coding repository", error);
 			}
 		},
 		[updateRepository],
@@ -495,9 +555,13 @@ export function useCodingData() {
 		handleSelectSession,
 		handleSelectTab,
 		handleSessionStarted,
+		handleTrashRepository,
+		handleTrashSession,
 		openTabs,
 		archivedRepositories,
 		archivedSessions,
+		trashedRepositories,
+		trashedSessions,
 		repositories: activeRepositories,
 		repositoriesLoaded,
 		repository,

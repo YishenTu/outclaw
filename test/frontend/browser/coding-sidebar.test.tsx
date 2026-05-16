@@ -29,13 +29,15 @@ function session(): BrowserCodingSessionSummary {
 }
 
 describe("CodingSidebar", () => {
-	test("renders archive beside add repo in the fixed bottom action row", () => {
+	test("renders only add repo and archive in the fixed bottom action row", () => {
 		const html = renderToStaticMarkup(
 			<CodingSidebar
 				repositories={[]}
 				archivedRepositories={[]}
+				trashedRepositories={[]}
 				sessionsByRepository={{}}
 				archivedSessions={[]}
+				trashedSessions={[]}
 				focusedRepositoryId={undefined}
 				focusedSession={undefined}
 				onSelectRepository={NOOP}
@@ -50,6 +52,10 @@ describe("CodingSidebar", () => {
 		expect(html).toContain("grid shrink-0 grid-cols-2 border-t");
 		expect(addRepoIndex).toBeGreaterThan(-1);
 		expect(archiveIndex).toBeGreaterThan(addRepoIndex);
+		expect(html).not.toContain(">Refresh<");
+		expect(html).not.toContain(
+			'aria-label="Refresh coding sessions from Codex"',
+		);
 		expect(html).not.toContain("Archived sessions");
 	});
 

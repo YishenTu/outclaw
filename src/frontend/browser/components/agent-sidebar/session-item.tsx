@@ -23,6 +23,13 @@ interface SessionItemProps {
 	actionRequiresConfirmation?: boolean;
 	actionTone?: SessionItemActionTone;
 	actionVisibility?: SessionItemActionVisibility;
+	// Optional second action surfaced only in the right-click menu — the hover
+	// icon stays single. Used for "Trash" alongside the primary "Archive"
+	// without doubling up affordances visible at rest.
+	onSecondaryAction?: () => void;
+	secondaryActionLabel?: string;
+	secondaryActionIcon?: SessionItemActionIcon;
+	secondaryActionTone?: SessionItemActionTone;
 }
 
 export function SessionItem({
@@ -42,6 +49,10 @@ export function SessionItem({
 	actionRequiresConfirmation = true,
 	actionTone = "danger",
 	actionVisibility = "hover",
+	onSecondaryAction,
+	secondaryActionLabel,
+	secondaryActionIcon,
+	secondaryActionTone = "danger",
 }: SessionItemProps) {
 	const titleInputRef = useRef<HTMLInputElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
@@ -59,6 +70,16 @@ export function SessionItem({
 			: actionIcon === "restore"
 				? RotateCcw
 				: Trash2;
+	const SecondaryActionIcon =
+		secondaryActionIcon === "archive"
+			? Archive
+			: secondaryActionIcon === "restore"
+				? RotateCcw
+				: Trash2;
+	const secondaryActionTextClass =
+		secondaryActionTone === "danger"
+			? "text-danger hover:text-danger"
+			: "text-dark-300 hover:text-dark-100";
 	const resolvedActionAriaLabel =
 		actionAriaLabel ?? `${actionLabel} session ${title}`;
 	const resolvedActionConfirmTitle =
@@ -372,8 +393,26 @@ export function SessionItem({
 						onClick={handleAction}
 						className={`block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-dark-800/70 ${actionTextClass}`}
 					>
-						{actionLabel}
+						<span className="inline-flex items-center gap-2">
+							<ActionIcon size={14} className="shrink-0" />
+							{actionLabel}
+						</span>
 					</button>
+					{onSecondaryAction && secondaryActionLabel && (
+						<button
+							type="button"
+							onClick={() => {
+								setMenuPosition(null);
+								onSecondaryAction();
+							}}
+							className={`block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-dark-800/70 ${secondaryActionTextClass}`}
+						>
+							<span className="inline-flex items-center gap-2">
+								<SecondaryActionIcon size={14} className="shrink-0" />
+								{secondaryActionLabel}
+							</span>
+						</button>
+					)}
 				</div>
 			)}
 		</div>

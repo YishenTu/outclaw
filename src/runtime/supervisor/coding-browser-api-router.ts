@@ -78,7 +78,7 @@ export async function handleCodingBrowserApiRequest(
 	}
 
 	const codingRepositoriesMatch = url.pathname.match(
-		/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive|restore|tree|workspace-files|files|skills|terminal-run-command))?)?$/,
+		/^\/api\/coding\/repositories(?:\/([^/]+)(?:\/(archive|trash|restore|tree|workspace-files|files|skills|terminal-run-command))?)?$/,
 	);
 	if (codingRepositoriesMatch) {
 		return handleCodingRepositoryRequest(
@@ -90,7 +90,7 @@ export async function handleCodingBrowserApiRequest(
 	}
 
 	const codingSessionsMatch = url.pathname.match(
-		/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(archive|restore|resume|events|stop|cancel|status))?)?$/,
+		/^\/api\/coding\/sessions(?:\/([^/]+)\/([^/]+)(?:\/(archive|trash|restore|resume|events|stop|cancel|status))?)?$/,
 	);
 	if (codingSessionsMatch) {
 		return handleCodingSessionRequest(
@@ -120,6 +120,7 @@ async function handleCodingRepositoryRequest(
 			return Response.json(
 				await browserApi.listCodingRepositories({
 					includeArchived: url.searchParams.get("includeArchived") === "true",
+					includeTrashed: url.searchParams.get("includeTrashed") === "true",
 				}),
 			);
 		}
@@ -170,6 +171,16 @@ async function handleCodingRepositoryRequest(
 		return Response.json(
 			await browserApi.archiveCodingRepository(repositoryId),
 		);
+	}
+
+	if (action === "trash") {
+		if (req.method !== "POST") {
+			return jsonError("Method not allowed", 405);
+		}
+		if (!browserApi.trashCodingRepository) {
+			return jsonError("Coding repository API is not configured", 404);
+		}
+		return Response.json(await browserApi.trashCodingRepository(repositoryId));
 	}
 
 	if (action === "restore") {
@@ -334,7 +345,8 @@ async function handleCodingSessionRequest(
 	if (
 		lifecycleStatusParam !== null &&
 		lifecycleStatusParam !== "open" &&
-		lifecycleStatusParam !== "archived"
+		lifecycleStatusParam !== "archived" &&
+		lifecycleStatusParam !== "trashed"
 	) {
 		return jsonError("Invalid coding session lifecycle status", 400);
 	}
@@ -374,6 +386,20 @@ async function handleTargetedCodingSessionRequest(
 		}
 		return Response.json(
 			await browserApi.archiveCodingSession(
+				target.providerId,
+				target.sdkSessionId,
+			),
+		);
+	}
+	if (target.action === "trash") {
+		if (req.method !== "POST") {
+			return jsonError("Method not allowed", 405);
+		}
+		if (!browserApi.trashCodingSession) {
+			return jsonError("Coding session API is not configured", 404);
+		}
+		return Response.json(
+			await browserApi.trashCodingSession(
 				target.providerId,
 				target.sdkSessionId,
 			),

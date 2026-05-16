@@ -31,7 +31,7 @@ describe("CodingRepositoryStore", () => {
 			source: "manual",
 			timestamp: 10,
 		});
-		repositories.archive(first.id, 20);
+		repositories.archive(first.id);
 		const second = repositories.register({
 			rootCwd: link,
 			source: "auto",
@@ -77,7 +77,7 @@ describe("CodingRepositoryStore", () => {
 		repositories.close();
 	});
 
-	test("restores archived repositories without changing their identity", () => {
+	test("archives and trashes repositories without rewriting last_active", () => {
 		const { repositories } = createStore();
 		const root = mkdtempSync(join(tmpdir(), "outclaw-restored-repo-"));
 		const repository = repositories.register({
@@ -87,28 +87,40 @@ describe("CodingRepositoryStore", () => {
 			timestamp: 10,
 		});
 
-		repositories.archive(repository.id, 20);
+		repositories.archive(repository.id);
 		expect(repositories.list()).toEqual([]);
 		expect(repositories.get(repository.id)).toMatchObject({
 			id: repository.id,
 			status: "archived",
-			archivedAt: 20,
+			lastActive: 10,
 		});
+		expect(repositories.get(repository.id)).not.toHaveProperty("archivedAt");
 
-		repositories.restore(repository.id, 30);
+		repositories.restore(repository.id);
 
 		expect(repositories.get(repository.id)).toMatchObject({
 			id: repository.id,
 			status: "active",
-			lastActive: 30,
+			lastActive: 10,
 		});
-		expect(repositories.get(repository.id)).not.toHaveProperty("archivedAt");
-		expect(repositories.list()).toMatchObject([
+		expect(repositories.list({ includeArchived: true })).toMatchObject([
 			{
 				id: repository.id,
 				status: "active",
 			},
 		]);
+
+		repositories.trash(repository.id);
+		expect(repositories.get(repository.id)).toMatchObject({
+			id: repository.id,
+			status: "trashed",
+			lastActive: 10,
+		});
+		expect(repositories.list()).toEqual([]);
+		expect(repositories.list({ includeArchived: true })).toEqual([]);
+		expect(
+			repositories.list({ includeTrashed: true }).map((entry) => entry.id),
+		).toEqual([repository.id]);
 
 		repositories.close();
 	});

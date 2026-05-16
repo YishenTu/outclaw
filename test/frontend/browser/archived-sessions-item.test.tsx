@@ -56,9 +56,20 @@ function repository(
 		createdAt: overrides.createdAt ?? Date.now() - 240_000,
 		lastActive: overrides.lastActive ?? Date.now() - 60_000,
 		...(overrides.remoteUrl ? { remoteUrl: overrides.remoteUrl } : {}),
-		...(overrides.archivedAt ? { archivedAt: overrides.archivedAt } : {}),
 	};
 }
+
+const emptyTab = {
+	sessions: [] as BrowserCodingSessionSummary[],
+	emptyLabel: "empty",
+	missingMatchLabel: "no match",
+	loadMoreLabel: "load",
+	loadMoreSearchLabel: "load search",
+	onSelectSession: NOOP,
+	onRenameSession: NOOP,
+	onRestoreSession: NOOP,
+	onLoadMore: NOOP,
+};
 
 describe("ArchivedSessionsItem", () => {
 	test("renders a compact archive button that opens a dialog", () => {
@@ -67,21 +78,30 @@ describe("ArchivedSessionsItem", () => {
 			<ArchivedSessionsItem
 				isOpen={false}
 				repositories={[repository({})]}
-				sessions={[archived]}
+				sessionsTab={{
+					...emptyTab,
+					sessions: [archived],
+					searchPlaceholder: "Search archived sessions",
+					emptyLabel: "No archived sessions.",
+					missingMatchLabel: "No matching archived sessions.",
+					loadMoreLabel: "Load more archived sessions",
+					loadMoreSearchLabel: "Load more archived results",
+					onSearch: NOOP,
+					onLoadMoreSearch: NOOP,
+					onClearSearch: NOOP,
+				}}
+				trashTab={emptyTab}
+				archivedRepositories={[]}
+				trashedRepositories={[]}
+				onRestoreRepository={NOOP}
 				onOpen={NOOP}
 				onClose={NOOP}
-				onSelectSession={NOOP}
-				onRenameSession={NOOP}
-				onRestoreSession={NOOP}
-				onLoadMore={NOOP}
-				onSearch={NOOP}
-				onLoadMoreSearch={NOOP}
-				onClearSearch={NOOP}
+				onRefresh={NOOP}
 			/>,
 		);
 
 		expect(html).toContain(">Archive<");
-		expect(html).toContain('aria-label="Open archived sessions"');
+		expect(html).toContain('aria-label="Open archive center"');
 		expect(html).toContain('aria-haspopup="dialog"');
 		expect(html).not.toContain('placeholder="Search archived sessions"');
 		expect(html).not.toContain("Archived work");
@@ -104,16 +124,21 @@ describe("ArchivedSessionsItem", () => {
 					repository({ id: "repo-1", displayName: "Outclaw" }),
 					repository({ id: "repo-2", displayName: "Claudian" }),
 				]}
-				sessions={[archived, other]}
+				sessionsTab={{
+					...emptyTab,
+					sessions: [archived, other],
+					searchPlaceholder: "Search archived sessions",
+					onSearch: NOOP,
+					onLoadMoreSearch: NOOP,
+					onClearSearch: NOOP,
+				}}
+				trashTab={emptyTab}
+				archivedRepositories={[]}
+				trashedRepositories={[]}
+				onRestoreRepository={NOOP}
 				onOpen={NOOP}
 				onClose={NOOP}
-				onSelectSession={NOOP}
-				onRenameSession={NOOP}
-				onRestoreSession={NOOP}
-				onLoadMore={NOOP}
-				onSearch={NOOP}
-				onLoadMoreSearch={NOOP}
-				onClearSearch={NOOP}
+				onRefresh={NOOP}
 			/>,
 		);
 
@@ -135,21 +160,26 @@ describe("ArchivedSessionsItem", () => {
 			<ArchivedSessionsItem
 				isOpen={true}
 				repositories={[repository({})]}
-				sessions={[]}
-				searchState={{
-					query: "auth",
-					sessions: [archived],
-					nextCursor: { lastActive: 1, sdkSessionId: "sdk-next" },
+				sessionsTab={{
+					...emptyTab,
+					loadMoreSearchLabel: "Load more archived results",
+					sessions: [],
+					searchState: {
+						query: "auth",
+						sessions: [archived],
+						nextCursor: { lastActive: 1, sdkSessionId: "sdk-next" },
+					},
+					onSearch: NOOP,
+					onLoadMoreSearch: NOOP,
+					onClearSearch: NOOP,
 				}}
+				trashTab={emptyTab}
+				archivedRepositories={[]}
+				trashedRepositories={[]}
+				onRestoreRepository={NOOP}
 				onOpen={NOOP}
 				onClose={NOOP}
-				onSelectSession={NOOP}
-				onRenameSession={NOOP}
-				onRestoreSession={NOOP}
-				onLoadMore={NOOP}
-				onSearch={NOOP}
-				onLoadMoreSearch={NOOP}
-				onClearSearch={NOOP}
+				onRefresh={NOOP}
 			/>,
 		);
 
@@ -173,7 +203,7 @@ describe("ArchivedSessionsItem", () => {
 				isOpen: true,
 			}),
 		).toBe(true);
-		expect(searchRequestKey).toBe("search:auth:100:sdk-next");
+		expect(searchRequestKey).toBe("search:archive:auth:100:sdk-next");
 		expect(archiveRequestKey).toBe("archive:100:sdk-next");
 		expect(
 			shouldRequestObservedArchivedLoadMore({

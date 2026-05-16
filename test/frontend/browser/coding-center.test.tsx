@@ -134,7 +134,6 @@ describe("browser coding center", () => {
 				status: "archived" as const,
 				createdAt: 1,
 				lastActive: 1,
-				archivedAt: 2,
 			},
 		];
 		const archivedSession = {
@@ -159,6 +158,7 @@ describe("browser coding center", () => {
 			resolveFocusedCodingSession({
 				sessions: [],
 				archivedSessions: [archivedSession],
+				trashedSessions: [],
 				focusedSession: {
 					providerId: "codex",
 					sdkSessionId: "archived-session-1",

@@ -30,6 +30,10 @@ export interface CodingService {
 		providerId: string;
 		sdkSessionId: string;
 	}): Promise<void>;
+	trashSession(params: {
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<void>;
 	listModels(): Promise<ProviderModelInfo[]>;
 	listSkills(params: {
 		cwd: string;
@@ -84,14 +88,26 @@ export function createCodingService(
 				}
 			: {}),
 	});
-	const unsubscribeProviderUpdates =
-		opts.facade.subscribeCodingSessionUpdates?.((update) => {
-			syncKnownCodingSessionUpdate(opts, update);
-		});
+	// We intentionally do NOT subscribe to `subscribeCodingSessionUpdates`. The
+	// provider push has proven unreliable in practice, and a partially-delivered
+	// stream would silently mutate local lifecycle state outside the precedence
+	// rules in `syncKnownCodingSessionUpdate`. Inbound sync now flows only
+	// through `reconcileCodingSessions`, which we trigger lazily on user
+	// attention.
 	let stopPromise: Promise<void> | undefined;
 	return {
 		runtime,
 		async archiveSession(params) {
+			if (!isKnownFacadeCodingSession(opts, params)) {
+				return;
+			}
+			await opts.facade.archiveCodingSession?.(params.sdkSessionId);
+		},
+		async trashSession(params) {
+			// Trash is a local-only state that Codex does not model, so we mirror
+			// it outbound as `archive` — the precedence table in
+			// `syncKnownCodingSessionUpdate` keeps a stale Codex `open` echo from
+			// resurrecting trashed work.
 			if (!isKnownFacadeCodingSession(opts, params)) {
 				return;
 			}
@@ -146,7 +162,6 @@ export function createCodingService(
 			if (!stopPromise) {
 				stopPromise = (async () => {
 					try {
-						unsubscribeProviderUpdates?.();
 						controller.beginShutdown();
 						await controller.drain();
 					} catch (err) {
@@ -181,6 +196,20 @@ function isKnownFacadeCodingSession(
 	);
 }
 
+/**
+ * Merges a provider lifecycle update into the local catalog. The provider
+ * vocabulary is binary (`open | archived`); we model `trashed` locally and
+ * never accept a remote `open` for a trashed session — that path is how a
+ * stale Codex view would resurrect work the user has explicitly thrown away.
+ *
+ * | local      | provider archived | provider open |
+ * |------------|-------------------|---------------|
+ * | open       | -> archived       | no-op         |
+ * | archived   | no-op             | -> open       |
+ * | trashed    | no-op             | ignore        |
+ *
+ * Titles always reflect last-write, regardless of lifecycle state.
+ */
 function syncKnownCodingSessionUpdate(
 	opts: CreateCodingServiceOptions,
 	update: ProviderCodingSessionUpdate,
@@ -192,9 +221,13 @@ function syncKnownCodingSessionUpdate(
 	}
 
 	if (update.lifecycleStatus === "archived") {
-		opts.sessions.archive(providerId, update.sessionId);
+		if (session.lifecycleStatus === "open") {
+			opts.sessions.archive(providerId, update.sessionId);
+		}
 	} else if (update.lifecycleStatus === "open") {
-		opts.sessions.restore(providerId, update.sessionId);
+		if (session.lifecycleStatus === "archived") {
+			opts.sessions.restore(providerId, update.sessionId);
+		}
 	}
 
 	const title = update.title?.trim();

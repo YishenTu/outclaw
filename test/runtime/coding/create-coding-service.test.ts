@@ -79,13 +79,7 @@ class ProviderSyncFacade extends SessionInitializingFacade {
 	reconcileResponses: ProviderCodingSessionUpdate[] = [];
 	readonly restoreCalls: string[] = [];
 	readonly renameCalls: Array<{ sessionId: string; title: string }> = [];
-	private readonly updateHandlers = new Set<
-		(update: {
-			lifecycleStatus?: "open" | "archived";
-			sessionId: string;
-			title?: string;
-		}) => void
-	>();
+	subscribeCalls = 0;
 
 	async archiveCodingSession(sessionId: string): Promise<void> {
 		this.archiveCalls.push(sessionId);
@@ -107,26 +101,10 @@ class ProviderSyncFacade extends SessionInitializingFacade {
 	}
 
 	subscribeCodingSessionUpdates(
-		handler: (update: {
-			lifecycleStatus?: "open" | "archived";
-			sessionId: string;
-			title?: string;
-		}) => void,
+		_handler: (update: ProviderCodingSessionUpdate) => void,
 	): () => void {
-		this.updateHandlers.add(handler);
-		return () => {
-			this.updateHandlers.delete(handler);
-		};
-	}
-
-	emitCodingSessionUpdate(update: {
-		lifecycleStatus?: "open" | "archived";
-		sessionId: string;
-		title?: string;
-	}) {
-		for (const handler of this.updateHandlers) {
-			handler(update);
-		}
+		this.subscribeCalls += 1;
+		return () => {};
 	}
 }
 
@@ -217,17 +195,27 @@ describe("createCodingService", () => {
 			providerId: "codex",
 			sdkSessionId: "known-thread",
 		});
+		await codingService.trashSession({
+			providerId: "codex",
+			sdkSessionId: "known-thread",
+		});
 		await codingService.renameSession({
 			providerId: "codex",
 			sdkSessionId: "known-thread",
 			title: "Known session",
 		});
 
-		expect(facade.archiveCalls).toEqual(["known-thread"]);
+		expect(facade.archiveCalls).toEqual(["known-thread", "known-thread"]);
 		expect(facade.restoreCalls).toEqual(["known-thread"]);
 		expect(facade.renameCalls).toEqual([
 			{ sessionId: "known-thread", title: "Known session" },
 		]);
+	});
+
+	test("does not wire the provider push subscription", () => {
+		const facade = new ProviderSyncFacade();
+		makeHarness(facade);
+		expect(facade.subscribeCalls).toBe(0);
 	});
 
 	test("reconciles only known provider-backed coding sessions through the facade", async () => {
@@ -280,13 +268,14 @@ describe("createCodingService", () => {
 		expect(codingSessions.getDetail("codex", "unknown-thread")).toBeUndefined();
 	});
 
-	test("applies provider-originated updates only to known coding sessions", () => {
+	test("reconcile does not resurrect trashed sessions, even when the provider says they are open", async () => {
 		const facade = new ProviderSyncFacade();
-		const { codingSessions, codingSharedStore } = makeHarness(facade);
+		const { codingService, codingSessions, codingSharedStore } =
+			makeHarness(facade);
 		codingSharedStore.upsert({
 			providerId: "codex",
-			sdkSessionId: "known-thread",
-			title: "Original title",
+			sdkSessionId: "trashed-thread",
+			title: "Local title",
 			model: "gpt-5.5",
 			source: "code",
 			tag: "code",
@@ -294,36 +283,72 @@ describe("createCodingService", () => {
 		});
 		codingSessions.upsert({
 			providerId: "codex",
-			sdkSessionId: "known-thread",
+			sdkSessionId: "trashed-thread",
 			cwd: "/repo",
 			runStatus: "idle",
 			timestamp: 100,
 		});
+		codingSessions.trash("codex", "trashed-thread");
 
-		facade.emitCodingSessionUpdate({
-			sessionId: "known-thread",
-			lifecycleStatus: "archived",
-			title: "Provider title",
-		});
-		facade.emitCodingSessionUpdate({
-			sessionId: "unknown-thread",
-			lifecycleStatus: "archived",
-			title: "Should not import",
+		facade.reconcileResponses = [
+			{
+				sessionId: "trashed-thread",
+				lifecycleStatus: "open",
+				title: "Renamed in Codex",
+			},
+		];
+
+		await codingService.reconcileSessions({
+			providerId: "codex",
+			sdkSessionIds: ["trashed-thread"],
 		});
 
-		expect(codingSessions.getDetail("codex", "known-thread")).toMatchObject({
-			lifecycleStatus: "archived",
-			title: "Provider title",
+		// Lifecycle is ignored because the user deliberately trashed it; title
+		// follows last-write so the new Codex name still lands locally.
+		expect(codingSessions.getDetail("codex", "trashed-thread")).toMatchObject({
+			lifecycleStatus: "trashed",
+			title: "Renamed in Codex",
 		});
-		expect(codingSessions.getDetail("codex", "unknown-thread")).toBeUndefined();
+	});
 
-		facade.emitCodingSessionUpdate({
-			sessionId: "known-thread",
-			lifecycleStatus: "open",
+	test("reconcile no-ops when the provider state already matches the local state", async () => {
+		const facade = new ProviderSyncFacade();
+		const { codingService, codingSessions, codingSharedStore } =
+			makeHarness(facade);
+		codingSharedStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "archived-thread",
+			title: "Archived",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
 		});
-		expect(codingSessions.getDetail("codex", "known-thread")).toMatchObject({
-			lifecycleStatus: "open",
-			title: "Provider title",
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "archived-thread",
+			cwd: "/repo",
+			runStatus: "idle",
+			timestamp: 100,
+		});
+		codingSessions.archive("codex", "archived-thread");
+		const lastActiveBefore = codingSessions.getDetail(
+			"codex",
+			"archived-thread",
+		)?.lastActive;
+
+		facade.reconcileResponses = [
+			{ sessionId: "archived-thread", lifecycleStatus: "archived" },
+		];
+
+		await codingService.reconcileSessions({
+			providerId: "codex",
+			sdkSessionIds: ["archived-thread"],
+		});
+
+		expect(codingSessions.getDetail("codex", "archived-thread")).toMatchObject({
+			lifecycleStatus: "archived",
+			lastActive: lastActiveBefore,
 		});
 	});
 

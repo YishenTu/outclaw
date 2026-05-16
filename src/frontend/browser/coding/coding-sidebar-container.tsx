@@ -24,9 +24,13 @@ export function CodingSidebarContainer({
 		handleRestoreSession,
 		handleSelectRepository,
 		handleSelectSession,
+		handleTrashRepository,
+		handleTrashSession,
 		repositories,
 		repositoriesLoaded,
 		sessionsByRepository,
+		trashedRepositories,
+		trashedSessions,
 	} = useCodingData();
 
 	return (
@@ -34,6 +38,8 @@ export function CodingSidebarContainer({
 			<CodingSidebar
 				archivedRepositories={archivedRepositories}
 				archivedSessions={archivedSessions}
+				trashedRepositories={trashedRepositories}
+				trashedSessions={trashedSessions}
 				repositories={repositories}
 				sessionsByRepository={sessionsByRepository}
 				focusedRepositoryId={focusedRepositoryId}
@@ -43,8 +49,10 @@ export function CodingSidebarContainer({
 				onCreateRepository={handleCreateRepository}
 				onNewSession={handleNewSessionForRepository}
 				onArchiveRepository={handleArchiveRepository}
+				onTrashRepository={handleTrashRepository}
 				onRestoreRepository={handleRestoreRepository}
 				onArchiveSession={handleArchiveSession}
+				onTrashSession={handleTrashSession}
 				onRestoreSession={handleRestoreSession}
 				onRenameSession={handleRenameSession}
 				{...(onCollapse ? { onCollapse } : {})}

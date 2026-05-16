@@ -13,7 +13,7 @@ import {
 } from "../persistence/title-search.ts";
 import { ensureCodingRepositoryStoreSchema } from "./coding-repository-store.ts";
 
-export type CodingSessionLifecycleStatus = "open" | "archived";
+export type CodingSessionLifecycleStatus = "open" | "archived" | "trashed";
 export type CodingSessionRunStatus =
 	| "idle"
 	| "running"
@@ -31,6 +31,11 @@ export interface CodingSessionRecord {
 	linkedChatSessionId?: string;
 	browserTabId?: string;
 	lifecycleStatus: CodingSessionLifecycleStatus;
+	// Marks sessions that were archived as a side-effect of repo-archive; only
+	// these are restored when the repo is unarchived. Optional on the interface
+	// so test fixtures can build minimal records, but the row mapper always
+	// populates it from the DB.
+	cascadedFromRepo?: boolean;
 	runStatus: CodingSessionRunStatus;
 	createdAt: number;
 	lastActive: number;
@@ -81,6 +86,7 @@ interface CodingSessionDatabaseRow {
 	linked_chat_session_id: string | null;
 	browser_tab_id: string | null;
 	lifecycle_status: CodingSessionLifecycleStatus;
+	cascaded_from_repo: number;
 	run_status: CodingSessionRunStatus;
 	created_at: number;
 	last_active: number;
@@ -144,6 +150,7 @@ export class CodingSessionStore {
 					linked_chat_session_id,
 					browser_tab_id,
 					lifecycle_status,
+					cascaded_from_repo,
 					run_status,
 					created_at,
 					last_active
@@ -157,6 +164,7 @@ export class CodingSessionStore {
 					$linkedChatSessionId,
 					$browserTabId,
 					$lifecycleStatus,
+					0,
 					$runStatus,
 					$now,
 					$now
@@ -266,22 +274,116 @@ export class CodingSessionStore {
 			});
 	}
 
-	archive(providerId: string, sdkSessionId: string, timestamp?: number) {
+	archive(providerId: string, sdkSessionId: string) {
 		this.updateLifecycleStatus({
 			providerId,
 			sdkSessionId,
 			lifecycleStatus: "archived",
-			timestamp,
 		});
 	}
 
-	restore(providerId: string, sdkSessionId: string, timestamp?: number) {
+	trash(providerId: string, sdkSessionId: string) {
+		this.updateLifecycleStatus({
+			providerId,
+			sdkSessionId,
+			lifecycleStatus: "trashed",
+		});
+	}
+
+	restore(providerId: string, sdkSessionId: string) {
 		this.updateLifecycleStatus({
 			providerId,
 			sdkSessionId,
 			lifecycleStatus: "open",
-			timestamp,
 		});
+	}
+
+	archiveCascaded(repositoryId: string) {
+		this.db
+			.query(
+				`UPDATE coding_sessions
+				 SET lifecycle_status = 'archived',
+				     cascaded_from_repo = 1
+				 WHERE agent_id = $agentId
+				   AND repository_id = $repositoryId
+				   AND lifecycle_status = 'open'`,
+			)
+			.run({
+				$agentId: this.storageOwnerId,
+				$repositoryId: repositoryId,
+			});
+	}
+
+	trashCascaded(repositoryId: string) {
+		// Repo-trash is a one-way operation: every non-trashed session in the
+		// repo follows it into the bin. Restoring the repo later does NOT
+		// auto-revive these sessions; users restore them individually if they
+		// want them back.
+		this.db
+			.query(
+				`UPDATE coding_sessions
+				 SET lifecycle_status = 'trashed',
+				     cascaded_from_repo = 0
+				 WHERE agent_id = $agentId
+				   AND repository_id = $repositoryId
+				   AND lifecycle_status IN ('open', 'archived')`,
+			)
+			.run({
+				$agentId: this.storageOwnerId,
+				$repositoryId: repositoryId,
+			});
+	}
+
+	restoreCascaded(repositoryId: string) {
+		this.db
+			.query(
+				`UPDATE coding_sessions
+				 SET lifecycle_status = 'open',
+				     cascaded_from_repo = 0
+				 WHERE agent_id = $agentId
+				   AND repository_id = $repositoryId
+				   AND lifecycle_status = 'archived'
+				   AND cascaded_from_repo = 1`,
+			)
+			.run({
+				$agentId: this.storageOwnerId,
+				$repositoryId: repositoryId,
+			});
+	}
+
+	purgeTrashedBefore(threshold: number): number {
+		const targets = this.db
+			.query(
+				`SELECT provider_id, sdk_session_id
+				 FROM coding_sessions
+				 WHERE agent_id = $agentId
+				   AND lifecycle_status = 'trashed'
+				   AND last_active < $threshold`,
+			)
+			.all({
+				$agentId: this.storageOwnerId,
+				$threshold: threshold,
+			}) as Array<{ provider_id: string; sdk_session_id: string }>;
+		if (targets.length === 0) {
+			return 0;
+		}
+		// Delete the shared session row; the coding_sessions row falls out via
+		// ON DELETE CASCADE. Doing one statement per row keeps the FK behavior
+		// predictable across providers.
+		const stmt = this.db.query(
+			`DELETE FROM sessions
+			 WHERE agent_id = $agentId
+			   AND provider_id = $providerId
+			   AND sdk_session_id = $sdkSessionId`,
+		);
+		for (const target of targets) {
+			stmt.run({
+				$agentId: this.storageOwnerId,
+				$providerId: target.provider_id,
+				$sdkSessionId: target.sdk_session_id,
+			});
+		}
+		return targets.length;
 	}
 
 	rename(providerId: string, sdkSessionId: string, title: string) {
@@ -365,6 +467,7 @@ export class CodingSessionStore {
 						c.linked_chat_session_id,
 						c.browser_tab_id,
 						c.lifecycle_status,
+						c.cascaded_from_repo,
 						c.run_status,
 						c.created_at,
 						c.last_active,
@@ -453,6 +556,7 @@ export class CodingSessionStore {
 						linked_chat_session_id,
 						browser_tab_id,
 						lifecycle_status,
+						cascaded_from_repo,
 						run_status,
 						created_at,
 						last_active
@@ -538,6 +642,7 @@ export class CodingSessionStore {
 						c.linked_chat_session_id,
 						c.browser_tab_id,
 						c.lifecycle_status,
+						c.cascaded_from_repo,
 						c.run_status,
 						c.created_at,
 						c.last_active,
@@ -573,17 +678,15 @@ export class CodingSessionStore {
 		providerId: string;
 		sdkSessionId: string;
 		lifecycleStatus: CodingSessionLifecycleStatus;
-		timestamp?: number;
 	}) {
-		const now = params.timestamp ?? Date.now();
+		// Lifecycle transitions never touch last_active. Sorting archived or trashed
+		// items by "last user/agent activity" stays honest, so an archived session
+		// is still findable next to the open work it used to sit beside.
 		this.db
 			.query(
 				`UPDATE coding_sessions
 				 SET lifecycle_status = $lifecycleStatus,
-				     last_active = CASE
-				       WHEN lifecycle_status = $lifecycleStatus THEN last_active
-				       ELSE $now
-				     END
+				     cascaded_from_repo = 0
 				 WHERE agent_id = $agentId
 				   AND provider_id = $providerId
 				   AND sdk_session_id = $sdkSessionId`,
@@ -593,7 +696,6 @@ export class CodingSessionStore {
 				$providerId: params.providerId,
 				$sdkSessionId: params.sdkSessionId,
 				$lifecycleStatus: params.lifecycleStatus,
-				$now: now,
 			});
 	}
 
@@ -634,6 +736,7 @@ export function ensureCodingSessionStoreSchema(db: Database) {
 		linked_chat_session_id TEXT,
 		browser_tab_id TEXT,
 		lifecycle_status TEXT NOT NULL,
+		cascaded_from_repo INTEGER NOT NULL DEFAULT 0,
 		run_status TEXT NOT NULL,
 		created_at INTEGER NOT NULL,
 		last_active INTEGER NOT NULL,
@@ -665,6 +768,7 @@ function mapCodingSessionRow(
 			: {}),
 		...(row.browser_tab_id ? { browserTabId: row.browser_tab_id } : {}),
 		lifecycleStatus: row.lifecycle_status,
+		cascadedFromRepo: row.cascaded_from_repo === 1,
 		runStatus: row.run_status,
 		createdAt: row.created_at,
 		lastActive: row.last_active,

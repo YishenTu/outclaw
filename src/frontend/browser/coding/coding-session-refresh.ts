@@ -13,8 +13,6 @@ import {
 	useCodingStore,
 } from "./coding-store.ts";
 
-export const CODING_SESSION_RECONCILE_INTERVAL_MS = 5_000;
-
 const DEFAULT_REPOSITORY_SESSION_LIMIT = 20;
 const DEFAULT_SEARCH_SESSION_LIMIT = 10;
 
@@ -37,13 +35,16 @@ type CodingSessionRefreshStore = Pick<
 	| "searchByRepository"
 	| "sessionsByRepository"
 	| "moveSessionToArchive"
+	| "moveSessionToTrash"
 	| "removeArchivedSession"
 	| "removeSession"
+	| "removeTrashedSession"
 	| "setRepositorySearchResults"
 	| "setRepositorySessions"
 	| "updateTabTitle"
 	| "upsertArchivedSession"
 	| "upsertSession"
+	| "upsertTrashedSession"
 >;
 
 interface RefreshLoadedCodingSessionStateOptions {
@@ -64,8 +65,11 @@ export async function refreshLoadedCodingSessionState({
 }
 
 export function useCodingSessionReconciliationPolling(enabled: boolean) {
-	// Keep this polling browser-local: the backend still reconciles only known
-	// sessions, and this hook simply asks for fresh read models on a quiet timer.
+	// Inbound sync is attention-driven: we refresh once on mount and again
+	// whenever the tab regains focus. No background timer — anything that
+	// happened in Codex while the user was away gets reconciled as soon as
+	// they're looking. A manual Refresh button in the Archive Center handles
+	// the rest.
 	useEffect(() => {
 		if (!enabled || typeof window === "undefined") {
 			return;
@@ -73,23 +77,6 @@ export function useCodingSessionReconciliationPolling(enabled: boolean) {
 
 		let cancelled = false;
 		let inFlight = false;
-		let timer: number | undefined;
-
-		function clearTimer() {
-			if (timer === undefined) {
-				return;
-			}
-			window.clearTimeout(timer);
-			timer = undefined;
-		}
-
-		function scheduleNext() {
-			clearTimer();
-			timer = window.setTimeout(
-				runRefresh,
-				CODING_SESSION_RECONCILE_INTERVAL_MS,
-			);
-		}
 
 		function canRefreshNow() {
 			return (
@@ -99,18 +86,9 @@ export function useCodingSessionReconciliationPolling(enabled: boolean) {
 		}
 
 		function runRefresh() {
-			clearTimer();
-			if (cancelled) {
+			if (cancelled || inFlight || !canRefreshNow()) {
 				return;
 			}
-			if (!canRefreshNow()) {
-				scheduleNext();
-				return;
-			}
-			if (inFlight) {
-				return;
-			}
-
 			inFlight = true;
 			void refreshLoadedCodingSessionState({
 				store: useCodingStore.getState(),
@@ -120,25 +98,19 @@ export function useCodingSessionReconciliationPolling(enabled: boolean) {
 				})
 				.finally(() => {
 					inFlight = false;
-					if (!cancelled) {
-						scheduleNext();
-					}
 				});
 		}
 
 		function handleVisibilityChange() {
-			if (canRefreshNow()) {
-				runRefresh();
-			}
+			runRefresh();
 		}
 
-		scheduleNext();
+		runRefresh();
 		if (typeof document !== "undefined") {
 			document.addEventListener("visibilitychange", handleVisibilityChange);
 		}
 		return () => {
 			cancelled = true;
-			clearTimer();
 			if (typeof document !== "undefined") {
 				document.removeEventListener(
 					"visibilitychange",
@@ -243,10 +215,16 @@ function syncSessionDetail(
 	const repositoryId = session.repositoryId ?? fallbackRepositoryId;
 	if (session.lifecycleStatus === "archived") {
 		store.moveSessionToArchive(repositoryId, session);
+		store.removeTrashedSession(session.providerId, session.sdkSessionId);
+		return;
+	}
+	if (session.lifecycleStatus === "trashed") {
+		store.moveSessionToTrash(repositoryId, session);
 		return;
 	}
 
 	store.removeArchivedSession(session.providerId, session.sdkSessionId);
+	store.removeTrashedSession(session.providerId, session.sdkSessionId);
 	store.upsertSession(repositoryId, session);
 	updateTabTitles(store, [session]);
 }

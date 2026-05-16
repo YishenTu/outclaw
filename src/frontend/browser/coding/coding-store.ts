@@ -148,6 +148,10 @@ export interface CodingState {
 	archivedNextCursor: SessionCursor | undefined;
 	archivedSearchState: RepositorySearchState | undefined;
 	archivedSessionsLoaded: boolean;
+	trashedSessions: BrowserCodingSessionSummary[];
+	trashedNextCursor: SessionCursor | undefined;
+	trashedSearchState: RepositorySearchState | undefined;
+	trashedSessionsLoaded: boolean;
 	repositoriesLoaded: boolean;
 	codingModels: BrowserCodingModel[];
 	codingModelsLoaded: boolean;
@@ -201,12 +205,36 @@ export interface CodingState {
 		nextCursor?: SessionCursor,
 	): void;
 	clearArchivedSearch(): void;
+	setTrashedSessions(
+		sessions: BrowserCodingSessionSummary[],
+		nextCursor?: SessionCursor,
+	): void;
+	appendTrashedSessions(
+		sessions: BrowserCodingSessionSummary[],
+		nextCursor?: SessionCursor,
+	): void;
+	setTrashedSearchResults(
+		query: string,
+		sessions: BrowserCodingSessionSummary[],
+		nextCursor?: SessionCursor,
+	): void;
+	appendTrashedSearchResults(
+		query: string,
+		sessions: BrowserCodingSessionSummary[],
+		nextCursor?: SessionCursor,
+	): void;
+	clearTrashedSearch(): void;
 	upsertSession(
 		repositoryId: string,
 		session: BrowserCodingSessionSummary,
 	): void;
 	upsertArchivedSession(session: BrowserCodingSessionSummary): void;
+	upsertTrashedSession(session: BrowserCodingSessionSummary): void;
 	moveSessionToArchive(
+		repositoryId: string,
+		session: BrowserCodingSessionSummary,
+	): void;
+	moveSessionToTrash(
 		repositoryId: string,
 		session: BrowserCodingSessionSummary,
 	): void;
@@ -239,6 +267,7 @@ export interface CodingState {
 		sdkSessionId: string,
 	): void;
 	removeArchivedSession(providerId: string, sdkSessionId: string): void;
+	removeTrashedSession(providerId: string, sdkSessionId: string): void;
 	updateRepository(repository: BrowserCodingRepositorySummary): void;
 	setCodingModels(models: BrowserCodingModel[]): void;
 	setSelectedModelId(modelId: string | undefined): void;
@@ -513,6 +542,10 @@ export const useCodingStore = create<CodingState>()(
 			archivedNextCursor: undefined,
 			archivedSearchState: undefined,
 			archivedSessionsLoaded: false,
+			trashedSessions: [],
+			trashedNextCursor: undefined,
+			trashedSearchState: undefined,
+			trashedSessionsLoaded: false,
 			repositoriesLoaded: false,
 			codingModels: [],
 			codingModelsLoaded: false,
@@ -693,6 +726,40 @@ export const useCodingStore = create<CodingState>()(
 			clearArchivedSearch() {
 				set({ archivedSearchState: undefined });
 			},
+			setTrashedSessions(sessions, nextCursor) {
+				set({
+					trashedSessions: sessions,
+					trashedNextCursor: nextCursor,
+					trashedSessionsLoaded: true,
+				});
+			},
+			appendTrashedSessions(sessions, nextCursor) {
+				set((state) => ({
+					trashedSessions: mergeCodingSessions(state.trashedSessions, sessions),
+					trashedNextCursor: nextCursor,
+				}));
+			},
+			setTrashedSearchResults(query, sessions, nextCursor) {
+				set({ trashedSearchState: { query, sessions, nextCursor } });
+			},
+			appendTrashedSearchResults(query, sessions, nextCursor) {
+				set((state) => {
+					const current = state.trashedSearchState;
+					if (!current || current.query !== query) {
+						return state;
+					}
+					return {
+						trashedSearchState: {
+							query,
+							sessions: mergeCodingSessions(current.sessions, sessions),
+							nextCursor,
+						},
+					};
+				});
+			},
+			clearTrashedSearch() {
+				set({ trashedSearchState: undefined });
+			},
 			renameSession(repositoryId, providerId, sdkSessionId, title) {
 				set((state) => {
 					const ref = { providerId, sdkSessionId };
@@ -732,6 +799,21 @@ export const useCodingStore = create<CodingState>()(
 								),
 							}
 						: state.archivedSearchState;
+					const nextTrashedSessions = renameCodingSessionInList(
+						state.trashedSessions,
+						ref,
+						title,
+					);
+					const nextTrashedSearchState = state.trashedSearchState
+						? {
+								...state.trashedSearchState,
+								sessions: renameCodingSessionInList(
+									state.trashedSearchState.sessions,
+									ref,
+									title,
+								),
+							}
+						: state.trashedSearchState;
 					const nextOpenTabs = state.openTabs.map((entry) =>
 						entry.providerId === providerId &&
 						entry.sdkSessionId === sdkSessionId
@@ -743,6 +825,8 @@ export const useCodingStore = create<CodingState>()(
 						searchByRepository: nextSearchByRepository,
 						archivedSessions: nextArchivedSessions,
 						archivedSearchState: nextArchivedSearchState,
+						trashedSessions: nextTrashedSessions,
+						trashedSearchState: nextTrashedSearchState,
 						openTabs: nextOpenTabs,
 					};
 				});
@@ -778,6 +862,23 @@ export const useCodingStore = create<CodingState>()(
 								),
 							}
 						: undefined,
+					trashedSessions: updateSessionListRunStatus(
+						state.trashedSessions,
+						providerId,
+						sdkSessionId,
+						update,
+					),
+					trashedSearchState: state.trashedSearchState
+						? {
+								...state.trashedSearchState,
+								sessions: updateSessionListRunStatus(
+									state.trashedSearchState.sessions,
+									providerId,
+									sdkSessionId,
+									update,
+								),
+							}
+						: undefined,
 				}));
 			},
 			upsertSession(repositoryId, session) {
@@ -801,6 +902,12 @@ export const useCodingStore = create<CodingState>()(
 						archivedSessionsLoaded: true,
 					};
 				});
+			},
+			upsertTrashedSession(session) {
+				set((state) => ({
+					trashedSessions: upsertCodingSession(state.trashedSessions, session),
+					trashedSessionsLoaded: true,
+				}));
 			},
 			moveSessionToArchive(repositoryId, session) {
 				set((state) => {
@@ -834,6 +941,62 @@ export const useCodingStore = create<CodingState>()(
 							session,
 						),
 						archivedSessionsLoaded: true,
+						openTabs: state.openTabs.map((entry) =>
+							entry.providerId === session.providerId &&
+							entry.sdkSessionId === session.sdkSessionId
+								? { ...entry, title }
+								: entry,
+						),
+					};
+				});
+			},
+			moveSessionToTrash(repositoryId, session) {
+				set((state) => {
+					const ref = {
+						providerId: session.providerId,
+						sdkSessionId: session.sdkSessionId,
+					};
+					const sessions = state.sessionsByRepository[repositoryId];
+					const nextSessionsByRepository = sessions
+						? {
+								...state.sessionsByRepository,
+								[repositoryId]: removeCodingSession(sessions, ref),
+							}
+						: state.sessionsByRepository;
+					const search = state.searchByRepository[repositoryId];
+					const nextSearchByRepository = search
+						? {
+								...state.searchByRepository,
+								[repositoryId]: {
+									...search,
+									sessions: removeCodingSession(search.sessions, ref),
+								},
+							}
+						: state.searchByRepository;
+					const archivedSessions = removeCodingSession(
+						state.archivedSessions,
+						ref,
+					);
+					const archivedSearchState = state.archivedSearchState
+						? {
+								...state.archivedSearchState,
+								sessions: removeCodingSession(
+									state.archivedSearchState.sessions,
+									ref,
+								),
+							}
+						: state.archivedSearchState;
+					const title = session.title.trim() || session.sdkSessionId;
+					return {
+						sessionsByRepository: nextSessionsByRepository,
+						searchByRepository: nextSearchByRepository,
+						archivedSessions,
+						archivedSearchState,
+						trashedSessions: upsertCodingSession(
+							state.trashedSessions,
+							session,
+						),
+						trashedSessionsLoaded: true,
 						openTabs: state.openTabs.map((entry) =>
 							entry.providerId === session.providerId &&
 							entry.sdkSessionId === session.sdkSessionId
@@ -985,6 +1148,26 @@ export const useCodingStore = create<CodingState>()(
 					return {
 						archivedSessions: nextArchivedSessions,
 						archivedSearchState: nextArchivedSearchState,
+					};
+				});
+			},
+			removeTrashedSession(providerId, sdkSessionId) {
+				set((state) => {
+					const ref = { providerId, sdkSessionId };
+					const nextTrashedSessions = removeCodingSession(
+						state.trashedSessions,
+						ref,
+					);
+					const search = state.trashedSearchState;
+					const nextTrashedSearchState = search
+						? {
+								...search,
+								sessions: removeCodingSession(search.sessions, ref),
+							}
+						: state.trashedSearchState;
+					return {
+						trashedSessions: nextTrashedSessions,
+						trashedSearchState: nextTrashedSearchState,
 					};
 				});
 			},

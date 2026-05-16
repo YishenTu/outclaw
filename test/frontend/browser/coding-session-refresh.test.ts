@@ -3,10 +3,7 @@ import type {
 	BrowserCodingSessionPageResponse,
 	BrowserCodingSessionSummary,
 } from "../../../src/common/protocol.ts";
-import {
-	CODING_SESSION_RECONCILE_INTERVAL_MS,
-	refreshLoadedCodingSessionState,
-} from "../../../src/frontend/browser/coding/coding-session-refresh.ts";
+import { refreshLoadedCodingSessionState } from "../../../src/frontend/browser/coding/coding-session-refresh.ts";
 import { useCodingStore } from "../../../src/frontend/browser/coding/coding-store.ts";
 
 function session(
@@ -46,6 +43,10 @@ describe("coding session refresh", () => {
 			archivedNextCursor: undefined,
 			archivedSearchState: undefined,
 			archivedSessionsLoaded: false,
+			trashedSessions: [],
+			trashedNextCursor: undefined,
+			trashedSearchState: undefined,
+			trashedSessionsLoaded: false,
 			repositoriesLoaded: false,
 			codingModels: [],
 			codingModelsLoaded: false,
@@ -53,10 +54,6 @@ describe("coding session refresh", () => {
 			selectedEffort: undefined,
 			fastTierEnabled: false,
 		});
-	});
-
-	test("uses a short reconcile polling interval", () => {
-		expect(CODING_SESSION_RECONCILE_INTERVAL_MS).toBe(5_000);
 	});
 
 	test("keeps an opened tab when its session is archived externally", async () => {

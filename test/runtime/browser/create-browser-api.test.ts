@@ -1182,6 +1182,149 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("walks the full lifecycle (archive, trash, restore, repo-trash cascade) on a fresh DB", async () => {
+		// This is the belt-and-suspenders smoke test for the wipe-and-restart
+		// upgrade path: build a fresh DB, register a repo, run a few sessions
+		// through every lifecycle state, and verify the lists reflect the
+		// transitions without any migration step.
+		const root = createTempDir("outclaw-browser-coding-lifecycle-smoke-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		const codingRepositories = new CodingRepositoryStore(dbPath);
+
+		const repoRoot = mkdtempSync(
+			join(tmpdir(), "outclaw-coding-lifecycle-repo-"),
+		);
+		// Use realistic timestamps so the 30-day trash-purge sweep that runs on
+		// every trashed list doesn't immediately wipe the fixture sessions.
+		const now = Date.now();
+		const repo = codingRepositories.register({
+			displayName: "lifecycle-repo",
+			rootCwd: repoRoot,
+			source: "manual",
+			timestamp: now - 1_000,
+		});
+
+		for (const id of ["session-a", "session-b"]) {
+			store.upsert({
+				providerId: "codex",
+				sdkSessionId: id,
+				title: `Title ${id}`,
+				model: "gpt-5.5",
+				source: "code",
+				tag: "code",
+				timestamp: now,
+			});
+			codingStore.upsert({
+				providerId: "codex",
+				sdkSessionId: id,
+				cwd: repoRoot,
+				repositoryId: repo.id,
+				runStatus: "idle",
+				timestamp: now,
+			});
+		}
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			codingRepositories,
+			codingSessions: codingStore,
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		// 1. Archive one session.
+		await expect(
+			api.archiveCodingSession("codex", "session-a"),
+		).resolves.toMatchObject({
+			archived: true,
+			session: { lifecycleStatus: "archived" },
+		});
+
+		// 2. Trash the other.
+		await expect(
+			api.trashCodingSession("codex", "session-b"),
+		).resolves.toMatchObject({
+			trashed: true,
+			session: { lifecycleStatus: "trashed" },
+		});
+
+		await expect(api.listCodingSessions({ limit: 10 })).resolves.toEqual({
+			sessions: [],
+		});
+		await expect(
+			api.listCodingSessions({ limit: 10, lifecycleStatus: "archived" }),
+		).resolves.toMatchObject({
+			sessions: [{ sdkSessionId: "session-a" }],
+		});
+		await expect(
+			api.listCodingSessions({ limit: 10, lifecycleStatus: "trashed" }),
+		).resolves.toMatchObject({
+			sessions: [{ sdkSessionId: "session-b" }],
+		});
+
+		// 3. Restore both sessions back to open.
+		await expect(
+			api.restoreCodingSession("codex", "session-a"),
+		).resolves.toMatchObject({
+			restored: true,
+			session: { lifecycleStatus: "open" },
+		});
+		await expect(
+			api.restoreCodingSession("codex", "session-b"),
+		).resolves.toMatchObject({
+			restored: true,
+			session: { lifecycleStatus: "open" },
+		});
+
+		// 4. Trash the repo. Cascade should send both sessions to trash.
+		await expect(api.trashCodingRepository(repo.id)).resolves.toMatchObject({
+			trashed: true,
+			repository: { status: "trashed" },
+		});
+		const trashedPage = await api.listCodingSessions({
+			limit: 10,
+			lifecycleStatus: "trashed",
+		});
+		expect(
+			trashedPage.sessions.map((session) => session.sdkSessionId).sort(),
+		).toEqual(["session-a", "session-b"]);
+
+		// 5. Restore the repo. Sessions stay trashed (one-way cascade), but the
+		//    repo itself is active again.
+		await expect(api.restoreCodingRepository(repo.id)).resolves.toMatchObject({
+			restored: true,
+			repository: { status: "active" },
+		});
+		const stillTrashed = await api.listCodingSessions({
+			limit: 10,
+			lifecycleStatus: "trashed",
+		});
+		expect(stillTrashed.sessions.length).toBe(2);
+
+		codingRepositories.close();
+		codingStore.close();
+		store.close();
+	});
+
 	test("syncs coding session archive, restore, and rename with the provider before local mutation", async () => {
 		const root = createTempDir("outclaw-browser-coding-provider-sync-api-");
 		cleanupPaths.push(root);
@@ -1536,8 +1679,6 @@ describe("createBrowserApi", () => {
 				...registered,
 				terminalRunCommand: "bun run check",
 				status: "archived",
-				lastActive: expect.any(Number),
-				archivedAt: expect.any(Number),
 			},
 		});
 		await expect(api.listCodingRepositories()).resolves.toEqual({

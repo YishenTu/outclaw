@@ -15,6 +15,7 @@ import type {
 	BrowserCodingRepositoryRestoreResponse,
 	BrowserCodingRepositorySource,
 	BrowserCodingRepositorySummary,
+	BrowserCodingRepositoryTrashResponse,
 	BrowserCodingSessionArchiveResponse,
 	BrowserCodingSessionCancelResponse,
 	BrowserCodingSessionDeleteResponse,
@@ -29,6 +30,7 @@ import type {
 	BrowserCodingSessionStatusResponse,
 	BrowserCodingSessionStopResponse,
 	BrowserCodingSessionSummary,
+	BrowserCodingSessionTrashResponse,
 	BrowserCodingSkillsResponse,
 	BrowserConfigResponse,
 	BrowserCronEntry,
@@ -127,6 +129,12 @@ import {
 	resolveWritablePathWithinRoot,
 } from "./paths/path-safety.ts";
 
+// Trashed sessions are purged once their last activity is older than this
+// window. We don't track when the user pressed "Trash" (no trashed_at column),
+// so this is "30 days since the session was last touched," not "30 days since
+// trashing." Sweep runs implicitly when the Archive Center's Trash tab loads.
+const TRASHED_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 // The browser API only needs the start/resume/interrupt slice of the coding
 // runtime, plus optional catalogs supplied by the surrounding CodingService.
 // Accept the full CodingRuntime slice directly so production wiring and tests
@@ -135,6 +143,10 @@ export interface BrowserCodingService
 	extends Pick<CodingRuntime, "startPrompt" | "resumePrompt" | "stopPrompt"> {
 	cancelPrompt?: CodingRuntime["cancelPrompt"];
 	archiveSession?(params: {
+		providerId: string;
+		sdkSessionId: string;
+	}): Promise<void>;
+	trashSession?(params: {
 		providerId: string;
 		sdkSessionId: string;
 	}): Promise<void>;
@@ -253,6 +265,7 @@ export interface BrowserApi {
 	}): Promise<BrowserCodingSessionPageResponse>;
 	listCodingRepositories(params?: {
 		includeArchived?: boolean;
+		includeTrashed?: boolean;
 	}): Promise<BrowserCodingRepositoryListResponse>;
 	getCodingRepository(
 		repositoryId: string,
@@ -271,6 +284,9 @@ export interface BrowserApi {
 	archiveCodingRepository(
 		repositoryId: string,
 	): Promise<BrowserCodingRepositoryArchiveResponse>;
+	trashCodingRepository(
+		repositoryId: string,
+	): Promise<BrowserCodingRepositoryTrashResponse>;
 	restoreCodingRepository(
 		repositoryId: string,
 	): Promise<BrowserCodingRepositoryRestoreResponse>;
@@ -287,6 +303,10 @@ export interface BrowserApi {
 		providerId: string,
 		sdkSessionId: string,
 	): Promise<BrowserCodingSessionArchiveResponse>;
+	trashCodingSession(
+		providerId: string,
+		sdkSessionId: string,
+	): Promise<BrowserCodingSessionTrashResponse>;
 	deleteCodingSession(
 		providerId: string,
 		sdkSessionId: string,
@@ -652,6 +672,14 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			if (!store) {
 				return { sessions: [] };
 			}
+			if (params.lifecycleStatus === "trashed") {
+				// Opportunistic GC: every time someone loads the trash view we
+				// drop sessions whose last activity is older than the TTL. No
+				// trashed_at column, so this means "30 days since you last
+				// touched the session," which lines up with the intuition that
+				// long-stale work shouldn't linger in trash forever.
+				store.purgeTrashedBefore(Date.now() - TRASHED_SESSION_TTL_MS);
+			}
 			await reconcileKnownCodingSessions(options, {
 				linkedChatSessionId: params.linkedChatSessionId,
 				providerId: params.providerId,
@@ -679,7 +707,10 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			}
 			return {
 				repositories: options.codingRepositories
-					.list({ includeArchived: params?.includeArchived })
+					.list({
+						includeArchived: params?.includeArchived,
+						includeTrashed: params?.includeTrashed,
+					})
 					.map(toBrowserCodingRepositorySummary),
 			};
 		},
@@ -737,6 +768,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				throw new Error("Coding repository API is not configured");
 			}
 			options.codingRepositories.archive(repositoryId);
+			options.codingSessions?.archiveCascaded(repositoryId);
 			const repository = options.codingRepositories.get(repositoryId);
 			if (!repository) {
 				throw new Error(`Unknown coding repository: ${repositoryId}`);
@@ -746,11 +778,34 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				repository: toBrowserCodingRepositorySummary(repository),
 			};
 		},
+		async trashCodingRepository(repositoryId) {
+			if (!options.codingRepositories) {
+				throw new Error("Coding repository API is not configured");
+			}
+			options.codingRepositories.trash(repositoryId);
+			options.codingSessions?.trashCascaded(repositoryId);
+			const repository = options.codingRepositories.get(repositoryId);
+			if (!repository) {
+				throw new Error(`Unknown coding repository: ${repositoryId}`);
+			}
+			return {
+				trashed: true,
+				repository: toBrowserCodingRepositorySummary(repository),
+			};
+		},
 		async restoreCodingRepository(repositoryId) {
 			if (!options.codingRepositories) {
 				throw new Error("Coding repository API is not configured");
 			}
+			const current = options.codingRepositories.get(repositoryId);
+			const wasArchived = current?.status === "archived";
 			options.codingRepositories.restore(repositoryId);
+			// Only an `archive` cascade is reversible. Repo-restore from trashed
+			// brings the repo back but leaves the trashed sessions alone, so users
+			// can pick them out individually if they want them back.
+			if (wasArchived) {
+				options.codingSessions?.restoreCascaded(repositoryId);
+			}
 			const repository = options.codingRepositories.get(repositoryId);
 			if (!repository) {
 				throw new Error(`Unknown coding repository: ${repositoryId}`);
@@ -877,6 +932,35 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			return {
 				archived: true,
 				session: toBrowserCodingSessionSummary(archived),
+			};
+		},
+		async trashCodingSession(providerId, sdkSessionId) {
+			const store = options.codingSessions;
+			if (!store) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			const session = store.getDetail(providerId, sdkSessionId);
+			if (!session) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			// Codex has no "trash" vocabulary, so we mirror outbound as archive.
+			// The precedence table in syncKnownCodingSessionUpdate prevents a
+			// stale "open" reconcile result from resurrecting it locally.
+			await options.coding?.trashSession?.({ providerId, sdkSessionId });
+			store.trash(providerId, sdkSessionId);
+			const trashed = store.getDetail(providerId, sdkSessionId);
+			if (!trashed) {
+				throw new Error(
+					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+				);
+			}
+			return {
+				trashed: true,
+				session: toBrowserCodingSessionSummary(trashed),
 			};
 		},
 		async deleteCodingSession(providerId, sdkSessionId) {
@@ -1055,7 +1139,14 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				params.providerId,
 				params.sdkSessionId,
 			);
-			if (session?.lifecycleStatus === "archived") {
+			// Resuming an archived or trashed session implicitly restores it.
+			// Trashed is included so users who reopen a trashed session from the
+			// Archive Center can keep working without a separate "restore first"
+			// dance — the provider sees the same `unarchive` either way.
+			if (
+				session?.lifecycleStatus === "archived" ||
+				session?.lifecycleStatus === "trashed"
+			) {
 				await options.coding?.restoreSession?.({
 					providerId: params.providerId,
 					sdkSessionId: params.sdkSessionId,
@@ -1559,7 +1650,6 @@ function toBrowserCodingRepositorySummary(
 			: {}),
 		createdAt: repository.createdAt,
 		lastActive: repository.lastActive,
-		...(repository.archivedAt ? { archivedAt: repository.archivedAt } : {}),
 	};
 }
 
