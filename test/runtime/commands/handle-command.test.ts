@@ -122,7 +122,7 @@ describe("handleRuntimeCommand", () => {
 			expect(event).toBeDefined();
 		});
 
-		test("changes model with valid alias", async () => {
+		test("changes model with provider-local id", async () => {
 			const { ws, state, run } = setup();
 			await run("/model haiku");
 			expect(state.model).toBe("haiku");
@@ -131,18 +131,10 @@ describe("handleRuntimeCommand", () => {
 			expect((event as { model: string }).model).toBe("haiku");
 		});
 
-		test("sends error for invalid model", async () => {
-			const { ws, run } = setup();
-			await run("/model gpt-4");
-			const event = ws.events().find((e) => e.type === "error");
-			expect(event).toBeDefined();
-			expect((event as { message: string }).message).toContain("Invalid model");
-		});
-
-		test("accepts model alias as shortcut command", async () => {
+		test("leaves provider-specific shortcuts outside the shared runtime command path", async () => {
 			const { state, run } = setup();
 			await run("/sonnet");
-			expect(state.model).toBe("sonnet");
+			expect(state.model).toBe("");
 		});
 	});
 

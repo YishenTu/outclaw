@@ -1,4 +1,3 @@
-import { isCodingTranscriptSilentEvent } from "../../../common/transcript-cleanup.ts";
 import type { CodingSessionEventStreamItem } from "../lib/api.ts";
 
 export interface CodingSessionEventCacheEntry {
@@ -109,7 +108,7 @@ export function appendCodingSessionEventBatch(
 			continue;
 		}
 		lastSequence = item.sequence;
-		if (isCodingTranscriptSilentEvent(item.event)) {
+		if (shouldOmitFromCachedTranscript(item.event)) {
 			continue;
 		}
 		nextEvents =
@@ -124,6 +123,10 @@ export function appendCodingSessionEventBatch(
 	};
 	rememberCodingSessionEventCacheEntry(cache, key, entry, options.maxEntries);
 	return entry;
+}
+
+function shouldOmitFromCachedTranscript(event: { type?: string }): boolean {
+	return event.type === "usage_updated" || event.type === "image";
 }
 
 function rememberCodingSessionEventCacheEntry(

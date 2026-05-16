@@ -44,10 +44,7 @@ function requireUsage(event: DoneEvent) {
 }
 
 function expectedRestoredUsage() {
-	return {
-		...requireUsage(makeDoneEvent()),
-		percentage: 0,
-	};
+	return requireUsage(makeDoneEvent());
 }
 
 describe("SessionService", () => {
@@ -138,7 +135,7 @@ describe("SessionService", () => {
 		expect(store.getActiveSessionId(PROVIDER_ID)).toBe("sdk-123");
 		expect(store.get(PROVIDER_ID, "sdk-123")).toMatchObject({
 			title: "Hello world",
-			model: "opus",
+			model: "",
 			serviceTier: "priority",
 			source: "tui",
 			tag: "chat",

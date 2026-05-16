@@ -1,25 +1,25 @@
 import {
+	DEFAULT_EFFORT,
 	EFFORT_LEVELS,
-	isEffortAllowedForModel,
+	type EffortLevel,
 	isEffortLevel,
 } from "../../common/commands.ts";
-import {
-	contextWindowSwitchLimitForAlias,
-	isModelAlias,
-	MODEL_ALIAS_LIST,
-	type ModelAlias,
-} from "../../common/models.ts";
 import type {
 	EffortChangedEvent,
 	ModelChangedEvent,
+	ProviderModelInfo,
 } from "../../common/protocol.ts";
 import type { RuntimeState } from "../application/state/runtime-state.ts";
+import type { ModelProviderResolver } from "../model-provider-resolver.ts";
 import type { ClientHub, WsClient } from "../transport/client-hub.ts";
 
 interface HandleRuntimeSettingsCommandOptions {
 	command: string;
 	hub: ClientHub;
+	modelProviderResolver?: ModelProviderResolver;
 	selectProviderModel?: (selection: {
+		contextWindow?: number;
+		effort?: EffortLevel;
 		model: string;
 		providerId: string;
 	}) => void;
@@ -27,20 +27,12 @@ interface HandleRuntimeSettingsCommandOptions {
 	ws: WsClient;
 }
 
-export function handleRuntimeSettingsCommand(
+export async function handleRuntimeSettingsCommand(
 	options: HandleRuntimeSettingsCommandOptions,
-): boolean {
+): Promise<boolean> {
 	if (options.command === "/model" || options.command.startsWith("/model ")) {
 		const modelArg = options.command.split(" ")[1]?.trim();
-		handleModelCommand(options, modelArg);
-		return true;
-	}
-
-	const aliasArg = MODEL_ALIAS_LIST.find(
-		(model) => options.command === `/${model}`,
-	);
-	if (aliasArg) {
-		handleModelCommand(options, aliasArg);
+		await handleModelCommand(options, modelArg);
 		return true;
 	}
 
@@ -56,10 +48,10 @@ export function handleRuntimeSettingsCommand(
 	return false;
 }
 
-function handleModelCommand(
+async function handleModelCommand(
 	options: HandleRuntimeSettingsCommandOptions,
 	modelArg: string | undefined,
-) {
+): Promise<void> {
 	if (!modelArg) {
 		options.hub.send(
 			options.ws,
@@ -68,54 +60,70 @@ function handleModelCommand(
 		return;
 	}
 
-	const providerSelection = parseProviderModelArg(modelArg);
-	if (providerSelection) {
-		if (!options.selectProviderModel) {
+	const selection =
+		await options.modelProviderResolver?.resolveModelSelection(modelArg);
+	if (!selection) {
+		if (options.modelProviderResolver) {
 			sendError(
 				options.hub,
 				options.ws,
-				`Invalid model: ${modelArg}. Valid: ${MODEL_ALIAS_LIST.join(", ")}`,
+				`Invalid model: ${modelArg}${await validModelsSuffix(options.modelProviderResolver)}`,
 			);
 			return;
 		}
-		options.selectProviderModel(providerSelection);
+		applyModelSelection(options, {
+			providerId: options.state.providerId,
+			model: genericProviderModel(modelArg),
+		});
 		return;
 	}
 
-	if (!isModelAlias(modelArg)) {
-		sendError(
-			options.hub,
-			options.ws,
-			`Invalid model: ${modelArg}. Valid: ${MODEL_ALIAS_LIST.join(", ")}`,
-		);
-		return;
-	}
+	applyModelSelection(options, selection);
+}
 
+function applyModelSelection(
+	options: HandleRuntimeSettingsCommandOptions,
+	selection: { providerId: string; model: ProviderModelInfo },
+) {
 	const usage = options.state.usage;
 	if (usage) {
-		const cap = contextWindowSwitchLimitForAlias(modelArg);
-		if (!cap) {
-			sendError(
-				options.hub,
-				options.ws,
-				`Invalid model: ${modelArg}. Valid: ${MODEL_ALIAS_LIST.join(", ")}`,
-			);
-			return;
-		}
+		const cap = contextWindowSwitchLimit(selection.model.contextWindow);
 		if (usage.contextTokens > cap) {
 			sendError(
 				options.hub,
 				options.ws,
-				`context too large for ${modelArg} (${usage.contextTokens}/${cap}) — run /compact first`,
+				`context too large for ${selection.model.model} (${usage.contextTokens}/${cap}) — run /compact first`,
 			);
 			return;
 		}
 	}
 
+	const nextEffort = compatibleEffortForModel(
+		options.state.effort,
+		options.state.defaultEffort,
+		selection.model,
+	);
+	if (options.selectProviderModel) {
+		options.selectProviderModel({
+			providerId: selection.providerId,
+			model: selection.model.model,
+			...(selection.model.contextWindow !== undefined
+				? { contextWindow: selection.model.contextWindow }
+				: {}),
+			...(nextEffort !== options.state.effort ? { effort: nextEffort } : {}),
+		});
+		return;
+	}
+
 	const previousEffort = options.state.effort;
-	options.state.setModel(modelArg as ModelAlias);
+	options.state.setProviderModel(selection.model.model, {
+		contextWindow: selection.model.contextWindow,
+	});
+	if (nextEffort !== options.state.effort) {
+		options.state.setEffort(nextEffort);
+	}
 	options.hub.broadcast(
-		buildModelChangedEvent(modelArg, options.state.providerId),
+		buildModelChangedEvent(selection.model.model, options.state.providerId),
 	);
 
 	if (options.state.effort !== previousEffort) {
@@ -148,18 +156,6 @@ function handleThinkingCommand(
 		return;
 	}
 
-	if (
-		isModelAlias(options.state.model) &&
-		!isEffortAllowedForModel(effortArg, options.state.model)
-	) {
-		sendError(
-			options.hub,
-			options.ws,
-			`Effort '${effortArg}' requires the opus model (current: ${options.state.model})`,
-		);
-		return;
-	}
-
 	options.state.setEffort(effortArg);
 	options.hub.broadcast(
 		buildEffortChangedEvent(effortArg, options.state.providerId),
@@ -168,20 +164,6 @@ function handleThinkingCommand(
 
 function sendError(hub: ClientHub, ws: WsClient, message: string) {
 	hub.send(ws, { type: "error", message });
-}
-
-function parseProviderModelArg(
-	value: string,
-): { providerId: string; model: string } | undefined {
-	const separator = value.indexOf("/");
-	if (separator <= 0 || separator === value.length - 1) {
-		return undefined;
-	}
-
-	return {
-		providerId: value.slice(0, separator),
-		model: value.slice(separator + 1),
-	};
 }
 
 function buildModelChangedEvent(
@@ -196,4 +178,60 @@ function buildEffortChangedEvent(
 	providerId: string,
 ): EffortChangedEvent {
 	return { type: "effort_changed", effort, providerId };
+}
+
+function contextWindowSwitchLimit(
+	contextWindow: number | undefined,
+	fraction = 0.8,
+): number {
+	return contextWindow
+		? Math.round(contextWindow * fraction)
+		: Number.POSITIVE_INFINITY;
+}
+
+function compatibleEffortForModel(
+	effort: EffortLevel,
+	defaultEffort: EffortLevel,
+	model: ProviderModelInfo,
+): EffortLevel {
+	const levels = model.supportedReasoningEfforts.filter(
+		(level): level is EffortLevel => isEffortLevel(level),
+	);
+	if (levels.length === 0 || levels.includes(effort)) {
+		return effort;
+	}
+	if (levels.includes(defaultEffort)) {
+		return defaultEffort;
+	}
+	if (
+		isEffortLevel(model.defaultReasoningEffort) &&
+		levels.includes(model.defaultReasoningEffort)
+	) {
+		return model.defaultReasoningEffort;
+	}
+	return levels[0] ?? DEFAULT_EFFORT;
+}
+
+function genericProviderModel(model: string): ProviderModelInfo {
+	return {
+		id: model,
+		model,
+		displayName: model,
+		description: "",
+		isDefault: false,
+		defaultReasoningEffort: DEFAULT_EFFORT,
+		supportedReasoningEfforts: [],
+		serviceTiers: [],
+	};
+}
+
+async function validModelsSuffix(
+	resolver: ModelProviderResolver,
+): Promise<string> {
+	const models = await resolver.listModelSelections();
+	if (models.length === 0) {
+		return "";
+	}
+	const labels = models.map((entry) => entry.model.model).join(", ");
+	return `. Valid: ${labels}`;
 }

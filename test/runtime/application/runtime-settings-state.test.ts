@@ -1,26 +1,26 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_EFFORT, DEFAULT_MODEL } from "../../../src/common/commands.ts";
-import { MODELS } from "../../../src/common/models.ts";
+import { DEFAULT_EFFORT } from "../../../src/common/commands.ts";
 import { RuntimeSettingsState } from "../../../src/runtime/application/state/runtime-settings-state.ts";
 
 describe("RuntimeSettingsState", () => {
-	test("starts with default model and effort", () => {
+	test("starts with provider-default model and default effort", () => {
 		const state = new RuntimeSettingsState();
-		expect(state.model).toBe(DEFAULT_MODEL);
+		expect(state.model).toBe("");
 		expect(state.effort).toBe(DEFAULT_EFFORT);
 	});
 
-	test("resolvedModel returns the SDK model ID", () => {
-		const state = new RuntimeSettingsState();
-		expect(state.resolvedModel).toBe(MODELS[DEFAULT_MODEL].id);
+	test("can start with a composition-provided default model", () => {
+		const state = new RuntimeSettingsState({ defaultModel: "opus" });
+		expect(state.model).toBe("opus");
+		expect(state.resolvedModel).toBe("opus");
 	});
 
-	test("setModel changes model", () => {
+	test("setProviderModel changes the opaque provider-local model", () => {
 		const state = new RuntimeSettingsState();
-		state.setModel("haiku");
+		state.setProviderModel("gpt-5.5");
 
-		expect(state.model).toBe("haiku");
-		expect(state.resolvedModel).toBe(MODELS.haiku.id);
+		expect(state.model).toBe("gpt-5.5");
+		expect(state.resolvedModel).toBe("gpt-5.5");
 	});
 
 	test("setEffort changes effort", () => {

@@ -1,10 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { EffortLevel } from "../../common/commands.ts";
 import {
-	getModelAliasMetadata,
-	modelAliasForModel,
-} from "../../common/models.ts";
-import {
 	type ConfigDocument,
 	configPathFor,
 	DEFAULT_GLOBAL_CONFIG,
@@ -135,12 +131,5 @@ function resolveAutoTitleModel(document: ConfigDocument): string | undefined {
 		return undefined;
 	}
 
-	const alias = getModelAliasMetadata(rawModel);
-	if (alias) {
-		return alias.id;
-	}
-	if (modelAliasForModel(rawModel)) {
-		return rawModel;
-	}
 	return rawModel;
 }

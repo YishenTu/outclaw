@@ -43,7 +43,7 @@ describe("model provider resolver", () => {
 		const resolver = createModelProviderResolver([
 			{
 				providerId: "claude",
-				listModels: async () => [model("opus")],
+				listModels: async () => [model("claude-opus-4-7[1m]", "opus")],
 			},
 		]);
 

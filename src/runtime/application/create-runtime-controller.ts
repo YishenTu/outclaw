@@ -189,6 +189,7 @@ export function createRuntimeController(
 		clients,
 		createStatusEvent: () => getStatusEvent(),
 		execution,
+		modelProviderResolver,
 		isProviderConfigured: (providerId) => {
 			try {
 				providersForRunner.getFacade(providerId);

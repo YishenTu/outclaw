@@ -33,8 +33,6 @@ describe("outclaw layout", () => {
 			homeDir: "/tmp/outclaw-home/agents/railly",
 			promptHomeDir: "/tmp/outclaw-home/agents/railly",
 			cronDir: "/tmp/outclaw-home/agents/railly/cron",
-			claudeSkillsPath: "/tmp/outclaw-home/agents/railly/.claude/skills",
-			codexSkillsPath: "/tmp/outclaw-home/agents/railly/.codex/skills",
 		});
 	});
 

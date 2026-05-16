@@ -3800,6 +3800,56 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("uses provider workspace metadata for agent workspace file and graph views", async () => {
+		const root = createTempDir("outclaw-browser-provider-files-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(join(agentHomeDir, ".claude"), { recursive: true });
+		mkdirSync(join(agentHomeDir, ".codex"), { recursive: true });
+		writeFileSync(join(agentHomeDir, "AGENTS.md"), "# Agent\n");
+		writeFileSync(join(agentHomeDir, ".claude", "SKILL.md"), "# Claude\n");
+		writeFileSync(join(agentHomeDir, ".codex", "SKILL.md"), "# Codex\n");
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+			workspaceIgnoredNamesByAgent: new Map([
+				["agent-railly", [".claude", ".codex"]],
+			]),
+		});
+
+		await expect(api.listAgentWorkspaceFiles("agent-railly")).resolves.toEqual([
+			{ kind: "file", path: "AGENTS.md" },
+		]);
+		await expect(api.listAgentGraph("agent-railly")).resolves.toMatchObject({
+			nodes: [
+				{
+					id: "AGENTS.md",
+					name: "AGENTS",
+					path: "AGENTS.md",
+					resolved: true,
+				},
+			],
+			links: [],
+		});
+
+		store.close();
+	});
+
 	test("includes git preview metadata when an agent file has working tree changes", async () => {
 		const root = createTempDir("outclaw-browser-file-git-change-");
 		cleanupPaths.push(root);

@@ -1,9 +1,9 @@
-import { contextWindowForResolvedModel } from "../../../common/models.ts";
 import type { UsageInfo } from "../../../common/protocol.ts";
 import {
 	calculateUsagePercentage,
 	recalculateUsageForContextWindow,
 } from "../../../common/usage.ts";
+import { claudeContextWindowForModel } from "./models.ts";
 
 export interface ClaudeModelUsageEntry {
 	contextWindow?: number;
@@ -38,8 +38,7 @@ export function extractClaudeAssistantUsage(
 	const cacheCreationTokens = usage.cache_creation_input_tokens ?? 0;
 	const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
 	const contextTokens = inputTokens + cacheCreationTokens + cacheReadTokens;
-	const contextWindow =
-		contextWindowForResolvedModel(resolvedModel ?? "") ?? 200_000;
+	const contextWindow = claudeContextWindowForModel(resolvedModel) ?? 200_000;
 	const maxOutputTokens = 32_000;
 
 	return {

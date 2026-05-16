@@ -1,16 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
 	DEFAULT_EFFORT,
-	DEFAULT_MODEL,
 	type EffortLevel,
-	effortLevelsForModel,
 	isEffortLevel,
 } from "../../../../common/commands.ts";
-import {
-	MODEL_ALIAS_LIST,
-	type ModelAlias,
-	modelAliasForModel,
-} from "../../../../common/models.ts";
 import type { BrowserChatModel } from "../../../../common/protocol.ts";
 import { fetchAgentChatModels } from "../../lib/api.ts";
 import {
@@ -27,35 +20,16 @@ const EFFORT_MENU_LEVELS: readonly EffortLevel[] = [
 	"low",
 ];
 
-const MODEL_LABELS: Record<ModelAlias, string> = {
-	opus: "Opus",
-	sonnet: "Sonnet",
-	haiku: "Haiku",
-};
-
 export interface ChatModelSelection {
+	contextWindow?: number;
 	effort?: EffortLevel;
 	model: string;
 	providerId: string;
 	serviceTier?: string;
 }
 
-export function resolveCurrentModelAlias(model: string | null): ModelAlias {
-	if (!model) {
-		return DEFAULT_MODEL as ModelAlias;
-	}
-
-	return modelAliasForModel(model) ?? (DEFAULT_MODEL as ModelAlias);
-}
-
 export function resolveCurrentEffort(effort: string | null): EffortLevel {
 	return effort && isEffortLevel(effort) ? effort : DEFAULT_EFFORT;
-}
-
-export function visibleEffortLevelsForModel(
-	model: ModelAlias,
-): readonly EffortLevel[] {
-	return effortLevelsForModel(model, EFFORT_MENU_LEVELS);
 }
 
 interface ModelSelectorProps {
@@ -106,13 +80,7 @@ export function ModelSelector({
 		};
 	}, [agentId]);
 
-	const models = useMemo(
-		() =>
-			catalog.length > 0
-				? catalog
-				: fallbackClaudeModels(providerId ?? "claude"),
-		[catalog, providerId],
-	);
+	const models = useMemo(() => catalog, [catalog]);
 	const currentProviderId = resolveCurrentProviderId({
 		model,
 		models,
@@ -165,7 +133,10 @@ export function ModelSelector({
 					return onModelChange({
 						providerId: selected.providerId,
 						model: selected.model,
-						effort: compatibleEffortForModel(currentEffort, selected),
+						effort: compatibleEffortForChatModel(currentEffort, selected),
+						...(selected.contextWindow !== undefined
+							? { contextWindow: selected.contextWindow }
+							: {}),
 					});
 				}}
 			/>
@@ -187,25 +158,14 @@ export function ModelSelector({
 						providerId: currentModel.providerId,
 						model: currentModel.model,
 						effort: item.id,
+						...(currentModel.contextWindow !== undefined
+							? { contextWindow: currentModel.contextWindow }
+							: {}),
 					});
 				}}
 			/>
 		</div>
 	);
-}
-
-function fallbackClaudeModels(providerId: string): BrowserChatModel[] {
-	return MODEL_ALIAS_LIST.map((alias) => ({
-		providerId,
-		providerDisplayName: "Claude",
-		model: alias,
-		displayName: MODEL_LABELS[alias],
-		description: "",
-		isDefault: alias === DEFAULT_MODEL,
-		defaultReasoningEffort: DEFAULT_EFFORT,
-		supportedReasoningEfforts: [...visibleEffortLevelsForModel(alias)],
-		serviceTiers: [],
-	}));
 }
 
 function resolveCurrentProviderId(params: {
@@ -224,7 +184,7 @@ function resolveCurrentProviderId(params: {
 		modelMatch?.providerId ??
 		params.models.find((candidate) => candidate.isDefault)?.providerId ??
 		params.models[0]?.providerId ??
-		"claude"
+		(params.providerId || "")
 	);
 }
 
@@ -250,11 +210,7 @@ function modelMatches(
 	if (!model) {
 		return false;
 	}
-	return (
-		candidate.model === model ||
-		modelAliasForModel(candidate.model) === model ||
-		modelAliasForModel(model) === candidate.model
-	);
+	return candidate.model === model || candidate.id === model;
 }
 
 function resolveVisibleEffort(
@@ -265,10 +221,10 @@ function resolveVisibleEffort(
 		return resolveCurrentEffort(effort);
 	}
 
-	return compatibleEffortForModel(resolveCurrentEffort(effort), model);
+	return compatibleEffortForChatModel(resolveCurrentEffort(effort), model);
 }
 
-function compatibleEffortForModel(
+export function compatibleEffortForChatModel(
 	effort: EffortLevel,
 	model: BrowserChatModel,
 ): EffortLevel {
@@ -282,7 +238,7 @@ function compatibleEffortForModel(
 	return levels[0] ?? DEFAULT_EFFORT;
 }
 
-function effortLevelsForChatModel(
+export function effortLevelsForChatModel(
 	model: BrowserChatModel | undefined,
 ): EffortLevel[] {
 	if (!model) {
@@ -293,9 +249,9 @@ function effortLevelsForChatModel(
 		(level): level is EffortLevel => isEffortLevel(level),
 	);
 	if (providerLevels.length === 0) {
-		return [
-			...visibleEffortLevelsForModel(resolveCurrentModelAlias(model.model)),
-		];
+		return isEffortLevel(model.defaultReasoningEffort)
+			? [model.defaultReasoningEffort]
+			: [DEFAULT_EFFORT];
 	}
 
 	return EFFORT_MENU_LEVELS.filter((level) => providerLevels.includes(level));

@@ -1,9 +1,14 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, relative, sep } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude/index.ts";
+import { DEFAULT_CLAUDE_MODEL } from "./backend/adapters/claude/models.ts";
 import { CodexAdapter } from "./backend/adapters/codex/index.ts";
 import { createOutclawLayout } from "./common/layout.ts";
-import type { ImageMediaType } from "./common/protocol.ts";
+import type {
+	Facade,
+	ImageMediaType,
+	ProviderWorkspaceMetadata,
+} from "./common/protocol.ts";
 import { deriveTelegramBotId } from "./common/telegram.ts";
 import type { TelegramMessageFileRecord } from "./frontend/telegram/files/message-file-ref.ts";
 import { copyTelegramFile } from "./frontend/telegram/files/storage.ts";
@@ -129,6 +134,7 @@ function startMultiAgentDaemon(
 		string,
 		readonly BrowserChatProviderCatalog[]
 	>();
+	const workspaceMetadataByAgent = new Map<string, ProviderWorkspaceMetadata>();
 	const runtimes = agents.map((agent) => {
 		const facade = new ClaudeAdapter({ autoCompact: config.autoCompact });
 		facade.prepareWorkspace(agent.promptHomeDir);
@@ -163,6 +169,11 @@ function startMultiAgentDaemon(
 				listModels: () => codexAdapter.listModels(),
 			},
 		]);
+		const workspaceMetadata = collectProviderWorkspaceMetadata(
+			agent.promptHomeDir,
+			[facade, codexAdapter],
+		);
+		workspaceMetadataByAgent.set(agent.agentId, workspaceMetadata);
 
 		return createAgentRuntime({
 			agentId: agent.agentId,
@@ -170,11 +181,13 @@ function startMultiAgentDaemon(
 			cwd: agent.homeDir,
 			cronDir: join(agent.homeDir, "cron"),
 			defaultEffort: config.thinkingEffort,
+			defaultModel: DEFAULT_CLAUDE_MODEL,
 			facade,
 			providers: [
 				{ providerId: "claude", displayName: "Claude", facade },
 				{ providerId: "codex", displayName: "Codex", facade: codexAdapter },
 			],
+			workspaceIgnoredNames: workspaceMetadata.ignoredWorkspaceNames,
 			defaultProviderId: "claude",
 			getFrontendNotice: () => {
 				const rolloverNotice = agentStores
@@ -255,16 +268,20 @@ function startMultiAgentDaemon(
 			getRememberedAgentId: () => stateStore.getLastInteractiveAgentId(),
 			gitRoot: layout.homeDir,
 			homeDir: layout.homeDir,
-			ignoredGitPaths: agents.flatMap((agent) => [
-				relative(layout.homeDir, join(agent.promptHomeDir, ".claude", "skills"))
-					.split(sep)
-					.join("/"),
-				relative(layout.homeDir, join(agent.promptHomeDir, ".codex", "skills"))
-					.split(sep)
-					.join("/"),
-			]),
+			ignoredGitPaths: agents.flatMap((agent) =>
+				(
+					workspaceMetadataByAgent.get(agent.agentId)?.ignoredGitPaths ?? []
+				).map((path) => relative(layout.homeDir, path).split(sep).join("/")),
+			),
 			readTranscriptsByAgent: transcriptReadersByAgent,
 			storesByAgent: agentStores,
+			workspaceIgnoredNamesByAgent: new Map(
+				agents.map((agent) => [
+					agent.agentId,
+					workspaceMetadataByAgent.get(agent.agentId)?.ignoredWorkspaceNames ??
+						[],
+				]),
+			),
 		}),
 		browserWatch: {
 			agents: agents.map((agent) => ({
@@ -354,6 +371,29 @@ function startMultiAgentDaemon(
 			stateStore.close();
 			routeStore.close();
 		},
+	};
+}
+
+function collectProviderWorkspaceMetadata(
+	promptHomeDir: string,
+	providers: readonly Facade[],
+): Required<ProviderWorkspaceMetadata> {
+	const metadata = providers.map(
+		(provider) =>
+			provider.workspaceMetadata?.(promptHomeDir) ?? {
+				ignoredGitPaths: [],
+				ignoredWorkspaceNames: [],
+			},
+	);
+	return {
+		ignoredGitPaths: [
+			...new Set(metadata.flatMap((entry) => entry.ignoredGitPaths ?? [])),
+		],
+		ignoredWorkspaceNames: [
+			...new Set(
+				metadata.flatMap((entry) => entry.ignoredWorkspaceNames ?? []),
+			),
+		],
 	};
 }
 

@@ -135,6 +135,7 @@ describe("RuntimeMessageRouter", () => {
 			providerId: "codex",
 			model: "gpt-5.5",
 			effort: "low",
+			contextWindow: 400_000,
 		});
 
 		expect(modelSelects).toEqual([
@@ -144,6 +145,7 @@ describe("RuntimeMessageRouter", () => {
 					providerId: "codex",
 					model: "gpt-5.5",
 					effort: "low",
+					contextWindow: 400_000,
 				},
 				ws,
 			},

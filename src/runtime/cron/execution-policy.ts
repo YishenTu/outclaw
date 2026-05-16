@@ -1,8 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-	type EffortLevel,
-	resolveCompatibleEffort,
-} from "../../common/commands.ts";
+import type { EffortLevel } from "../../common/commands.ts";
 import { extractError } from "../../common/protocol.ts";
 import type { CronJobConfig } from "./job-config.ts";
 
@@ -88,10 +85,7 @@ export class CronExecutionPolicy {
 
 	async runScheduledJob(job: CronExecutableJob): Promise<void> {
 		const model = job.config.model;
-		const effort = normalizeCronEffort(
-			model,
-			job.config.effort ?? this.options.getDefaultEffort(),
-		);
+		const effort = job.config.effort ?? this.options.getDefaultEffort();
 
 		try {
 			const runResult = normalizeRunResult(
@@ -173,12 +167,4 @@ function normalizeRunResult(
 
 function isSuppressedCronResult(text: string): boolean {
 	return text.trim().replace(/`/g, "").toUpperCase() === "NO_REPLY";
-}
-
-function normalizeCronEffort(model: string, effort: EffortLevel): EffortLevel {
-	return resolveCompatibleEffort({
-		effort,
-		fallbackEffort: "high",
-		model,
-	});
 }

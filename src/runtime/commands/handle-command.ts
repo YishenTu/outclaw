@@ -1,7 +1,9 @@
+import type { EffortLevel } from "../../common/commands.ts";
 import type { RuntimeStatusEvent } from "../../common/protocol.ts";
 import { extractError } from "../../common/protocol.ts";
 import type { SessionService } from "../application/session-service.ts";
 import type { RuntimeState } from "../application/state/runtime-state.ts";
+import type { ModelProviderResolver } from "../model-provider-resolver.ts";
 import type { ClientHub, WsClient } from "../transport/client-hub.ts";
 import { handleRuntimeSettingsCommand } from "./handle-runtime-settings-command.ts";
 import { handleSessionCommand } from "./handle-session-command.ts";
@@ -11,12 +13,15 @@ interface HandleRuntimeCommandOptions {
 	command: string;
 	createStatusEvent: () => RuntimeStatusEvent;
 	hub: ClientHub;
+	modelProviderResolver?: ModelProviderResolver;
 	promptHomeDir?: string;
 	replayHistoryToAll: (session: {
 		providerId: string;
 		sdkSessionId: string;
 	}) => Promise<void>;
 	selectProviderModel?: (selection: {
+		contextWindow?: number;
+		effort?: EffortLevel;
 		model: string;
 		providerId: string;
 	}) => void;
@@ -76,9 +81,10 @@ export async function handleRuntimeCommand(
 		}
 
 		if (
-			handleRuntimeSettingsCommand({
+			await handleRuntimeSettingsCommand({
 				command,
 				hub: options.hub,
+				modelProviderResolver: options.modelProviderResolver,
 				selectProviderModel: options.selectProviderModel,
 				state: options.state,
 				ws: options.ws,

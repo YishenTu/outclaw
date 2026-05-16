@@ -284,7 +284,7 @@ describe("Telegram bridge", () => {
 		const event = await bridge.sendCommandAndWait("/model");
 
 		expect(event.type).toBe("model_changed");
-		expect(event.model).toBe("opus");
+		expect(event.model).toBe("");
 
 		bridge.close();
 	});

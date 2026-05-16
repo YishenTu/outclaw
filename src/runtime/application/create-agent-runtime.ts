@@ -62,6 +62,7 @@ interface CreateAgentRuntimeOptions {
 		text: string;
 	}) => Promise<void> | void;
 	defaultEffort?: EffortLevel;
+	defaultModel?: string;
 	/**
 	 * Primary chat facade. With single-provider runtimes this is the only
 	 * facade. With multi-provider runtimes this is the default; the full
@@ -93,6 +94,7 @@ interface CreateAgentRuntimeOptions {
 	statusAgentName?: string;
 	store?: SessionStore;
 	coding?: CodingRuntime;
+	workspaceIgnoredNames?: readonly string[];
 }
 
 export interface AgentRuntime {
@@ -182,7 +184,10 @@ export function createAgentRuntime(
 	const state = new RuntimeState(
 		facade.providerId,
 		options.statusAgentName ?? options.name,
-		{ defaultEffort: options.defaultEffort },
+		{
+			defaultEffort: options.defaultEffort,
+			defaultModel: options.defaultModel,
+		},
 	);
 	let noteRolloverStateChange = () => {};
 	const sessions = new SessionService(state, options.store, {
@@ -211,7 +216,10 @@ export function createAgentRuntime(
 			? () => listAgentSkills(promptHomeDir)
 			: undefined,
 		listWorkspaceFiles: workspaceCwd
-			? () => listWorkspaceFiles(workspaceCwd)
+			? () =>
+					listWorkspaceFiles(workspaceCwd, {
+						ignoredNames: options.workspaceIgnoredNames,
+					})
 			: undefined,
 		onExecutionStateChange: () => noteRolloverStateChange(),
 		restart: options.restart,

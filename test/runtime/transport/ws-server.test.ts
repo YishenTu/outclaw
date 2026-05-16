@@ -570,37 +570,7 @@ describe("Runtime server", () => {
 		ws.send(JSON.stringify({ type: "command", command: "/model" }));
 		const event = await waitForEvent(ws, (e) => e.type === "model_changed");
 
-		expect(event.model).toBe("opus");
-		ws.close();
-	});
-
-	test("/opus shorthand switches model", async () => {
-		const shortFacade = new MockFacade();
-		const shortServer = createRuntime({ port: 0, facade: shortFacade });
-		const ws = await connectWs(shortServer.port);
-
-		ws.send(JSON.stringify({ type: "command", command: "/opus" }));
-		const event = await waitForEvent(ws, (e) => e.type === "model_changed");
-
-		expect(event.type).toBe("model_changed");
-		expect(event.model).toBe("opus");
-
-		const collecting = collectUntilDone(ws);
-		ws.send(JSON.stringify({ type: "prompt", prompt: "hi" }));
-		await collecting;
-
-		expect(shortFacade.lastParams?.model).toBe("claude-opus-4-7[1m]");
-
-		ws.close();
-		shortServer.stop();
-	});
-
-	test("/model rejects invalid alias", async () => {
-		const ws = await connectWs(port);
-		ws.send(JSON.stringify({ type: "command", command: "/model gpt-5" }));
-		const event = await waitForEvent(ws, (e) => e.type === "error");
-
-		expect(event.type).toBe("error");
+		expect(event.model).toBe("");
 		ws.close();
 	});
 
@@ -900,7 +870,7 @@ describe("Runtime server", () => {
 		const event = await waitForEvent(ws, (e) => e.type === "runtime_status");
 
 		expect(event.type).toBe("runtime_status");
-		expect(event.model).toBe("opus");
+		expect(event.model).toBe("");
 		expect(event.effort).toBe("medium");
 		expect(event.sessionId).toBe("mock-session-123");
 
@@ -1212,7 +1182,7 @@ describe("Runtime server", () => {
 				}),
 			);
 			expect(cronFacade.lastParams?.prompt).toBe("say hello");
-			expect(cronFacade.lastParams?.model).toBe("claude-opus-4-7[1m]");
+			expect(cronFacade.lastParams?.model).toBe("opus");
 			expect(cronFacade.lastParams?.effort).toBe("low");
 
 			ws.close();

@@ -1,10 +1,10 @@
 import { type EffortLevel, isEffortLevel } from "../../common/commands.ts";
-import { isModelAlias, type ModelAlias } from "../../common/models.ts";
 import {
 	extractError,
 	type ModelSelectMessage,
 } from "../../common/protocol.ts";
 import { handleRuntimeCommand } from "../commands/handle-command.ts";
+import type { ModelProviderResolver } from "../model-provider-resolver.ts";
 import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import type { WsClient } from "../transport/client-hub.ts";
 import type { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
@@ -18,12 +18,17 @@ interface RuntimeControlPlaneOptions {
 	createStatusEvent: () => import("../../common/protocol.ts").RuntimeStatusEvent;
 	execution: RuntimeExecutionCoordinator;
 	isProviderConfigured?: (providerId: string) => boolean;
+	modelProviderResolver?: ModelProviderResolver;
 	promptHomeDir?: string;
 	restart?: () => void;
 	sessions: SessionService;
 	state: RuntimeState;
 	store?: SessionStore;
 }
+
+type RuntimeModelSelection = ModelSelectMessage & {
+	contextWindow?: number;
+};
 
 export class RuntimeControlPlane {
 	constructor(private readonly options: RuntimeControlPlaneOptions) {}
@@ -45,6 +50,7 @@ export class RuntimeControlPlane {
 			command,
 			createStatusEvent: this.options.createStatusEvent,
 			hub: this.options.clients.clientHub,
+			modelProviderResolver: this.options.modelProviderResolver,
 			promptHomeDir: this.options.promptHomeDir,
 			replayHistoryToAll: (session) =>
 				this.options.clients.replayHistory(
@@ -85,7 +91,7 @@ export class RuntimeControlPlane {
 		}
 	}
 
-	handleModelSelect(ws: WsClient, message: ModelSelectMessage) {
+	handleModelSelect(ws: WsClient, message: RuntimeModelSelection) {
 		const currentProviderId = this.options.state.providerId;
 		const visibleSessionId = this.options.state.sessionId;
 		// Cross-provider switches with an active session must come through an
@@ -134,11 +140,9 @@ export class RuntimeControlPlane {
 			this.options.state.setProvider(targetProvider);
 		}
 
-		if (isModelAlias(targetModel)) {
-			this.options.state.setModel(targetModel as ModelAlias);
-		} else {
-			this.options.state.setProviderModel(targetModel);
-		}
+		this.options.state.setProviderModel(targetModel, {
+			contextWindow: message.contextWindow,
+		});
 
 		if (effortArg !== undefined) {
 			this.options.state.setEffort(effortArg as EffortLevel);

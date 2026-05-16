@@ -8,7 +8,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MODELS } from "../../../src/common/models.ts";
 import {
 	loadGlobalConfig,
 	updateGlobalConfig,
@@ -235,7 +234,7 @@ describe("loadGlobalConfig", () => {
 		}
 	});
 
-	test("resolves autoTitle model aliases and accepts known resolved model ids", () => {
+	test("preserves autoTitle model strings for runtime catalog resolution", () => {
 		const aliasDir = tmp();
 		const resolvedDir = tmp();
 		try {
@@ -245,14 +244,14 @@ describe("loadGlobalConfig", () => {
 			);
 			writeFileSync(
 				join(resolvedDir, "config.json"),
-				JSON.stringify({ autoTitle: { model: MODELS.opus.id } }),
+				JSON.stringify({ autoTitle: { model: "claude-opus-4-7[1m]" } }),
 			);
 
 			expect(loadGlobalConfig(aliasDir).autoTitle).toEqual({
-				model: MODELS.opus.id,
+				model: "opus",
 			});
 			expect(loadGlobalConfig(resolvedDir).autoTitle).toEqual({
-				model: MODELS.opus.id,
+				model: "claude-opus-4-7[1m]",
 			});
 		} finally {
 			rmSync(aliasDir, { recursive: true });

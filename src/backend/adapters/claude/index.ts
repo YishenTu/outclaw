@@ -1,6 +1,5 @@
 import { unlinkSync } from "node:fs";
-import { effortLevelsForModel } from "../../../common/commands.ts";
-import { MODEL_ALIAS_LIST, type ModelAlias } from "../../../common/models.ts";
+import { join } from "node:path";
 import {
 	extractError,
 	type Facade,
@@ -14,6 +13,7 @@ import {
 	readClaudeReplay,
 	readClaudeTranscript,
 } from "./history/index.ts";
+import { CLAUDE_MODEL_ALIASES, describeClaudeModel } from "./models.ts";
 import {
 	type ClaudeSdkUserMessage,
 	createClaudePromptInput,
@@ -67,15 +67,20 @@ export class ClaudeAdapter implements Facade {
 		ensureClaudeSkillsSymlink(promptHomeDir);
 	}
 
+	workspaceMetadata(promptHomeDir: string) {
+		return {
+			ignoredWorkspaceNames: [".claude"],
+			ignoredGitPaths: [join(promptHomeDir, ".claude", "skills")],
+		};
+	}
+
 	/**
 	 * Static Claude model catalog. The Claude adapter has no remote
-	 * `model/list` to query — the runtime keeps the alias registry in
-	 * `src/common/models.ts`, and this method projects that registry into the
-	 * provider-neutral `ProviderModelInfo` shape so chat composers can offer
-	 * Claude and Codex models from one unified catalog.
+	 * `model/list` to query, so the adapter owns Claude's aliases, SDK ids,
+	 * effort compatibility, and context windows locally.
 	 */
 	async listModels(): Promise<ProviderModelInfo[]> {
-		return MODEL_ALIAS_LIST.map((alias) => describeClaudeModel(alias));
+		return CLAUDE_MODEL_ALIASES.map((alias) => describeClaudeModel(alias));
 	}
 
 	async readHistory(sessionId: string) {
@@ -165,34 +170,3 @@ function waitFor(ms: number): Promise<void> {
 		setTimeout(resolve, ms);
 	});
 }
-
-function describeClaudeModel(alias: ModelAlias): ProviderModelInfo {
-	const supportedEfforts = effortLevelsForModel(alias);
-	const defaultEffort = supportedEfforts.includes("medium")
-		? "medium"
-		: (supportedEfforts[0] ?? "medium");
-	return {
-		id: alias,
-		model: alias,
-		displayName: CLAUDE_MODEL_DISPLAY_NAMES[alias] ?? alias,
-		description: CLAUDE_MODEL_DESCRIPTIONS[alias] ?? "",
-		isDefault: alias === DEFAULT_CLAUDE_MODEL,
-		defaultReasoningEffort: defaultEffort,
-		supportedReasoningEfforts: [...supportedEfforts],
-		serviceTiers: [],
-	};
-}
-
-const DEFAULT_CLAUDE_MODEL: ModelAlias = "opus";
-
-const CLAUDE_MODEL_DISPLAY_NAMES: Record<ModelAlias, string> = {
-	opus: "Claude Opus 4.7 (1M)",
-	sonnet: "Claude Sonnet",
-	haiku: "Claude Haiku",
-};
-
-const CLAUDE_MODEL_DESCRIPTIONS: Record<ModelAlias, string> = {
-	opus: "Most capable Claude model.",
-	sonnet: "Balanced Claude model.",
-	haiku: "Fast Claude model.",
-};

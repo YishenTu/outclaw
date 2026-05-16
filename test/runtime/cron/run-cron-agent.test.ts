@@ -60,7 +60,7 @@ describe("createCronAgentRunner", () => {
 		promptHomes.length = 0;
 	});
 
-	test("assembles the system prompt, resolves aliases, and collects text output", async () => {
+	test("assembles the system prompt, preserves provider-local model ids, and collects text output", async () => {
 		const promptHomeDir = createPromptHome({
 			"AGENTS.md": "Agent instructions",
 			"USER.md": "User context",
@@ -103,7 +103,7 @@ describe("createCronAgentRunner", () => {
 					"<agents>\nAgent instructions\n</agents>\n\n<user>\nUser context\n</user>",
 			},
 			cwd: "/workspace/project",
-			model: "claude-opus-4-7[1m]",
+			model: "opus",
 			effort: "max",
 			stream: false,
 		});

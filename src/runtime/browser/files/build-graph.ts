@@ -39,6 +39,10 @@ interface FileLinkCacheEntry {
 // removed) are pruned.
 const linkCacheByRoot = new Map<string, Map<string, FileLinkCacheEntry>>();
 
+interface BuildAgentGraphOptions {
+	ignoredNames?: readonly string[];
+}
+
 /**
  * Reset the wikilink parse cache. Mostly for tests; production callers should
  * not need this because mtime invalidation handles updates.
@@ -47,8 +51,12 @@ export function clearAgentGraphCache(): void {
 	linkCacheByRoot.clear();
 }
 
-export async function buildAgentGraph(rootDir: string): Promise<AgentGraph> {
+export async function buildAgentGraph(
+	rootDir: string,
+	options: BuildAgentGraphOptions = {},
+): Promise<AgentGraph> {
 	const entries = await listWorkspaceFiles(rootDir, {
+		ignoredNames: options.ignoredNames,
 		limit: MARKDOWN_FILE_LIMIT,
 	});
 	const markdownPaths = entries

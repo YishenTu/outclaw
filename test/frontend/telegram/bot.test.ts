@@ -25,7 +25,6 @@ let registerTelegramSessionHandlers = mock(() => {});
 let registerTelegramRuntimeCommands = mock(() => {});
 let registerTelegramMemoryHandlers = mock(() => {});
 let registerTelegramPromptCommands = mock(() => {});
-let registerTelegramModelShortcuts = mock(() => {});
 let handleTelegramMemoryTextCommand = mock(async () => false);
 let lastHeartbeatArgs: unknown[] = [];
 let lastTextMessageArgs: unknown[] = [];
@@ -150,7 +149,6 @@ function resetFakes() {
 	registerTelegramRuntimeCommands = mock(() => {});
 	registerTelegramMemoryHandlers = mock(() => {});
 	registerTelegramPromptCommands = mock(() => {});
-	registerTelegramModelShortcuts = mock(() => {});
 	handleTelegramMemoryTextCommand = mock(async () => false);
 	lastHeartbeatArgs = [];
 	lastTextMessageArgs = [];
@@ -211,9 +209,6 @@ function createTestDependencies(params: {
 		registerMemoryHandlers: (
 			...args: Parameters<typeof registerTelegramMemoryHandlers>
 		) => registerTelegramMemoryHandlers(...args),
-		registerModelShortcuts: (
-			...args: Parameters<typeof registerTelegramModelShortcuts>
-		) => registerTelegramModelShortcuts(...args),
 		registerRuntimeCommands: (
 			...args: Parameters<typeof registerTelegramRuntimeCommands>
 		) => registerTelegramRuntimeCommands(...args),
@@ -267,10 +262,6 @@ describe("startTelegramBot", () => {
 			expect.any(Function),
 		);
 		expect(registerTelegramPromptCommands).toHaveBeenCalledWith(
-			bot,
-			expect.any(Function),
-		);
-		expect(registerTelegramModelShortcuts).toHaveBeenCalledWith(
 			bot,
 			expect.any(Function),
 		);

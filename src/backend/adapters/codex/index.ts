@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { canonicalizePromptSlashCommand } from "../../../common/commands.ts";
 import {
 	type CodingSessionEvent,
@@ -88,6 +89,13 @@ export class CodexAdapter implements Facade {
 
 	prepareWorkspace(promptHomeDir: string): void {
 		ensureCodexAgentWorkspace(promptHomeDir);
+	}
+
+	workspaceMetadata(promptHomeDir: string) {
+		return {
+			ignoredWorkspaceNames: [".codex"],
+			ignoredGitPaths: [join(promptHomeDir, ".codex", "skills")],
+		};
 	}
 
 	/**
@@ -269,6 +277,10 @@ export class CodexAdapter implements Facade {
 		await client.request("thread/archive", { threadId: sessionId });
 	}
 
+	async trashCodingSession(sessionId: string): Promise<void> {
+		await this.archiveCodingSession(sessionId);
+	}
+
 	async restoreCodingSession(sessionId: string): Promise<void> {
 		const client = await this.loadClient();
 		await client.initialize();
@@ -336,15 +348,6 @@ export class CodexAdapter implements Facade {
 	}
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
-		if (params.tools !== undefined) {
-			yield {
-				type: "error",
-				message:
-					"Codex does not support RunParams.tools; use executionMode for provider-neutral execution constraints",
-			};
-			return;
-		}
-
 		const startedAtMs = Date.now();
 		const client = await this.loadClient();
 		const queue = new CodexNotificationQueue();

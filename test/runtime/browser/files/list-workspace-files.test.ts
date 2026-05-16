@@ -25,7 +25,9 @@ describe("listWorkspaceFiles", () => {
 			writeFileSync(join(root, "src", "index.ts"), "");
 			writeFileSync(join(root, "src", "nested", "deep.ts"), "");
 
-			const entries = await listWorkspaceFiles(root);
+			const entries = await listWorkspaceFiles(root, {
+				ignoredNames: [".claude", ".codex"],
+			});
 
 			expect(entries).toEqual([
 				{ kind: "file", path: "README.md" },
@@ -63,9 +65,32 @@ describe("listWorkspaceFiles", () => {
 			writeFileSync(join(root, ".gitkeep"), "");
 			writeFileSync(join(root, "keep.md"), "");
 
-			const entries = await listWorkspaceFiles(root);
+			const entries = await listWorkspaceFiles(root, {
+				ignoredNames: [".claude", ".codex"],
+			});
 
 			expect(entries.map((entry) => entry.path)).toEqual(["keep.md"]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	test("does not bake provider workspace names into the default ignore list", async () => {
+		const { root, cleanup } = makeTempRoot("outclaw-files-provider-");
+		try {
+			mkdirSync(join(root, ".claude"));
+			writeFileSync(join(root, ".claude", "settings.json"), "");
+			mkdirSync(join(root, ".codex"));
+			writeFileSync(join(root, ".codex", "config.toml"), "");
+
+			const entries = await listWorkspaceFiles(root);
+
+			expect(entries.map((entry) => entry.path)).toEqual([
+				".claude",
+				".claude/settings.json",
+				".codex",
+				".codex/config.toml",
+			]);
 		} finally {
 			cleanup();
 		}

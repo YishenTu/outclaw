@@ -1,7 +1,10 @@
 import type { HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
-import { contextWindowForResolvedModel } from "../../../common/models.ts";
 import type { RunParams } from "../../../common/protocol.ts";
 import { blockDotClaudeHookMatcher } from "./block-dotclaude-hook.ts";
+import {
+	claudeContextWindowForModel,
+	resolveClaudeModelForSdk,
+} from "./models.ts";
 
 const CLAUDE_TOOLS = [
 	"Bash",
@@ -57,16 +60,13 @@ export function buildClaudeSdkOptions(
 					...params.sessionEnv,
 				}
 			: undefined,
-		model: params.model,
+		model: resolveClaudeModelForSdk(params.model),
 		effort: params.effort as ClaudeEffort | undefined,
 		permissionMode: "bypassPermissions",
 		allowDangerouslySkipPermissions: true,
 		includePartialMessages: params.stream ?? true,
 		settings: buildClaudeAutoCompactSettings(params.model, autoCompact),
-		tools:
-			params.executionMode === "read_only"
-				? []
-				: (params.tools ?? CLAUDE_TOOLS),
+		tools: params.executionMode === "read_only" ? [] : CLAUDE_TOOLS,
 		hooks: { PreToolUse: [blockDotClaudeHookMatcher] },
 	};
 }
@@ -76,7 +76,7 @@ function buildClaudeAutoCompactSettings(
 	autoCompact: boolean,
 ): { autoCompactWindow: number } | undefined {
 	if (!autoCompact || !model) return undefined;
-	const contextWindow = contextWindowForResolvedModel(model);
+	const contextWindow = claudeContextWindowForModel(model);
 	if (!contextWindow) return undefined;
 	return { autoCompactWindow: Math.round(contextWindow * 0.8) };
 }

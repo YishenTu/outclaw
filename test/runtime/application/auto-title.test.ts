@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
-import { DEFAULT_EFFORT, DEFAULT_MODEL } from "../../../src/common/commands.ts";
-import { MODELS } from "../../../src/common/models.ts";
+import { DEFAULT_EFFORT } from "../../../src/common/commands.ts";
 import type {
 	Facade,
 	FacadeEvent,
@@ -114,17 +113,17 @@ describe("AutoTitleCoordinator", () => {
 		const coordinator = new AutoTitleCoordinator({
 			providers: { getFacade: () => facade },
 			modelProviderResolver: staticModelProviderResolver("mock"),
-			model: MODELS.haiku.id,
+			model: "haiku",
 			sessions: sessions as SessionService,
 		});
 		const context: RuntimePromptContext = {
 			effort: DEFAULT_EFFORT,
 			fallbackSessionTitle: "Explain slow title generation",
 			generation: 0,
-			model: DEFAULT_MODEL,
+			model: "opus",
 			ocSessionId: "oc-title",
 			providerId: "claude",
-			resolvedModel: MODELS[DEFAULT_MODEL].id,
+			resolvedModel: "opus",
 			sessionSource: "tui",
 		};
 
@@ -140,7 +139,6 @@ describe("AutoTitleCoordinator", () => {
 
 		expect(titleParams?.abortController?.signal.aborted).toBe(false);
 		expect(titleParams?.executionMode).toBe("read_only");
-		expect(titleParams?.tools).toBeUndefined();
 		coordinator.resolveSession("oc-title", "sdk-title");
 		releaseTitle.resolve();
 		await coordinator.drain();
@@ -199,10 +197,10 @@ describe("AutoTitleCoordinator", () => {
 			effort: DEFAULT_EFFORT,
 			fallbackSessionTitle: "Pending",
 			generation: 0,
-			model: DEFAULT_MODEL,
+			model: "opus",
 			ocSessionId: "oc-title-codex",
 			providerId: "claude",
-			resolvedModel: MODELS[DEFAULT_MODEL].id,
+			resolvedModel: "opus",
 			sessionSource: "tui",
 		};
 

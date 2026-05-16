@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { EffortLevel } from "../../../src/common/commands.ts";
-import { MODEL_ALIAS_LIST } from "../../../src/common/models.ts";
-import type { ServerEvent } from "../../../src/common/protocol.ts";
+import type {
+	ProviderModelInfo,
+	ServerEvent,
+} from "../../../src/common/protocol.ts";
 import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
 import { handleRuntimeSettingsCommand } from "../../../src/runtime/commands/handle-runtime-settings-command.ts";
+import {
+	createModelProviderResolver,
+	type ModelProviderResolver,
+} from "../../../src/runtime/model-provider-resolver.ts";
 import {
 	ClientHub,
 	type WsClient,
@@ -22,10 +28,50 @@ function mockWs(): WsClient & { events: () => ServerEvent[] } {
 	return ws as unknown as WsClient & { events: () => ServerEvent[] };
 }
 
+function providerModel(
+	model: string,
+	overrides: Partial<ProviderModelInfo> = {},
+): ProviderModelInfo {
+	return {
+		id: model,
+		model,
+		displayName: model,
+		description: "",
+		isDefault: false,
+		defaultReasoningEffort: "medium",
+		supportedReasoningEfforts: ["low", "medium", "high", "max"],
+		serviceTiers: [],
+		...overrides,
+	};
+}
+
+function catalogResolver(): ModelProviderResolver {
+	return createModelProviderResolver([
+		{
+			providerId: "claude",
+			listModels: async () => [
+				providerModel("opus", {
+					id: "claude-opus-4-7[1m]",
+					contextWindow: 1_000_000,
+					supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+				}),
+				providerModel("sonnet", { contextWindow: 200_000 }),
+			],
+		},
+		{
+			providerId: "codex",
+			listModels: async () => [providerModel("gpt-5.5")],
+		},
+	]);
+}
+
 function setup(
 	options: {
 		defaultEffort?: EffortLevel;
+		modelProviderResolver?: ModelProviderResolver;
 		selectProviderModel?: (selection: {
+			contextWindow?: number;
+			effort?: EffortLevel;
 			model: string;
 			providerId: string;
 		}) => void;
@@ -36,6 +82,7 @@ function setup(
 	const observer = mockWs();
 	const state = new RuntimeState(PROVIDER_ID, undefined, {
 		defaultEffort: options.defaultEffort,
+		defaultModel: "opus",
 	});
 	hub.add(ws);
 	hub.add(observer);
@@ -44,6 +91,7 @@ function setup(
 		return handleRuntimeSettingsCommand({
 			command,
 			hub,
+			modelProviderResolver: options.modelProviderResolver,
 			selectProviderModel: options.selectProviderModel,
 			state,
 			ws,
@@ -54,16 +102,16 @@ function setup(
 }
 
 describe("handleRuntimeSettingsCommand", () => {
-	test("returns false for unrelated commands", () => {
+	test("returns false for unrelated commands", async () => {
 		const { run, ws } = setup();
-		expect(run("/status")).toBe(false);
+		await expect(run("/status")).resolves.toBe(false);
 		expect(ws.events()).toEqual([]);
 	});
 
 	describe("/model", () => {
-		test("reports current model when no argument", () => {
+		test("reports current model when no argument", async () => {
 			const { run, state, ws } = setup();
-			expect(run("/model")).toBe(true);
+			await expect(run("/model")).resolves.toBe(true);
 
 			expect(
 				ws.events().find((event) => event.type === "model_changed"),
@@ -74,29 +122,56 @@ describe("handleRuntimeSettingsCommand", () => {
 			});
 		});
 
-		test("changes model with valid alias and broadcasts it", () => {
-			const { observer, run, state, ws } = setup();
-			expect(run("/model haiku")).toBe(true);
-
-			expect(state.model).toBe("haiku");
-			expect(
-				ws.events().find((event) => event.type === "model_changed"),
-			).toEqual({
-				type: "model_changed",
-				model: "haiku",
-				providerId: state.providerId,
+		test("routes model choices through the provider catalog", async () => {
+			let selection:
+				| {
+						contextWindow?: number;
+						model: string;
+						providerId: string;
+				  }
+				| undefined;
+			const { run } = setup({
+				modelProviderResolver: catalogResolver(),
+				selectProviderModel: (nextSelection) => {
+					selection = nextSelection;
+				},
 			});
-			expect(
-				observer.events().find((event) => event.type === "model_changed"),
-			).toEqual({
-				type: "model_changed",
-				model: "haiku",
-				providerId: state.providerId,
+
+			await expect(run("/model opus")).resolves.toBe(true);
+
+			expect(selection).toEqual({
+				providerId: "claude",
+				model: "opus",
+				contextWindow: 1_000_000,
 			});
 		});
 
-		test("broadcasts refreshed runtime status with recalculated usage after a model switch", () => {
-			const { observer, run, state, ws } = setup();
+		test("matches provider-qualified model ids through the catalog", async () => {
+			let selection:
+				| {
+						model: string;
+						providerId: string;
+				  }
+				| undefined;
+			const { run } = setup({
+				modelProviderResolver: catalogResolver(),
+				selectProviderModel: (nextSelection) => {
+					selection = nextSelection;
+				},
+			});
+
+			await expect(run("/model codex/gpt-5.5")).resolves.toBe(true);
+
+			expect(selection).toEqual({
+				providerId: "codex",
+				model: "gpt-5.5",
+			});
+		});
+
+		test("broadcasts refreshed runtime status with recalculated usage after a catalog model switch", async () => {
+			const { observer, run, state } = setup({
+				modelProviderResolver: catalogResolver(),
+			});
 			state.completeRun({
 				type: "done",
 				sessionId: "sdk-big",
@@ -113,24 +188,11 @@ describe("handleRuntimeSettingsCommand", () => {
 				},
 			});
 
-			expect(run("/model sonnet")).toBe(true);
+			await expect(run("/model sonnet")).resolves.toBe(true);
 
-			const senderStatus = ws
-				.events()
-				.find((event) => event.type === "runtime_status");
 			const observerStatus = observer
 				.events()
 				.find((event) => event.type === "runtime_status");
-
-			expect(senderStatus).toMatchObject({
-				type: "runtime_status",
-				model: "sonnet",
-				usage: {
-					contextWindow: 200_000,
-					contextTokens: 100_000,
-					percentage: 50,
-				},
-			});
 			expect(observerStatus).toMatchObject({
 				type: "runtime_status",
 				model: "sonnet",
@@ -142,15 +204,10 @@ describe("handleRuntimeSettingsCommand", () => {
 			});
 		});
 
-		test("accepts model alias shortcuts", () => {
-			const { run, state } = setup();
-			expect(run("/opus")).toBe(true);
-			expect(state.model).toBe("opus");
-		});
-
-		test("blocks model switch when context exceeds target context window", () => {
-			const { run, state, ws } = setup();
-			// Simulate high context usage on opus (1M window)
+		test("blocks model switch when context exceeds target catalog window", async () => {
+			const { run, state, ws } = setup({
+				modelProviderResolver: catalogResolver(),
+			});
 			state.completeRun({
 				type: "done",
 				sessionId: "sdk-big",
@@ -167,77 +224,34 @@ describe("handleRuntimeSettingsCommand", () => {
 				},
 			});
 
-			expect(run("/model sonnet")).toBe(true);
-			expect(state.model).toBe("opus"); // unchanged
-			expect(ws.events().find((e) => e.type === "error")).toBeDefined();
-		});
-
-		test("allows model switch when context fits target window", () => {
-			const { run, state } = setup();
-			state.completeRun({
-				type: "done",
-				sessionId: "sdk-small",
-				durationMs: 1,
-				usage: {
-					inputTokens: 10_000,
-					outputTokens: 1_000,
-					cacheCreationTokens: 0,
-					cacheReadTokens: 0,
-					contextWindow: 1_000_000,
-					maxOutputTokens: 64_000,
-					contextTokens: 10_000,
-					percentage: 1,
-				},
-			});
-
-			expect(run("/model sonnet")).toBe(true);
-			expect(state.model).toBe("sonnet");
-		});
-
-		test("allows model switch when no usage info available", () => {
-			const { run, state } = setup();
-			expect(run("/model sonnet")).toBe(true);
-			expect(state.model).toBe("sonnet");
-		});
-
-		test("sends error for invalid model aliases", () => {
-			const { run, state, ws } = setup();
-			const initialModel = state.model;
-			expect(run("/model gpt-4")).toBe(true);
-
-			expect(state.model).toBe(initialModel);
+			await expect(run("/model sonnet")).resolves.toBe(true);
+			expect(state.model).toBe("opus");
 			expect(ws.events().find((event) => event.type === "error")).toEqual({
 				type: "error",
-				message: `Invalid model: gpt-4. Valid: ${MODEL_ALIAS_LIST.join(", ")}`,
+				message:
+					"context too large for sonnet (180000/160000) — run /compact first",
 			});
 		});
 
-		test("routes provider-qualified model ids through typed selection", () => {
-			let selection:
-				| {
-						model: string;
-						providerId: string;
-				  }
-				| undefined;
-			const { run } = setup({
-				selectProviderModel: (nextSelection) => {
-					selection = nextSelection;
-				},
+		test("sends error for unknown catalog models", async () => {
+			const { run, state, ws } = setup({
+				modelProviderResolver: catalogResolver(),
 			});
 
-			expect(run("/model codex/gpt-5.5")).toBe(true);
+			await expect(run("/model gpt-4")).resolves.toBe(true);
 
-			expect(selection).toEqual({
-				providerId: "codex",
-				model: "gpt-5.5",
+			expect(state.model).toBe("opus");
+			expect(ws.events().find((event) => event.type === "error")).toEqual({
+				type: "error",
+				message: "Invalid model: gpt-4. Valid: opus, sonnet, gpt-5.5",
 			});
 		});
 	});
 
 	describe("/thinking", () => {
-		test("reports current effort when no argument", () => {
+		test("reports current effort when no argument", async () => {
 			const { run, state, ws } = setup();
-			expect(run("/thinking")).toBe(true);
+			await expect(run("/thinking")).resolves.toBe(true);
 
 			expect(
 				ws.events().find((event) => event.type === "effort_changed"),
@@ -248,32 +262,10 @@ describe("handleRuntimeSettingsCommand", () => {
 			});
 		});
 
-		test("changes effort with a valid level and broadcasts it", () => {
+		test("changes effort with a valid provider-neutral level", async () => {
 			const { observer, run, state, ws } = setup();
-			expect(run("/thinking max")).toBe(true);
+			await expect(run("/thinking xhigh")).resolves.toBe(true);
 
-			expect(state.effort).toBe("max");
-			expect(
-				ws.events().find((event) => event.type === "effort_changed"),
-			).toEqual({
-				type: "effort_changed",
-				effort: "max",
-				providerId: state.providerId,
-			});
-			expect(
-				observer.events().find((event) => event.type === "effort_changed"),
-			).toEqual({
-				type: "effort_changed",
-				effort: "max",
-				providerId: state.providerId,
-			});
-		});
-
-		test("accepts xhigh when current model is opus", () => {
-			const { observer, run, state, ws } = setup();
-			expect(state.model).toBe("opus");
-
-			expect(run("/thinking xhigh")).toBe(true);
 			expect(state.effort).toBe("xhigh");
 			expect(
 				ws.events().find((event) => event.type === "effort_changed"),
@@ -291,42 +283,29 @@ describe("handleRuntimeSettingsCommand", () => {
 			});
 		});
 
-		test("rejects xhigh when current model is not opus", () => {
-			const { run, state, ws } = setup();
-			run("/model haiku");
-			const before = state.effort;
-
-			expect(run("/thinking xhigh")).toBe(true);
-			expect(state.effort).toBe(before);
-			expect(ws.events().find((event) => event.type === "error")).toEqual({
-				type: "error",
-				message: "Effort 'xhigh' requires the opus model (current: haiku)",
+		test("downgrades effort from catalog metadata when switching model", async () => {
+			const { observer, run, state } = setup({
+				defaultEffort: "low",
+				modelProviderResolver: catalogResolver(),
 			});
-		});
-
-		test("downgrades xhigh to the configured default when switching off opus", () => {
-			const { observer, run, state } = setup({ defaultEffort: "low" });
-			expect(run("/thinking xhigh")).toBe(true);
+			await expect(run("/thinking xhigh")).resolves.toBe(true);
 			expect(state.effort).toBe("xhigh");
 
-			expect(run("/model haiku")).toBe(true);
-			expect(state.model).toBe("haiku");
+			await expect(run("/model sonnet")).resolves.toBe(true);
+
+			expect(state.model).toBe("sonnet");
 			expect(state.effort).toBe("low");
-
-			const effortEvents = observer
-				.events()
-				.filter((event) => event.type === "effort_changed");
-			expect(effortEvents.at(-1)).toEqual({
+			expect(observer.events().at(-2)).toEqual({
 				type: "effort_changed",
 				effort: "low",
 				providerId: state.providerId,
 			});
 		});
 
-		test("sends error for invalid effort values", () => {
+		test("sends error for invalid effort values", async () => {
 			const { run, state, ws } = setup();
 			const initialEffort = state.effort;
-			expect(run("/thinking extreme")).toBe(true);
+			await expect(run("/thinking extreme")).resolves.toBe(true);
 
 			expect(state.effort).toBe(initialEffort);
 			expect(ws.events().find((event) => event.type === "error")).toEqual({

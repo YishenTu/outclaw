@@ -7,10 +7,9 @@ import {
 import { DropupMenu } from "../../../src/frontend/browser/components/chat/dropup-menu.tsx";
 import { formatHeartbeatRemaining } from "../../../src/frontend/browser/components/chat/heartbeat-indicator.tsx";
 import {
+	effortLevelsForChatModel,
 	formatEffortLabel,
 	resolveCurrentEffort,
-	resolveCurrentModelAlias,
-	visibleEffortLevelsForModel,
 } from "../../../src/frontend/browser/components/chat/model-selector.tsx";
 import { FileTree } from "../../../src/frontend/browser/components/right-panel/file-tree.tsx";
 import { GitCommitHistory } from "../../../src/frontend/browser/components/right-panel/git/git-commit-history.tsx";
@@ -56,28 +55,26 @@ describe("browser component helpers", () => {
 		expect(formatHeartbeatRemaining(now - 1_000, now)).toBe("0s");
 	});
 
-	test("resolves model selector aliases, efforts, and visible effort options", () => {
-		expect(resolveCurrentModelAlias(null)).toBe("opus");
-		expect(resolveCurrentModelAlias("claude-opus-4-7[1m]")).toBe("opus");
-		expect(resolveCurrentModelAlias("sonnet")).toBe("sonnet");
-		expect(resolveCurrentModelAlias("unknown-model")).toBe("opus");
+	test("resolves model selector efforts from provider catalog metadata", () => {
 		expect(resolveCurrentEffort(null)).toBe("medium");
 		expect(resolveCurrentEffort("xhigh")).toBe("xhigh");
 		expect(resolveCurrentEffort("turbo")).toBe("medium");
 		expect(formatEffortLabel("xhigh")).toBe("XHigh");
-		expect(visibleEffortLevelsForModel("opus")).toEqual([
-			"max",
-			"xhigh",
-			"high",
-			"medium",
-			"low",
-		]);
-		expect(visibleEffortLevelsForModel("sonnet")).toEqual([
-			"max",
-			"high",
-			"medium",
-			"low",
-		]);
+
+		expect(
+			effortLevelsForChatModel({
+				providerId: "codex",
+				providerDisplayName: "Codex",
+				id: "gpt-5.5",
+				model: "gpt-5.5",
+				displayName: "GPT-5.5",
+				description: "",
+				isDefault: true,
+				defaultReasoningEffort: "medium",
+				supportedReasoningEfforts: ["low", "medium", "high"],
+				serviceTiers: [],
+			}),
+		).toEqual(["high", "medium", "low"]);
 	});
 
 	test("renders generic dropup menus for empty and selectable states", () => {

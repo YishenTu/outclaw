@@ -170,4 +170,59 @@ describe("RuntimeControlPlane", () => {
 			message: "Invalid effort: turbo",
 		});
 	});
+
+	test("model_select applies catalog context metadata to runtime usage", () => {
+		const state = new RuntimeState("claude", undefined, {
+			defaultModel: "opus",
+		});
+		state.completeRun({
+			type: "done",
+			sessionId: "sdk-1",
+			durationMs: 1,
+			usage: {
+				inputTokens: 100_000,
+				outputTokens: 5_000,
+				cacheCreationTokens: 0,
+				cacheReadTokens: 0,
+				contextTokens: 100_000,
+				contextWindow: 1_000_000,
+				maxOutputTokens: 64_000,
+				percentage: 10,
+			},
+		});
+		const clients = createGateway(state);
+		const ws = mockWs();
+		clients.handleOpen(ws);
+		const { execution } = createExecution(false);
+		const controlPlane = new RuntimeControlPlane({
+			clients,
+			createStatusEvent: () => state.createStatusEvent(),
+			execution,
+			sessions: new SessionService(state),
+			state,
+		});
+
+		controlPlane.handleModelSelect(ws, {
+			type: "model_select",
+			providerId: "claude",
+			model: "sonnet",
+			contextWindow: 200_000,
+		});
+
+		expect(state.usage).toMatchObject({
+			contextTokens: 100_000,
+			contextWindow: 200_000,
+			percentage: 50,
+		});
+		expect(ws.events()).toContainEqual(
+			expect.objectContaining({
+				type: "runtime_status",
+				model: "sonnet",
+				usage: expect.objectContaining({
+					contextWindow: 200_000,
+					percentage: 50,
+				}),
+			}),
+		);
+	});
 });

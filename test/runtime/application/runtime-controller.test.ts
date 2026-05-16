@@ -944,7 +944,6 @@ describe("RuntimeController", () => {
 				executionMode: "read_only",
 				ephemeral: true,
 			});
-			expect(facade.titleCalls[0]?.tools).toBeUndefined();
 			expect(facade.titleCalls[0]?.prompt).toContain(
 				"Do not answer the request",
 			);

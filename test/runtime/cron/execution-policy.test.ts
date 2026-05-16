@@ -179,7 +179,7 @@ describe("CronExecutionPolicy", () => {
 		);
 	});
 
-	test("normalizes opus-only effort values through shared model compatibility", async () => {
+	test("passes cron effort values through without provider-specific normalization", async () => {
 		const received: Array<{ model?: string; effort?: EffortLevel }> = [];
 		const policy = new CronExecutionPolicy({
 			getDefaultEffort: () => "xhigh",
@@ -194,7 +194,7 @@ describe("CronExecutionPolicy", () => {
 		await policy.runScheduledJob(makeJob({ model: "opus", effort: "xhigh" }));
 
 		expect(received).toEqual([
-			{ model: "haiku", effort: "high" },
+			{ model: "haiku", effort: "xhigh" },
 			{ model: "opus", effort: "xhigh" },
 		]);
 	});

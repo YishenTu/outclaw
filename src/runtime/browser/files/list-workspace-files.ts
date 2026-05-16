@@ -10,8 +10,6 @@ const CHAT_WORKSPACE_IGNORED_NAMES = new Set([
 	".git",
 	".DS_Store",
 	".obsidian",
-	".claude",
-	".codex",
 	".agents",
 	".agent-id",
 	".gitkeep",
@@ -37,6 +35,7 @@ export const REPOSITORY_WORKSPACE_IGNORED_NAMES = new Set([
 ]);
 
 interface ListWorkspaceFilesOptions {
+	ignoredNames?: readonly string[];
 	limit?: number;
 }
 
@@ -44,9 +43,13 @@ export async function listWorkspaceFiles(
 	rootDir: string,
 	options: ListWorkspaceFilesOptions = {},
 ): Promise<WorkspaceFileEntry[]> {
+	const ignoredNames =
+		options.ignoredNames && options.ignoredNames.length > 0
+			? new Set([...CHAT_WORKSPACE_IGNORED_NAMES, ...options.ignoredNames])
+			: CHAT_WORKSPACE_IGNORED_NAMES;
 	return await listWorkspaceFilesWithIgnoredNames(
 		rootDir,
-		CHAT_WORKSPACE_IGNORED_NAMES,
+		ignoredNames,
 		options,
 	);
 }

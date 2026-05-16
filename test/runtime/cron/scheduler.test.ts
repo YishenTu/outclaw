@@ -507,7 +507,7 @@ prompt: do something
 		expect(receivedEffort).toBe("xhigh");
 	});
 
-	test("falls back to high when a non-opus cron job requests xhigh", async () => {
+	test("passes explicit effort through without provider-specific normalization", async () => {
 		const cronDir = makeCronDir();
 		writeJob(
 			cronDir,
@@ -532,7 +532,7 @@ prompt: do something
 
 		await scheduler.triggerJob("haiku-job");
 
-		expect(receivedEffort).toBe("high");
+		expect(receivedEffort).toBe("xhigh");
 	});
 
 	test("skips jobs that omit model instead of falling back to runtime default", async () => {
@@ -584,7 +584,7 @@ prompt: do something
 		expect(receivedEffort).toBe("low");
 	});
 
-	test("falls back to high when default effort is xhigh for a non-opus model", async () => {
+	test("passes default effort through without provider-specific normalization", async () => {
 		const cronDir = makeCronDir();
 		const noEffortJob = `
 name: default-haiku-job
@@ -606,7 +606,7 @@ prompt: do something
 
 		await scheduler.triggerJob("default-haiku-job");
 
-		expect(receivedEffort).toBe("high");
+		expect(receivedEffort).toBe("xhigh");
 	});
 
 	test("marks NO_REPLY results as suppressed completions", async () => {

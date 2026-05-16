@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type { EffortLevel } from "../../common/commands.ts";
-import { isModelAlias, resolveModelAlias } from "../../common/models.ts";
 import { runFacadePrompt } from "../application/prompt-execution/facade-runner.ts";
 import type { PromptProviderResolver } from "../application/prompt-execution/prompt-runner.ts";
 import type { ModelProviderResolver } from "../model-provider-resolver.ts";
@@ -54,11 +53,6 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 			);
 		}
 		const facade = options.providers.getFacade(providerId);
-		// Claude aliases are resolved to their SDK id; Codex / other provider
-		// ids pass through verbatim because their model ids are not aliases.
-		const resolvedModel = isModelAlias(model)
-			? resolveModelAlias(model)
-			: model;
 		const sessionId = randomUUID();
 
 		let resultText = "";
@@ -80,7 +74,7 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 				}
 			},
 			facade,
-			model: resolvedModel,
+			model,
 			ocSessionId: sessionId,
 			prompt,
 			promptHomeDir: options.promptHomeDir,

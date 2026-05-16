@@ -2,21 +2,16 @@ import { describe, expect, test } from "bun:test";
 import {
 	canonicalizePromptSlashCommand,
 	DEFAULT_EFFORT,
-	DEFAULT_MODEL,
 	EFFORT_LEVELS,
-	effortLevelsForModel,
 	findSlashCommand,
-	isEffortAllowedForModel,
 	isEffortLevel,
 	isPromptSlashCommand,
 	isRuntimeCommand,
 	listSlashCommands,
 	PROMPT_COMMANDS,
-	resolveCompatibleEffort,
 	routeSlashCommand,
 	SLASH_COMMANDS,
 } from "../../src/common/commands.ts";
-import { isModelAlias, MODEL_ALIAS_LIST } from "../../src/common/models.ts";
 
 describe("isEffortLevel", () => {
 	test("returns true for each known level", () => {
@@ -47,12 +42,6 @@ describe("isRuntimeCommand", () => {
 		expect(isRuntimeCommand("/model haiku")).toBe(true);
 		expect(isRuntimeCommand("/thinking max")).toBe(true);
 		expect(isRuntimeCommand("/session list")).toBe(true);
-	});
-
-	test("recognises model alias shortcuts", () => {
-		for (const alias of MODEL_ALIAS_LIST) {
-			expect(isRuntimeCommand(`/${alias}`)).toBe(true);
-		}
 	});
 
 	test("/compact is NOT a runtime command", () => {
@@ -135,13 +124,8 @@ describe("routeSlashCommand", () => {
 		}
 	});
 
-	test("routes model alias shortcuts as runtime-only commands", () => {
-		expect(routeSlashCommand("/sonnet")).toEqual({
-			command: "sonnet",
-			source: "model_alias",
-			transport: "runtime",
-		});
-		expect(routeSlashCommand("/sonnet extra")).toBeUndefined();
+	test("leaves provider-specific model shortcuts out of the shared catalog", () => {
+		expect(routeSlashCommand("/sonnet")).toBeUndefined();
 	});
 });
 
@@ -187,56 +171,7 @@ describe("canonicalizePromptSlashCommand", () => {
 	});
 });
 
-describe("effort compatibility", () => {
-	test("allows opus-only effort only for opus model ids or aliases", () => {
-		expect(isEffortAllowedForModel("xhigh", "opus")).toBe(true);
-		expect(isEffortAllowedForModel("xhigh", "claude-opus-4-7[1m]")).toBe(true);
-		expect(isEffortAllowedForModel("xhigh", "sonnet")).toBe(false);
-		expect(isEffortAllowedForModel("max", "sonnet")).toBe(true);
-	});
-
-	test("resolves incompatible effort through an explicit compatible fallback", () => {
-		expect(
-			resolveCompatibleEffort({
-				effort: "xhigh",
-				fallbackEffort: "low",
-				model: "haiku",
-			}),
-		).toBe("low");
-		expect(
-			resolveCompatibleEffort({
-				effort: "xhigh",
-				fallbackEffort: "xhigh",
-				model: "haiku",
-			}),
-		).toBe(DEFAULT_EFFORT);
-		expect(
-			resolveCompatibleEffort({
-				effort: "xhigh",
-				fallbackEffort: "high",
-				model: "sonnet",
-			}),
-		).toBe("high");
-	});
-
-	test("filters visible effort levels with the shared compatibility rule", () => {
-		expect(effortLevelsForModel("sonnet", ["max", "xhigh", "high"])).toEqual([
-			"max",
-			"high",
-		]);
-		expect(effortLevelsForModel("opus", ["max", "xhigh", "high"])).toEqual([
-			"max",
-			"xhigh",
-			"high",
-		]);
-	});
-});
-
 describe("defaults", () => {
-	test("DEFAULT_MODEL is a valid alias", () => {
-		expect(isModelAlias(DEFAULT_MODEL)).toBe(true);
-	});
-
 	test("DEFAULT_EFFORT is a valid level", () => {
 		expect(isEffortLevel(DEFAULT_EFFORT)).toBe(true);
 	});

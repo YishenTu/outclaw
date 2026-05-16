@@ -208,6 +208,7 @@ interface CreateBrowserApiOptions {
 		| undefined
 	>;
 	storesByAgent: Map<string, SessionStore | undefined>;
+	workspaceIgnoredNamesByAgent?: Map<string, readonly string[]>;
 }
 
 export interface BrowserApi {
@@ -581,6 +582,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 						return providerModels.map((model) => ({
 							providerId: provider.providerId,
 							providerDisplayName: provider.displayName,
+							id: model.id,
 							model: model.model,
 							displayName: model.displayName,
 							description: model.description,
@@ -588,6 +590,9 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 							defaultReasoningEffort: model.defaultReasoningEffort,
 							supportedReasoningEfforts: model.supportedReasoningEfforts,
 							serviceTiers: model.serviceTiers,
+							...(model.contextWindow !== undefined
+								? { contextWindow: model.contextWindow }
+								: {}),
 						}));
 					}),
 				)
@@ -947,9 +952,6 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 					`Unknown coding session: ${providerId}/${sdkSessionId}`,
 				);
 			}
-			// Codex has no "trash" vocabulary, so we mirror outbound as archive.
-			// The precedence table in syncKnownCodingSessionUpdate prevents a
-			// stale "open" reconcile result from resurrecting it locally.
 			await options.coding?.trashSession?.({ providerId, sdkSessionId });
 			store.trash(providerId, sdkSessionId);
 			const trashed = store.getDetail(providerId, sdkSessionId);
@@ -1251,7 +1253,9 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		},
 		async listAgentWorkspaceFiles(agentId) {
 			const agent = requireAgent(agentsById, agentId);
-			return await listWorkspaceFiles(agent.homeDir);
+			return await listWorkspaceFiles(agent.homeDir, {
+				ignoredNames: options.workspaceIgnoredNamesByAgent?.get(agentId),
+			});
 		},
 		async listCodingRepositoryWorkspaceFiles(repositoryId) {
 			return await listRepositoryWorkspaceFiles(
@@ -1260,7 +1264,9 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		},
 		async listAgentGraph(agentId) {
 			const agent = requireAgent(agentsById, agentId);
-			return await buildAgentGraph(agent.homeDir);
+			return await buildAgentGraph(agent.homeDir, {
+				ignoredNames: options.workspaceIgnoredNamesByAgent?.get(agentId),
+			});
 		},
 		async readConfigFile() {
 			const absolutePath = resolveExistingPathWithinRoot(

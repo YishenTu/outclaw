@@ -83,6 +83,7 @@ export interface ModelSelectMessage {
 	model: string;
 	effort?: string;
 	serviceTier?: string;
+	contextWindow?: number;
 }
 
 export type RuntimeClientType = "telegram" | "tui" | "browser" | "control";
@@ -815,6 +816,7 @@ export type BrowserCodingSessionCancelResponse =
 export interface BrowserChatModel {
 	providerId: string;
 	providerDisplayName: string;
+	id: string;
 	model: string;
 	displayName: string;
 	description: string;
@@ -1371,11 +1373,6 @@ export interface RunParams {
 	serviceTier?: string;
 	stream?: boolean;
 	/**
-	 * Tool names allowed for this run. Omitted means the adapter default tool set.
-	 * An empty list means no tools.
-	 */
-	tools?: string[];
-	/**
 	 * Hint that provider-native artifacts created only for this run should be
 	 * discarded after the run settles when the adapter supports cleanup.
 	 */
@@ -1391,6 +1388,7 @@ export interface RunParams {
 export interface Facade {
 	providerId: string;
 	prepareWorkspace?(promptHomeDir: string): void;
+	workspaceMetadata?(promptHomeDir: string): ProviderWorkspaceMetadata;
 	run(params: RunParams): AsyncIterable<FacadeEvent>;
 	/**
 	 * Provider-owned same-turn steering for an active coding session. Runtime
@@ -1408,6 +1406,7 @@ export interface Facade {
 	 * mutation that should happen before the local catalog is updated.
 	 */
 	archiveCodingSession?(sessionId: string): Promise<void>;
+	trashCodingSession?(sessionId: string): Promise<void>;
 	restoreCodingSession?(sessionId: string): Promise<void>;
 	renameCodingSession?(sessionId: string, title: string): Promise<void>;
 	reconcileCodingSessions?(
@@ -1445,6 +1444,11 @@ export interface Facade {
 	dispose?(): Promise<void> | void;
 }
 
+export interface ProviderWorkspaceMetadata {
+	ignoredGitPaths?: string[];
+	ignoredWorkspaceNames?: string[];
+}
+
 export interface ProviderModelInfo {
 	id: string;
 	model: string;
@@ -1453,6 +1457,7 @@ export interface ProviderModelInfo {
 	isDefault: boolean;
 	defaultReasoningEffort: string;
 	supportedReasoningEfforts: string[];
+	contextWindow?: number;
 	/**
 	 * Service tiers the model exposes (e.g. Codex's `priority`/Fast). Empty
 	 * when the provider has no tiering or the current model offers none.

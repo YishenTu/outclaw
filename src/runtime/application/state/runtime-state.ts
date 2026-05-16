@@ -1,12 +1,4 @@
-import {
-	type EffortLevel,
-	resolveCompatibleEffort,
-} from "../../../common/commands.ts";
-import {
-	contextWindowForAlias,
-	isModelAlias,
-	type ModelAlias,
-} from "../../../common/models.ts";
+import type { EffortLevel } from "../../../common/commands.ts";
 import type {
 	DoneEvent,
 	ImageRef,
@@ -41,6 +33,7 @@ export interface RuntimePromptContext {
 
 interface RuntimeStateOptions {
 	defaultEffort?: EffortLevel;
+	defaultModel?: string;
 }
 
 export function resolveSessionTitleForPersistence(params: {
@@ -73,6 +66,7 @@ export class RuntimeState {
 		this.currentProviderId = initialProviderId;
 		this.settings = new RuntimeSettingsState({
 			defaultEffort: options.defaultEffort,
+			defaultModel: options.defaultModel,
 		});
 	}
 
@@ -207,12 +201,6 @@ export class RuntimeState {
 		this.sessions.clearSession();
 	}
 
-	setModel(model: ModelAlias) {
-		this.settings.setModel(model);
-		this.normalizeEffortForModel(model);
-		this.sessions.setUsage(this.alignUsageToModel(this.sessions.usage, model));
-	}
-
 	setEffort(effort: EffortLevel) {
 		this.settings.setEffort(effort);
 	}
@@ -221,13 +209,14 @@ export class RuntimeState {
 		this.settings.setServiceTier(serviceTier);
 	}
 
-	/**
-	 * Set the active provider-local model id. Use for non-Claude providers
-	 * whose model ids don't fit the `ModelAlias` registry (e.g. `gpt-5.5`).
-	 * Claude paths continue to call `setModel(alias)`.
-	 */
-	setProviderModel(model: string) {
+	setProviderModel(model: string, options: { contextWindow?: number } = {}) {
 		this.settings.setProviderModel(model);
+		this.sessions.setUsage(
+			this.alignUsageToContextWindow(
+				this.sessions.usage,
+				options.contextWindow,
+			),
+		);
 	}
 
 	restorePersistedState(params: {
@@ -235,11 +224,8 @@ export class RuntimeState {
 		session?: SessionRow;
 		usage?: UsageInfo;
 	}) {
-		let usage = params.usage;
-		if (params.session && isModelAlias(params.session.model)) {
-			this.setModel(params.session.model);
-			usage = this.alignUsageToModel(usage, params.session.model);
-		} else if (params.session) {
+		const usage = params.usage;
+		if (params.session) {
 			this.setProviderModel(params.session.model);
 		}
 		if (params.session) {
@@ -266,12 +252,7 @@ export class RuntimeState {
 		// routing, runtime status, and the model selector follow.
 		this.currentProviderId = session.providerId;
 
-		if (isModelAlias(session.model)) {
-			this.setModel(session.model);
-			usage = this.alignUsageToModel(usage, session.model);
-		} else {
-			this.setProviderModel(session.model);
-		}
+		this.setProviderModel(session.model);
 		this.setServiceTier(session.serviceTier);
 		this.sessions.switchToSession(session, usage);
 	}
@@ -315,30 +296,17 @@ export class RuntimeState {
 		);
 	}
 
-	private alignUsageToModel(
+	private alignUsageToContextWindow(
 		usage: UsageInfo | undefined,
-		model: ModelAlias,
+		contextWindow: number | undefined,
 	): UsageInfo | undefined {
 		if (!usage) {
 			return undefined;
 		}
-
-		const contextWindow = contextWindowForAlias(model);
 		if (!contextWindow) {
 			return usage;
 		}
 
 		return recalculateUsageForContextWindow(usage, contextWindow);
-	}
-
-	private normalizeEffortForModel(model: ModelAlias) {
-		const compatibleEffort = resolveCompatibleEffort({
-			effort: this.settings.effort,
-			fallbackEffort: this.settings.defaultEffort,
-			model,
-		});
-		if (compatibleEffort !== this.settings.effort) {
-			this.settings.setEffort(compatibleEffort);
-		}
 	}
 }

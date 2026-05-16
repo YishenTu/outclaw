@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { DisplayChatMessage } from "../../../common/protocol.ts";
-import { isCodingTranscriptSilentEvent } from "../../../common/transcript-cleanup.ts";
 import { Message } from "../components/chat/message.tsx";
 import { ThinkingBlock } from "../components/chat/thinking-block.tsx";
 import type { CodingSessionEventStreamItem } from "../lib/api.ts";
@@ -283,15 +282,7 @@ function groupEvents(
 			continue;
 		}
 
-		// Events that have no useful transcript projection in the coding view:
-		// - usage_updated: surfaced live via the ContextGauge above the composer.
-		// - image: runtime-extracted from assistant text; the path itself already
-		//   appears in the message, and we have no endpoint serving arbitrary
-		//   local files for inline preview.
-		// - write_stdin/custom_tool_call_output: transport noise from older or
-		//   partially-normalized Codex event logs; substantive command/file data
-		//   is projected elsewhere and these rows only duplicate or distract.
-		if (isCodingTranscriptSilentEvent(event)) {
+		if (type === "usage_updated" || type === "image") {
 			continue;
 		}
 

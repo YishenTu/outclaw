@@ -595,32 +595,6 @@ describe("ClaudeAdapter", () => {
 		expect(args.options.env?.PATH).toBe("/custom/bin");
 	});
 
-	test("passes an explicit empty tools list through to the SDK", async () => {
-		const query = mock((_params: unknown) =>
-			(async function* () {
-				yield {
-					type: "result",
-					session_id: "sdk-no-tools",
-					duration_ms: 1,
-					total_cost_usd: 0,
-				};
-			})(),
-		);
-		const { adapter } = createAdapter({ query });
-
-		for await (const _event of adapter.run({
-			prompt: "generate a title",
-			tools: [],
-		})) {
-			// Drain
-		}
-
-		const args = query.mock.calls[0]?.[0] as {
-			options?: { tools?: string[] };
-		};
-		expect(args.options?.tools).toEqual([]);
-	});
-
 	test("maps read-only execution mode to an empty Claude tool list", async () => {
 		const query = mock((_params: unknown) =>
 			(async function* () {
@@ -719,7 +693,6 @@ describe("ClaudeAdapter", () => {
 			cwd: "/tmp/outclaw",
 			ephemeral: true,
 			prompt: "generate a title",
-			tools: [],
 		})) {
 			// Drain
 		}

@@ -159,7 +159,9 @@ export class PromptDispatcher {
 			task.modelOverride ?? (task.useProviderDefaultModel ? "" : context.model);
 		const runModel =
 			task.modelOverride ??
-			(task.useProviderDefaultModel ? undefined : context.resolvedModel);
+			(task.useProviderDefaultModel || context.resolvedModel === ""
+				? undefined
+				: context.resolvedModel);
 		const runEffort =
 			task.effortOverride ??
 			(task.useProviderDefaultEffort ? undefined : context.effort);

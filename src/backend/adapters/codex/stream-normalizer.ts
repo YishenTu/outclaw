@@ -9,7 +9,7 @@ import type {
 	ToolCallDetail,
 	UsageInfo,
 } from "../../../common/protocol.ts";
-import { stripOaiMemoryCitationBlocks } from "../../../common/transcript-cleanup.ts";
+import { stripOaiMemoryCitationBlocks } from "./transcript-cleanup.ts";
 import type {
 	CodexServerNotification,
 	CodexThreadTokenUsage,

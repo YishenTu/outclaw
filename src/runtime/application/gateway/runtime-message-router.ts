@@ -23,6 +23,7 @@ interface IncomingMessage {
 	model?: string;
 	effort?: string;
 	serviceTier?: string;
+	contextWindow?: number;
 }
 
 interface RuntimeMessageRouterOptions {
@@ -114,6 +115,10 @@ function toModelSelectMessage(
 		...(typeof data.effort === "string" ? { effort: data.effort } : {}),
 		...(typeof data.serviceTier === "string"
 			? { serviceTier: data.serviceTier }
+			: {}),
+		...(typeof data.contextWindow === "number" &&
+		Number.isFinite(data.contextWindow)
+			? { contextWindow: data.contextWindow }
 			: {}),
 	};
 }

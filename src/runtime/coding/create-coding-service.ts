@@ -104,14 +104,10 @@ export function createCodingService(
 			await opts.facade.archiveCodingSession?.(params.sdkSessionId);
 		},
 		async trashSession(params) {
-			// Trash is a local-only state that Codex does not model, so we mirror
-			// it outbound as `archive` — the precedence table in
-			// `syncKnownCodingSessionUpdate` keeps a stale Codex `open` echo from
-			// resurrecting trashed work.
 			if (!isKnownFacadeCodingSession(opts, params)) {
 				return;
 			}
-			await opts.facade.archiveCodingSession?.(params.sdkSessionId);
+			await opts.facade.trashCodingSession?.(params.sdkSessionId);
 		},
 		async listModels() {
 			return (await opts.facade.listModels?.()) ?? [];
@@ -198,9 +194,9 @@ function isKnownFacadeCodingSession(
 
 /**
  * Merges a provider lifecycle update into the local catalog. The provider
- * vocabulary is binary (`open | archived`); we model `trashed` locally and
- * never accept a remote `open` for a trashed session — that path is how a
- * stale Codex view would resurrect work the user has explicitly thrown away.
+ * reconciliation vocabulary is intentionally narrower than the local catalog:
+ * we model `trashed` locally and never accept a remote `open` for a trashed
+ * session.
  *
  * | local      | provider archived | provider open |
  * |------------|-------------------|---------------|

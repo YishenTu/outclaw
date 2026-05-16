@@ -1,23 +1,19 @@
-import {
-	DEFAULT_EFFORT,
-	DEFAULT_MODEL,
-	type EffortLevel,
-} from "../../../common/commands.ts";
-import type { ModelAlias } from "../../../common/models.ts";
-import { resolveModelAlias } from "../../../common/models.ts";
+import { DEFAULT_EFFORT, type EffortLevel } from "../../../common/commands.ts";
 
 interface RuntimeSettingsStateOptions {
 	defaultEffort?: EffortLevel;
+	defaultModel?: string;
 }
 
 export class RuntimeSettingsState {
 	private readonly configuredDefaultEffort: EffortLevel;
-	private activeModel: string = DEFAULT_MODEL;
+	private activeModel: string;
 	private activeEffort: EffortLevel;
 	private activeServiceTier: string | undefined;
 
 	constructor(options: RuntimeSettingsStateOptions = {}) {
 		this.configuredDefaultEffort = options.defaultEffort ?? DEFAULT_EFFORT;
+		this.activeModel = options.defaultModel ?? "";
 		this.activeEffort = this.configuredDefaultEffort;
 	}
 
@@ -38,22 +34,13 @@ export class RuntimeSettingsState {
 	}
 
 	get resolvedModel(): string {
-		return resolveModelAlias(this.activeModel);
+		return this.activeModel;
 	}
 
 	setEffort(effort: EffortLevel) {
 		this.activeEffort = effort;
 	}
 
-	setModel(model: ModelAlias) {
-		this.activeModel = model;
-	}
-
-	/**
-	 * Set the provider-local model id directly. Use this for non-Claude
-	 * providers whose model ids don't fit the `ModelAlias` registry. Claude
-	 * paths should keep calling `setModel(alias)`.
-	 */
 	setProviderModel(model: string) {
 		this.activeModel = model;
 	}

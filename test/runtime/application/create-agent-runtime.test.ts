@@ -156,7 +156,7 @@ describe("createAgentRuntime", () => {
 			type: "runtime_status",
 			agentName: "railly",
 			providerId: "mock",
-			model: "opus",
+			model: "",
 			effort: "medium",
 			running: false,
 		});
@@ -181,7 +181,7 @@ describe("createAgentRuntime", () => {
 			type: "runtime_status",
 			agentName: "railly",
 			providerId: "mock",
-			model: "opus",
+			model: "",
 			effort: "medium",
 			running: false,
 			notice: {

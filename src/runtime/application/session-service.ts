@@ -1,5 +1,4 @@
 import { isEffortLevel } from "../../common/commands.ts";
-import { isModelAlias } from "../../common/models.ts";
 import type {
 	DoneEvent,
 	RolloverNotice,
@@ -603,14 +602,7 @@ export class SessionService {
 	}
 
 	private applyBlankSelectionModel(model: string) {
-		// Claude alias models keep alias-based state in sync; non-Claude
-		// providers carry their native model id through `setProviderModel`
-		// (e.g. `gpt-5.5`) without polluting the ModelAlias registry.
-		if (isModelAlias(model)) {
-			this.state.setModel(model);
-		} else {
-			this.state.setProviderModel(model);
-		}
+		this.state.setProviderModel(model);
 	}
 
 	private matchCurrentSession(

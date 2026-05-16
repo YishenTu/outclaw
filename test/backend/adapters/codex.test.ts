@@ -2946,29 +2946,6 @@ describe("CodexAdapter", () => {
 		});
 	});
 
-	test("rejects explicit tool allow-lists because Codex cannot enforce RunParams.tools", async () => {
-		const client = new FakeCodexAppServerClient([]);
-		const adapter = new CodexAdapter({ client });
-
-		const events = await collectEvents(
-			adapter.run({
-				prompt: "inspect",
-				cwd: "/work/repo",
-				tools: [],
-			}),
-		);
-
-		expect(events).toEqual([
-			{
-				type: "error",
-				message:
-					"Codex does not support RunParams.tools; use executionMode for provider-neutral execution constraints",
-			},
-		]);
-		expect(client.requests).toEqual([]);
-		expect(client.initialize).not.toHaveBeenCalled();
-	});
-
 	test("Code Mode resume sends provider-default instructions and YOLO sandbox", async () => {
 		const client = new FakeCodexAppServerClient([
 			{

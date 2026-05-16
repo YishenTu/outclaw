@@ -80,11 +80,16 @@ class ProviderSyncFacade extends SessionInitializingFacade {
 	readonly reconcileCalls: string[][] = [];
 	reconcileResponses: ProviderCodingSessionUpdate[] = [];
 	readonly restoreCalls: string[] = [];
+	readonly trashCalls: string[] = [];
 	readonly renameCalls: Array<{ sessionId: string; title: string }> = [];
 	subscribeCalls = 0;
 
 	async archiveCodingSession(sessionId: string): Promise<void> {
 		this.archiveCalls.push(sessionId);
+	}
+
+	async trashCodingSession(sessionId: string): Promise<void> {
+		this.trashCalls.push(sessionId);
 	}
 
 	async restoreCodingSession(sessionId: string): Promise<void> {
@@ -207,7 +212,8 @@ describe("createCodingService", () => {
 			title: "Known session",
 		});
 
-		expect(facade.archiveCalls).toEqual(["known-thread", "known-thread"]);
+		expect(facade.archiveCalls).toEqual(["known-thread"]);
+		expect(facade.trashCalls).toEqual(["known-thread"]);
 		expect(facade.restoreCalls).toEqual(["known-thread"]);
 		expect(facade.renameCalls).toEqual([
 			{ sessionId: "known-thread", title: "Known session" },

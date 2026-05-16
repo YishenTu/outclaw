@@ -1,13 +1,22 @@
-import { modelAliasForModel } from "../common/models.ts";
+import { DEFAULT_EFFORT } from "../common/commands.ts";
 import type { ProviderModelInfo } from "../common/protocol.ts";
 
 export interface ModelProviderResolver {
 	resolveProviderIdForModel(model: string): Promise<string | undefined>;
+	resolveModelSelection(
+		model: string,
+	): Promise<ResolvedProviderModel | undefined>;
+	listModelSelections(): Promise<ResolvedProviderModel[]>;
 }
 
 export interface ModelCatalogProvider {
 	providerId: string;
 	listModels?: () => Promise<ProviderModelInfo[]>;
+}
+
+export interface ResolvedProviderModel {
+	providerId: string;
+	model: ProviderModelInfo;
 }
 
 export function staticModelProviderResolver(
@@ -16,6 +25,19 @@ export function staticModelProviderResolver(
 	return {
 		async resolveProviderIdForModel(model: string) {
 			return model.trim() === "" ? undefined : providerId;
+		},
+		async resolveModelSelection(model: string) {
+			const requested = model.trim();
+			if (!requested) {
+				return undefined;
+			}
+			return {
+				providerId,
+				model: genericProviderModelInfo(requested),
+			};
+		},
+		async listModelSelections() {
+			return [];
 		},
 	};
 }
@@ -27,6 +49,9 @@ export function createModelProviderResolver(
 
 	return {
 		async resolveProviderIdForModel(model: string) {
+			return (await this.resolveModelSelection(model))?.providerId;
+		},
+		async resolveModelSelection(model: string) {
 			const requested = model.trim();
 			if (!requested) {
 				return undefined;
@@ -34,13 +59,20 @@ export function createModelProviderResolver(
 
 			catalogPromise ??= loadCatalog(providers);
 			const catalog = await catalogPromise;
-			const matches = catalog.filter((entry) =>
-				modelMatches(entry.model, requested),
-			);
+			const providerQualified = parseProviderQualifiedModel(requested);
+			const matches = catalog.filter((entry) => {
+				if (
+					providerQualified &&
+					entry.providerId !== providerQualified.providerId
+				) {
+					return false;
+				}
+				return modelMatches(entry.model, providerQualified?.model ?? requested);
+			});
 			const providerIds = [
 				...new Set(matches.map((entry) => entry.providerId)),
 			];
-			if (providerIds.length === 0) {
+			if (matches.length === 0) {
 				return undefined;
 			}
 			if (providerIds.length > 1) {
@@ -48,7 +80,14 @@ export function createModelProviderResolver(
 					`Model ${requested} resolves to multiple providers: ${providerIds.join(", ")}`,
 				);
 			}
-			return providerIds[0];
+			const selected = matches[0];
+			return selected
+				? { providerId: selected.providerId, model: selected.model }
+				: undefined;
+		},
+		async listModelSelections() {
+			catalogPromise ??= loadCatalog(providers);
+			return await catalogPromise;
 		},
 	};
 }
@@ -74,13 +113,32 @@ async function loadCatalog(
 }
 
 function modelMatches(entry: ProviderModelInfo, requested: string): boolean {
-	if (entry.model === requested || entry.id === requested) {
-		return true;
+	return entry.model === requested || entry.id === requested;
+}
+
+function parseProviderQualifiedModel(
+	value: string,
+): { providerId: string; model: string } | undefined {
+	const separator = value.indexOf("/");
+	if (separator <= 0 || separator === value.length - 1) {
+		return undefined;
 	}
 
-	const requestedAlias = modelAliasForModel(requested);
-	if (!requestedAlias) {
-		return false;
-	}
-	return entry.model === requestedAlias || entry.id === requestedAlias;
+	return {
+		providerId: value.slice(0, separator),
+		model: value.slice(separator + 1),
+	};
+}
+
+function genericProviderModelInfo(model: string): ProviderModelInfo {
+	return {
+		id: model,
+		model,
+		displayName: model,
+		description: "",
+		isDefault: false,
+		defaultReasoningEffort: DEFAULT_EFFORT,
+		supportedReasoningEfforts: [],
+		serviceTiers: [],
+	};
 }

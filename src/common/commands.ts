@@ -1,50 +1,8 @@
-import { MODEL_ALIAS_LIST, MODELS, resolveModelAlias } from "./models.ts";
-
-export const DEFAULT_MODEL = "opus";
 export const DEFAULT_EFFORT = "medium";
 
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
-
-export const OPUS_ONLY_EFFORT_LEVELS = new Set<EffortLevel>(["xhigh"]);
-
-export function isOpusOnlyEffort(effort: EffortLevel): boolean {
-	return OPUS_ONLY_EFFORT_LEVELS.has(effort);
-}
-
-export function isOpusModel(model: string): boolean {
-	return resolveModelAlias(model) === MODELS.opus.id;
-}
-
-export function isEffortAllowedForModel(
-	effort: EffortLevel,
-	model: string,
-): boolean {
-	return !isOpusOnlyEffort(effort) || isOpusModel(model);
-}
-
-export function resolveCompatibleEffort(options: {
-	effort: EffortLevel;
-	fallbackEffort?: EffortLevel;
-	model: string;
-}): EffortLevel {
-	if (isEffortAllowedForModel(options.effort, options.model)) {
-		return options.effort;
-	}
-
-	const fallbackEffort = options.fallbackEffort ?? "high";
-	return isEffortAllowedForModel(fallbackEffort, options.model)
-		? fallbackEffort
-		: DEFAULT_EFFORT;
-}
-
-export function effortLevelsForModel(
-	model: string,
-	levels: readonly EffortLevel[] = EFFORT_LEVELS,
-): EffortLevel[] {
-	return levels.filter((effort) => isEffortAllowedForModel(effort, model));
-}
 
 export type SlashCommandTransport = "runtime" | "prompt";
 
@@ -56,7 +14,7 @@ export interface SlashCommand {
 
 export interface SlashCommandRoute {
 	command: string;
-	source: "catalog" | "model_alias";
+	source: "catalog";
 	transport: SlashCommandTransport;
 }
 
@@ -73,13 +31,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
 	},
 	{
 		command: "model",
-		description: "Switch model (opus/sonnet/haiku)",
+		description: "Switch model",
 		transport: "runtime",
 	},
 	{
 		command: "thinking",
-		description:
-			"Set thinking effort (low/medium/high/xhigh/max; xhigh requires opus)",
+		description: "Set thinking effort (low/medium/high/xhigh/max)",
 		transport: "runtime",
 	},
 	{
@@ -149,15 +106,6 @@ export function routeSlashCommand(
 			command: command.command,
 			source: "catalog",
 			transport: command.transport,
-		};
-	}
-
-	const modelAlias = MODEL_ALIAS_LIST.find((alias) => trimmed === `/${alias}`);
-	if (modelAlias) {
-		return {
-			command: modelAlias,
-			source: "model_alias",
-			transport: "runtime",
 		};
 	}
 

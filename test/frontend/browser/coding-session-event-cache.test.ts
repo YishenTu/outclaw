@@ -124,7 +124,7 @@ describe("coding session event cache", () => {
 		]);
 	});
 
-	test("drops transcript-silent events while advancing the replay cursor", () => {
+	test("drops provider-neutral non-transcript events while advancing the replay cursor", () => {
 		const cache: CodingSessionEventCache = new Map();
 		const entry = appendCodingSessionEventBatch(
 			cache,
@@ -133,11 +133,7 @@ describe("coding session event cache", () => {
 			[
 				streamItem(1, { type: "user_prompt", text: "go" }),
 				streamItem(2, { type: "usage_updated", usage: {} }),
-				streamItem(3, {
-					type: "tool_call_completed",
-					toolKind: "write_stdin",
-					details: [{ label: "output", value: "poll" }],
-				}),
+				streamItem(3, { type: "image", path: "/tmp/out.png" }),
 				streamItem(4, { type: "text", text: "done" }),
 			],
 		);

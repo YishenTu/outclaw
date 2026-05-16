@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_EFFORT, DEFAULT_MODEL } from "../../../src/common/commands.ts";
-import { MODELS } from "../../../src/common/models.ts";
+import { DEFAULT_EFFORT } from "../../../src/common/commands.ts";
 import type { DoneEvent } from "../../../src/common/protocol.ts";
 import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
 
@@ -38,15 +37,18 @@ function requireUsage(event: DoneEvent) {
 }
 
 describe("RuntimeState", () => {
-	test("starts with default model and effort", () => {
+	test("starts with provider-default model and effort", () => {
 		const state = new RuntimeState(PROVIDER_ID);
-		expect(state.model).toBe(DEFAULT_MODEL);
+		expect(state.model).toBe("");
 		expect(state.effort).toBe(DEFAULT_EFFORT);
 	});
 
-	test("resolvedModel returns the SDK model ID", () => {
-		const state = new RuntimeState(PROVIDER_ID);
-		expect(state.resolvedModel).toBe(MODELS[DEFAULT_MODEL].id);
+	test("can start with a composition-provided default model", () => {
+		const state = new RuntimeState(PROVIDER_ID, undefined, {
+			defaultModel: "opus",
+		});
+		expect(state.model).toBe("opus");
+		expect(state.resolvedModel).toBe("opus");
 	});
 
 	test("starts with no session", () => {
@@ -56,14 +58,14 @@ describe("RuntimeState", () => {
 		expect(state.createHeartbeatDeliveryTarget()).toBeUndefined();
 	});
 
-	test("setModel changes model", () => {
+	test("setProviderModel changes model", () => {
 		const state = new RuntimeState(PROVIDER_ID);
-		state.setModel("haiku");
-		expect(state.model).toBe("haiku");
-		expect(state.resolvedModel).toBe(MODELS.haiku.id);
+		state.setProviderModel("gpt-5.5");
+		expect(state.model).toBe("gpt-5.5");
+		expect(state.resolvedModel).toBe("gpt-5.5");
 	});
 
-	test("setModel recalculates usage against the selected model window", () => {
+	test("setProviderModel recalculates usage against catalog context metadata", () => {
 		const state = new RuntimeState(PROVIDER_ID);
 		state.completeRun(
 			makeDoneEvent("sdk-usage", {
@@ -80,7 +82,7 @@ describe("RuntimeState", () => {
 			}),
 		);
 
-		state.setModel("sonnet");
+		state.setProviderModel("sonnet", { contextWindow: 200_000 });
 
 		expect(state.model).toBe("sonnet");
 		expect(state.createStatusEvent().usage).toEqual({
@@ -276,7 +278,7 @@ describe("RuntimeState", () => {
 	describe("createStatusEvent", () => {
 		test("returns current state as a RuntimeStatusEvent", () => {
 			const state = new RuntimeState(PROVIDER_ID);
-			state.setModel("haiku");
+			state.setProviderModel("haiku");
 			state.setEffort("max");
 			state.completeRun(makeDoneEvent("sdk-status"));
 
@@ -326,7 +328,6 @@ describe("RuntimeState", () => {
 			expect(state.model).toBe("haiku");
 			expect(state.createStatusEvent().usage).toEqual({
 				...requireUsage(makeDoneEvent()),
-				percentage: 0,
 			});
 			expect(state.createHeartbeatDeliveryTarget()).toEqual({
 				clientType: "telegram",

@@ -9,7 +9,6 @@ import { createTelegramBridge } from "./bridge/client.ts";
 import { TELEGRAM_COMMANDS } from "./commands/catalog.ts";
 import { registerTelegramPromptCommands } from "./commands/prompt.ts";
 import { registerTelegramRuntimeCommands } from "./commands/runtime.ts";
-import { registerTelegramModelShortcuts } from "./commands/shortcuts.ts";
 import type {
 	TelegramMessageFile,
 	TelegramMessageFileRecord,
@@ -110,10 +109,6 @@ interface TelegramBotDependencies extends TelegramMessageHandlerDependencies {
 	createInputFile(path: string): unknown;
 	logError(message: string): void;
 	logInfo(message: string): void;
-	registerModelShortcuts(
-		registrar: TelegramBotLike,
-		createBridge: TelegramBridgeFactory,
-	): void;
 	registerMemoryHandlers(
 		registrar: TelegramBotLike,
 		createBridge: TelegramBridgeFactory,
@@ -154,13 +149,6 @@ const DEFAULT_TELEGRAM_BOT_DEPENDENCIES: TelegramBotDependencies = {
 		),
 	logError: (message) => console.error(message),
 	logInfo: (message) => console.log(message),
-	registerModelShortcuts: (registrar, bridge) =>
-		registerTelegramModelShortcuts(
-			registrar as unknown as Parameters<
-				typeof registerTelegramModelShortcuts
-			>[0],
-			bridge as unknown as Parameters<typeof registerTelegramModelShortcuts>[1],
-		),
 	registerMemoryHandlers: (registrar, bridge) =>
 		registerTelegramMemoryHandlers(
 			registrar as unknown as Parameters<
@@ -265,7 +253,6 @@ export function startTelegramBot(
 	dependencies.registerRuntimeCommands(bot, (ctx) => createContextBridge(ctx));
 	dependencies.registerMemoryHandlers(bot, (ctx) => createContextBridge(ctx));
 	dependencies.registerPromptCommands(bot, (ctx) => createContextBridge(ctx));
-	dependencies.registerModelShortcuts(bot, (ctx) => createContextBridge(ctx));
 
 	registerTelegramMessageHandlers({
 		bot,
