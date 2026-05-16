@@ -24,7 +24,12 @@ const normalizedHeartbeatPrompts = new Set(
 	INDEX_FILTERED_HEARTBEAT_PROMPTS.map(normalizeWhitespace),
 );
 
+const HEARTBEAT_PROMPT_MARKER = "HEARTBEAT.md";
+
 export function isOperationalHeartbeatPrompt(content: string): boolean {
+	if (!content.includes(HEARTBEAT_PROMPT_MARKER)) {
+		return false;
+	}
 	return normalizedHeartbeatPrompts.has(normalizeWhitespace(content));
 }
 

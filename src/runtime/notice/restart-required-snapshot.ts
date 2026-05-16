@@ -22,7 +22,32 @@ export function didRestartRequiredSnapshotChange(
 	previous: RestartRequiredSnapshot,
 	next: RestartRequiredSnapshot,
 ): boolean {
-	return JSON.stringify(previous) !== JSON.stringify(next);
+	return (
+		previous.config !== next.config ||
+		previous.env !== next.env ||
+		!sortedStringArraysEqual(previous.agents, next.agents)
+	);
+}
+
+function sortedStringArraysEqual(
+	left: string[] | null,
+	right: string[] | null,
+): boolean {
+	if (left === right) {
+		return true;
+	}
+	if (left === null || right === null) {
+		return false;
+	}
+	if (left.length !== right.length) {
+		return false;
+	}
+	for (let i = 0; i < left.length; i += 1) {
+		if (left[i] !== right[i]) {
+			return false;
+		}
+	}
+	return true;
 }
 
 function readOptionalText(path: string): string | null {

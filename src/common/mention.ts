@@ -136,11 +136,12 @@ export function matchMentionEntries(
 
 	const ranked: RankedEntry[] = [];
 	for (const entry of entries) {
-		const score = scoreEntry(entry.path.toLowerCase(), normalized);
+		const lowerPath = entry.path.toLowerCase();
+		const score = scoreEntry(lowerPath, normalized);
 		if (score === Number.POSITIVE_INFINITY) {
 			continue;
 		}
-		ranked.push({ entry, score, tieBreak: entry.path.toLowerCase() });
+		ranked.push({ entry, score, tieBreak: lowerPath });
 	}
 	ranked.sort((left, right) => {
 		if (left.score !== right.score) {

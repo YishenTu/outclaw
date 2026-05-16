@@ -12,6 +12,7 @@ export function annotateHistoryWithTranscript(
 		return messages;
 	}
 
+	const turnIndex = buildTurnIndex(transcript);
 	let transcriptIndex = 0;
 
 	return messages.map((message) => {
@@ -21,7 +22,7 @@ export function annotateHistoryWithTranscript(
 
 		const matchedIndex = findMatchingTranscriptTurn(
 			message,
-			transcript,
+			turnIndex,
 			transcriptIndex,
 		);
 		if (matchedIndex === -1) {
@@ -36,25 +37,59 @@ export function annotateHistoryWithTranscript(
 	});
 }
 
-function findMatchingTranscriptTurn(
-	message: DisplayChatMessage,
-	transcript: TranscriptTurn[],
-	startIndex: number,
-): number {
-	for (let index = startIndex; index < transcript.length; index += 1) {
-		const turn = transcript[index];
+interface TurnBucket {
+	indices: number[];
+	cursor: number;
+}
+
+type TurnIndex = Map<string, TurnBucket>;
+
+function buildTurnIndex(transcript: TranscriptTurn[]): TurnIndex {
+	const index: TurnIndex = new Map();
+	for (let i = 0; i < transcript.length; i += 1) {
+		const turn = transcript[i];
 		if (!turn) {
 			continue;
 		}
-
-		if (
-			turn.role === message.role &&
-			turn.content === message.content &&
-			(turn.replyContext?.text ?? "") === (message.replyContext?.text ?? "")
-		) {
-			return index;
+		const key = turnKey(turn.role, turn.content, turn.replyContext?.text);
+		const bucket = index.get(key);
+		if (bucket) {
+			bucket.indices.push(i);
+		} else {
+			index.set(key, { indices: [i], cursor: 0 });
 		}
 	}
+	return index;
+}
 
-	return -1;
+function findMatchingTranscriptTurn(
+	message: DisplayChatMessage,
+	turnIndex: TurnIndex,
+	startIndex: number,
+): number {
+	const bucket = turnIndex.get(
+		turnKey(message.role, message.content, message.replyContext?.text),
+	);
+	if (!bucket) {
+		return -1;
+	}
+	while (
+		bucket.cursor < bucket.indices.length &&
+		(bucket.indices[bucket.cursor] ?? -1) < startIndex
+	) {
+		bucket.cursor += 1;
+	}
+	return bucket.cursor < bucket.indices.length
+		? (bucket.indices[bucket.cursor] ?? -1)
+		: -1;
+}
+
+const KEY_SEPARATOR = "\u0000";
+
+function turnKey(
+	role: "user" | "assistant",
+	content: string,
+	replyText: string | undefined,
+): string {
+	return `${role}${KEY_SEPARATOR}${replyText ?? ""}${KEY_SEPARATOR}${content}`;
 }

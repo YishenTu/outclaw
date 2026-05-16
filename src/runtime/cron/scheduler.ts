@@ -269,7 +269,7 @@ export class CronScheduler {
 	private startPolling() {
 		if (this.pollTimer) return;
 
-		const intervalMs = this.options.watchPollIntervalMs ?? 1000;
+		const intervalMs = this.options.watchPollIntervalMs ?? 30_000;
 		this.pollTimer = setInterval(() => {
 			this.syncJobsWithDirectory();
 		}, intervalMs);

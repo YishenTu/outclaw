@@ -19,16 +19,13 @@ export function readStoredAgentConfig(
 		? (JSON.parse(readFileSync(configPath, "utf-8")) as unknown)
 		: {};
 	const normalized = normalizeConfigDocument(raw);
-	const nextConfig =
-		normalized.agents?.[agentId] ?? DEFAULT_STORED_AGENT_CONFIG;
-
-	if (
-		JSON.stringify(normalized.agents?.[agentId]) !== JSON.stringify(nextConfig)
-	) {
-		writeStoredAgentConfig(homeDir, agentId, nextConfig);
+	const existing = normalized.agents?.[agentId];
+	if (existing) {
+		return existing;
 	}
 
-	return nextConfig;
+	writeStoredAgentConfig(homeDir, agentId, DEFAULT_STORED_AGENT_CONFIG);
+	return DEFAULT_STORED_AGENT_CONFIG;
 }
 
 export function writeStoredAgentConfig(
