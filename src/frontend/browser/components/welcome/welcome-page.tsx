@@ -66,6 +66,7 @@ export function WelcomePage() {
 	const runtimeSessionId = useRuntimeStore((state) => state.sessionId);
 	const model = useRuntimeStore((state) => state.model);
 	const effort = useRuntimeStore((state) => state.effort);
+	const serviceTier = useRuntimeStore((state) => state.serviceTier);
 	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
 	const selectedAgentId = resolveWelcomeAgentId(agents, activeAgentId);
 
@@ -135,6 +136,7 @@ export function WelcomePage() {
 					providerId={providerId}
 					model={model}
 					effort={effort}
+					serviceTier={serviceTier}
 					onModelChange={handleModelChange}
 					onEffortChange={handleEffortChange}
 					compact

@@ -47,6 +47,7 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 	);
 	const model = useRuntimeStore((state) => state.model);
 	const effort = useRuntimeStore((state) => state.effort);
+	const serviceTier = useRuntimeStore((state) => state.serviceTier);
 	const connectionStatus = useRuntimeStore((state) => state.connectionStatus);
 	const runtimeRunning = useRuntimeStore((state) => state.running);
 	const activeAgent = agents.find((agent) => agent.agentId === activeAgentId);
@@ -114,6 +115,7 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 					providerId={providerId}
 					model={model}
 					effort={effort}
+					serviceTier={serviceTier}
 					onModelChange={handleModelChange}
 					onEffortChange={handleEffortChange}
 				/>
@@ -171,6 +173,7 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 				providerId={providerId}
 				model={model}
 				effort={effort}
+				serviceTier={serviceTier}
 				onModelChange={handleModelChange}
 				onEffortChange={handleEffortChange}
 			/>

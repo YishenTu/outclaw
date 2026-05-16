@@ -15,29 +15,44 @@ prompt: |
 
   Cross-cutting knowledge the agent carries into every session: stable preferences, durable decisions, operating rules learned through experience, lessons that shape future behavior regardless of topic.
 
-  ## What to promote
+  ## The bar
 
-  Promote a daily-memory line into Standing Notes only if it represents:
-  - A stable preference or durable decision that applies across all work.
-  - An operating rule learned through experience that belongs nowhere else.
-  - A lesson that would plausibly apply across different topics — not just the next time the same incident recurs.
+  Standing Notes pays a context tax in every session. A line earns its slot only if **without it written down, the agent would predictably default wrong on a recurring trigger.** Generic-but-true wisdom that any competent assistant already holds does not earn a slot — the substrate (training, [[SOUL]], [[AGENTS]]) already covers it. **Default action is do not promote.** The bar is exclusion, not inclusion — when uncertain, leave it in the daily.
+
+  ## Promotion tests (a candidate must pass ALL four)
+
+  1. **Incident test**: Point to the specific moment in yesterday's daily where the absence of this rule caused a visible failure — a wrong call, a wasted round-trip, an [[Yishen]] correction. If the failure is hypothetical or prospective ("the agent *might* default to…"), it fails. No incident, no promotion.
+  2. **Default-wrong test**: Without this line, would the agent's first instinct on the trigger be the wrong move? If the line just restates "be careful / be rigorous / read first / verify things / think before acting," it fails — that's substrate, not learned rule.
+  3. **Recurrence test**: Will this exact trigger fire across multiple future sessions on different topics? Single-incident lessons stay in the daily.
+  4. **Non-derivable test**: Can the agent recover this by reading a file, running a command, or applying common sense an average competent assistant has? If yes, leave it out.
+
+  ## Anti-patterns (reject on sight)
+
+  - **"X before Y" where Y is the obviously sloppy move**: e.g. "read the code before recommending changes," "check the file before editing." Substrate covers this.
+  - **Working-cadence preferences without a named failure**: e.g. "propose a design instead of asking many questions," "make small commits." If you can't point to a session that went wrong without it, it's a style preference, not a learned rule. Style lives in [[SOUL]] (Vibe / Core Truths), not [[MEMORY]].
+  - **Generalized lessons from one incident**: a single round-trip that went badly is a daily entry, not a Standing Note. Wait for the pattern to recur before promoting.
+  - **Restatements of [[AGENTS]] or [[SOUL]] in different words**: if a careful reading of those files already implies the rule, the slot is wasted.
 
   ## What NOT to promote
 
-  - Schema-bound content (project, person, or topic specifics) — those are routed into `schemas/` by `memory-route`.
-  - Personality or working-style observations — belong in `SOUL.md`.
-  - Structural rules and instructions — belong in `AGENTS.md`.
-  - User profile facts — belong in `USER.md`.
-  - Routine task logs, one-off operations, or anything already captured elsewhere.
-  - Anything re-derivable by reading a file or running a command.
-  - Single-incident postmortems or specific troubleshooting stories. When in doubt, leave it in the daily memory.
+  - Schema-bound content (project, person, or topic specifics) — routed into `schemas/` by `memory-route`.
+  - Identity, personality, taste, or cadence-of-being observations — belong in [[SOUL]] (Core Truths for identity-level, Vibe for texture, Taste for aesthetics).
+  - Structural rules and instructions — belong in [[AGENTS]].
+  - User profile facts — belong in [[USER]].
+  - Single-incident postmortems, troubleshooting stories, generic wisdom, or anything re-derivable. When in doubt, leave it in the daily.
+
+  ## Decoration audit (run every time, not just on new candidates)
+
+  Re-test every existing Standing Note against the three promotion tests above. Do NOT cut directly. Instead, surface any line that no longer passes as a question in the reply — name the line, explain which test it fails, and ask whether to keep or remove. The user decides. "Still true" is not enough to keep; "still earns its context tax" is the bar — but the call is theirs, not yours.
 
   ## Writing discipline
 
   - Wrap proper-noun entities in `[[X]]` — people, places, projects, products, tools, named events, schema/note filenames, and category-level named entities (cuisines, genres, drink types). Don't wrap generic concepts (preference, context, style). Variants resolve via the canonical file's frontmatter `aliases:`.
-  - The bar is high: Standing Notes pays a context tax in every session. Keep it lean.
-  - Remove outdated entries that no longer apply.
 
   ## After
 
-  Reply with a one-line summary of changes, or `NO_REPLY` if none.
+  Reply with:
+  - A one-line summary of any promotions/edits you made, and
+  - Any decoration-audit questions (lines that look inert, asking the user whether to cut).
+
+  If nothing was changed and no audit questions surfaced, reply `NO_REPLY`.

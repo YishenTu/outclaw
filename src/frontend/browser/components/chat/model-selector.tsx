@@ -1,3 +1,4 @@
+import { Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
 	DEFAULT_EFFORT,
@@ -37,6 +38,7 @@ interface ModelSelectorProps {
 	providerId?: string | null;
 	model: string | null;
 	effort: string | null;
+	serviceTier?: string | null;
 	disabled?: boolean;
 	sessionActive?: boolean;
 	onModelChange: (selection: ChatModelSelection) => boolean;
@@ -48,6 +50,7 @@ export function ModelSelector({
 	providerId = null,
 	model,
 	effort,
+	serviceTier = null,
 	disabled = false,
 	sessionActive = false,
 	onModelChange,
@@ -102,6 +105,10 @@ export function ModelSelector({
 		visibleModels.map((candidate) => candidate.providerId),
 	).size;
 	const visibleEffortLevels = effortLevelsForChatModel(currentModel);
+	const fastTier = resolveFastServiceTier(currentModel);
+	const fastTierEnabled = serviceTier === fastTier?.id;
+	const fastTierLabel = fastTier?.name ?? "Fast";
+	const fastTierTooltip = fastTier?.description ?? "";
 
 	const showGroups = providerCount > 1;
 
@@ -130,10 +137,14 @@ export function ModelSelector({
 					if (!selected) {
 						return false;
 					}
+					const selectedFastTier = resolveFastServiceTier(selected);
 					return onModelChange({
 						providerId: selected.providerId,
 						model: selected.model,
 						effort: compatibleEffortForChatModel(currentEffort, selected),
+						...(serviceTier && serviceTier === selectedFastTier?.id
+							? { serviceTier }
+							: {}),
 						...(selected.contextWindow !== undefined
 							? { contextWindow: selected.contextWindow }
 							: {}),
@@ -158,12 +169,43 @@ export function ModelSelector({
 						providerId: currentModel.providerId,
 						model: currentModel.model,
 						effort: item.id,
+						...(serviceTier && serviceTier === fastTier?.id
+							? { serviceTier }
+							: {}),
 						...(currentModel.contextWindow !== undefined
 							? { contextWindow: currentModel.contextWindow }
 							: {}),
 					});
 				}}
 			/>
+
+			{fastTier && currentModel && (
+				<button
+					type="button"
+					disabled={disabled}
+					onClick={() => {
+						onModelChange({
+							providerId: currentModel.providerId,
+							model: currentModel.model,
+							effort: currentEffort,
+							...(fastTierEnabled ? {} : { serviceTier: fastTier.id }),
+							...(currentModel.contextWindow !== undefined
+								? { contextWindow: currentModel.contextWindow }
+								: {}),
+						});
+					}}
+					title={fastTierTooltip}
+					aria-pressed={fastTierEnabled}
+					aria-label={`${fastTierLabel} mode`}
+					className={`flex items-center rounded px-1.5 py-0.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+						fastTierEnabled
+							? "text-brand hover:text-ember"
+							: "text-dark-400 hover:text-dark-200"
+					}`}
+				>
+					<Zap size={14} aria-hidden="true" />
+				</button>
+			)}
 		</div>
 	);
 }
@@ -255,6 +297,12 @@ export function effortLevelsForChatModel(
 	}
 
 	return EFFORT_MENU_LEVELS.filter((level) => providerLevels.includes(level));
+}
+
+export function resolveFastServiceTier(
+	model: BrowserChatModel | undefined,
+): BrowserChatModel["serviceTiers"][number] | undefined {
+	return model?.serviceTiers?.[0];
 }
 
 function modelKey(model: BrowserChatModel): string {

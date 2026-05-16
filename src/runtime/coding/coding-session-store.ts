@@ -776,6 +776,38 @@ export function ensureCodingSessionStoreSchema(db: Database) {
 			REFERENCES sessions(agent_id, provider_id, sdk_session_id)
 			ON DELETE CASCADE
 	)`);
+
+	const columns = db
+		.query("PRAGMA table_info(coding_sessions)")
+		.all() as Array<{ name: string }>;
+	const columnNames = new Set(columns.map((column) => column.name));
+	const migrations: Array<{ column: string; sql: string }> = [
+		{ column: "repository_id", sql: "ADD COLUMN repository_id TEXT" },
+		{
+			column: "linked_chat_session_id",
+			sql: "ADD COLUMN linked_chat_session_id TEXT",
+		},
+		{ column: "browser_tab_id", sql: "ADD COLUMN browser_tab_id TEXT" },
+		{
+			column: "lifecycle_status",
+			sql: "ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'open'",
+		},
+		{
+			column: "cascaded_from_repo",
+			sql: "ADD COLUMN cascaded_from_repo INTEGER NOT NULL DEFAULT 0",
+		},
+		{ column: "trashed_at", sql: "ADD COLUMN trashed_at INTEGER" },
+		{
+			column: "run_status",
+			sql: "ADD COLUMN run_status TEXT NOT NULL DEFAULT 'idle'",
+		},
+	];
+	for (const migration of migrations) {
+		if (!columnNames.has(migration.column)) {
+			db.exec(`ALTER TABLE coding_sessions ${migration.sql}`);
+			columnNames.add(migration.column);
+		}
+	}
 }
 
 function mapCodingSessionRow(

@@ -415,6 +415,33 @@ describe("browser stores", () => {
 		).toBeUndefined();
 	});
 
+	test("runtime store tracks the active provider service tier", () => {
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "high",
+			serviceTier: "priority",
+			running: false,
+		});
+
+		expect(useRuntimeStore.getState().serviceTier).toBe("priority");
+
+		useRuntimeStore.getState().clearSession();
+		expect(useRuntimeStore.getState().serviceTier).toBe("priority");
+
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "high",
+			running: false,
+		});
+		expect(useRuntimeStore.getState().serviceTier).toBeNull();
+	});
+
 	test("runtime store keeps the restart notice when clearing only the session", () => {
 		useRuntimeStore.getState().updateFromStatus({
 			type: "runtime_status",

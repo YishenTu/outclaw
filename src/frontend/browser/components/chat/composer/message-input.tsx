@@ -55,6 +55,7 @@ interface MessageInputProps {
 	providerId?: string | null;
 	model: string | null;
 	effort: string | null;
+	serviceTier?: string | null;
 	onModelChange: (selection: ChatModelSelection) => boolean;
 	onEffortChange: (selection: ChatModelSelection) => boolean;
 	active?: boolean;
@@ -84,6 +85,7 @@ export function MessageInput({
 	providerId = null,
 	model,
 	effort,
+	serviceTier = null,
 	onModelChange,
 	onEffortChange,
 	active = true,
@@ -548,6 +550,7 @@ export function MessageInput({
 									providerId={providerId}
 									model={model}
 									effort={effort}
+									serviceTier={serviceTier}
 									sessionActive={sessionActive}
 									disabled={isInputDisabled}
 									onModelChange={onModelChange}

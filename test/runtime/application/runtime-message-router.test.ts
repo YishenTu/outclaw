@@ -135,6 +135,7 @@ describe("RuntimeMessageRouter", () => {
 			providerId: "codex",
 			model: "gpt-5.5",
 			effort: "low",
+			serviceTier: "priority",
 			contextWindow: 400_000,
 		});
 
@@ -145,6 +146,7 @@ describe("RuntimeMessageRouter", () => {
 					providerId: "codex",
 					model: "gpt-5.5",
 					effort: "low",
+					serviceTier: "priority",
 					contextWindow: 400_000,
 				},
 				ws,

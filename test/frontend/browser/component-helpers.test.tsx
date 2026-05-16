@@ -10,6 +10,7 @@ import {
 	effortLevelsForChatModel,
 	formatEffortLabel,
 	resolveCurrentEffort,
+	resolveFastServiceTier,
 } from "../../../src/frontend/browser/components/chat/model-selector.tsx";
 import { FileTree } from "../../../src/frontend/browser/components/right-panel/file-tree.tsx";
 import { GitCommitHistory } from "../../../src/frontend/browser/components/right-panel/git/git-commit-history.tsx";
@@ -61,20 +62,35 @@ describe("browser component helpers", () => {
 		expect(resolveCurrentEffort("turbo")).toBe("medium");
 		expect(formatEffortLabel("xhigh")).toBe("XHigh");
 
-		expect(
-			effortLevelsForChatModel({
-				providerId: "codex",
-				providerDisplayName: "Codex",
-				id: "gpt-5.5",
-				model: "gpt-5.5",
-				displayName: "GPT-5.5",
-				description: "",
-				isDefault: true,
-				defaultReasoningEffort: "medium",
-				supportedReasoningEfforts: ["low", "medium", "high"],
-				serviceTiers: [],
-			}),
-		).toEqual(["high", "medium", "low"]);
+		const codexModel = {
+			providerId: "codex",
+			providerDisplayName: "Codex",
+			id: "gpt-5.5",
+			model: "gpt-5.5",
+			displayName: "GPT-5.5",
+			description: "",
+			isDefault: true,
+			defaultReasoningEffort: "medium",
+			supportedReasoningEfforts: ["low", "medium", "high"],
+			serviceTiers: [
+				{
+					id: "priority",
+					name: "Fast",
+					description: "Priority tier",
+				},
+			],
+		};
+
+		expect(effortLevelsForChatModel(codexModel)).toEqual([
+			"high",
+			"medium",
+			"low",
+		]);
+		expect(resolveFastServiceTier(codexModel)).toEqual({
+			id: "priority",
+			name: "Fast",
+			description: "Priority tier",
+		});
 	});
 
 	test("renders generic dropup menus for empty and selectable states", () => {

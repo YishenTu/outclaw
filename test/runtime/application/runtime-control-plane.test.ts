@@ -225,4 +225,52 @@ describe("RuntimeControlPlane", () => {
 			}),
 		);
 	});
+
+	test("model_select applies and clears provider service tier", () => {
+		const state = new RuntimeState("codex");
+		const clients = createGateway(state);
+		const ws = mockWs();
+		clients.handleOpen(ws);
+		const { execution } = createExecution(false);
+		const controlPlane = new RuntimeControlPlane({
+			clients,
+			createStatusEvent: () => state.createStatusEvent(),
+			execution,
+			sessions: new SessionService(state),
+			state,
+		});
+
+		controlPlane.handleModelSelect(ws, {
+			type: "model_select",
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "high",
+			serviceTier: "priority",
+		});
+
+		expect(state.serviceTier).toBe("priority");
+		expect(ws.events()).toContainEqual(
+			expect.objectContaining({
+				type: "runtime_status",
+				model: "gpt-5.5",
+				serviceTier: "priority",
+			}),
+		);
+
+		controlPlane.handleModelSelect(ws, {
+			type: "model_select",
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "high",
+		});
+
+		expect(state.serviceTier).toBeUndefined();
+		const latestStatus = ws
+			.events()
+			.filter((event) => event.type === "runtime_status")
+			.at(-1);
+		expect(latestStatus).toEqual(
+			expect.not.objectContaining({ serviceTier: expect.any(String) }),
+		);
+	});
 });

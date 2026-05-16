@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -104,6 +105,90 @@ describe("CodingSessionStore", () => {
 
 		codingSessions.close();
 		sessions.close();
+	});
+
+	test("migrates legacy coding session tables missing archive columns", () => {
+		const dbPath = join(
+			mkdtempSync(join(tmpdir(), "outclaw-coding-sessions-legacy-")),
+			"sessions.sqlite",
+		);
+		const sessions = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+			journalMode: "DELETE",
+		});
+		sessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "legacy-code",
+			title: "Legacy code task",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 10,
+		});
+		sessions.close();
+
+		const db = new Database(dbPath);
+		db.exec(`CREATE TABLE coding_sessions (
+			agent_id TEXT NOT NULL,
+			provider_id TEXT NOT NULL,
+			sdk_session_id TEXT NOT NULL,
+			repository_id TEXT,
+			cwd TEXT NOT NULL,
+			linked_chat_session_id TEXT,
+			browser_tab_id TEXT,
+			lifecycle_status TEXT NOT NULL,
+			run_status TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			last_active INTEGER NOT NULL,
+			PRIMARY KEY (agent_id, provider_id, sdk_session_id)
+		)`);
+		db.query(
+			`INSERT INTO coding_sessions (
+				agent_id,
+				provider_id,
+				sdk_session_id,
+				cwd,
+				lifecycle_status,
+				run_status,
+				created_at,
+				last_active
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		).run(
+			CODING_STORAGE_OWNER_ID,
+			"codex",
+			"legacy-code",
+			"/workspace/outclaw",
+			"open",
+			"running",
+			10,
+			10,
+		);
+		db.close();
+
+		const codingSessions = new CodingSessionStore(dbPath, {
+			journalMode: "DELETE",
+		});
+
+		expect(codingSessions.get("codex", "legacy-code")).toMatchObject({
+			cascadedFromRepo: false,
+			lifecycleStatus: "open",
+			runStatus: "running",
+			sdkSessionId: "legacy-code",
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "legacy-code",
+			cwd: "/workspace/outclaw",
+			lifecycleStatus: "trashed",
+			runStatus: "idle",
+			timestamp: 20,
+		});
+		expect(codingSessions.get("codex", "legacy-code")).toMatchObject({
+			lifecycleStatus: "trashed",
+			trashedAt: 20,
+		});
+
+		codingSessions.close();
 	});
 
 	test("lists coding sessions with shared session metadata and cursor pagination", () => {

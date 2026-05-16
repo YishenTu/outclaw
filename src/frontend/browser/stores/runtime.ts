@@ -34,6 +34,7 @@ export interface BrowserRuntimeState {
 	providerId: string | null;
 	model: string | null;
 	effort: string | null;
+	serviceTier: string | null;
 	running: boolean;
 	sessionId: string | null;
 	sessionTitle: string | null;
@@ -51,6 +52,7 @@ export interface BrowserRuntimeState {
 	setSessionTitle: (title: string | null) => void;
 	setModel: (model: string) => void;
 	setEffort: (effort: string) => void;
+	setServiceTier: (serviceTier: string | null) => void;
 	clearSession: () => void;
 }
 
@@ -76,6 +78,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 	providerId: null,
 	model: null,
 	effort: null,
+	serviceTier: null,
 	running: false,
 	sessionId: null,
 	sessionTitle: null,
@@ -105,6 +108,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 				providerId,
 				model: event.model,
 				effort: event.effort,
+				serviceTier: event.serviceTier ?? null,
 				running: event.running,
 				sessionId:
 					event.sessionId ?? (keepRunningSession ? state.sessionId : null),
@@ -125,6 +129,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 	setSessionTitle: (sessionTitle) => set({ sessionTitle }),
 	setModel: (model) => set({ model }),
 	setEffort: (effort) => set({ effort }),
+	setServiceTier: (serviceTier) => set({ serviceTier }),
 	clearSession: () =>
 		set({
 			sessionId: null,
