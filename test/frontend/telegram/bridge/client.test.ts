@@ -251,25 +251,32 @@ describe("Telegram bridge", () => {
 
 	test("stream() forwards reply context separately", async () => {
 		const bridge = createTelegramBridge(`ws://localhost:${server.port}`);
+		facade.textChunks = ["answer"];
 
-		const texts: string[] = [];
-		for await (const chunk of bridge.stream(
-			"what do you mean?",
-			undefined,
-			undefined,
-			undefined,
-			{ text: 'the "cron" output' },
-		)) {
-			if ("text" in chunk) texts.push(chunk.text);
+		try {
+			const texts: string[] = [];
+			for await (const chunk of bridge.stream(
+				"what do you mean?",
+				undefined,
+				undefined,
+				undefined,
+				{ text: 'the "cron" output' },
+			)) {
+				if ("text" in chunk) texts.push(chunk.text);
+			}
+
+			expect(texts.join("")).toBe("answer");
+			expect(facade.lastParams?.prompt).toBe(
+				"what do you mean?\n\n<reply-context>the &quot;cron&quot; output</reply-context>",
+			);
+			expect(
+				"replyContext" in
+					(facade.lastParams as unknown as Record<string, unknown>),
+			).toBe(false);
+		} finally {
+			facade.textChunks = undefined;
+			bridge.close();
 		}
-
-		expect(texts.join("")).toBe("echo: what do you mean?");
-		expect(facade.lastParams?.prompt).toBe("what do you mean?");
-		expect(facade.lastParams?.replyContext).toEqual({
-			text: 'the "cron" output',
-		});
-
-		bridge.close();
 	});
 
 	test("sendCommandAndWait() returns command responses", async () => {

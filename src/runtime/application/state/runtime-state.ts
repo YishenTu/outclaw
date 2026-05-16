@@ -33,6 +33,7 @@ export interface RuntimePromptContext {
 	 */
 	providerId: string;
 	resolvedModel: string;
+	serviceTier?: string;
 	sessionId?: string;
 	sessionSource: "tui" | "telegram" | "agent";
 	sessionTitle?: string;
@@ -103,6 +104,10 @@ export class RuntimeState {
 		return this.settings.resolvedModel;
 	}
 
+	get serviceTier(): string | undefined {
+		return this.settings.serviceTier;
+	}
+
 	get sessionId(): string | undefined {
 		return this.sessions.sessionId;
 	}
@@ -136,6 +141,7 @@ export class RuntimeState {
 			ocSessionId: this.sessions.ensureOcSessionId(),
 			providerId: this.currentProviderId,
 			resolvedModel: this.settings.resolvedModel,
+			serviceTier: this.settings.serviceTier,
 			sessionId: this.sessions.sessionId,
 			sessionSource: this.sessions.sessionSource,
 			sessionTitle: this.sessions.sessionTitle,
@@ -155,6 +161,7 @@ export class RuntimeState {
 			ocSessionId: options.resumeSessionId ?? detached.ocSessionId,
 			providerId: this.currentProviderId,
 			resolvedModel: this.settings.resolvedModel,
+			serviceTier: this.settings.serviceTier,
 			sessionId: options.resumeSessionId,
 			sessionSource: "agent",
 			sessionTitle: detached.sessionTitle,
@@ -168,6 +175,7 @@ export class RuntimeState {
 			providerId: this.currentProviderId,
 			model: this.settings.model,
 			effort: this.settings.effort,
+			serviceTier: this.settings.serviceTier,
 			running: false,
 			sessionId: this.sessions.sessionId,
 			sessionTitle: this.sessions.sessionTitle,
@@ -209,6 +217,10 @@ export class RuntimeState {
 		this.settings.setEffort(effort);
 	}
 
+	setServiceTier(serviceTier: string | undefined) {
+		this.settings.setServiceTier(serviceTier);
+	}
+
 	/**
 	 * Set the active provider-local model id. Use for non-Claude providers
 	 * whose model ids don't fit the `ModelAlias` registry (e.g. `gpt-5.5`).
@@ -229,6 +241,9 @@ export class RuntimeState {
 			usage = this.alignUsageToModel(usage, params.session.model);
 		} else if (params.session) {
 			this.setProviderModel(params.session.model);
+		}
+		if (params.session) {
+			this.setServiceTier(params.session.serviceTier);
 		}
 		this.sessions.restorePersistedState({
 			...params,
@@ -257,6 +272,7 @@ export class RuntimeState {
 		} else {
 			this.setProviderModel(session.model);
 		}
+		this.setServiceTier(session.serviceTier);
 		this.sessions.switchToSession(session, usage);
 	}
 

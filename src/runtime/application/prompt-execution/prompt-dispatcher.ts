@@ -163,6 +163,7 @@ export class PromptDispatcher {
 		const runEffort =
 			task.effortOverride ??
 			(task.useProviderDefaultEffort ? undefined : context.effort);
+		const runServiceTier = task.serviceTierOverride ?? context.serviceTier;
 
 		const emit = (event: FacadeEvent) => {
 			const visible = isVisible();
@@ -172,8 +173,10 @@ export class PromptDispatcher {
 						active: visible,
 						sessionId: event.sessionId,
 						ocSessionId: context.ocSessionId,
+						providerId: context.providerId,
 						title: titleForPersistence(context),
 						model: storedModel,
+						serviceTier: runServiceTier,
 						source: toStoredSessionSource(task),
 						tag: task.sessionTag,
 					});
@@ -226,6 +229,7 @@ export class PromptDispatcher {
 						event,
 						providerId: context.providerId,
 						model: storedModel,
+						serviceTier: runServiceTier,
 						ocSessionId: context.ocSessionId,
 						source: toStoredSessionSource(task),
 						tag: task.sessionTag,
@@ -244,7 +248,7 @@ export class PromptDispatcher {
 				ocSessionId: context.ocSessionId,
 				providerId: context.providerId,
 				resume: context.resumeSessionId,
-				serviceTier: task.serviceTierOverride,
+				serviceTier: runServiceTier,
 				task,
 			});
 		} finally {
@@ -267,6 +271,8 @@ export class PromptDispatcher {
 				sessionId: context.ocSessionId,
 				title: titleForPersistence(context),
 				model: storedModel,
+				providerId: context.providerId,
+				serviceTier: runServiceTier,
 				source: toInterruptedSessionSource(task.source),
 			});
 		}

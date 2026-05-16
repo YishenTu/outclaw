@@ -69,12 +69,14 @@ describe("runFacadePrompt", () => {
 			ocSessionId: "oc-session",
 			prompt: "Build the chart",
 			promptHomeDir,
+			replyContext: { text: 'earlier "result" <ok>' },
 			stream: true,
 		});
 
 		expect(capturedParams).toHaveLength(1);
 		expect(capturedParams[0]).toMatchObject({
-			prompt: "Build the chart",
+			prompt:
+				"Build the chart\n\n<reply-context>earlier &quot;result&quot; &lt;ok&gt;</reply-context>",
 			instructionPolicy: {
 				mode: "runtime_constructed",
 				systemPrompt:
@@ -91,6 +93,10 @@ describe("runFacadePrompt", () => {
 				OC_SESSION_ID: "oc-session",
 			},
 		});
+		expect(
+			"replyContext" in
+				(capturedParams[0] as unknown as Record<string, unknown>),
+		).toBe(false);
 		expect(emitted).toEqual([
 			{ type: "text", text: `created ${imagePath}` },
 			{ type: "image", path: imagePath },

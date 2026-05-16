@@ -24,9 +24,9 @@ export interface CodexThread {
 
 /**
  * One instruction file the Codex app-server reports it loaded when starting
- * or resuming a thread. Outclaw uses this to verify that runtime-constructed
- * Chat threads did not pick up the agent workspace `AGENTS.md` a second time
- * as a project doc.
+ * or resuming a thread. Codex may report project docs even when
+ * `project_doc_max_bytes` prevents their contents from entering the turn, so
+ * this field is informational only.
  */
 export interface CodexInstructionSource {
 	kind?: string;
@@ -35,7 +35,7 @@ export interface CodexInstructionSource {
 
 export interface CodexThreadStartResult {
 	thread: CodexThread;
-	instructionSources?: CodexInstructionSource[];
+	instructionSources?: Array<string | CodexInstructionSource>;
 }
 
 export type CodexThreadResumeResult = CodexThreadStartResult;

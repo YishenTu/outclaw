@@ -5,9 +5,14 @@ import { join } from "node:path";
 import type {
 	Facade,
 	FacadeEvent,
+	ProviderModelInfo,
 	RunParams,
 } from "../../../src/common/protocol.ts";
 import { createCronAgentRunner } from "../../../src/runtime/cron/run-cron-agent.ts";
+import {
+	createModelProviderResolver,
+	staticModelProviderResolver,
+} from "../../../src/runtime/model-provider-resolver.ts";
 
 function createPromptHome(files: Record<string, string>) {
 	const dir = mkdtempSync(join(tmpdir(), "mis-cron-agent-"));
@@ -29,6 +34,19 @@ function createFacade(
 				yield event;
 			}
 		},
+	};
+}
+
+function model(id: string): ProviderModelInfo {
+	return {
+		id,
+		model: id,
+		displayName: id,
+		description: "",
+		isDefault: false,
+		defaultReasoningEffort: "medium",
+		supportedReasoningEfforts: ["medium"],
+		serviceTiers: [],
 	};
 }
 
@@ -66,6 +84,7 @@ describe("createCronAgentRunner", () => {
 		);
 		const runCronAgent = createCronAgentRunner({
 			providers: { getFacade: () => facade },
+			modelProviderResolver: staticModelProviderResolver("claude"),
 			promptHomeDir,
 			cwd: "/workspace/project",
 		});
@@ -112,6 +131,7 @@ describe("createCronAgentRunner", () => {
 		);
 		const runCronAgent = createCronAgentRunner({
 			providers: { getFacade: () => facade },
+			modelProviderResolver: staticModelProviderResolver("claude"),
 			promptHomeDir,
 			cwd: "/workspace/project",
 		});
@@ -121,7 +141,7 @@ describe("createCronAgentRunner", () => {
 		);
 	});
 
-	test("routes cron runs to the Codex facade when the model is a recognized Codex id", async () => {
+	test("routes cron runs to the Codex facade when the model resolves through the catalog", async () => {
 		const promptHomeDir = createPromptHome({});
 		promptHomes.push(promptHomeDir);
 
@@ -145,6 +165,16 @@ describe("createCronAgentRunner", () => {
 					return claudeFacade;
 				},
 			},
+			modelProviderResolver: createModelProviderResolver([
+				{
+					providerId: "claude",
+					listModels: async () => [model("haiku")],
+				},
+				{
+					providerId: "codex",
+					listModels: async () => [model("gpt-5.5")],
+				},
+			]),
 			promptHomeDir,
 			cwd: "/workspace/project",
 		});
@@ -162,6 +192,35 @@ describe("createCronAgentRunner", () => {
 		});
 	});
 
+	test("rejects unknown provider models instead of inferring from prefixes", async () => {
+		const promptHomeDir = createPromptHome({});
+		promptHomes.push(promptHomeDir);
+
+		const calls: RunParams[] = [];
+		const facade = createFacade(
+			[{ type: "done", sessionId: "cron-session-unknown", durationMs: 1 }],
+			(params) => calls.push(params),
+		);
+		const runCronAgent = createCronAgentRunner({
+			providers: { getFacade: () => facade },
+			modelProviderResolver: createModelProviderResolver([
+				{
+					providerId: "codex",
+					listModels: async () => [model("gpt-5.5")],
+				},
+			]),
+			promptHomeDir,
+			cwd: "/workspace/project",
+		});
+
+		await expect(
+			runCronAgent("Run with an unknown Codex model", "gpt-unknown"),
+		).rejects.toThrow(
+			"Cron job model gpt-unknown does not resolve to a known provider",
+		);
+		expect(calls).toEqual([]);
+	});
+
 	test("throws the cron session id when the facade emits an error event", async () => {
 		const promptHomeDir = createPromptHome({});
 		promptHomes.push(promptHomeDir);
@@ -175,6 +234,7 @@ describe("createCronAgentRunner", () => {
 		);
 		const runCronAgent = createCronAgentRunner({
 			providers: { getFacade: () => facade },
+			modelProviderResolver: staticModelProviderResolver("claude"),
 			promptHomeDir,
 			cwd: "/workspace/project",
 		});

@@ -487,6 +487,7 @@ export interface RuntimeStatusEvent {
 	providerId?: string;
 	model: string;
 	effort: string;
+	serviceTier?: string;
 	running: boolean;
 	sessionId?: string;
 	sessionTitle?: string;
@@ -1330,10 +1331,16 @@ export interface RuntimeInstructionPolicy {
 	systemPrompt?: string;
 }
 
+/**
+ * Provider-neutral capability envelope for a run. Runtime callers describe
+ * only the behavior they need; adapters own the provider-native approval,
+ * sandbox, or tool-list request shape.
+ */
+export type RuntimeExecutionMode = "provider_default" | "read_only";
+
 export interface RunParams {
 	prompt: string;
 	images?: ImageRef[];
-	replyContext?: ReplyContext;
 	/**
 	 * How the adapter should source agent instructions for this run. When
 	 * omitted, adapters treat the run as `provider_default` with no Outclaw
@@ -1341,6 +1348,7 @@ export interface RunParams {
 	 * conflated "provider default" with "no extra instructions".
 	 */
 	instructionPolicy?: RuntimeInstructionPolicy;
+	executionMode?: RuntimeExecutionMode;
 	abortController?: AbortController;
 	resume?: string;
 	/**

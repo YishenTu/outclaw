@@ -5,6 +5,10 @@ import type {
 	SkillInfo,
 	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
+import {
+	type ModelProviderResolver,
+	staticModelProviderResolver,
+} from "../model-provider-resolver.ts";
 import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import type { WsClient } from "../transport/client-hub.ts";
 import { AutoTitleCoordinator } from "./auto-title.ts";
@@ -52,6 +56,7 @@ interface CreateRuntimeControllerOptions {
 	 * back to a single-facade resolver bound to `facade`.
 	 */
 	providers?: PromptProviderResolver;
+	modelProviderResolver?: ModelProviderResolver;
 	getFrontendNotice?: () => FrontendNotice | undefined;
 	listSkills?: () => Promise<SkillInfo[]>;
 	listWorkspaceFiles?: () => Promise<WorkspaceFileEntry[]>;
@@ -72,6 +77,9 @@ export function createRuntimeController(
 	const streamingState = new StreamingStateStore();
 	const providersForRunner =
 		options.providers ?? singleFacadeResolver(options.facade);
+	const modelProviderResolver =
+		options.modelProviderResolver ??
+		staticModelProviderResolver(options.facade.providerId);
 	const store = options.store;
 	const clients = new RuntimeClientGateway({
 		canSendToClient: options.canSendToClient,
@@ -144,6 +152,7 @@ export function createRuntimeController(
 		? new AutoTitleCoordinator({
 				cwd: options.cwd,
 				providers: providersForRunner,
+				modelProviderResolver,
 				model: options.autoTitle.model,
 				sessions: options.sessions,
 			})

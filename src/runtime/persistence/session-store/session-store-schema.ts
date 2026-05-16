@@ -38,6 +38,7 @@ function createSessionsTable(db: Database) {
 			oc_session_id TEXT,
 			title TEXT NOT NULL,
 			model TEXT NOT NULL,
+			service_tier TEXT,
 			source TEXT NOT NULL DEFAULT 'tui',
 			tag TEXT NOT NULL DEFAULT 'chat',
 			created_at INTEGER NOT NULL,
@@ -65,6 +66,7 @@ function migrateSessionsTable(db: Database, columns: TableColumnInfo[]) {
 			name: "oc_session_id",
 			pk: 0,
 		});
+		columnNames.add("oc_session_id");
 	}
 	if (!columnNames.has("failed_at")) {
 		db.exec("ALTER TABLE sessions ADD COLUMN failed_at INTEGER");
@@ -72,6 +74,7 @@ function migrateSessionsTable(db: Database, columns: TableColumnInfo[]) {
 			name: "failed_at",
 			pk: 0,
 		});
+		columnNames.add("failed_at");
 	}
 	if (!columnNames.has("failure_message")) {
 		db.exec("ALTER TABLE sessions ADD COLUMN failure_message TEXT");
@@ -79,6 +82,7 @@ function migrateSessionsTable(db: Database, columns: TableColumnInfo[]) {
 			name: "failure_message",
 			pk: 0,
 		});
+		columnNames.add("failure_message");
 	}
 	if (!columnNames.has("auto_title_attempted")) {
 		db.exec(
@@ -91,6 +95,14 @@ function migrateSessionsTable(db: Database, columns: TableColumnInfo[]) {
 		);
 		columns.push({
 			name: "auto_title_attempted",
+			pk: 0,
+		});
+		columnNames.add("auto_title_attempted");
+	}
+	if (!columnNames.has("service_tier")) {
+		db.exec("ALTER TABLE sessions ADD COLUMN service_tier TEXT");
+		columns.push({
+			name: "service_tier",
 			pk: 0,
 		});
 	}

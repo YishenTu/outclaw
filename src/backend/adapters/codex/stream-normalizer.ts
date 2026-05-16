@@ -89,7 +89,7 @@ class CodexToolCallProjectionState {
 
 export async function* normalizeCodexTurnNotifications(
 	options: NormalizeCodexTurnOptions,
-): AsyncIterable<CodingSessionEvent> {
+): AsyncIterable<FacadeEvent> {
 	let pendingUsage: UsageInfo | undefined;
 	let terminalError = false;
 	let streamedAssistantText = "";
@@ -134,13 +134,6 @@ export async function* normalizeCodexTurnNotifications(
 								sessionId: options.sessionId,
 							};
 							return;
-						}
-						if (text) {
-							yield {
-								type: "user_prompt",
-								text,
-								sessionId: options.sessionId,
-							};
 						}
 						break;
 					}

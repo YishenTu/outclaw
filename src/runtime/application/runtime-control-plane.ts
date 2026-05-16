@@ -143,6 +143,7 @@ export class RuntimeControlPlane {
 		if (effortArg !== undefined) {
 			this.options.state.setEffort(effortArg as EffortLevel);
 		}
+		this.options.state.setServiceTier(message.serviceTier);
 
 		if (
 			visibleSessionId === undefined &&

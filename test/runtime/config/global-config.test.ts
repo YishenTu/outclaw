@@ -219,15 +219,17 @@ describe("loadGlobalConfig", () => {
 		}
 	});
 
-	test("accepts a Codex title model id like gpt-5.5", () => {
+	test("accepts provider-specific title model ids", () => {
 		const dir = tmp();
 		try {
 			writeFileSync(
 				join(dir, "config.json"),
-				JSON.stringify({ autoTitle: { model: "gpt-5.5" } }),
+				JSON.stringify({ autoTitle: { model: "gpt-5.4-mini" } }),
 			);
 
-			expect(loadGlobalConfig(dir).autoTitle).toEqual({ model: "gpt-5.5" });
+			expect(loadGlobalConfig(dir).autoTitle).toEqual({
+				model: "gpt-5.4-mini",
+			});
 		} finally {
 			rmSync(dir, { recursive: true });
 		}
@@ -258,17 +260,17 @@ describe("loadGlobalConfig", () => {
 		}
 	});
 
-	test("rejects unknown autoTitle model values", () => {
+	test("leaves provider-specific autoTitle model validation to runtime resolution", () => {
 		const dir = tmp();
 		try {
 			writeFileSync(
 				join(dir, "config.json"),
-				JSON.stringify({ autoTitle: { model: "gpt-unknown" } }),
+				JSON.stringify({ autoTitle: { model: "codex-mini-latest" } }),
 			);
 
-			expect(() => loadGlobalConfig(dir)).toThrow(
-				"Invalid autoTitle.model: gpt-unknown",
-			);
+			expect(loadGlobalConfig(dir).autoTitle).toEqual({
+				model: "codex-mini-latest",
+			});
 		} finally {
 			rmSync(dir, { recursive: true });
 		}

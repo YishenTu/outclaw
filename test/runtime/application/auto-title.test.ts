@@ -4,6 +4,7 @@ import { MODELS } from "../../../src/common/models.ts";
 import type {
 	Facade,
 	FacadeEvent,
+	ProviderModelInfo,
 	RunParams,
 } from "../../../src/common/protocol.ts";
 import {
@@ -13,6 +14,10 @@ import {
 } from "../../../src/runtime/application/auto-title.ts";
 import type { SessionService } from "../../../src/runtime/application/session-service.ts";
 import type { RuntimePromptContext } from "../../../src/runtime/application/state/runtime-state.ts";
+import {
+	createModelProviderResolver,
+	staticModelProviderResolver,
+} from "../../../src/runtime/model-provider-resolver.ts";
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -24,6 +29,19 @@ function createDeferred() {
 		resolve = res;
 	});
 	return { promise, resolve };
+}
+
+function model(id: string): ProviderModelInfo {
+	return {
+		id,
+		model: id,
+		displayName: id,
+		description: "",
+		isDefault: false,
+		defaultReasoningEffort: "medium",
+		supportedReasoningEfforts: ["medium"],
+		serviceTiers: [],
+	};
 }
 
 describe("buildAutoTitlePrompt", () => {
@@ -95,6 +113,7 @@ describe("AutoTitleCoordinator", () => {
 		} as Pick<SessionService, "applyAutoTitle" | "canPersistSessions">;
 		const coordinator = new AutoTitleCoordinator({
 			providers: { getFacade: () => facade },
+			modelProviderResolver: staticModelProviderResolver("mock"),
 			model: MODELS.haiku.id,
 			sessions: sessions as SessionService,
 		});
@@ -120,6 +139,8 @@ describe("AutoTitleCoordinator", () => {
 		await Promise.resolve();
 
 		expect(titleParams?.abortController?.signal.aborted).toBe(false);
+		expect(titleParams?.executionMode).toBe("read_only");
+		expect(titleParams?.tools).toBeUndefined();
 		coordinator.resolveSession("oc-title", "sdk-title");
 		releaseTitle.resolve();
 		await coordinator.drain();
@@ -132,6 +153,7 @@ describe("AutoTitleCoordinator", () => {
 		const codexCalls: RunParams[] = [];
 		const claudeFacade: Facade = {
 			providerId: "claude",
+			listModels: async () => [model("haiku")],
 			async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 				claudeCalls.push(params);
 				yield { type: "done", sessionId: "claude-sdk", durationMs: 1 };
@@ -139,6 +161,7 @@ describe("AutoTitleCoordinator", () => {
 		};
 		const codexFacade: Facade = {
 			providerId: "codex",
+			listModels: async () => [model("gpt-5.5")],
 			async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 				codexCalls.push(params);
 				yield { type: "text", text: "Codex Title" };
@@ -162,6 +185,10 @@ describe("AutoTitleCoordinator", () => {
 					return claudeFacade;
 				},
 			},
+			modelProviderResolver: createModelProviderResolver([
+				{ providerId: "claude", listModels: claudeFacade.listModels },
+				{ providerId: "codex", listModels: codexFacade.listModels },
+			]),
 			// gpt-5.5 must route through the Codex facade even though the
 			// active chat provider here is Claude — title routing is owned by
 			// the configured title model, not the live chat state.

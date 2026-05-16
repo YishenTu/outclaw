@@ -93,6 +93,7 @@ export class SessionStore {
 		ocSessionId?: string;
 		title: string;
 		model: string;
+		serviceTier?: string;
 		source?: string;
 		tag?: SessionTag;
 		timestamp?: number;
@@ -105,42 +106,45 @@ export class SessionStore {
 		this.db
 			.query(
 				`INSERT INTO sessions (
-						agent_id,
-						provider_id,
-						sdk_session_id,
-						oc_session_id,
-						title,
-						model,
-						source,
-						tag,
-						created_at,
-						last_active,
-						failed_at,
-						failure_message
-					)
-					VALUES (
-						$agentId,
-						$providerId,
-						$id,
-						$ocSessionId,
-						$title,
-						$model,
-						$source,
-						$tag,
-						$now,
-						$now,
-						$failedAt,
-						$failureMessage
-					)
-					ON CONFLICT(agent_id, provider_id, sdk_session_id) DO UPDATE SET
-						oc_session_id = COALESCE($ocSessionId, oc_session_id),
-						title = $title,
-						model = $model,
-						source = $source,
-						tag = $tag,
-						last_active = $now,
-						failed_at = COALESCE($failedAt, failed_at),
-						failure_message = COALESCE($failureMessage, failure_message)`,
+					agent_id,
+					provider_id,
+					sdk_session_id,
+					oc_session_id,
+					title,
+					model,
+					service_tier,
+					source,
+					tag,
+					created_at,
+					last_active,
+					failed_at,
+					failure_message
+				)
+				VALUES (
+					$agentId,
+					$providerId,
+					$id,
+					$ocSessionId,
+					$title,
+					$model,
+					$serviceTier,
+					$source,
+					$tag,
+					$now,
+					$now,
+					$failedAt,
+					$failureMessage
+				)
+				ON CONFLICT(agent_id, provider_id, sdk_session_id) DO UPDATE SET
+					oc_session_id = COALESCE($ocSessionId, oc_session_id),
+					title = $title,
+					model = $model,
+					service_tier = $serviceTier,
+					source = $source,
+					tag = $tag,
+					last_active = $now,
+					failed_at = COALESCE($failedAt, failed_at),
+					failure_message = COALESCE($failureMessage, failure_message)`,
 			)
 			.run({
 				$agentId: this.agentId,
@@ -149,6 +153,7 @@ export class SessionStore {
 				$ocSessionId: params.ocSessionId ?? null,
 				$title: params.title,
 				$model: params.model,
+				$serviceTier: params.serviceTier ?? null,
 				$source: params.source ?? "tui",
 				$tag: params.tag ?? "chat",
 				$now: now,
@@ -174,6 +179,7 @@ export class SessionStore {
 						oc_session_id,
 						title,
 						model,
+						service_tier,
 						source,
 						tag,
 						created_at,
@@ -204,13 +210,14 @@ export class SessionStore {
 						oc_session_id,
 						title,
 						model,
-								source,
-								tag,
-								created_at,
-								last_active,
-								failed_at,
-								failure_message,
-								auto_title_attempted
+						service_tier,
+						source,
+						tag,
+						created_at,
+						last_active,
+						failed_at,
+						failure_message,
+						auto_title_attempted
 					FROM sessions
 					WHERE agent_id = $agentId
 					  AND provider_id = $providerId
@@ -244,13 +251,14 @@ export class SessionStore {
 						oc_session_id,
 						title,
 						model,
-							source,
-							tag,
-							created_at,
-							last_active,
-							failed_at,
-							failure_message,
-							auto_title_attempted
+						service_tier,
+						source,
+						tag,
+						created_at,
+						last_active,
+						failed_at,
+						failure_message,
+						auto_title_attempted
 					FROM sessions
 					WHERE agent_id = $agentId
 					  AND provider_id = $providerId
@@ -291,13 +299,14 @@ export class SessionStore {
 						oc_session_id,
 						title,
 						model,
-							source,
-							tag,
-							created_at,
-							last_active,
-							failed_at,
-							failure_message,
-							auto_title_attempted
+						service_tier,
+						source,
+						tag,
+						created_at,
+						last_active,
+						failed_at,
+						failure_message,
+						auto_title_attempted
 					FROM sessions
 					WHERE ${conditions.join(" AND ")}
 					ORDER BY last_active DESC
@@ -380,6 +389,7 @@ export class SessionStore {
 						oc_session_id,
 						title,
 						model,
+						service_tier,
 						source,
 						tag,
 						created_at,
@@ -499,13 +509,14 @@ export class SessionStore {
 							oc_session_id,
 							title,
 							model,
+							service_tier,
 							source,
 							tag,
 							created_at,
-								last_active,
-								failed_at,
-								failure_message,
-								auto_title_attempted
+							last_active,
+							failed_at,
+							failure_message,
+							auto_title_attempted
 						FROM sessions
 						WHERE ${conditions.join(" AND ")}
 						ORDER BY last_active DESC, sdk_session_id ASC
@@ -548,6 +559,7 @@ export class SessionStore {
 							oc_session_id,
 							title,
 							model,
+							service_tier,
 							source,
 							tag,
 							created_at,

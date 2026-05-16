@@ -7,6 +7,7 @@ import type {
 	RuntimeInstructionPolicy,
 } from "../../../common/protocol.ts";
 import { extractError } from "../../../common/protocol.ts";
+import { buildPromptWithReplyContext } from "../../../common/reply-context.ts";
 import { assembleSystemPrompt } from "../../prompt/assemble-system-prompt.ts";
 import { buildSessionEnv } from "../../prompt/session-env.ts";
 import { RuntimeImageEventExtractor } from "./image-event-extractor.ts";
@@ -41,11 +42,14 @@ export async function runFacadePrompt(options: FacadePromptRun): Promise<void> {
 			options.promptHomeDir,
 			options.ocSessionId,
 		);
+		const prompt = buildPromptWithReplyContext(
+			options.prompt,
+			options.replyContext,
+		);
 
 		for await (const event of options.facade.run({
-			prompt: options.prompt,
+			prompt,
 			images: options.images,
-			replyContext: options.replyContext,
 			instructionPolicy,
 			abortController: options.abortController,
 			resume: options.resume,

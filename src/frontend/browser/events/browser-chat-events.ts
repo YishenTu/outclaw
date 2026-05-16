@@ -205,6 +205,22 @@ export function applyBrowserChatEvent(
 			useChatStore.getState().finishCompacting(sessionKey);
 			return true;
 		}
+		case "usage_updated": {
+			const agentId = options.getActiveAgentId();
+			if (!agentId) {
+				return true;
+			}
+			const sessionKey = routeActiveTurnEvent(
+				agentId,
+				event.sessionId,
+				options,
+			);
+			if (!sessionKey) {
+				return true;
+			}
+			useContextUsageStore.getState().setUsage(sessionKey, event.usage);
+			return true;
+		}
 		case "done": {
 			const agentId = options.getActiveAgentId();
 			if (!agentId) {

@@ -9,6 +9,7 @@ export interface SessionRow {
 	ocSessionId?: string;
 	title: string;
 	model: string;
+	serviceTier?: string;
 	source: string;
 	tag: SessionTag;
 	createdAt: number;
@@ -41,6 +42,7 @@ export const SESSION_TABLE_COLUMNS = [
 	"oc_session_id",
 	"title",
 	"model",
+	"service_tier",
 	"source",
 	"tag",
 	"created_at",
@@ -58,6 +60,7 @@ export interface SessionDatabaseRow {
 	oc_session_id: string | null;
 	title: string;
 	model: string;
+	service_tier?: string | null;
 	source: string;
 	tag: SessionTag;
 	created_at: number;
@@ -92,6 +95,7 @@ export function mapSessionRow(
 		ocSessionId: row.oc_session_id ?? undefined,
 		title: row.title,
 		model: row.model,
+		serviceTier: row.service_tier ?? undefined,
 		source: row.source,
 		tag: row.tag,
 		createdAt: row.created_at,
@@ -110,6 +114,7 @@ export function mapSessionRows(rows: SessionDatabaseRow[]): SessionRow[] {
 		ocSessionId: row.oc_session_id ?? undefined,
 		title: row.title,
 		model: row.model,
+		serviceTier: row.service_tier ?? undefined,
 		source: row.source,
 		tag: row.tag,
 		createdAt: row.created_at,

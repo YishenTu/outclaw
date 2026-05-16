@@ -452,12 +452,12 @@ describe("ClaudeAdapter", () => {
 		}
 	});
 
-	test("encodes reply context only at the provider boundary", async () => {
+	test("passes prompt text to the SDK without runtime reply context knowledge", async () => {
 		const query = mock((_params: unknown) =>
 			(async function* () {
 				yield {
 					type: "result",
-					session_id: "sdk-reply",
+					session_id: "sdk-prompt",
 					duration_ms: 1,
 					total_cost_usd: 0,
 				};
@@ -467,8 +467,8 @@ describe("ClaudeAdapter", () => {
 		const { adapter } = createAdapter({ query });
 
 		for await (const _event of adapter.run({
-			prompt: "what do you mean?",
-			replyContext: { text: 'the "cron" output <ok>' },
+			prompt:
+				"what do you mean?\n\n<reply-context>the &quot;cron&quot; output &lt;ok&gt;</reply-context>",
 		})) {
 			// Drain
 		}
@@ -618,6 +618,38 @@ describe("ClaudeAdapter", () => {
 		const args = query.mock.calls[0]?.[0] as {
 			options?: { tools?: string[] };
 		};
+		expect(args.options?.tools).toEqual([]);
+	});
+
+	test("maps read-only execution mode to an empty Claude tool list", async () => {
+		const query = mock((_params: unknown) =>
+			(async function* () {
+				yield {
+					type: "result",
+					session_id: "sdk-title",
+					duration_ms: 1,
+					total_cost_usd: 0,
+				};
+			})(),
+		);
+		const { adapter } = createAdapter({ query });
+
+		for await (const _event of adapter.run({
+			prompt: "generate a title",
+			executionMode: "read_only",
+		})) {
+			// Drain
+		}
+
+		const args = query.mock.calls[0]?.[0] as {
+			options?: {
+				allowDangerouslySkipPermissions?: boolean;
+				permissionMode?: string;
+				tools?: string[];
+			};
+		};
+		expect(args.options?.permissionMode).toBe("bypassPermissions");
+		expect(args.options?.allowDangerouslySkipPermissions).toBe(true);
 		expect(args.options?.tools).toEqual([]);
 	});
 

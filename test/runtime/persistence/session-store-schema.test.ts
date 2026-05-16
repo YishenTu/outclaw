@@ -42,6 +42,7 @@ describe("session-store-schema", () => {
 			"oc_session_id",
 			"title",
 			"model",
+			"service_tier",
 			"source",
 			"tag",
 			"created_at",

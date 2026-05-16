@@ -255,6 +255,10 @@ class AbortErrorFacade implements Facade {
 	}
 }
 
+function isAutoTitleRun(params: RunParams): boolean {
+	return params.executionMode === "read_only";
+}
+
 class AutoTitleFacade implements Facade {
 	providerId = PROVIDER_ID;
 	allParams: RunParams[] = [];
@@ -267,7 +271,7 @@ class AutoTitleFacade implements Facade {
 	constructor(private readonly delayTitle = false) {}
 
 	get titleCalls(): RunParams[] {
-		return this.allParams.filter((params) => params.tools?.length === 0);
+		return this.allParams.filter(isAutoTitleRun);
 	}
 
 	releaseTitle() {
@@ -281,7 +285,7 @@ class AutoTitleFacade implements Facade {
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		this.allParams.push({ ...params });
 
-		if (params.tools?.length === 0) {
+		if (isAutoTitleRun(params)) {
 			if (this.delayTitle) {
 				await this.titleRelease.promise;
 			}
@@ -317,7 +321,7 @@ class ShutdownAutoTitleFacade implements Facade {
 	private readonly titleSettled = createDeferred();
 
 	get titleCalls(): RunParams[] {
-		return this.allParams.filter((params) => params.tools?.length === 0);
+		return this.allParams.filter(isAutoTitleRun);
 	}
 
 	releaseTitle() {
@@ -331,7 +335,7 @@ class ShutdownAutoTitleFacade implements Facade {
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		this.allParams.push({ ...params });
 
-		if (params.tools?.length === 0) {
+		if (isAutoTitleRun(params)) {
 			try {
 				if (params.abortController?.signal.aborted) {
 					this.titleAbortObserved = true;
@@ -378,7 +382,7 @@ class EarlySessionAutoTitleFacade implements Facade {
 	private readonly titleSettled = createDeferred();
 
 	get titleCalls(): RunParams[] {
-		return this.allParams.filter((params) => params.tools?.length === 0);
+		return this.allParams.filter(isAutoTitleRun);
 	}
 
 	releaseMain() {
@@ -392,7 +396,7 @@ class EarlySessionAutoTitleFacade implements Facade {
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
 		this.allParams.push({ ...params });
 
-		if (params.tools?.length === 0) {
+		if (isAutoTitleRun(params)) {
 			try {
 				yield { type: "text", text: "Early generated title" };
 				yield {
@@ -937,9 +941,10 @@ describe("RuntimeController", () => {
 				model: "haiku",
 				effort: "low",
 				stream: false,
-				tools: [],
+				executionMode: "read_only",
 				ephemeral: true,
 			});
+			expect(facade.titleCalls[0]?.tools).toBeUndefined();
 			expect(facade.titleCalls[0]?.prompt).toContain(
 				"Do not answer the request",
 			);
@@ -947,7 +952,10 @@ describe("RuntimeController", () => {
 				"<request>\nExplain websocket routing bugs in the browser sidebar\n</request>",
 			);
 			expect(facade.titleCalls[0]?.images).toBeUndefined();
-			expect(facade.titleCalls[0]?.replyContext).toBeUndefined();
+			expect(
+				"replyContext" in
+					(facade.titleCalls[0] as unknown as Record<string, unknown>),
+			).toBe(false);
 			expect(facade.titleCalls[0]?.instructionPolicy?.mode).toBe(
 				"runtime_constructed",
 			);
@@ -1564,9 +1572,13 @@ describe("RuntimeController", () => {
 			await drain(controller, facade);
 
 			expect(facade.allParams[0]).toMatchObject({
-				prompt: "what do you mean?",
-				replyContext: { text: 'the "cron" output' },
+				prompt:
+					"what do you mean?\n\n<reply-context>the &quot;cron&quot; output</reply-context>",
 			});
+			expect(
+				"replyContext" in
+					(facade.allParams[0] as unknown as Record<string, unknown>),
+			).toBe(false);
 
 			const userPrompt = tui
 				.events()

@@ -4,7 +4,6 @@ import {
 	type EffortLevel,
 	isEffortLevel,
 } from "../../common/commands.ts";
-import { isModelAlias } from "../../common/models.ts";
 import { validateRunAt } from "./schedule.ts";
 
 export interface CronJobConfig {
@@ -13,10 +12,8 @@ export interface CronJobConfig {
 	runAt?: string;
 	/**
 	 * Model id. Cron has no provider field, so this field is required and must
-	 * resolve to exactly one provider through the chat model catalog. A Claude
-	 * alias (`opus`/`sonnet`/`haiku`) routes to Claude; a recognized Codex model
-	 * id (e.g. `gpt-5.5`) routes to Codex. Unknown or ambiguous values are
-	 * rejected at parse time.
+	 * resolve to exactly one provider through the runtime chat model catalog
+	 * when the job runs.
 	 */
 	model: string;
 	effort?: EffortLevel;
@@ -64,12 +61,6 @@ export function parseJobConfig(yamlContent: string): CronJobConfig {
 	if (typeof raw.model !== "string" || raw.model === "") {
 		throw new Error("Invalid model: must be a non-empty string");
 	}
-	if (!resolvesToKnownProvider(raw.model)) {
-		throw new Error(
-			`Invalid model: ${raw.model}. Use a Claude alias (opus, sonnet, haiku) or a recognized Codex model id (gpt-5.5).`,
-		);
-	}
-
 	return {
 		name: raw.name,
 		schedule: hasSchedule ? raw.schedule : undefined,
@@ -99,16 +90,6 @@ export function parseUtcOffsetHours(value: unknown): number | null {
 	const hours = Number.parseInt(match[2] ?? "", 10);
 	if (!Number.isFinite(hours) || hours < 0 || hours > 14) return null;
 	return match[1] === "-" ? -hours : hours;
-}
-
-function resolvesToKnownProvider(model: string): boolean {
-	if (isModelAlias(model)) {
-		return true;
-	}
-	// MVP Codex catalog mirror — only `gpt-5.5` is verified through
-	// `model/list`. When the chat model catalog gains broader Codex routing,
-	// this guard can defer to that catalog instead.
-	return model === "gpt-5.5";
 }
 
 export function serializeJobConfig(config: CronJobConfig): string {

@@ -1,5 +1,4 @@
 import type { ImageMediaType, RunParams } from "../../../common/protocol.ts";
-import { buildPromptWithReplyContext } from "../../../common/reply-context.ts";
 
 export interface ClaudeSdkUserMessage {
 	type: "user";
@@ -29,13 +28,8 @@ interface ClaudeMessageParam {
 export function createClaudePromptInput(
 	params: RunParams,
 ): string | AsyncIterable<ClaudeSdkUserMessage> {
-	const prompt = buildPromptWithReplyContext(
-		params.prompt,
-		params.replyContext,
-	);
-
 	if (!params.images || params.images.length === 0) {
-		return prompt;
+		return params.prompt;
 	}
 
 	return (async function* (): AsyncIterable<ClaudeSdkUserMessage> {
@@ -55,8 +49,8 @@ export function createClaudePromptInput(
 			});
 		}
 
-		if (prompt) {
-			content.push({ type: "text", text: prompt });
+		if (params.prompt) {
+			content.push({ type: "text", text: params.prompt });
 		}
 
 		yield {

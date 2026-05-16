@@ -1,3 +1,4 @@
+import { isEffortLevel } from "../../common/commands.ts";
 import { isModelAlias } from "../../common/models.ts";
 import type {
 	DoneEvent,
@@ -204,6 +205,7 @@ export class SessionService {
 		providerId?: string;
 		title: string;
 		model: string;
+		serviceTier?: string;
 		ocSessionId?: string;
 		source: string;
 		tag?: SessionTag;
@@ -216,6 +218,7 @@ export class SessionService {
 			ocSessionId: params.ocSessionId,
 			title: existing?.title ?? params.title,
 			model: params.model,
+			serviceTier: params.serviceTier,
 			source: params.source,
 			tag: params.tag,
 			usage: params.event.usage,
@@ -225,18 +228,21 @@ export class SessionService {
 
 	recordSessionInitialized(params: {
 		active: boolean;
+		providerId?: string;
 		sessionId: string;
 		title: string;
 		model: string;
+		serviceTier?: string;
 		ocSessionId?: string;
 		source: string;
 		tag?: SessionTag;
 	}) {
+		const providerId = params.providerId ?? this.state.providerId;
 		if (params.active) {
 			this.state.initializeRun(params.sessionId, params.source);
-			this.store?.setActiveSessionId(this.state.providerId, params.sessionId);
+			this.store?.setActiveSessionId(providerId, params.sessionId);
 		}
-		this.persistSession(params);
+		this.persistSession({ ...params, providerId });
 		if (params.active) {
 			this.callbacks.onSessionStateChange?.();
 		}
@@ -244,21 +250,25 @@ export class SessionService {
 	}
 
 	recordInterruptedRun(params: {
+		providerId?: string;
 		sessionId: string;
 		title: string;
 		model: string;
+		serviceTier?: string;
 		source: "agent" | "telegram" | "tui";
 	}) {
-		this.store?.setActiveSessionId(this.state.providerId, params.sessionId);
-		this.persistSession(params);
+		const providerId = params.providerId ?? this.state.providerId;
+		this.store?.setActiveSessionId(providerId, params.sessionId);
+		this.persistSession({ ...params, providerId });
 		this.state.switchToSession(
 			{
 				agentId: "",
-				providerId: this.state.providerId,
+				providerId,
 				sdkSessionId: params.sessionId,
 				ocSessionId: params.sessionId,
 				title: params.title,
 				model: params.model,
+				serviceTier: params.serviceTier,
 				source: params.source,
 				tag: "chat",
 				createdAt: Date.now(),
@@ -411,6 +421,7 @@ export class SessionService {
 			providerId: session.providerId,
 			model: session.model,
 			effort: this.state.effort,
+			...(session.serviceTier ? { serviceTier: session.serviceTier } : {}),
 		});
 		this.callbacks.onSessionStateChange?.();
 		this.notifyActiveSessionChanged(session.sdkSessionId, session.providerId);
@@ -514,6 +525,7 @@ export class SessionService {
 				sessionTitle: this.state.sessionTitle,
 			}),
 			model: this.state.model,
+			serviceTier: this.state.serviceTier,
 			source: this.state.sessionSource,
 			usage: this.state.usage,
 		});
@@ -525,6 +537,7 @@ export class SessionService {
 		ocSessionId?: string;
 		title: string;
 		model: string;
+		serviceTier?: string;
 		source: string;
 		tag?: SessionTag;
 		usage?: DoneEvent["usage"];
@@ -536,6 +549,7 @@ export class SessionService {
 			ocSessionId: params.ocSessionId,
 			title: params.title,
 			model: params.model,
+			serviceTier: params.serviceTier,
 			source: params.source,
 			tag: params.tag ?? "chat",
 		});
@@ -564,6 +578,10 @@ export class SessionService {
 				// if a future caller order changes.
 			}
 			this.applyBlankSelectionModel(blankSelection.model);
+			if (isEffortLevel(blankSelection.effort)) {
+				this.state.setEffort(blankSelection.effort);
+			}
+			this.state.setServiceTier(blankSelection.serviceTier);
 		}
 
 		const activeSessionId = this.store.getActiveSessionId(
@@ -614,6 +632,7 @@ export class SessionService {
 			ocSessionId: this.state.ocSessionId,
 			title: this.state.sessionTitle ?? "Untitled",
 			model: this.state.model,
+			serviceTier: this.state.serviceTier,
 			source: this.state.sessionSource,
 			tag: "chat",
 			createdAt: 0,

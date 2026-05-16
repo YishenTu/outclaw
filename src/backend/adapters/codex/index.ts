@@ -8,6 +8,7 @@ import {
 	type ProviderModelInfo,
 	type ProviderSkillInfo,
 	type RunParams,
+	type RuntimeExecutionMode,
 	type RuntimeInstructionPolicy,
 	type TranscriptTurn,
 } from "../../../common/protocol.ts";
@@ -48,6 +49,11 @@ const DEFAULT_CODEX_REASONING_SUMMARY = "auto";
 const CODEX_YOLO_APPROVAL_POLICY = "never";
 const CODEX_YOLO_THREAD_SANDBOX = "danger-full-access";
 const CODEX_YOLO_TURN_SANDBOX_POLICY = { type: "dangerFullAccess" };
+const CODEX_READ_ONLY_THREAD_SANDBOX = "read-only";
+const CODEX_READ_ONLY_TURN_SANDBOX_POLICY = {
+	type: "readOnly",
+	networkAccess: false,
+};
 const CODEX_THREAD_LIST_SOURCE_KINDS = [
 	"cli",
 	"vscode",
@@ -400,7 +406,7 @@ export class CodexAdapter implements Facade {
 				isCurrentTurnId: (candidate) => activeTurn?.turnId === candidate,
 				sessionId: threadId,
 				startedAtMs,
-			}) as AsyncIterable<FacadeEvent>;
+			});
 		} catch (err) {
 			yield {
 				type: "error",
@@ -595,6 +601,40 @@ function applyInstructionPolicy(
 	};
 }
 
+function applySessionEnv(
+	payload: Record<string, unknown>,
+	sessionEnv: Record<string, string> | undefined,
+): void {
+	if (!sessionEnv || Object.keys(sessionEnv).length === 0) {
+		return;
+	}
+	const existingConfig = (payload.config ?? {}) as Record<string, unknown>;
+	payload.config = {
+		...existingConfig,
+		shell_environment_policy: {
+			set: sessionEnv,
+		},
+	};
+}
+
+function readApprovalPolicy(_mode: RuntimeExecutionMode | undefined): string {
+	return CODEX_YOLO_APPROVAL_POLICY;
+}
+
+function readThreadSandbox(mode: RuntimeExecutionMode | undefined): string {
+	return mode === "read_only"
+		? CODEX_READ_ONLY_THREAD_SANDBOX
+		: CODEX_YOLO_THREAD_SANDBOX;
+}
+
+function readTurnSandboxPolicy(
+	mode: RuntimeExecutionMode | undefined,
+): Record<string, unknown> {
+	return mode === "read_only"
+		? CODEX_READ_ONLY_TURN_SANDBOX_POLICY
+		: CODEX_YOLO_TURN_SANDBOX_POLICY;
+}
+
 /**
  * Inspect a `config/read { cwd: agentHome }` response and decide whether it
  * reports the Outclaw-owned project layer (the `.codex/config.toml` written
@@ -620,8 +660,8 @@ function projectLayerLoaded(readback: unknown): boolean {
 
 function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
-		approvalPolicy: CODEX_YOLO_APPROVAL_POLICY,
-		sandbox: CODEX_YOLO_THREAD_SANDBOX,
+		approvalPolicy: readApprovalPolicy(params.executionMode),
+		sandbox: readThreadSandbox(params.executionMode),
 		experimentalRawEvents: true,
 	};
 
@@ -632,6 +672,7 @@ function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 		payload.cwd = params.cwd;
 	}
 	applyInstructionPolicy(payload, params.instructionPolicy);
+	applySessionEnv(payload, params.sessionEnv);
 	if (params.ephemeral !== undefined) {
 		payload.ephemeral = params.ephemeral;
 	}
@@ -645,8 +686,8 @@ function buildThreadStartParams(params: RunParams): Record<string, unknown> {
 function buildThreadResumeParams(params: RunParams): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
 		threadId: params.resume,
-		approvalPolicy: CODEX_YOLO_APPROVAL_POLICY,
-		sandbox: CODEX_YOLO_THREAD_SANDBOX,
+		approvalPolicy: readApprovalPolicy(params.executionMode),
+		sandbox: readThreadSandbox(params.executionMode),
 		experimentalRawEvents: true,
 	};
 
@@ -657,6 +698,7 @@ function buildThreadResumeParams(params: RunParams): Record<string, unknown> {
 		payload.cwd = params.cwd;
 	}
 	applyInstructionPolicy(payload, params.instructionPolicy);
+	applySessionEnv(payload, params.sessionEnv);
 	if (params.serviceTier) {
 		payload.serviceTier = params.serviceTier;
 	}
@@ -672,8 +714,8 @@ function buildTurnStartParams(
 	const payload: Record<string, unknown> = {
 		threadId,
 		input,
-		approvalPolicy: CODEX_YOLO_APPROVAL_POLICY,
-		sandboxPolicy: CODEX_YOLO_TURN_SANDBOX_POLICY,
+		approvalPolicy: readApprovalPolicy(params.executionMode),
+		sandboxPolicy: readTurnSandboxPolicy(params.executionMode),
 		summary: DEFAULT_CODEX_REASONING_SUMMARY,
 	};
 

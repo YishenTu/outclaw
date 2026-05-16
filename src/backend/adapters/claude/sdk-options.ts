@@ -63,7 +63,10 @@ export function buildClaudeSdkOptions(
 		allowDangerouslySkipPermissions: true,
 		includePartialMessages: params.stream ?? true,
 		settings: buildClaudeAutoCompactSettings(params.model, autoCompact),
-		tools: params.tools ?? CLAUDE_TOOLS,
+		tools:
+			params.executionMode === "read_only"
+				? []
+				: (params.tools ?? CLAUDE_TOOLS),
 		hooks: { PreToolUse: [blockDotClaudeHookMatcher] },
 	};
 }

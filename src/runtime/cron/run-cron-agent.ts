@@ -3,7 +3,7 @@ import type { EffortLevel } from "../../common/commands.ts";
 import { isModelAlias, resolveModelAlias } from "../../common/models.ts";
 import { runFacadePrompt } from "../application/prompt-execution/facade-runner.ts";
 import type { PromptProviderResolver } from "../application/prompt-execution/prompt-runner.ts";
-import { providerIdForCronModel } from "./model-provider.ts";
+import type { ModelProviderResolver } from "../model-provider-resolver.ts";
 
 export interface CronAgentRunResult {
 	providerId: string;
@@ -25,11 +25,12 @@ export class CronAgentRunError extends Error {
 interface RunCronAgentOptions {
 	/**
 	 * Provider resolver used to look up the cron facade by the provider id
-	 * implied by the job's `model` field. Cron jobs do not have a separate
-	 * provider field — Claude aliases route to Claude, recognized Codex model
-	 * ids (e.g. `gpt-5.5`) route to Codex, and unresolvable models fail loud.
+	 * resolved from the job's `model` field. Cron jobs do not have a separate
+	 * provider field, so model ids must resolve to exactly one configured
+	 * provider.
 	 */
 	providers: PromptProviderResolver;
+	modelProviderResolver: ModelProviderResolver;
 	promptHomeDir: string;
 	cwd: string;
 }
@@ -45,7 +46,8 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 				"Cron job requires an explicit `model` field — the runtime cannot infer the provider without it.",
 			);
 		}
-		const providerId = providerIdForCronModel(model);
+		const providerId =
+			await options.modelProviderResolver.resolveProviderIdForModel(model);
 		if (!providerId) {
 			throw new Error(
 				`Cron job model ${model} does not resolve to a known provider`,

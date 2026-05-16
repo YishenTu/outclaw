@@ -106,18 +106,40 @@ describe("SessionService", () => {
 		store.close();
 	});
 
+	test("restores blank-session provider model effort and service tier from store", () => {
+		const store = createTestStore();
+		store.setBlankChatModelSelection({
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "low",
+			serviceTier: "priority",
+		});
+
+		const state = new RuntimeState(PROVIDER_ID);
+		new SessionService(state, store);
+
+		expect(state.providerId).toBe("codex");
+		expect(state.model).toBe("gpt-5.5");
+		expect(state.effort).toBe("low");
+		expect(state.createStatusEvent().serviceTier).toBe("priority");
+
+		store.close();
+	});
+
 	test("completeRun persists the active session, usage, and active session id", () => {
 		const store = createTestStore();
 		const state = new RuntimeState(PROVIDER_ID);
 		const sessions = new SessionService(state, store);
 
 		state.preparePrompt("Hello world");
+		state.setServiceTier("priority");
 		sessions.completeRun(makeDoneEvent("sdk-123"));
 
 		expect(store.getActiveSessionId(PROVIDER_ID)).toBe("sdk-123");
 		expect(store.get(PROVIDER_ID, "sdk-123")).toMatchObject({
 			title: "Hello world",
 			model: "opus",
+			serviceTier: "priority",
 			source: "tui",
 			tag: "chat",
 		});

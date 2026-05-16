@@ -47,17 +47,17 @@ prompt: do something
 		expect(() => parseJobConfig(yaml)).toThrow("Missing required field: model");
 	});
 
-	test("rejects unknown or ambiguous cron models", () => {
+	test("keeps provider-specific model validation out of YAML parsing", () => {
 		const yaml = `
 name: test-job
 schedule: "*/5 * * * *"
 model: gpt-unknown
 prompt: do something
 		`.trim();
-		expect(() => parseJobConfig(yaml)).toThrow("Invalid model: gpt-unknown");
+		expect(parseJobConfig(yaml).model).toBe("gpt-unknown");
 	});
 
-	test("accepts the MVP Codex cron model gpt-5.5", () => {
+	test("accepts provider-specific cron model ids", () => {
 		const yaml = `
 name: codex-cron
 schedule: "*/5 * * * *"

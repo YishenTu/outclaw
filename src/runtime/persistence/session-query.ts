@@ -104,6 +104,7 @@ export class SessionQuery {
 						sdk_session_id,
 						title,
 						model,
+						service_tier,
 						source,
 						tag,
 						created_at,
@@ -147,6 +148,7 @@ export class SessionQuery {
 						sdk_session_id,
 						title,
 						model,
+						service_tier,
 						source,
 						tag,
 						created_at,
@@ -196,6 +198,7 @@ export class SessionQuery {
 						oc_session_id,
 						title,
 						model,
+						service_tier,
 						source,
 						tag,
 						created_at,
@@ -265,6 +268,7 @@ export class SessionQuery {
 						s.sdk_session_id,
 						s.title,
 						s.model,
+						s.service_tier,
 						s.source,
 						s.tag,
 						s.created_at,
@@ -290,6 +294,7 @@ export class SessionQuery {
 					ms.sdk_session_id,
 					ms.title,
 					ms.model,
+					ms.service_tier,
 					ms.source,
 					ms.tag,
 					ms.created_at,
@@ -326,6 +331,7 @@ export class SessionQuery {
 						sdkSessionId: row.sdk_session_id,
 						title: row.title,
 						model: row.model,
+						serviceTier: row.service_tier ?? undefined,
 						source: row.source,
 						tag: row.tag,
 						createdAt: row.created_at,
@@ -371,6 +377,7 @@ export class SessionQuery {
 						sdk_session_id,
 						title,
 						model,
+						service_tier,
 						source,
 						tag,
 						created_at,
@@ -394,6 +401,7 @@ interface SearchDatabaseRow {
 	provider_id: string;
 	role: "user" | "assistant";
 	sdk_session_id: string;
+	service_tier?: string | null;
 	source: string;
 	tag: SessionTag;
 	timestamp: number;

@@ -56,8 +56,8 @@ export function formatRuntimeLatencyLabel(
 }
 
 interface SidebarRuntimeStatusProps {
-	configOpen?: boolean;
-	onToggleConfig?: () => void;
+	configOpen: boolean;
+	onToggleConfig: () => void;
 	onRestart?: () => void;
 }
 
@@ -68,11 +68,11 @@ interface SidebarRuntimeStatusViewProps extends SidebarRuntimeStatusProps {
 }
 
 export function SidebarRuntimeStatusView({
-	configOpen = false,
+	configOpen,
 	connectionStatus,
 	error,
 	latency,
-	onToggleConfig = () => {},
+	onToggleConfig,
 	onRestart = () => {},
 }: SidebarRuntimeStatusViewProps) {
 	const presentation = describeRuntimeConnectionStatus(connectionStatus);

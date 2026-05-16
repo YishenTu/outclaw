@@ -73,6 +73,31 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("upsert persists and clears service tier", () => {
+		const store = createTestStore();
+
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-tier",
+			title: "Priority chat",
+			model: "gpt-5.5",
+			serviceTier: "priority",
+		});
+		expect(store.get(CLAUDE_PROVIDER, "sdk-tier")?.serviceTier).toBe(
+			"priority",
+		);
+
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "sdk-tier",
+			title: "Standard chat",
+			model: "gpt-5.5",
+		});
+		expect(store.get(CLAUDE_PROVIDER, "sdk-tier")?.serviceTier).toBeUndefined();
+
+		store.close();
+	});
+
 	test("source defaults to tui when not provided", () => {
 		const store = createTestStore();
 

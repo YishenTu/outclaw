@@ -18,8 +18,8 @@ export interface GlobalConfig {
 	/**
 	 * Optional global title-generation model. When omitted, the runtime
 	 * disables generated titles and keeps the deterministic fallback title.
-	 * The MVP supports any Claude alias and `gpt-5.5` as the Codex title
-	 * model; provider routing is inferred through the chat model catalog.
+	 * Provider-specific model ids are accepted here; runtime model-catalog
+	 * resolution owns provider validation.
 	 */
 	autoTitle?: {
 		model: string;
@@ -142,12 +142,5 @@ function resolveAutoTitleModel(document: ConfigDocument): string | undefined {
 	if (modelAliasForModel(rawModel)) {
 		return rawModel;
 	}
-	// MVP Codex title model — locked to `gpt-5.5` because that is the only
-	// Codex id explicitly verified through `model/list`. Broader provider
-	// catalog routing arrives with the chat model catalog API.
-	if (rawModel === "gpt-5.5") {
-		return rawModel;
-	}
-
-	throw new Error(`Invalid autoTitle.model: ${rawModel}`);
+	return rawModel;
 }

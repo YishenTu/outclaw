@@ -503,6 +503,41 @@ describe("browser runtime server events", () => {
 		).toBe(true);
 	});
 
+	test("updates Codex chat context usage from mid-stream usage events", () => {
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "codex",
+			model: "gpt-5.5",
+			effort: "medium",
+			running: true,
+			sessionId: "codex-session-1",
+		});
+		const { options } = createHandlerOptions({
+			routeObservedSessionKey: (agentId: string, observedSessionId?: string) =>
+				`${agentId}:codex:${observedSessionId ?? "observed"}`,
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "usage_updated",
+				sessionId: "codex-session-1",
+				usage: USAGE,
+			},
+			options,
+		);
+
+		expect(
+			useContextUsageStore
+				.getState()
+				.getUsage("agent-railly:codex:codex-session-1"),
+		).toEqual(USAGE);
+	});
+
 	test("handles agent and session control events without provider SDKs", () => {
 		useAgentsStore.getState().setAgents([
 			{ agentId: "agent-railly", name: "railly" },

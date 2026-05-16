@@ -7,7 +7,7 @@ import type {
 } from "../../../common/protocol.ts";
 import { SidebarNotifications } from "../components/agent-sidebar/sidebar-notifications.tsx";
 import { SidebarRuntimeStatus } from "../components/agent-sidebar/sidebar-runtime-status.tsx";
-import { useWs } from "../contexts/websocket-context.tsx";
+import { RuntimeConfigModalController } from "../components/runtime-config/runtime-config-modal.tsx";
 import {
 	cloneCodingRepository,
 	fetchCodingRepositories,
@@ -209,7 +209,6 @@ export function CodingSidebar({
 		(state) => state.clearArchivedSearch,
 	);
 	const setRepositories = useCodingStore((state) => state.setRepositories);
-	const { sendCommand } = useWs();
 	const loadingMoreRepositoriesRef = useRef(new Set<string>());
 	const loadingMoreSearchRef = useRef(new Set<string>());
 	const loadingArchivedRepositoriesRef = useRef(new Set<string>());
@@ -553,306 +552,327 @@ export function CodingSidebar({
 	);
 
 	return (
-		<div className="relative flex h-full flex-col bg-dark-950">
-			<div className="relative flex h-12 items-center justify-center border-b border-dark-800 px-3">
-				<img
-					src="/Sidebar%20Banner.png"
-					alt="OUTCLAW"
-					className="h-7 w-auto shrink-0 -translate-x-3"
-				/>
-				{onCollapse && (
-					<button
-						type="button"
-						onClick={onCollapse}
-						className="absolute right-3 flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
-						aria-label="Collapse left sidebar"
-					>
-						<PanelLeftOpen size={15} />
-					</button>
-				)}
-			</div>
-
-			<div className="flex h-8 shrink-0 items-center border-b border-dark-800 px-3">
-				<ChatCodePillSwitcher
-					active="code"
-					onSelect={(mode) => {
-						if (mode === "chat") {
-							setAppMode("chat");
-						}
-					}}
-				/>
-			</div>
-
-			<div className="scrollbar-none flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
-				{repositories.length === 0 ? (
-					<div className="border border-dashed border-dark-800 px-4 py-5 text-sm text-dark-500">
-						No active repositories. Add one with the + button to start a coding
-						session.
+		<RuntimeConfigModalController>
+			{({ configOpen, onRestart, onToggleConfig }) => (
+				<div className="relative flex h-full flex-col bg-dark-950">
+					<div className="relative flex h-12 items-center justify-center border-b border-dark-800 px-3">
+						<img
+							src="/Sidebar%20Banner.png"
+							alt="OUTCLAW"
+							className="h-7 w-auto shrink-0 -translate-x-3"
+						/>
+						{onCollapse && (
+							<button
+								type="button"
+								onClick={onCollapse}
+								className="absolute right-3 flex items-center justify-center text-dark-500 transition-colors hover:text-dark-100"
+								aria-label="Collapse left sidebar"
+							>
+								<PanelLeftOpen size={15} />
+							</button>
+						)}
 					</div>
-				) : (
-					repositories.map((repository) => {
-						const sessions = sessionsByRepository[repository.id] ?? [];
-						const isExpanded = expandedRepositories[repository.id] ?? false;
-						const searchState: RepositorySearchState | undefined =
-							searchByRepository[repository.id];
-						const nextCursor = nextCursorByRepository[repository.id];
-						return (
-							<RepositoryItem
-								key={repository.id}
-								repository={{
-									id: repository.id,
-									displayName: repository.displayName,
-								}}
-								isExpanded={isExpanded}
-								{...(focusedRepositoryId === repository.id && focusedSession
-									? { focusedSession }
-									: {})}
-								sessions={sessions}
-								{...(nextCursor ? { nextCursor } : {})}
-								{...(searchState ? { searchState } : {})}
-								onToggle={() =>
-									setExpandedRepositories((current) => ({
-										...current,
-										[repository.id]: !(current[repository.id] ?? false),
-									}))
+
+					<div className="flex h-8 shrink-0 items-center border-b border-dark-800 px-3">
+						<ChatCodePillSwitcher
+							active="code"
+							onSelect={(mode) => {
+								if (mode === "chat") {
+									setAppMode("chat");
 								}
-								onSelectRepository={() => onSelectRepository(repository.id)}
-								onNewSession={() =>
-									startCodingSidebarSessionFromRepository({
-										repositoryId: repository.id,
-										onNewSession,
-										onActivateCenterPanel,
-									})
+							}}
+						/>
+					</div>
+
+					<div className="scrollbar-none flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
+						{repositories.length === 0 ? (
+							<div className="border border-dashed border-dark-800 px-4 py-5 text-sm text-dark-500">
+								No active repositories. Add one with the + button to start a
+								coding session.
+							</div>
+						) : (
+							repositories.map((repository) => {
+								const sessions = sessionsByRepository[repository.id] ?? [];
+								const isExpanded = expandedRepositories[repository.id] ?? false;
+								const searchState: RepositorySearchState | undefined =
+									searchByRepository[repository.id];
+								const nextCursor = nextCursorByRepository[repository.id];
+								return (
+									<RepositoryItem
+										key={repository.id}
+										repository={{
+											id: repository.id,
+											displayName: repository.displayName,
+										}}
+										isExpanded={isExpanded}
+										{...(focusedRepositoryId === repository.id && focusedSession
+											? { focusedSession }
+											: {})}
+										sessions={sessions}
+										{...(nextCursor ? { nextCursor } : {})}
+										{...(searchState ? { searchState } : {})}
+										onToggle={() =>
+											setExpandedRepositories((current) => ({
+												...current,
+												[repository.id]: !(current[repository.id] ?? false),
+											}))
+										}
+										onSelectRepository={() => onSelectRepository(repository.id)}
+										onNewSession={() =>
+											startCodingSidebarSessionFromRepository({
+												repositoryId: repository.id,
+												onNewSession,
+												onActivateCenterPanel,
+											})
+										}
+										onArchiveRepository={() =>
+											onArchiveRepository?.(repository.id)
+										}
+										onTrashRepository={() => onTrashRepository?.(repository.id)}
+										onSelectSession={(session) =>
+											openCodingSidebarSessionFromList({
+												repositoryId: repository.id,
+												session,
+												onSelectSession,
+												onActivateCenterPanel,
+											})
+										}
+										onRenameSession={(session, title) =>
+											onRenameSession?.(
+												repository.id,
+												{
+													providerId: session.providerId,
+													sdkSessionId: session.sdkSessionId,
+												},
+												title,
+											)
+										}
+										onArchiveSession={(session) =>
+											onArchiveSession?.(repository.id, {
+												providerId: session.providerId,
+												sdkSessionId: session.sdkSessionId,
+											})
+										}
+										onTrashSession={(session) =>
+											onTrashSession?.(repository.id, {
+												providerId: session.providerId,
+												sdkSessionId: session.sdkSessionId,
+											})
+										}
+										onLoadMore={() => loadMoreSessions(repository.id)}
+										onSearch={(query) => searchSessions(repository.id, query)}
+										onLoadMoreSearch={(query) =>
+											searchSessions(
+												repository.id,
+												query,
+												searchByRepository[repository.id]?.nextCursor,
+											)
+										}
+										onClearSearch={() => {
+											delete pendingSearchByRepositoryRef.current[
+												repository.id
+											];
+											clearRepositorySearch(repository.id);
+										}}
+									/>
+								);
+							})
+						)}
+					</div>
+
+					{addPanelOpen && (
+						<div className="flex shrink-0 flex-col gap-2 border-t border-dark-800 bg-dark-900/40 px-3 py-2.5">
+							<button
+								type="button"
+								onClick={handlePickExistingFolder}
+								disabled={addingRepository}
+								className="flex items-center gap-2 rounded-md border border-dark-800 bg-dark-950 px-3 py-2 text-left text-dark-200 transition-colors hover:border-dark-700 hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								<FolderInput size={13} className="shrink-0" />
+								<span className="font-mono-ui text-[11px] uppercase tracking-[0.16em]">
+									{addingRepository
+										? "Picking folder…"
+										: "Pick existing folder"}
+								</span>
+							</button>
+							<button
+								type="button"
+								onClick={handleOpenCloneModal}
+								disabled={addingRepository}
+								className="flex items-center gap-2 rounded-md border border-dark-800 bg-dark-950 px-3 py-2 text-left text-dark-200 transition-colors hover:border-dark-700 hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								<GitBranch size={13} className="shrink-0" />
+								<span className="font-mono-ui text-[11px] uppercase tracking-[0.16em]">
+									Clone from URL
+								</span>
+							</button>
+						</div>
+					)}
+
+					{addRepositoryError && (
+						<div className="shrink-0 border-t border-dark-800 bg-dark-900/40 px-4 py-2 text-[11px] text-danger">
+							{addRepositoryError}
+						</div>
+					)}
+
+					<SidebarNotifications />
+
+					<div className="grid shrink-0 grid-cols-2 border-t border-dark-800">
+						<button
+							type="button"
+							onClick={() => {
+								if (addPanelOpen) {
+									closeAddPanel();
+								} else {
+									setAddPanelOpen(true);
 								}
-								onArchiveRepository={() => onArchiveRepository?.(repository.id)}
-								onTrashRepository={() => onTrashRepository?.(repository.id)}
-								onSelectSession={(session) =>
-									openCodingSidebarSessionFromList({
-										repositoryId: repository.id,
-										session,
-										onSelectSession,
-										onActivateCenterPanel,
-									})
-								}
-								onRenameSession={(session, title) =>
-									onRenameSession?.(
-										repository.id,
-										{
+							}}
+							disabled={addingRepository}
+							aria-expanded={addPanelOpen}
+							className="flex min-w-0 items-center justify-center gap-2 px-3 py-2 text-dark-400 transition-colors hover:bg-dark-900/40 hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							{addPanelOpen ? (
+								<X size={13} className="shrink-0" />
+							) : (
+								<Plus size={13} className="shrink-0" />
+							)}
+							<span className="font-mono-ui min-w-0 truncate text-[11px] uppercase tracking-[0.16em]">
+								{addPanelOpen ? "Cancel" : "Add repo"}
+							</span>
+						</button>
+						<ArchivedSessionsItem
+							isOpen={archivedSessionsModalOpen}
+							repositories={[
+								...repositories,
+								...archivedRepositories,
+								...trashedRepositories,
+							]}
+							archivedRepositories={archivedRepositories}
+							trashedRepositories={trashedRepositories}
+							triggerClassName="flex min-w-0 items-center justify-center gap-2 border-l border-dark-800 px-3 py-2 text-dark-400 transition-colors hover:bg-dark-900/40 hover:text-dark-100"
+							sessionsTab={{
+								sessions: archivedSessions,
+								emptyLabel: "No archived sessions.",
+								missingMatchLabel: "No matching archived sessions.",
+								loadMoreLabel: "Load more archived sessions",
+								loadMoreSearchLabel: "Load more archived results",
+								searchPlaceholder: "Search archived sessions",
+								...(archivedNextCursor
+									? { nextCursor: archivedNextCursor }
+									: {}),
+								...(archivedSearchState
+									? { searchState: archivedSearchState }
+									: {}),
+								onSelectSession: (session) => {
+									if (session.repositoryId) {
+										openCodingSidebarSessionFromList({
+											repositoryId: session.repositoryId,
+											session,
+											onSelectSession,
+											onActivateCenterPanel,
+										});
+										setArchivedSessionsModalOpen(false);
+									}
+								},
+								onRenameSession: (session, title) => {
+									if (session.repositoryId) {
+										onRenameSession?.(
+											session.repositoryId,
+											{
+												providerId: session.providerId,
+												sdkSessionId: session.sdkSessionId,
+											},
+											title,
+										);
+									}
+								},
+								onRestoreSession: (session) => {
+									if (session.repositoryId) {
+										onRestoreSession?.(session.repositoryId, {
 											providerId: session.providerId,
 											sdkSessionId: session.sdkSessionId,
-										},
-										title,
-									)
-								}
-								onArchiveSession={(session) =>
-									onArchiveSession?.(repository.id, {
-										providerId: session.providerId,
-										sdkSessionId: session.sdkSessionId,
-									})
-								}
-								onTrashSession={(session) =>
-									onTrashSession?.(repository.id, {
-										providerId: session.providerId,
-										sdkSessionId: session.sdkSessionId,
-									})
-								}
-								onLoadMore={() => loadMoreSessions(repository.id)}
-								onSearch={(query) => searchSessions(repository.id, query)}
-								onLoadMoreSearch={(query) =>
-									searchSessions(
-										repository.id,
+										});
+									}
+								},
+								onLoadMore: loadMoreArchivedSessions,
+								onSearch: searchArchivedSessions,
+								onLoadMoreSearch: (query) =>
+									searchArchivedSessions(
 										query,
-										searchByRepository[repository.id]?.nextCursor,
-									)
-								}
-								onClearSearch={() => {
-									delete pendingSearchByRepositoryRef.current[repository.id];
-									clearRepositorySearch(repository.id);
-								}}
-							/>
-						);
-					})
-				)}
-			</div>
+										archivedSearchState?.nextCursor,
+									),
+								onClearSearch: () => {
+									pendingArchivedSearchRef.current = undefined;
+									clearArchivedSearch();
+								},
+							}}
+							trashTab={{
+								sessions: trashedSessions,
+								emptyLabel: "Trash is empty.",
+								missingMatchLabel: "No matching trashed sessions.",
+								loadMoreLabel: "Load more trashed sessions",
+								loadMoreSearchLabel: "Load more trashed results",
+								...(trashedNextCursor ? { nextCursor: trashedNextCursor } : {}),
+								...(trashedSearchState
+									? { searchState: trashedSearchState }
+									: {}),
+								onSelectSession: (session) => {
+									if (session.repositoryId) {
+										openCodingSidebarSessionFromList({
+											repositoryId: session.repositoryId,
+											session,
+											onSelectSession,
+											onActivateCenterPanel,
+										});
+										setArchivedSessionsModalOpen(false);
+									}
+								},
+								onRenameSession: (session, title) => {
+									if (session.repositoryId) {
+										onRenameSession?.(
+											session.repositoryId,
+											{
+												providerId: session.providerId,
+												sdkSessionId: session.sdkSessionId,
+											},
+											title,
+										);
+									}
+								},
+								onRestoreSession: (session) => {
+									if (session.repositoryId) {
+										onRestoreSession?.(session.repositoryId, {
+											providerId: session.providerId,
+											sdkSessionId: session.sdkSessionId,
+										});
+									}
+								},
+								onLoadMore: loadMoreTrashedSessions,
+							}}
+							onRestoreRepository={(repositoryId) =>
+								onRestoreRepository?.(repositoryId)
+							}
+							onOpen={openArchivedSessions}
+							onClose={closeArchivedSessions}
+							onRefresh={refreshArchiveCenter}
+						/>
+					</div>
 
-			{addPanelOpen && (
-				<div className="flex shrink-0 flex-col gap-2 border-t border-dark-800 bg-dark-900/40 px-3 py-2.5">
-					<button
-						type="button"
-						onClick={handlePickExistingFolder}
-						disabled={addingRepository}
-						className="flex items-center gap-2 rounded-md border border-dark-800 bg-dark-950 px-3 py-2 text-left text-dark-200 transition-colors hover:border-dark-700 hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-60"
-					>
-						<FolderInput size={13} className="shrink-0" />
-						<span className="font-mono-ui text-[11px] uppercase tracking-[0.16em]">
-							{addingRepository ? "Picking folder…" : "Pick existing folder"}
-						</span>
-					</button>
-					<button
-						type="button"
-						onClick={handleOpenCloneModal}
-						disabled={addingRepository}
-						className="flex items-center gap-2 rounded-md border border-dark-800 bg-dark-950 px-3 py-2 text-left text-dark-200 transition-colors hover:border-dark-700 hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-60"
-					>
-						<GitBranch size={13} className="shrink-0" />
-						<span className="font-mono-ui text-[11px] uppercase tracking-[0.16em]">
-							Clone from URL
-						</span>
-					</button>
-				</div>
-			)}
-
-			{addRepositoryError && (
-				<div className="shrink-0 border-t border-dark-800 bg-dark-900/40 px-4 py-2 text-[11px] text-danger">
-					{addRepositoryError}
-				</div>
-			)}
-
-			<SidebarNotifications />
-
-			<div className="grid shrink-0 grid-cols-2 border-t border-dark-800">
-				<button
-					type="button"
-					onClick={() => {
-						if (addPanelOpen) {
-							closeAddPanel();
-						} else {
-							setAddPanelOpen(true);
-						}
-					}}
-					disabled={addingRepository}
-					aria-expanded={addPanelOpen}
-					className="flex min-w-0 items-center justify-center gap-2 px-3 py-2 text-dark-400 transition-colors hover:bg-dark-900/40 hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-60"
-				>
-					{addPanelOpen ? (
-						<X size={13} className="shrink-0" />
-					) : (
-						<Plus size={13} className="shrink-0" />
+					{cloneModalOpen && (
+						<CodingCloneModal
+							onBrowseLocation={handleBrowseCloneLocation}
+							onClone={handleSubmitClone}
+							onClose={() => setCloneModalOpen(false)}
+						/>
 					)}
-					<span className="font-mono-ui min-w-0 truncate text-[11px] uppercase tracking-[0.16em]">
-						{addPanelOpen ? "Cancel" : "Add repo"}
-					</span>
-				</button>
-				<ArchivedSessionsItem
-					isOpen={archivedSessionsModalOpen}
-					repositories={[
-						...repositories,
-						...archivedRepositories,
-						...trashedRepositories,
-					]}
-					archivedRepositories={archivedRepositories}
-					trashedRepositories={trashedRepositories}
-					triggerClassName="flex min-w-0 items-center justify-center gap-2 border-l border-dark-800 px-3 py-2 text-dark-400 transition-colors hover:bg-dark-900/40 hover:text-dark-100"
-					sessionsTab={{
-						sessions: archivedSessions,
-						emptyLabel: "No archived sessions.",
-						missingMatchLabel: "No matching archived sessions.",
-						loadMoreLabel: "Load more archived sessions",
-						loadMoreSearchLabel: "Load more archived results",
-						searchPlaceholder: "Search archived sessions",
-						...(archivedNextCursor ? { nextCursor: archivedNextCursor } : {}),
-						...(archivedSearchState
-							? { searchState: archivedSearchState }
-							: {}),
-						onSelectSession: (session) => {
-							if (session.repositoryId) {
-								openCodingSidebarSessionFromList({
-									repositoryId: session.repositoryId,
-									session,
-									onSelectSession,
-									onActivateCenterPanel,
-								});
-								setArchivedSessionsModalOpen(false);
-							}
-						},
-						onRenameSession: (session, title) => {
-							if (session.repositoryId) {
-								onRenameSession?.(
-									session.repositoryId,
-									{
-										providerId: session.providerId,
-										sdkSessionId: session.sdkSessionId,
-									},
-									title,
-								);
-							}
-						},
-						onRestoreSession: (session) => {
-							if (session.repositoryId) {
-								onRestoreSession?.(session.repositoryId, {
-									providerId: session.providerId,
-									sdkSessionId: session.sdkSessionId,
-								});
-							}
-						},
-						onLoadMore: loadMoreArchivedSessions,
-						onSearch: searchArchivedSessions,
-						onLoadMoreSearch: (query) =>
-							searchArchivedSessions(query, archivedSearchState?.nextCursor),
-						onClearSearch: () => {
-							pendingArchivedSearchRef.current = undefined;
-							clearArchivedSearch();
-						},
-					}}
-					trashTab={{
-						sessions: trashedSessions,
-						emptyLabel: "Trash is empty.",
-						missingMatchLabel: "No matching trashed sessions.",
-						loadMoreLabel: "Load more trashed sessions",
-						loadMoreSearchLabel: "Load more trashed results",
-						...(trashedNextCursor ? { nextCursor: trashedNextCursor } : {}),
-						...(trashedSearchState ? { searchState: trashedSearchState } : {}),
-						onSelectSession: (session) => {
-							if (session.repositoryId) {
-								openCodingSidebarSessionFromList({
-									repositoryId: session.repositoryId,
-									session,
-									onSelectSession,
-									onActivateCenterPanel,
-								});
-								setArchivedSessionsModalOpen(false);
-							}
-						},
-						onRenameSession: (session, title) => {
-							if (session.repositoryId) {
-								onRenameSession?.(
-									session.repositoryId,
-									{
-										providerId: session.providerId,
-										sdkSessionId: session.sdkSessionId,
-									},
-									title,
-								);
-							}
-						},
-						onRestoreSession: (session) => {
-							if (session.repositoryId) {
-								onRestoreSession?.(session.repositoryId, {
-									providerId: session.providerId,
-									sdkSessionId: session.sdkSessionId,
-								});
-							}
-						},
-						onLoadMore: loadMoreTrashedSessions,
-					}}
-					onRestoreRepository={(repositoryId) =>
-						onRestoreRepository?.(repositoryId)
-					}
-					onOpen={openArchivedSessions}
-					onClose={closeArchivedSessions}
-					onRefresh={refreshArchiveCenter}
-				/>
-			</div>
 
-			{cloneModalOpen && (
-				<CodingCloneModal
-					onBrowseLocation={handleBrowseCloneLocation}
-					onClone={handleSubmitClone}
-					onClose={() => setCloneModalOpen(false)}
-				/>
+					<SidebarRuntimeStatus
+						configOpen={configOpen}
+						onToggleConfig={onToggleConfig}
+						onRestart={onRestart}
+					/>
+				</div>
 			)}
-
-			<SidebarRuntimeStatus onRestart={() => sendCommand("/restart")} />
-		</div>
+		</RuntimeConfigModalController>
 	);
 }

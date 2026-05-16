@@ -15,6 +15,11 @@ import {
 	hasHeartbeatContent,
 } from "../heartbeat/scheduler.ts";
 import { startMemoryIndexWatcher } from "../memory/memory-index-watcher.ts";
+import {
+	createModelProviderResolver,
+	type ModelProviderResolver,
+	staticModelProviderResolver,
+} from "../model-provider-resolver.ts";
 import type { SessionStore } from "../persistence/session-store/session-store.ts";
 import { RolloverScheduler } from "../rollover/scheduler.ts";
 import { listAgentSkills } from "../skills/list-agent-skills.ts";
@@ -165,6 +170,7 @@ export function createAgentRuntime(
 ): AgentRuntime {
 	const facade = options.facade;
 	const providerResolver = buildProviderResolver(options);
+	const modelProviderResolver = buildModelProviderResolver(options);
 	let activeSessionChanged:
 		| ((event: {
 				activeSessionId?: string;
@@ -199,6 +205,7 @@ export function createAgentRuntime(
 		cwd: options.cwd,
 		facade,
 		providers: providerResolver,
+		modelProviderResolver,
 		getFrontendNotice: options.getFrontendNotice,
 		listSkills: promptHomeDir
 			? () => listAgentSkills(promptHomeDir)
@@ -262,6 +269,7 @@ export function createAgentRuntime(
 					cronDir: options.cronDir,
 					runAgent: createCronAgentRunner({
 						providers: providerResolver,
+						modelProviderResolver,
 						promptHomeDir: options.promptHomeDir,
 						cwd: options.cwd ?? process.cwd(),
 					}),
@@ -384,6 +392,20 @@ function buildProviderResolver(
 			return found;
 		},
 	};
+}
+
+function buildModelProviderResolver(
+	options: CreateAgentRuntimeOptions,
+): ModelProviderResolver {
+	if (!options.providers || options.providers.length === 0) {
+		return staticModelProviderResolver(options.facade.providerId);
+	}
+	return createModelProviderResolver(
+		options.providers.map((provider) => ({
+			providerId: provider.providerId,
+			listModels: provider.facade.listModels?.bind(provider.facade),
+		})),
+	);
 }
 
 function createUnconfiguredCodingRuntime(): CodingRuntime {

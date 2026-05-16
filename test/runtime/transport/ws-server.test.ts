@@ -1206,7 +1206,7 @@ describe("Runtime server", () => {
 				expect.objectContaining({
 					type: "cron_result",
 					jobName: "runtime-cron",
-					providerId: "claude",
+					providerId: "mock",
 					text: "echo: say hello",
 					ranAt: expect.any(Number),
 				}),

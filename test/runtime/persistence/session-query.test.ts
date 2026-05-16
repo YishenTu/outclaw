@@ -13,6 +13,7 @@ function seedSession(params: {
 	providerId: string;
 	sdkSessionId: string;
 	title: string;
+	serviceTier?: string;
 	tag?: "chat" | "cron";
 	createdAt: number;
 	lastActive: number;
@@ -23,6 +24,7 @@ function seedSession(params: {
 		sdkSessionId: params.sdkSessionId,
 		title: params.title,
 		model: "opus",
+		serviceTier: params.serviceTier,
 		tag: params.tag,
 	});
 	store.close();
@@ -100,6 +102,39 @@ describe("SessionQuery", () => {
 				.list({ tag: "chat", agentId: "agent-railly" })
 				.map((row) => row.sdkSessionId),
 		).toEqual(["railly-chat-123456"]);
+		query.close();
+	});
+
+	test("returns persisted service tier in list and transcript search results", () => {
+		seedSession({
+			agentId: "agent-railly",
+			providerId: "codex",
+			sdkSessionId: "codex-priority",
+			title: "Priority chat",
+			serviceTier: "priority",
+			createdAt: 100,
+			lastActive: 300,
+		});
+		seedTranscript({
+			agentId: "agent-railly",
+			providerId: "codex",
+			sdkSessionId: "codex-priority",
+			turns: [
+				{
+					role: "assistant",
+					content: "priority result",
+					timestamp: 100,
+				},
+			],
+		});
+
+		const query = new SessionQuery(TEST_DB);
+		expect(
+			query.list({ tag: "chat", agentId: "agent-railly" })[0]?.serviceTier,
+		).toBe("priority");
+		expect(
+			query.search({ query: "priority", tag: "chat" })[0]?.session.serviceTier,
+		).toBe("priority");
 		query.close();
 	});
 

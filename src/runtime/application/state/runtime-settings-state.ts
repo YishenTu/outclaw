@@ -14,6 +14,7 @@ export class RuntimeSettingsState {
 	private readonly configuredDefaultEffort: EffortLevel;
 	private activeModel: string = DEFAULT_MODEL;
 	private activeEffort: EffortLevel;
+	private activeServiceTier: string | undefined;
 
 	constructor(options: RuntimeSettingsStateOptions = {}) {
 		this.configuredDefaultEffort = options.defaultEffort ?? DEFAULT_EFFORT;
@@ -30,6 +31,10 @@ export class RuntimeSettingsState {
 
 	get model(): string {
 		return this.activeModel;
+	}
+
+	get serviceTier(): string | undefined {
+		return this.activeServiceTier;
 	}
 
 	get resolvedModel(): string {
@@ -51,5 +56,9 @@ export class RuntimeSettingsState {
 	 */
 	setProviderModel(model: string) {
 		this.activeModel = model;
+	}
+
+	setServiceTier(serviceTier: string | undefined) {
+		this.activeServiceTier = serviceTier;
 	}
 }

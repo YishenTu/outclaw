@@ -8,13 +8,11 @@ import type {
 	CodexAppServerClient,
 	CodexServerNotification,
 } from "../../../src/backend/adapters/codex/types.ts";
-import type {
-	CodingSessionEvent,
-	FacadeEvent,
-} from "../../../src/common/protocol.ts";
+import type { FacadeEvent } from "../../../src/common/protocol.ts";
 
 interface FakeCodexAppServerClientOptions {
 	archivedThreads?: Array<{ id: string; name?: string | null }>;
+	instructionSources?: Array<string | { path?: string }>;
 	openThreads?: Array<{ id: string; name?: string | null }>;
 	skills?: Array<{
 		description?: string;
@@ -53,6 +51,9 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 					sessionId: "codex-session-tree",
 					path: this.options.threadPath ?? null,
 				},
+				...(this.options.instructionSources
+					? { instructionSources: this.options.instructionSources }
+					: {}),
 			} as T;
 		}
 
@@ -70,6 +71,9 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 					sessionId: "codex-session-tree",
 					path: this.options.threadPath ?? null,
 				},
+				...(this.options.instructionSources
+					? { instructionSources: this.options.instructionSources }
+					: {}),
 			} as T;
 		}
 
@@ -187,8 +191,8 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 
 async function collectEvents(
 	events: AsyncIterable<FacadeEvent>,
-): Promise<CodingSessionEvent[]> {
-	const collected: CodingSessionEvent[] = [];
+): Promise<FacadeEvent[]> {
+	const collected: FacadeEvent[] = [];
 	for await (const event of events) {
 		collected.push(event);
 	}
@@ -451,7 +455,7 @@ describe("CodexAdapter", () => {
 		]);
 	});
 
-	test("streams live event_msg user and assistant messages through the Facade contract", async () => {
+	test("suppresses live event_msg user echoes while streaming assistant messages through the Facade contract", async () => {
 		const client = new FakeCodexAppServerClient([
 			{
 				method: "event_msg",
@@ -504,11 +508,6 @@ describe("CodexAdapter", () => {
 		expect(events).toEqual([
 			{
 				type: "session_initialized",
-				sessionId: "codex-thread-123",
-			},
-			{
-				type: "user_prompt",
-				text: "run ls",
 				sessionId: "codex-thread-123",
 			},
 			{
@@ -573,6 +572,38 @@ describe("CodexAdapter", () => {
 				sessionId: "codex-thread-123",
 			},
 		]);
+	});
+
+	test("passes prompt text to Codex user input without runtime reply context knowledge", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 1, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		await collectEvents(
+			adapter.run({
+				prompt:
+					"Answer this\n\n<reply-context>Earlier &lt;quoted&gt; reply</reply-context>",
+				cwd: "/work/repo",
+			}),
+		);
+
+		const turn = client.requests.find((r) => r.method === "turn/start");
+		expect(turn?.params).toMatchObject({
+			input: [
+				{
+					type: "text",
+					text: "Answer this\n\n<reply-context>Earlier &lt;quoted&gt; reply</reply-context>",
+					text_elements: [],
+				},
+			],
+		});
 	});
 
 	test("continues streaming after a running Codex turn is steered", async () => {
@@ -2551,6 +2582,39 @@ describe("CodexAdapter", () => {
 		expect(params.enabled_tools).toBeUndefined();
 	});
 
+	test("read-only execution mode maps to app-server thread and turn sandbox fields", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 1, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		await collectEvents(
+			adapter.run({
+				prompt: "generate a title",
+				cwd: "/work/repo",
+				executionMode: "read_only",
+			}),
+		);
+
+		const start = client.requests.find((r) => r.method === "thread/start");
+		expect(start?.params).toMatchObject({
+			approvalPolicy: "never",
+			sandbox: "read-only",
+			experimentalRawEvents: true,
+		});
+		const turn = client.requests.find((r) => r.method === "turn/start");
+		expect(turn?.params).toMatchObject({
+			approvalPolicy: "never",
+			sandboxPolicy: { type: "readOnly", networkAccess: false },
+		});
+	});
+
 	test("Code Mode resume sends provider-default instructions and YOLO sandbox", async () => {
 		const client = new FakeCodexAppServerClient([
 			{
@@ -2651,6 +2715,157 @@ describe("CodexAdapter", () => {
 		expect(params.config).toEqual({ project_doc_max_bytes: 0 });
 		expect(params.approvalPolicy).toBe("never");
 		expect(params.sandbox).toBe("danger-full-access");
+	});
+
+	test("Codex Chat start injects session environment without dropping project-doc suppression", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 1, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		await collectEvents(
+			adapter.run({
+				prompt: "hello",
+				cwd: "/home/agent",
+				instructionPolicy: {
+					mode: "runtime_constructed",
+					systemPrompt: "Outclaw chat instructions",
+				},
+				sessionEnv: {
+					OC_SESSION_ID: "oc-123",
+					OUTCLAW_AGENT_HOME: "/home/agent",
+				},
+			}),
+		);
+
+		const start = client.requests.find((r) => r.method === "thread/start");
+		const params = start?.params as Record<string, unknown>;
+		expect(params.config).toEqual({
+			project_doc_max_bytes: 0,
+			shell_environment_policy: {
+				set: {
+					OC_SESSION_ID: "oc-123",
+					OUTCLAW_AGENT_HOME: "/home/agent",
+				},
+			},
+		});
+	});
+
+	test("Codex Chat resume injects session environment without dropping project-doc suppression", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 1, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		await collectEvents(
+			adapter.run({
+				prompt: "continue",
+				resume: "codex-thread-123",
+				cwd: "/home/agent",
+				instructionPolicy: {
+					mode: "runtime_constructed",
+					systemPrompt: "Outclaw chat instructions",
+				},
+				sessionEnv: {
+					OC_SESSION_ID: "oc-123",
+				},
+			}),
+		);
+
+		const resume = client.requests.find((r) => r.method === "thread/resume");
+		const params = resume?.params as Record<string, unknown>;
+		expect(params.config).toEqual({
+			project_doc_max_bytes: 0,
+			shell_environment_policy: {
+				set: {
+					OC_SESSION_ID: "oc-123",
+				},
+			},
+		});
+	});
+
+	test("Codex Chat does not block on reported workspace AGENTS.md instruction sources", async () => {
+		const client = new FakeCodexAppServerClient(
+			[
+				{
+					method: "turn/completed",
+					params: {
+						threadId: "codex-thread-123",
+						turn: { id: "turn-1", durationMs: 1, status: "completed" },
+					},
+				},
+			],
+			{
+				instructionSources: ["/home/agent/AGENTS.md"],
+			},
+		);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({
+				prompt: "hello",
+				cwd: "/home/agent",
+				instructionPolicy: {
+					mode: "runtime_constructed",
+					systemPrompt: "Outclaw chat instructions",
+				},
+			}),
+		);
+
+		expect(events.map((event) => event.type)).toEqual([
+			"session_initialized",
+			"done",
+		]);
+		const start = client.requests.find((r) => r.method === "thread/start");
+		const startParams = start?.params as Record<string, unknown>;
+		expect(startParams.config).toEqual({ project_doc_max_bytes: 0 });
+		expect(client.requests.some((r) => r.method === "turn/start")).toBe(true);
+	});
+
+	test("Codex Chat allows Codex-home global AGENTS.md instruction sources", async () => {
+		const client = new FakeCodexAppServerClient(
+			[
+				{
+					method: "turn/completed",
+					params: {
+						threadId: "codex-thread-123",
+						turn: { id: "turn-1", durationMs: 1, status: "completed" },
+					},
+				},
+			],
+			{
+				instructionSources: ["/Users/me/.codex/AGENTS.md"],
+			},
+		);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({
+				prompt: "hello",
+				cwd: "/home/agent",
+				instructionPolicy: {
+					mode: "runtime_constructed",
+					systemPrompt: "Outclaw chat instructions",
+				},
+			}),
+		);
+
+		expect(events.map((event) => event.type)).toEqual([
+			"session_initialized",
+			"done",
+		]);
 	});
 
 	test("Codex Chat instruction policy without a system prompt fails loud", async () => {
