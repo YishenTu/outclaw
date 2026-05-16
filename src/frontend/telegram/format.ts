@@ -204,6 +204,13 @@ const marked = new Marked({
 			if ("tokens" in token && token.tokens) {
 				return this.parser.parseInline(token.tokens);
 			}
+			// Marked tags a text token with `escaped: true` once its inline
+			// content has been rendered to HTML — e.g. the wrapping text token
+			// emitted for each loose list_item. Re-escaping that HTML would
+			// turn previously emitted `<b>...</b>` back into literal entities.
+			if ("escaped" in token && token.escaped) {
+				return token.text;
+			}
 			return escapeHtml(token.text);
 		},
 	},

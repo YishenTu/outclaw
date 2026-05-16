@@ -135,6 +135,19 @@ describe("markdownToTelegramHtml", () => {
 		);
 	});
 
+	test("preserves bold in loose list items separated by blank lines", () => {
+		// Marked wraps each loose list_item's inline content in a text token
+		// flagged `escaped: true` after rendering. The text renderer must pass
+		// that already-rendered HTML through instead of re-escaping it.
+		const md = "- **A** | x\n\n- **B** | y";
+		expect(markdownToTelegramHtml(md)).toBe("• <b>A</b> | x\n• <b>B</b> | y");
+	});
+
+	test("preserves raw Telegram HTML inside loose list items", () => {
+		const md = "- <b>A</b> | x\n\n- <b>B</b> | y";
+		expect(markdownToTelegramHtml(md)).toBe("• <b>A</b> | x\n• <b>B</b> | y");
+	});
+
 	test("escapes unsupported raw HTML", () => {
 		expect(markdownToTelegramHtml("<script>alert(1)</script>")).toBe(
 			"&lt;script&gt;alert(1)&lt;/script&gt;",
