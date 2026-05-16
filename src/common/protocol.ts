@@ -1281,6 +1281,7 @@ export type FacadeEvent =
 export interface CodingUserPromptEvent {
 	type: "user_prompt";
 	text: string;
+	images?: DisplayImage[];
 	sessionId?: string;
 	timestamp?: number;
 }

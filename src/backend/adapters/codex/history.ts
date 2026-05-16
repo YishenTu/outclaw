@@ -1,9 +1,12 @@
 import { readFile } from "node:fs/promises";
+import { createDisplayCompactBoundaryMessage } from "../../../common/compact-boundary.ts";
 import type {
 	CodingSessionEvent,
+	DisplayChatMessage,
 	DisplayMessage,
 	TranscriptTurn,
 } from "../../../common/protocol.ts";
+import { parsePromptWithReplyContext } from "../../../common/reply-context.ts";
 import { normalizeCodexJsonlEvents } from "./stream-normalizer.ts";
 import type { CodexAppServerClient, CodexThreadReadResult } from "./types.ts";
 
@@ -79,15 +82,22 @@ export function projectCodexChatDisplayMessages(
 		switch (event.type) {
 			case "user_prompt": {
 				flushAssistant();
-				if (event.text) {
-					messages.push({
+				const parsed = parsePromptWithReplyContext(event.text);
+				const images = event.images ?? [];
+				if (parsed.prompt || parsed.replyContext || images.length > 0) {
+					const message: DisplayChatMessage = {
 						kind: "chat",
 						role: "user",
-						content: event.text,
+						content: parsed.prompt,
+						...(images.length > 0 ? { images } : {}),
 						...(event.timestamp !== undefined
 							? { timestamp: event.timestamp }
 							: {}),
-					});
+					};
+					if (parsed.replyContext) {
+						message.replyContext = parsed.replyContext;
+					}
+					messages.push(message);
 				}
 				break;
 			}
@@ -105,6 +115,11 @@ export function projectCodexChatDisplayMessages(
 			}
 			case "done": {
 				flushAssistant(event.timestamp);
+				break;
+			}
+			case "compacting_finished": {
+				flushAssistant();
+				messages.push(createDisplayCompactBoundaryMessage());
 				break;
 			}
 			default:
@@ -152,14 +167,21 @@ export function projectCodexChatTranscriptTurns(
 
 	let missingTimestamps = false;
 	for (const event of events) {
-		if (event.type === "user_prompt" && event.text) {
+		if (event.type === "user_prompt") {
 			flushAssistant();
 			if (event.timestamp === undefined) {
 				missingTimestamps = true;
 			}
+			const parsed = parsePromptWithReplyContext(event.text);
+			const images = event.images ?? [];
+			if (!parsed.prompt && !parsed.replyContext && images.length === 0) {
+				continue;
+			}
 			turns.push({
 				role: "user",
-				content: event.text,
+				content: parsed.prompt,
+				...(parsed.replyContext ? { replyContext: parsed.replyContext } : {}),
+				...(images.length > 0 ? { images } : {}),
 				timestamp: event.timestamp ?? 0,
 			});
 		} else if (event.type === "text") {

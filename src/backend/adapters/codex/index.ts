@@ -1,3 +1,4 @@
+import { canonicalizePromptSlashCommand } from "../../../common/commands.ts";
 import {
 	type CodingSessionEvent,
 	type DisplayMessage,
@@ -335,6 +336,15 @@ export class CodexAdapter implements Facade {
 	}
 
 	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		if (params.tools !== undefined) {
+			yield {
+				type: "error",
+				message:
+					"Codex does not support RunParams.tools; use executionMode for provider-neutral execution constraints",
+			};
+			return;
+		}
+
 		const startedAtMs = Date.now();
 		const client = await this.loadClient();
 		const queue = new CodexNotificationQueue();
@@ -373,6 +383,19 @@ export class CodexAdapter implements Facade {
 				type: "session_initialized",
 				sessionId: threadId,
 			};
+
+			if (isCodexCompactionPrompt(params.prompt)) {
+				await client.request("thread/compact/start", { threadId });
+				yield* normalizeCodexTurnNotifications({
+					acceptAnyTurnId: true,
+					notifications: queue,
+					threadId,
+					turnIds: new Set(),
+					sessionId: threadId,
+					startedAtMs,
+				});
+				return;
+			}
 
 			const input = await buildUserInput(client, params);
 			const turnResult = await client.request<CodexTurnStartResult>(
@@ -463,6 +486,10 @@ interface CodexActiveTurn {
 	threadId: string;
 	turnId: string;
 	observedTurnIds: Set<string>;
+}
+
+function isCodexCompactionPrompt(prompt: string): boolean {
+	return canonicalizePromptSlashCommand(prompt) === "/compact";
 }
 
 function readCodexCodingSessionUpdate(

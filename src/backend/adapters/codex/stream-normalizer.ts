@@ -1,8 +1,10 @@
 import type {
 	CodingSessionEvent,
+	DisplayImage,
 	FacadeEvent,
 	FileChange,
 	FileChangeKind,
+	ImageMediaType,
 	SubagentToolAgentState,
 	ToolCallDetail,
 	UsageInfo,
@@ -16,6 +18,7 @@ import type {
 } from "./types.ts";
 
 interface NormalizeCodexTurnOptions {
+	acceptAnyTurnId?: boolean;
 	notifications: AsyncIterable<CodexServerNotification>;
 	threadId: string;
 	turnIds: ReadonlySet<string>;
@@ -99,7 +102,12 @@ export async function* normalizeCodexTurnNotifications(
 
 	for await (const notification of options.notifications) {
 		if (
-			!isNotificationForTurn(notification, options.threadId, options.turnIds)
+			!isNotificationForTurn(
+				notification,
+				options.threadId,
+				options.turnIds,
+				options.acceptAnyTurnId,
+			)
 		) {
 			continue;
 		}
@@ -381,10 +389,16 @@ export function normalizeCodexJsonlEvents(
 						payload.role === "user"
 							? normalizeCodexJsonlUserPromptText(text)
 							: "";
-					if (payload.role === "user" && userPromptText) {
+					const userImages =
+						payload.role === "user" ? readContentImages(payload.content) : [];
+					if (
+						payload.role === "user" &&
+						(userPromptText || userImages.length > 0)
+					) {
 						events.push({
 							type: "user_prompt",
 							text: userPromptText,
+							...(userImages.length > 0 ? { images: userImages } : {}),
 							sessionId: options.sessionId,
 							...(timestamp !== undefined ? { timestamp } : {}),
 						});
@@ -413,6 +427,14 @@ export function normalizeCodexJsonlEvents(
 							...(timestamp !== undefined ? { timestamp } : {}),
 						});
 					}
+					break;
+				}
+				case "contextCompaction":
+				case "context_compaction": {
+					events.push({
+						type: "compacting_finished",
+						sessionId: options.sessionId,
+					});
 					break;
 				}
 				case "function_call": {
@@ -763,10 +785,14 @@ function isNotificationForTurn(
 	notification: CodexServerNotification,
 	threadId: string,
 	turnIds: ReadonlySet<string>,
+	acceptAnyTurnId = false,
 ): boolean {
 	const params = asRecord(notification.params);
 	if (!params || params.threadId !== threadId) {
 		return false;
+	}
+	if (acceptAnyTurnId) {
+		return true;
 	}
 
 	if (notification.method === "turn/completed") {
@@ -1127,6 +1153,75 @@ function readContentText(value: unknown): string {
 		.join("");
 }
 
+function readContentImages(value: unknown): DisplayImage[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	const images: DisplayImage[] = [];
+	for (const entry of value) {
+		const record = asRecord(entry);
+		if (!record) {
+			continue;
+		}
+		const path =
+			typeof record.path === "string"
+				? record.path
+				: typeof record.localPath === "string"
+					? record.localPath
+					: undefined;
+		if (!path || !isLocalImageContent(record)) {
+			continue;
+		}
+		images.push({
+			kind: "managed",
+			path,
+			mediaType:
+				readImageMediaType(record.mediaType ?? record.media_type) ??
+				inferImageMediaTypeFromPath(path) ??
+				"image/png",
+		});
+	}
+	return images;
+}
+
+function isLocalImageContent(record: Record<string, unknown>): boolean {
+	return (
+		record.type === "localImage" ||
+		record.type === "local_image" ||
+		record.type === "input_image" ||
+		record.type === "image"
+	);
+}
+
+function readImageMediaType(value: unknown): ImageMediaType | undefined {
+	if (
+		value === "image/jpeg" ||
+		value === "image/png" ||
+		value === "image/gif" ||
+		value === "image/webp"
+	) {
+		return value;
+	}
+	return undefined;
+}
+
+function inferImageMediaTypeFromPath(path: string): ImageMediaType | undefined {
+	const lowerPath = path.toLowerCase();
+	if (lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg")) {
+		return "image/jpeg";
+	}
+	if (lowerPath.endsWith(".png")) {
+		return "image/png";
+	}
+	if (lowerPath.endsWith(".gif")) {
+		return "image/gif";
+	}
+	if (lowerPath.endsWith(".webp")) {
+		return "image/webp";
+	}
+	return undefined;
+}
+
 function normalizeCodexJsonlUserPromptText(text: string): string {
 	const trimmedStart = text.trimStart();
 	if (!isCodexSessionBootstrapText(trimmedStart)) {
@@ -1406,6 +1501,9 @@ function readItemStarted(
 	if (!item || !itemType || NON_TOOL_ITEM_TYPES.has(itemType)) {
 		return undefined;
 	}
+	if (itemType === "contextCompaction") {
+		return { type: "compacting_started", sessionId };
+	}
 	if (itemType === "commandExecution") {
 		return readCommandExecutionStarted(params, sessionId);
 	}
@@ -1432,6 +1530,9 @@ function readItemCompleted(
 	const itemType = typeof item?.type === "string" ? item.type : undefined;
 	if (!item || !itemType || NON_TOOL_ITEM_TYPES.has(itemType)) {
 		return undefined;
+	}
+	if (itemType === "contextCompaction") {
+		return { type: "compacting_finished", sessionId };
 	}
 	if (itemType === "commandExecution") {
 		return readCommandExecutionCompleted(

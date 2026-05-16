@@ -12,6 +12,7 @@ import type { FacadeEvent } from "../../../src/common/protocol.ts";
 
 interface FakeCodexAppServerClientOptions {
 	archivedThreads?: Array<{ id: string; name?: string | null }>;
+	compactNotifications?: CodexServerNotification[];
 	instructionSources?: Array<string | { path?: string }>;
 	openThreads?: Array<{ id: string; name?: string | null }>;
 	skills?: Array<{
@@ -99,6 +100,13 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 			method === "thread/unarchive" ||
 			method === "thread/name/set"
 		) {
+			return {} as T;
+		}
+
+		if (method === "thread/compact/start") {
+			for (const notification of this.options.compactNotifications ?? []) {
+				this.emit(notification);
+			}
 			return {} as T;
 		}
 
@@ -791,6 +799,72 @@ describe("CodexAdapter", () => {
 				experimentalRawEvents: true,
 			},
 		});
+	});
+
+	test("runs Codex compaction through app-server compaction while emitting Claude-compatible display events", async () => {
+		const client = new FakeCodexAppServerClient([], {
+			compactNotifications: [
+				{
+					method: "item/started",
+					params: {
+						threadId: "codex-thread-123",
+						turnId: "compact-turn-1",
+						item: { type: "contextCompaction", id: "compact-1" },
+					},
+				},
+				{
+					method: "item/completed",
+					params: {
+						threadId: "codex-thread-123",
+						turnId: "compact-turn-1",
+						item: { type: "contextCompaction", id: "compact-1" },
+					},
+				},
+				{
+					method: "turn/completed",
+					params: {
+						threadId: "codex-thread-123",
+						turn: {
+							id: "compact-turn-1",
+							durationMs: 42,
+							status: "completed",
+						},
+					},
+				},
+			],
+		});
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({
+				prompt: "/compact",
+				resume: "codex-thread-123",
+				cwd: "/work/repo",
+			}),
+		);
+
+		expect(client.requests).toEqual([
+			{
+				method: "thread/resume",
+				params: {
+					threadId: "codex-thread-123",
+					cwd: "/work/repo",
+					approvalPolicy: "never",
+					sandbox: "danger-full-access",
+					experimentalRawEvents: true,
+				},
+			},
+			{
+				method: "thread/compact/start",
+				params: { threadId: "codex-thread-123" },
+			},
+		]);
+		expect(events).toEqual([
+			{ type: "session_initialized", sessionId: "codex-thread-123" },
+			{ type: "compacting_started", sessionId: "codex-thread-123" },
+			{ type: "compacting_finished", sessionId: "codex-thread-123" },
+			{ type: "done", sessionId: "codex-thread-123", durationMs: 42 },
+		]);
 	});
 
 	test("normalizes commandExecution item lifecycle into typed events", async () => {
@@ -2004,6 +2078,263 @@ describe("CodexAdapter", () => {
 		}
 	});
 
+	test("restores reply context from Codex chat history and transcript exports", async () => {
+		const root = mkdtempSync(join(tmpdir(), "outclaw-codex-chat-"));
+		try {
+			const userTimestamp = Date.parse("2026-05-14T02:46:08.444Z");
+			const assistantTimestamp = Date.parse("2026-05-14T02:46:12.200Z");
+			const transcriptPath = join(root, "codex-thread-123.jsonl");
+			writeFileSync(
+				transcriptPath,
+				[
+					{
+						timestamp: "2026-05-14T02:46:08.444Z",
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "user",
+							content: [
+								{
+									type: "input_text",
+									text: "Answer this\n\n<reply-context>Earlier &quot;result&quot; &lt;ok&gt;</reply-context>",
+								},
+							],
+						},
+					},
+					{
+						timestamp: "2026-05-14T02:46:12.200Z",
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "assistant",
+							content: [{ type: "output_text", text: "Done." }],
+							phase: "final_answer",
+						},
+					},
+				]
+					.map((row) => JSON.stringify(row))
+					.join("\n"),
+			);
+			const client = new FakeCodexAppServerClient([], {
+				threadPath: transcriptPath,
+			});
+			const adapter = new CodexAdapter({ client });
+
+			await expect(adapter.readHistory("codex-thread-123")).resolves.toEqual([
+				{
+					kind: "chat",
+					role: "user",
+					content: "Answer this",
+					replyContext: { text: 'Earlier "result" <ok>' },
+					timestamp: userTimestamp,
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "Done.",
+					timestamp: assistantTimestamp,
+				},
+			]);
+			await expect(adapter.readTranscript("codex-thread-123")).resolves.toEqual(
+				[
+					{
+						role: "user",
+						content: "Answer this",
+						replyContext: { text: 'Earlier "result" <ok>' },
+						timestamp: userTimestamp,
+					},
+					{
+						role: "assistant",
+						content: "Done.",
+						timestamp: assistantTimestamp,
+					},
+				],
+			);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	test("restores local prompt images from Codex chat history and transcript exports", async () => {
+		const root = mkdtempSync(join(tmpdir(), "outclaw-codex-chat-images-"));
+		try {
+			const userTimestamp = Date.parse("2026-05-14T02:46:08.444Z");
+			const assistantTimestamp = Date.parse("2026-05-14T02:46:12.200Z");
+			const imagePath = join(root, "design.webp");
+			const transcriptPath = join(root, "codex-thread-123.jsonl");
+			writeFileSync(imagePath, "fake image");
+			writeFileSync(
+				transcriptPath,
+				[
+					{
+						timestamp: "2026-05-14T02:46:08.444Z",
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "user",
+							content: [
+								{ type: "localImage", path: imagePath },
+								{ type: "input_text", text: "Describe this" },
+							],
+						},
+					},
+					{
+						timestamp: "2026-05-14T02:46:12.200Z",
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "assistant",
+							content: [{ type: "output_text", text: "It is a mockup." }],
+							phase: "final_answer",
+						},
+					},
+				]
+					.map((row) => JSON.stringify(row))
+					.join("\n"),
+			);
+			const client = new FakeCodexAppServerClient([], {
+				threadPath: transcriptPath,
+			});
+			const adapter = new CodexAdapter({ client });
+			const image = {
+				kind: "managed" as const,
+				path: imagePath,
+				mediaType: "image/webp" as const,
+			};
+
+			await expect(adapter.readHistory("codex-thread-123")).resolves.toEqual([
+				{
+					kind: "chat",
+					role: "user",
+					content: "Describe this",
+					images: [image],
+					timestamp: userTimestamp,
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "It is a mockup.",
+					timestamp: assistantTimestamp,
+				},
+			]);
+			await expect(adapter.readTranscript("codex-thread-123")).resolves.toEqual(
+				[
+					{
+						role: "user",
+						content: "Describe this",
+						images: [image],
+						timestamp: userTimestamp,
+					},
+					{
+						role: "assistant",
+						content: "It is a mockup.",
+						timestamp: assistantTimestamp,
+					},
+				],
+			);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	test("replays Codex context compaction as the same compact boundary display Claude uses", async () => {
+		const root = mkdtempSync(join(tmpdir(), "outclaw-codex-chat-compact-"));
+		try {
+			const transcriptPath = join(root, "codex-thread-123.jsonl");
+			writeFileSync(
+				transcriptPath,
+				[
+					{
+						timestamp: "2026-05-14T02:46:08.000Z",
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "user",
+							content: [{ type: "input_text", text: "before compact" }],
+						},
+					},
+					{
+						timestamp: "2026-05-14T02:46:09.000Z",
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "assistant",
+							content: [{ type: "output_text", text: "before answer" }],
+							phase: "final_answer",
+						},
+					},
+					{
+						timestamp: "2026-05-14T02:46:10.000Z",
+						type: "response_item",
+						payload: {
+							type: "contextCompaction",
+							id: "compact-1",
+						},
+					},
+					{
+						timestamp: "2026-05-14T02:46:11.000Z",
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "user",
+							content: [{ type: "input_text", text: "after compact" }],
+						},
+					},
+					{
+						timestamp: "2026-05-14T02:46:12.000Z",
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "assistant",
+							content: [{ type: "output_text", text: "after answer" }],
+							phase: "final_answer",
+						},
+					},
+				]
+					.map((row) => JSON.stringify(row))
+					.join("\n"),
+			);
+			const client = new FakeCodexAppServerClient([], {
+				threadPath: transcriptPath,
+			});
+			const adapter = new CodexAdapter({ client });
+
+			await expect(adapter.readHistory("codex-thread-123")).resolves.toEqual([
+				{
+					kind: "chat",
+					role: "user",
+					content: "before compact",
+					timestamp: Date.parse("2026-05-14T02:46:08.000Z"),
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "before answer",
+					timestamp: Date.parse("2026-05-14T02:46:09.000Z"),
+				},
+				{
+					kind: "system",
+					event: "compact_boundary",
+					text: "context compacted",
+				},
+				{
+					kind: "chat",
+					role: "user",
+					content: "after compact",
+					timestamp: Date.parse("2026-05-14T02:46:11.000Z"),
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "after answer",
+					timestamp: Date.parse("2026-05-14T02:46:12.000Z"),
+				},
+			]);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	test("ends the turn when the final assistant message completes before a background command", async () => {
 		const client = new FakeCodexAppServerClient([
 			{
@@ -2613,6 +2944,29 @@ describe("CodexAdapter", () => {
 			approvalPolicy: "never",
 			sandboxPolicy: { type: "readOnly", networkAccess: false },
 		});
+	});
+
+	test("rejects explicit tool allow-lists because Codex cannot enforce RunParams.tools", async () => {
+		const client = new FakeCodexAppServerClient([]);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({
+				prompt: "inspect",
+				cwd: "/work/repo",
+				tools: [],
+			}),
+		);
+
+		expect(events).toEqual([
+			{
+				type: "error",
+				message:
+					"Codex does not support RunParams.tools; use executionMode for provider-neutral execution constraints",
+			},
+		]);
+		expect(client.requests).toEqual([]);
+		expect(client.initialize).not.toHaveBeenCalled();
 	});
 
 	test("Code Mode resume sends provider-default instructions and YOLO sandbox", async () => {
