@@ -653,6 +653,90 @@ describe("createBrowserApi", () => {
 		chatStore.close();
 	});
 
+	test("repairs control-started coding sessions when listing chat links", async () => {
+		const root = createTempDir("outclaw-browser-chat-coding-repair-api-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const chatStore = new SessionStore(dbPath, { agentId: "agent-railly" });
+		const codingSharedStore = new SessionStore(dbPath, {
+			agentId: CODING_STORAGE_OWNER_ID,
+		});
+		const codingStore = new CodingSessionStore(dbPath);
+		const links = new ChatCodingLinkStore(dbPath);
+
+		chatStore.upsert({
+			providerId: "claude",
+			sdkSessionId: "chat-session",
+			title: "Build the tool",
+			model: "opus",
+			tag: "chat",
+			timestamp: 100,
+		});
+		codingSharedStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-control",
+			title: "Control coding task",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 200,
+		});
+		codingStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "code-control",
+			cwd: join(root, "workspace"),
+			linkedChatSessionId: "chat-session",
+			runStatus: "idle",
+			timestamp: 200,
+		});
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "claude",
+					terminalRunCommand: "",
+				},
+			],
+			chatCodingLinks: links,
+			codingSessions: codingStore,
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", chatStore]]),
+		});
+
+		const result = await api.listChatCodingSessions({
+			agentId: "agent-railly",
+			providerId: "claude",
+			sdkSessionId: "chat-session",
+		});
+
+		expect(result.sessions.map((session) => session.sdkSessionId)).toEqual([
+			"code-control",
+		]);
+		expect(
+			links
+				.listForChat({
+					chatAgentId: "agent-railly",
+					chatProviderId: "claude",
+					chatSdkSessionId: "chat-session",
+				})
+				.map((session) => session.sdkSessionId),
+		).toEqual(["code-control"]);
+
+		links.close();
+		codingStore.close();
+		codingSharedStore.close();
+		chatStore.close();
+	});
+
 	test("reads coding session detail by provider session identity", async () => {
 		const root = createTempDir("outclaw-browser-coding-session-detail-api-");
 		cleanupPaths.push(root);

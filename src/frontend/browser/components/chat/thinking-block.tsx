@@ -1,5 +1,6 @@
 import { Brain, ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { MarkdownContent } from "./markdown-content.tsx";
 
 interface ThinkingBlockProps {
 	content: string;
@@ -7,6 +8,7 @@ interface ThinkingBlockProps {
 
 export function ThinkingBlock({ content }: ThinkingBlockProps) {
 	const [expanded, setExpanded] = useState(false);
+	const renderBody = expanded || typeof window === "undefined";
 
 	if (content.trim() === "") {
 		return null;
@@ -31,10 +33,13 @@ export function ThinkingBlock({ content }: ThinkingBlockProps) {
 					)}
 				</span>
 			</button>
-			{expanded && (
+			{renderBody && (
 				<div className="bg-dark-950/50">
-					<div className="px-3 py-2 text-sm italic whitespace-pre-wrap break-words text-dark-500">
-						{content}
+					<div className="px-3 py-2 text-sm italic text-dark-500">
+						<MarkdownContent
+							content={content}
+							className="text-dark-500 prose-strong:text-dark-300"
+						/>
 					</div>
 				</div>
 			)}

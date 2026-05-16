@@ -44,4 +44,24 @@ describe("browser center panel", () => {
 		expect(html).toContain("No active agent");
 		expect(html).toContain("AGENTS.md");
 	});
+
+	test("renders linked coding sessions control in the middle-panel header", () => {
+		const html = renderToStaticMarkup(
+			<CenterPanelView
+				activeTabId="chat"
+				closeTab={() => {}}
+				setActiveTab={() => {}}
+				tabs={[{ type: "chat", id: "chat" }]}
+			/>,
+		);
+
+		const controlIndex = html.indexOf(
+			'aria-label="Open linked coding sessions"',
+		);
+		const panelIndex = html.indexOf('data-center-tab-panel="chat"');
+
+		expect(controlIndex).toBeGreaterThan(-1);
+		expect(panelIndex).toBeGreaterThan(-1);
+		expect(controlIndex).toBeLessThan(panelIndex);
+	});
 });

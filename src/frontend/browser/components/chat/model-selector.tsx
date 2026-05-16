@@ -41,6 +41,7 @@ interface ModelSelectorProps {
 	serviceTier?: string | null;
 	disabled?: boolean;
 	sessionActive?: boolean;
+	showEffortLabelPrefix?: boolean;
 	onModelChange: (selection: ChatModelSelection) => boolean;
 	onEffortChange: (selection: ChatModelSelection) => boolean;
 }
@@ -53,6 +54,7 @@ export function ModelSelector({
 	serviceTier = null,
 	disabled = false,
 	sessionActive = false,
+	showEffortLabelPrefix = true,
 	onModelChange,
 	onEffortChange,
 }: ModelSelectorProps) {
@@ -109,6 +111,7 @@ export function ModelSelector({
 	const fastTierEnabled = serviceTier === fastTier?.id;
 	const fastTierLabel = fastTier?.name ?? "Fast";
 	const fastTierTooltip = fastTier?.description ?? "";
+	const effortLabel = formatEffortLabel(currentEffort);
 
 	const showGroups = providerCount > 1;
 
@@ -153,7 +156,7 @@ export function ModelSelector({
 			/>
 
 			<SelectorDropdown
-				label={`Thinking: ${formatEffortLabel(currentEffort)}`}
+				label={showEffortLabelPrefix ? `Thinking: ${effortLabel}` : effortLabel}
 				items={visibleEffortLevels.map((level) => ({
 					id: level,
 					label: formatEffortLabel(level),

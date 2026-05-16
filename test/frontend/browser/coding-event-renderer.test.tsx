@@ -131,9 +131,7 @@ describe("CodingEventView command grouping", () => {
 		// later text delta starts a new block after the thinking group.
 		expect(html).toContain("hello world");
 		expect(html).toContain("again");
-		// Thinking is rendered through the chat-mode ThinkingBlock, which is
-		// collapsed by default — the body text is not in static markup, but the
-		// "Thinking" label that toggles it is.
+		// Thinking is rendered through the chat-mode ThinkingBlock.
 		expect(html).toContain("Thinking");
 	});
 
@@ -241,6 +239,45 @@ describe("CodingEventView command grouping", () => {
 		expect(occurrences(html, "bun test")).toBe(2);
 		expect(html).toContain("running tests");
 		expect(html).not.toContain("Event: command_execution_output");
+	});
+
+	test("hides scrollbars inside expanded tool bodies", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, {
+				type: "command_execution_started",
+				callId: "call-1",
+				command: "bun test",
+				sessionId: "session-1",
+			}),
+			streamItem(2, {
+				type: "command_execution_completed",
+				callId: "call-1",
+				exitCode: 0,
+				output: Array.from({ length: 30 }, (_, index) => `line ${index}`).join(
+					"\n",
+				),
+				sessionId: "session-1",
+			}),
+			streamItem(3, {
+				type: "file_change_applied",
+				callId: "call-fc",
+				changes: [
+					{
+						path: "src/index.ts",
+						kind: "update",
+						diff: Array.from(
+							{ length: 80 },
+							(_, index) => `+line ${index}`,
+						).join("\n"),
+					},
+				],
+				sessionId: "session-1",
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(occurrences(html, "scrollbar-none")).toBeGreaterThanOrEqual(2);
 	});
 
 	test("renders a file_change_applied event with one entry per change", () => {

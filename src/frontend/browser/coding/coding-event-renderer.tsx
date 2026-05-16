@@ -595,7 +595,7 @@ function DetailList({ details }: { details: ToolDetailView[] }) {
 
 function PayloadPre({ value }: { value: Record<string, unknown> }) {
 	return (
-		<pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words">
+		<pre className="scrollbar-none max-h-48 overflow-auto whitespace-pre-wrap break-words">
 			{JSON.stringify(value, null, 2)}
 		</pre>
 	);
@@ -1240,7 +1240,7 @@ function renderCommandOutput(
 		truncated ? lines.slice(0, COMMAND_OUTPUT_MAX_LINES) : lines,
 	);
 	return (
-		<div className="max-h-72 overflow-auto">
+		<div className="scrollbar-none max-h-72 overflow-auto">
 			{visible.map(({ key, line }) => (
 				<div key={key} className="whitespace-pre">
 					{line || " "}
@@ -1318,7 +1318,7 @@ function renderDiff(diff: string): React.ReactNode {
 		truncated ? lines.slice(0, FILE_DIFF_MAX_LINES) : lines,
 	);
 	return (
-		<div className="max-h-72 overflow-auto bg-dark-950/40 font-mono text-[11px] leading-4">
+		<div className="scrollbar-none max-h-72 overflow-auto bg-dark-950/40 font-mono text-[11px] leading-4">
 			{visible.map(({ key, line }) => (
 				<div key={key} className={`px-3 whitespace-pre ${diffLineClass(line)}`}>
 					{line || " "}

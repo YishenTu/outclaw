@@ -35,4 +35,30 @@ describe("browser message input", () => {
 		expect(html).toContain('placeholder="Type a message..."');
 		expect(html).not.toContain("paste/drop an image");
 	});
+
+	test("hides only the thinking label prefix in compact mode", () => {
+		const desktopHtml = renderToStaticMarkup(
+			<MessageInput
+				onSend={() => false}
+				model={null}
+				effort={null}
+				onModelChange={() => false}
+				onEffortChange={() => false}
+			/>,
+		);
+		const compactHtml = renderToStaticMarkup(
+			<MessageInput
+				onSend={() => false}
+				model={null}
+				effort={null}
+				onModelChange={() => false}
+				onEffortChange={() => false}
+				compact
+			/>,
+		);
+
+		expect(desktopHtml).toContain("Thinking: Medium");
+		expect(compactHtml).not.toContain("Thinking: Medium");
+		expect(compactHtml).toContain("<span>Medium</span>");
+	});
 });

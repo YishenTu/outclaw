@@ -92,7 +92,7 @@ export function LinkedCodingSessionMenuButton() {
 	}
 
 	return (
-		<div ref={rootRef} className="relative ml-auto">
+		<div ref={rootRef} className="relative">
 			<LinkedCodingSessionMenuButtonView
 				open={open}
 				loading={loading}

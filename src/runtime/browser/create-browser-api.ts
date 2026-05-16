@@ -651,6 +651,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			if (!chatSession || chatSession.tag !== "chat") {
 				return { sessions: [] };
 			}
+			repairImplicitChatCodingLinks(options, params);
 			const linkedSessions =
 				options.chatCodingLinks?.listForChat({
 					chatAgentId: params.agentId,
@@ -1467,6 +1468,33 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			);
 		},
 	};
+}
+
+function repairImplicitChatCodingLinks(
+	options: Pick<CreateBrowserApiOptions, "chatCodingLinks" | "codingSessions">,
+	params: {
+		agentId: string;
+		providerId: string;
+		sdkSessionId: string;
+	},
+) {
+	if (!options.chatCodingLinks || !options.codingSessions) {
+		return;
+	}
+	// Control `code_prompt` launches historically recorded only the chat SDK id
+	// on the coding session. Repair those rows into the full link table so chat
+	// lookups have the same durable shape as browser-initiated coding starts.
+	for (const ref of options.codingSessions.listRefs({
+		linkedChatSessionId: params.sdkSessionId,
+	})) {
+		options.chatCodingLinks.upsert({
+			chatAgentId: params.agentId,
+			chatProviderId: params.providerId,
+			chatSdkSessionId: params.sdkSessionId,
+			codingProviderId: ref.providerId,
+			codingSdkSessionId: ref.sdkSessionId,
+		});
+	}
 }
 
 async function reconcileKnownCodingSessions(

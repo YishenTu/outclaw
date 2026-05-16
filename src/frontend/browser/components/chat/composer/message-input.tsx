@@ -553,6 +553,7 @@ export function MessageInput({
 									serviceTier={serviceTier}
 									sessionActive={sessionActive}
 									disabled={isInputDisabled}
+									showEffortLabelPrefix={!compact}
 									onModelChange={onModelChange}
 									onEffortChange={onEffortChange}
 								/>

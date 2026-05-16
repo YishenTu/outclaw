@@ -29,6 +29,7 @@ interface BrowserTabStripProps<T> {
 	onClose?: (item: T) => void;
 	onRename?: (item: T, title: string) => void;
 	addButton?: BrowserTabStripAddButton;
+	actions?: ReactNode;
 	textSizeClassName?: string;
 }
 
@@ -43,6 +44,7 @@ export function BrowserTabStrip<T>({
 	onClose,
 	onRename,
 	addButton,
+	actions,
 	textSizeClassName = "text-[12px]",
 }: BrowserTabStripProps<T>) {
 	const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -196,6 +198,9 @@ export function BrowserTabStrip<T>({
 					</button>
 				)}
 			</div>
+			{actions ? (
+				<div className="ml-2 flex shrink-0 items-center">{actions}</div>
+			) : null}
 			{rightCollapsed && onExpandRight && (
 				<button
 					type="button"

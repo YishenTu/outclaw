@@ -48,4 +48,21 @@ describe("browser chat message", () => {
 		expect(html).toContain("Image 1");
 		expect(html).not.toContain("/tmp/cat.png");
 	});
+
+	test("renders thinking content as markdown", () => {
+		const html = renderToStaticMarkup(
+			<Message
+				message={{
+					kind: "chat",
+					role: "assistant",
+					thinking:
+						"**Checking integration steps**\n\nI might need to run a focused integration check.",
+					content: "done",
+				}}
+			/>,
+		);
+
+		expect(html).toContain("<strong>Checking integration steps</strong>");
+		expect(html).not.toContain("**Checking integration steps**");
+	});
 });

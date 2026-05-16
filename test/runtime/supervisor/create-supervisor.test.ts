@@ -6,6 +6,7 @@ import type { FacadeEvent, RunParams } from "../../../src/common/protocol.ts";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
 import { createBrowserApi } from "../../../src/runtime/browser/create-browser-api.ts";
 import {
+	ChatCodingLinkStore,
 	CODING_STORAGE_OWNER_ID,
 	CodingRepositoryStore,
 	CodingSessionEventHub,
@@ -1277,6 +1278,7 @@ describe("createSupervisor", () => {
 			agentId: CODING_STORAGE_OWNER_ID,
 		});
 		const codingSessions = new CodingSessionStore(dbPath);
+		const chatCodingLinks = new ChatCodingLinkStore(dbPath);
 		const codingRepositories = new CodingRepositoryStore(dbPath);
 		const codingEvents = new CodingSessionEventHub();
 		store.upsert({
@@ -1298,8 +1300,26 @@ describe("createSupervisor", () => {
 			events: codingEvents,
 			sharedSessionStore: codingSharedStore,
 		});
+		const browserApi = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: codeHome,
+					providerId: "mock",
+					terminalRunCommand: "",
+				},
+			],
+			chatCodingLinks,
+			codingSessions,
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: dbDir,
+			homeDir: dbDir,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
 		const supervisor = createSupervisor({
 			port: 0,
+			browserApi,
 			codingEvents,
 			agents: [
 				createAgentRuntime({
@@ -1316,6 +1336,7 @@ describe("createSupervisor", () => {
 		cleanup = async () => {
 			await supervisor.stop();
 			await codingService.stop();
+			chatCodingLinks.close();
 			codingEvents.close();
 			codingRepositories.close();
 			codingSessions.close();
@@ -1331,6 +1352,10 @@ describe("createSupervisor", () => {
 			(event) =>
 				event.type === "coding_session_event" &&
 				(event.event as { type?: string } | undefined)?.type === "user_prompt",
+		);
+		const linkEvent = waitForEvent(
+			browser,
+			(event) => event.type === "browser_chat_coding_links_changed",
 		);
 
 		ws.send(
@@ -1384,6 +1409,23 @@ describe("createSupervisor", () => {
 			lifecycleStatus: "open",
 			runStatus: "idle",
 		});
+		await expect(linkEvent).resolves.toMatchObject({
+			type: "browser_chat_coding_links_changed",
+			chatAgentId: "agent-railly",
+			chatProviderId: "mock",
+			chatSdkSessionId: "chat-session-123",
+			codingProviderId: "mock",
+			codingSdkSessionId: "mock-session-123",
+		});
+		expect(
+			chatCodingLinks
+				.listForChat({
+					chatAgentId: "agent-railly",
+					chatProviderId: "mock",
+					chatSdkSessionId: "chat-session-123",
+				})
+				.map((session) => session.sdkSessionId),
+		).toEqual(["mock-session-123"]);
 
 		ws.close();
 	});

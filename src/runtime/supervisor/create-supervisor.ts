@@ -94,6 +94,9 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 	const controller = new SupervisorController({
 		bindings,
 		emitAgentEvents: options.emitAgentEvents,
+		linkChatCodingSession: options.browserApi?.linkChatCodingSession
+			? (event) => options.browserApi?.linkChatCodingSession?.(event)
+			: undefined,
 		rememberBrowserClientAgentId: options.rememberBrowserClientAgentId,
 		rememberInteractiveAgentId: options.rememberInteractiveAgentId,
 		registry,

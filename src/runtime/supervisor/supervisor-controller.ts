@@ -18,6 +18,9 @@ import type { ClientAgentBinding } from "./client-agent-binding.ts";
 interface SupervisorControllerOptions {
 	bindings: ClientAgentBinding;
 	emitAgentEvents?: boolean;
+	linkChatCodingSession?: (
+		event: BrowserChatCodingLinksChangedEvent,
+	) => Promise<void> | void;
 	rememberBrowserClientAgentId?: (clientId: string, agentId: string) => void;
 	rememberInteractiveAgentId?: (agentId: string) => void;
 	registry: AgentRuntimeRegistry;
@@ -326,11 +329,13 @@ export class SupervisorController {
 			return;
 		}
 
-		const linkedChatSessionId = runtime.getActiveSessionId();
+		const chatContext = this.resolveActiveChatCodingContext(runtime);
 		const result = await runtime.coding.startPrompt({
 			cwd: data.cwd,
 			prompt: data.prompt,
-			...(linkedChatSessionId ? { linkedChatSessionId } : {}),
+			...(chatContext
+				? { linkedChatSessionId: chatContext.chatSdkSessionId }
+				: {}),
 		});
 		if (result.status === "rejected") {
 			this.sendCodePromptError(ws, result.message);
@@ -344,6 +349,10 @@ export class SupervisorController {
 				sdkSessionId: result.sdkSessionId,
 			}),
 		);
+		await this.recordControlChatCodingLink(chatContext, {
+			providerId: result.providerId,
+			sdkSessionId: result.sdkSessionId,
+		});
 	}
 
 	private handleAgentCommand(
@@ -552,6 +561,52 @@ export class SupervisorController {
 		} catch {
 			return undefined;
 		}
+	}
+
+	private resolveActiveChatCodingContext(runtime: AgentRuntime):
+		| {
+				chatAgentId: string;
+				chatProviderId: string;
+				chatSdkSessionId: string;
+		  }
+		| undefined {
+		const activeSessionId = runtime.getActiveSessionId();
+		if (!activeSessionId) {
+			return undefined;
+		}
+		return {
+			chatAgentId: runtime.agentId,
+			chatProviderId: runtime.providerId,
+			chatSdkSessionId: activeSessionId,
+		};
+	}
+
+	private async recordControlChatCodingLink(
+		chatContext:
+			| {
+					chatAgentId: string;
+					chatProviderId: string;
+					chatSdkSessionId: string;
+			  }
+			| undefined,
+		codingSession: { providerId: string; sdkSessionId: string },
+	) {
+		if (!chatContext || !this.options.linkChatCodingSession) {
+			return;
+		}
+		const event: BrowserChatCodingLinksChangedEvent = {
+			type: "browser_chat_coding_links_changed",
+			...chatContext,
+			codingProviderId: codingSession.providerId,
+			codingSdkSessionId: codingSession.sdkSessionId,
+		};
+		try {
+			await this.options.linkChatCodingSession(event);
+		} catch (error) {
+			console.warn("Failed to link control coding session", error);
+			return;
+		}
+		this.broadcastBrowserChatCodingLinksChanged(event);
 	}
 
 	private rememberAgentSelection(ws: WsClient, agentId: string) {

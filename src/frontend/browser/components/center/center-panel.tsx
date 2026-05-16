@@ -1,3 +1,4 @@
+import { LinkedCodingSessionMenuButton } from "../../coding/linked-coding-session-menu-button.tsx";
 import { LinkedCodingSessionPanel } from "../../coding/linked-coding-session-panel.tsx";
 import { CHAT_TAB } from "../../stores/tab-policy.ts";
 import { type Tab, useTabsStore } from "../../stores/tabs.ts";
@@ -65,6 +66,7 @@ export function CenterPanelView({
 		<div className="flex h-full flex-col bg-dark-950">
 			<TabBarView
 				activeTabId={resolvedActiveTabId ?? CHAT_TAB.id}
+				actions={<LinkedCodingSessionMenuButton />}
 				closeTab={closeTab}
 				leftCollapsed={leftCollapsed}
 				rightCollapsed={rightCollapsed}

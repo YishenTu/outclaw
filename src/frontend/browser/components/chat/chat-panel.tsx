@@ -1,4 +1,3 @@
-import { LinkedCodingSessionMenuButton } from "../../coding/linked-coding-session-menu-button.tsx";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import { useIsMobile } from "../../lib/use-is-mobile.ts";
 import {
@@ -132,7 +131,6 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 						<span className="px-2 text-dark-700">/</span>
 						<span className="truncate">{sessionTitle}</span>
 					</div>
-					<LinkedCodingSessionMenuButton />
 				</div>
 			</div>
 			{chatSession?.error && (

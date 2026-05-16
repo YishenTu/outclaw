@@ -5,11 +5,13 @@ import {
 	GitCommitHorizontal,
 	MessageSquareText,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { fileNameFromPath } from "../../lib/path-display.ts";
 import { type Tab, useTabsStore } from "../../stores/tabs.ts";
 import { BrowserTabStrip } from "../browser-tab-strip.tsx";
 
 interface TabBarProps {
+	actions?: ReactNode;
 	leftCollapsed?: boolean;
 	rightCollapsed?: boolean;
 	onExpandLeft?: () => void;
@@ -24,6 +26,7 @@ interface TabBarViewProps extends TabBarProps {
 }
 
 export function TabBar({
+	actions,
 	leftCollapsed = false,
 	rightCollapsed = false,
 	onExpandLeft,
@@ -37,6 +40,7 @@ export function TabBar({
 	return (
 		<TabBarView
 			activeTabId={activeTabId}
+			actions={actions}
 			closeTab={closeTab}
 			leftCollapsed={leftCollapsed}
 			onExpandLeft={onExpandLeft}
@@ -50,6 +54,7 @@ export function TabBar({
 
 export function TabBarView({
 	activeTabId,
+	actions,
 	closeTab,
 	leftCollapsed = false,
 	rightCollapsed = false,
@@ -77,6 +82,7 @@ export function TabBarView({
 						}),
 			}))}
 			activeId={activeTabId}
+			actions={actions}
 			leftCollapsed={leftCollapsed}
 			rightCollapsed={rightCollapsed}
 			onExpandLeft={onExpandLeft}
