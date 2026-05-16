@@ -21,6 +21,7 @@ import { MockFacade } from "../../helpers/mock-facade.ts";
 interface Harness {
 	cleanup(): Promise<void>;
 	codingFacade: MockFacade;
+	codingRepositories: CodingRepositoryStore;
 	codingService: ReturnType<typeof createCodingService>;
 	codingSessions: CodingSessionStore;
 	codingSharedStore: SessionStore;
@@ -48,6 +49,7 @@ function makeHarness(facade?: MockFacade): Harness {
 	});
 	const harness: Harness = {
 		codingFacade,
+		codingRepositories,
 		codingService,
 		codingSessions,
 		codingSharedStore,
@@ -308,6 +310,57 @@ describe("createCodingService", () => {
 		expect(codingSessions.getDetail("codex", "trashed-thread")).toMatchObject({
 			lifecycleStatus: "trashed",
 			title: "Renamed in Codex",
+		});
+	});
+
+	test("reconcile does not reopen sessions archived by a repository cascade", async () => {
+		const facade = new ProviderSyncFacade();
+		const {
+			codingRepositories,
+			codingService,
+			codingSessions,
+			codingSharedStore,
+		} = makeHarness(facade);
+		const repo = codingRepositories.register({
+			rootCwd: mkdtempSync(join(tmpdir(), "outclaw-cascade-sync-repo-")),
+			source: "manual",
+			timestamp: 100,
+		});
+		codingSharedStore.upsert({
+			providerId: "codex",
+			sdkSessionId: "cascaded-thread",
+			title: "Repo work",
+			model: "gpt-5.5",
+			source: "code",
+			tag: "code",
+			timestamp: 100,
+		});
+		codingSessions.upsert({
+			providerId: "codex",
+			sdkSessionId: "cascaded-thread",
+			cwd: repo.rootCwd,
+			repositoryId: repo.id,
+			runStatus: "idle",
+			timestamp: 100,
+		});
+		codingSessions.archiveCascaded(repo.id);
+		facade.reconcileResponses = [
+			{
+				sessionId: "cascaded-thread",
+				lifecycleStatus: "open",
+				title: "Provider still says open",
+			},
+		];
+
+		await codingService.reconcileSessions({
+			providerId: "codex",
+			sdkSessionIds: ["cascaded-thread"],
+		});
+
+		expect(codingSessions.getDetail("codex", "cascaded-thread")).toMatchObject({
+			lifecycleStatus: "archived",
+			cascadedFromRepo: true,
+			title: "Provider still says open",
 		});
 	});
 

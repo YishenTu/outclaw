@@ -205,7 +205,7 @@ function isKnownFacadeCodingSession(
  * | local      | provider archived | provider open |
  * |------------|-------------------|---------------|
  * | open       | -> archived       | no-op         |
- * | archived   | no-op             | -> open       |
+ * | archived   | no-op             | -> open unless repo-cascaded |
  * | trashed    | no-op             | ignore        |
  *
  * Titles always reflect last-write, regardless of lifecycle state.
@@ -225,7 +225,7 @@ function syncKnownCodingSessionUpdate(
 			opts.sessions.archive(providerId, update.sessionId);
 		}
 	} else if (update.lifecycleStatus === "open") {
-		if (session.lifecycleStatus === "archived") {
+		if (session.lifecycleStatus === "archived" && !session.cascadedFromRepo) {
 			opts.sessions.restore(providerId, update.sessionId);
 		}
 	}

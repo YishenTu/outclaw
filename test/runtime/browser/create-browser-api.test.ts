@@ -1666,18 +1666,16 @@ describe("createBrowserApi", () => {
 		).resolves.toEqual({
 			command: "bun run check",
 		});
-		await expect(api.getCodingRepository(registered.id)).resolves.toMatchObject(
-			{
-				id: registered.id,
-				terminalRunCommand: "bun run check",
-			},
-		);
+		const updatedRepository = await api.getCodingRepository(registered.id);
+		expect(updatedRepository).toMatchObject({
+			id: registered.id,
+			terminalRunCommand: "bun run check",
+		});
 
 		await expect(api.archiveCodingRepository(registered.id)).resolves.toEqual({
 			archived: true,
 			repository: {
-				...registered,
-				terminalRunCommand: "bun run check",
+				...updatedRepository,
 				status: "archived",
 			},
 		});

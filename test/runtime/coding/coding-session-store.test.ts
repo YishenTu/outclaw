@@ -597,8 +597,8 @@ describe("CodingSessionStore", () => {
 			repositoryId: repo.id,
 			runStatus: "idle",
 		});
-		codingSessions.trash("codex", "code-trashed-stale");
-		codingSessions.trash("codex", "code-trashed-fresh");
+		codingSessions.trash("codex", "code-trashed-stale", 50);
+		codingSessions.trash("codex", "code-trashed-fresh", 200);
 
 		const purged = codingSessions.purgeTrashedBefore(100);
 
@@ -606,6 +606,37 @@ describe("CodingSessionStore", () => {
 		expect(codingSessions.get("codex", "code-trashed-stale")).toBeUndefined();
 		expect(codingSessions.get("codex", "code-trashed-fresh")).toBeDefined();
 		expect(codingSessions.get("codex", "code-open")).toBeDefined();
+
+		repositories.close();
+		codingSessions.close();
+		sessions.close();
+	});
+
+	test("purges trashed sessions by trash time instead of last activity", () => {
+		const { sessions, codingSessions, repositories } = createStores();
+		const repo = repositories.register({
+			rootCwd: mkdtempSync(join(tmpdir(), "outclaw-code-trash-time-repo-")),
+			source: "manual",
+			timestamp: 5,
+		});
+		insertCodingSession(sessions, codingSessions, {
+			id: "code-old-but-newly-trashed",
+			title: "Old but newly trashed",
+			timestamp: 10,
+			repositoryId: repo.id,
+			runStatus: "idle",
+		});
+		codingSessions.trash("codex", "code-old-but-newly-trashed", 1_000);
+
+		expect(codingSessions.purgeTrashedBefore(500)).toBe(0);
+		expect(
+			codingSessions.get("codex", "code-old-but-newly-trashed"),
+		).toBeDefined();
+
+		expect(codingSessions.purgeTrashedBefore(1_500)).toBe(1);
+		expect(
+			codingSessions.get("codex", "code-old-but-newly-trashed"),
+		).toBeUndefined();
 
 		repositories.close();
 		codingSessions.close();

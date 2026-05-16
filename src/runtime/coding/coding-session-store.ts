@@ -36,6 +36,7 @@ export interface CodingSessionRecord {
 	// so test fixtures can build minimal records, but the row mapper always
 	// populates it from the DB.
 	cascadedFromRepo?: boolean;
+	trashedAt?: number;
 	runStatus: CodingSessionRunStatus;
 	createdAt: number;
 	lastActive: number;
@@ -87,6 +88,7 @@ interface CodingSessionDatabaseRow {
 	browser_tab_id: string | null;
 	lifecycle_status: CodingSessionLifecycleStatus;
 	cascaded_from_repo: number;
+	trashed_at: number | null;
 	run_status: CodingSessionRunStatus;
 	created_at: number;
 	last_active: number;
@@ -151,6 +153,7 @@ export class CodingSessionStore {
 					browser_tab_id,
 					lifecycle_status,
 					cascaded_from_repo,
+					trashed_at,
 					run_status,
 					created_at,
 					last_active
@@ -165,6 +168,7 @@ export class CodingSessionStore {
 					$browserTabId,
 					$lifecycleStatus,
 					0,
+					CASE WHEN $lifecycleStatus = 'trashed' THEN $now ELSE NULL END,
 					$runStatus,
 					$now,
 					$now
@@ -175,6 +179,10 @@ export class CodingSessionStore {
 					linked_chat_session_id = $linkedChatSessionId,
 					browser_tab_id = COALESCE($browserTabId, browser_tab_id),
 					lifecycle_status = $lifecycleStatus,
+					trashed_at = CASE
+						WHEN $lifecycleStatus = 'trashed' THEN COALESCE(trashed_at, $now)
+						ELSE NULL
+					END,
 					run_status = $runStatus,
 					last_active = $now`,
 			)
@@ -282,11 +290,12 @@ export class CodingSessionStore {
 		});
 	}
 
-	trash(providerId: string, sdkSessionId: string) {
+	trash(providerId: string, sdkSessionId: string, timestamp?: number) {
 		this.updateLifecycleStatus({
 			providerId,
 			sdkSessionId,
 			lifecycleStatus: "trashed",
+			timestamp,
 		});
 	}
 
@@ -303,7 +312,8 @@ export class CodingSessionStore {
 			.query(
 				`UPDATE coding_sessions
 				 SET lifecycle_status = 'archived',
-				     cascaded_from_repo = 1
+				     cascaded_from_repo = 1,
+				     trashed_at = NULL
 				 WHERE agent_id = $agentId
 				   AND repository_id = $repositoryId
 				   AND lifecycle_status = 'open'`,
@@ -314,7 +324,8 @@ export class CodingSessionStore {
 			});
 	}
 
-	trashCascaded(repositoryId: string) {
+	trashCascaded(repositoryId: string, timestamp?: number) {
+		const now = timestamp ?? Date.now();
 		// Repo-trash is a one-way operation: every non-trashed session in the
 		// repo follows it into the bin. Restoring the repo later does NOT
 		// auto-revive these sessions; users restore them individually if they
@@ -323,7 +334,8 @@ export class CodingSessionStore {
 			.query(
 				`UPDATE coding_sessions
 				 SET lifecycle_status = 'trashed',
-				     cascaded_from_repo = 0
+				     cascaded_from_repo = 0,
+				     trashed_at = COALESCE(trashed_at, $now)
 				 WHERE agent_id = $agentId
 				   AND repository_id = $repositoryId
 				   AND lifecycle_status IN ('open', 'archived')`,
@@ -331,6 +343,7 @@ export class CodingSessionStore {
 			.run({
 				$agentId: this.storageOwnerId,
 				$repositoryId: repositoryId,
+				$now: now,
 			});
 	}
 
@@ -339,7 +352,8 @@ export class CodingSessionStore {
 			.query(
 				`UPDATE coding_sessions
 				 SET lifecycle_status = 'open',
-				     cascaded_from_repo = 0
+				     cascaded_from_repo = 0,
+				     trashed_at = NULL
 				 WHERE agent_id = $agentId
 				   AND repository_id = $repositoryId
 				   AND lifecycle_status = 'archived'
@@ -358,7 +372,8 @@ export class CodingSessionStore {
 				 FROM coding_sessions
 				 WHERE agent_id = $agentId
 				   AND lifecycle_status = 'trashed'
-				   AND last_active < $threshold`,
+				   AND trashed_at IS NOT NULL
+				   AND trashed_at < $threshold`,
 			)
 			.all({
 				$agentId: this.storageOwnerId,
@@ -468,6 +483,7 @@ export class CodingSessionStore {
 						c.browser_tab_id,
 						c.lifecycle_status,
 						c.cascaded_from_repo,
+						c.trashed_at,
 						c.run_status,
 						c.created_at,
 						c.last_active,
@@ -557,6 +573,7 @@ export class CodingSessionStore {
 						browser_tab_id,
 						lifecycle_status,
 						cascaded_from_repo,
+						trashed_at,
 						run_status,
 						created_at,
 						last_active
@@ -595,6 +612,8 @@ export class CodingSessionStore {
 					linked_chat_session_id,
 					browser_tab_id,
 					lifecycle_status,
+					cascaded_from_repo,
+					trashed_at,
 					run_status,
 					created_at,
 					last_active
@@ -643,6 +662,7 @@ export class CodingSessionStore {
 						c.browser_tab_id,
 						c.lifecycle_status,
 						c.cascaded_from_repo,
+						c.trashed_at,
 						c.run_status,
 						c.created_at,
 						c.last_active,
@@ -678,7 +698,9 @@ export class CodingSessionStore {
 		providerId: string;
 		sdkSessionId: string;
 		lifecycleStatus: CodingSessionLifecycleStatus;
+		timestamp?: number;
 	}) {
+		const now = params.timestamp ?? Date.now();
 		// Lifecycle transitions never touch last_active. Sorting archived or trashed
 		// items by "last user/agent activity" stays honest, so an archived session
 		// is still findable next to the open work it used to sit beside.
@@ -686,7 +708,11 @@ export class CodingSessionStore {
 			.query(
 				`UPDATE coding_sessions
 				 SET lifecycle_status = $lifecycleStatus,
-				     cascaded_from_repo = 0
+				     cascaded_from_repo = 0,
+				     trashed_at = CASE
+				       WHEN $lifecycleStatus = 'trashed' THEN COALESCE(trashed_at, $now)
+				       ELSE NULL
+				     END
 				 WHERE agent_id = $agentId
 				   AND provider_id = $providerId
 				   AND sdk_session_id = $sdkSessionId`,
@@ -696,6 +722,7 @@ export class CodingSessionStore {
 				$providerId: params.providerId,
 				$sdkSessionId: params.sdkSessionId,
 				$lifecycleStatus: params.lifecycleStatus,
+				$now: now,
 			});
 	}
 
@@ -737,6 +764,7 @@ export function ensureCodingSessionStoreSchema(db: Database) {
 		browser_tab_id TEXT,
 		lifecycle_status TEXT NOT NULL,
 		cascaded_from_repo INTEGER NOT NULL DEFAULT 0,
+		trashed_at INTEGER,
 		run_status TEXT NOT NULL,
 		created_at INTEGER NOT NULL,
 		last_active INTEGER NOT NULL,
@@ -769,6 +797,7 @@ function mapCodingSessionRow(
 		...(row.browser_tab_id ? { browserTabId: row.browser_tab_id } : {}),
 		lifecycleStatus: row.lifecycle_status,
 		cascadedFromRepo: row.cascaded_from_repo === 1,
+		...(row.trashed_at !== null ? { trashedAt: row.trashed_at } : {}),
 		runStatus: row.run_status,
 		createdAt: row.created_at,
 		lastActive: row.last_active,
