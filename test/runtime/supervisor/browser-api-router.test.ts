@@ -911,12 +911,20 @@ describe("handleBrowserApiRequest", () => {
 	test("links coding start, resume, and status requests when chat context headers are present", async () => {
 		const links: string[] = [];
 		const notifications: string[] = [];
+		let startInput:
+			| {
+					linkedChatSessionId?: string;
+			  }
+			| undefined;
 		const browserApi = {
-			startCodingSession: async () => ({
-				status: "accepted" as const,
-				providerId: "codex",
-				sdkSessionId: "code-start",
-			}),
+			startCodingSession: async (input: typeof startInput) => {
+				startInput = input;
+				return {
+					status: "accepted" as const,
+					providerId: "codex",
+					sdkSessionId: "code-start",
+				};
+			},
 			resumeCodingSession: async () => ({
 				status: "accepted" as const,
 				providerId: "codex",
@@ -1011,6 +1019,9 @@ describe("handleBrowserApiRequest", () => {
 			"agent-railly:claude/chat-1->codex/code-status",
 		]);
 		expect(notifications).toEqual(links);
+		expect(startInput).toMatchObject({
+			linkedChatSessionId: "chat-1",
+		});
 	});
 
 	test("does not link rejected coding start requests", async () => {

@@ -465,16 +465,7 @@ export function handleBrowserServerEvent(
 async function openLinkedCodingSessionForActiveChat(
 	event: Extract<ServerEvent, { type: "browser_chat_coding_links_changed" }>,
 ) {
-	const activeAgentId = useAgentsStore.getState().activeAgentId;
-	if (activeAgentId !== event.chatAgentId) {
-		return;
-	}
-	const activeSession =
-		useSessionsStore.getState().activeSessionByAgent[event.chatAgentId];
-	if (
-		activeSession?.providerId !== event.chatProviderId ||
-		activeSession.sdkSessionId !== event.chatSdkSessionId
-	) {
+	if (!isActiveChatCodingLinkEvent(event)) {
 		return;
 	}
 	try {
@@ -489,4 +480,27 @@ async function openLinkedCodingSessionForActiveChat(
 	} catch (error) {
 		console.warn("Failed to open linked coding session", error);
 	}
+}
+
+function isActiveChatCodingLinkEvent(
+	event: Extract<ServerEvent, { type: "browser_chat_coding_links_changed" }>,
+): boolean {
+	const activeAgentId = useAgentsStore.getState().activeAgentId;
+	if (activeAgentId !== event.chatAgentId) {
+		return false;
+	}
+	const activeSession =
+		useSessionsStore.getState().activeSessionByAgent[event.chatAgentId];
+	if (
+		activeSession?.providerId === event.chatProviderId &&
+		activeSession.sdkSessionId === event.chatSdkSessionId
+	) {
+		return true;
+	}
+
+	const runtime = useRuntimeStore.getState();
+	return (
+		runtime.providerId === event.chatProviderId &&
+		runtime.sessionId === event.chatSdkSessionId
+	);
 }

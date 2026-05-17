@@ -3,6 +3,7 @@ import type { CodingSessionEventStreamItem } from "../lib/api.ts";
 export interface CodingSessionEventCacheEntry {
 	events: CodingSessionEventStreamItem[];
 	lastSequence: number;
+	lastLiveSequence?: number;
 }
 
 export type CodingSessionEventCache = Map<string, CodingSessionEventCacheEntry>;
@@ -51,12 +52,18 @@ export function appendCodingSessionCachedEvent(
 	item: CodingSessionEventStreamItem,
 ): CodingSessionEventCacheEntry {
 	const key = codingSessionEventCacheKey(item);
+	const cached = codingSessionEventCache.get(key);
 	const currentEvents = readCodingSessionCachedEvents(key);
 	const entry = appendCodingSessionEventBatch(
 		codingSessionEventCache,
 		key,
 		currentEvents,
 		[item],
+		{
+			liveSource: true,
+			sequenceCursor:
+				cached?.events === currentEvents ? (cached.lastLiveSequence ?? 0) : 0,
+		},
 	);
 	notifyCodingSessionEventListeners(key, currentEvents, entry);
 	return entry;
@@ -87,14 +94,20 @@ export function appendCodingSessionEventBatch(
 	key: string,
 	currentEvents: CodingSessionEventStreamItem[],
 	pendingEvents: CodingSessionEventStreamItem[],
-	options: { allowSequenceRestart?: boolean; maxEntries?: number } = {},
+	options: {
+		allowSequenceRestart?: boolean;
+		liveSource?: boolean;
+		maxEntries?: number;
+		sequenceCursor?: number;
+	} = {},
 ): CodingSessionEventCacheEntry {
 	const cached = cache.get(key);
 	const firstPendingSequence = pendingEvents[0]?.sequence;
 	const currentSequence = currentEvents.at(-1)?.sequence ?? 0;
 	const cachedSequence =
 		cached?.events === currentEvents ? cached.lastSequence : undefined;
-	const currentLastSequence = cachedSequence ?? currentSequence;
+	const currentLastSequence =
+		options.sequenceCursor ?? cachedSequence ?? currentSequence;
 	const sequenceRestarted =
 		options.allowSequenceRestart === true &&
 		firstPendingSequence === 1 &&
@@ -119,10 +132,26 @@ export function appendCodingSessionEventBatch(
 		events: nextEvents,
 		lastSequence: sequenceRestarted
 			? lastSequence
-			: Math.max(cached?.lastSequence ?? 0, lastSequence),
+			: Math.max(cached?.lastSequence ?? 0, currentSequence, lastSequence),
+		...resolveLastLiveSequence(cached, lastSequence, options.liveSource),
 	};
 	rememberCodingSessionEventCacheEntry(cache, key, entry, options.maxEntries);
 	return entry;
+}
+
+function resolveLastLiveSequence(
+	cached: CodingSessionEventCacheEntry | undefined,
+	lastSequence: number,
+	liveSource: boolean | undefined,
+): Pick<CodingSessionEventCacheEntry, "lastLiveSequence"> {
+	if (liveSource) {
+		return {
+			lastLiveSequence: Math.max(cached?.lastLiveSequence ?? 0, lastSequence),
+		};
+	}
+	return cached?.lastLiveSequence === undefined
+		? {}
+		: { lastLiveSequence: cached.lastLiveSequence };
 }
 
 function shouldOmitFromCachedTranscript(event: { type?: string }): boolean {
@@ -163,8 +192,12 @@ function mergeCodingSessionHydration(
 		{ allowSequenceRestart: true, maxEntries: 1 },
 	);
 	if (currentEvents.length === 0) {
-		rememberCodingSessionEventCacheEntry(cache, key, hydrationEntry);
-		return hydrationEntry;
+		const entry = {
+			...hydrationEntry,
+			...resolveLastLiveSequence(cache.get(key), 0, false),
+		};
+		rememberCodingSessionEventCacheEntry(cache, key, entry);
+		return entry;
 	}
 
 	const seen = new Set(
@@ -182,8 +215,6 @@ function mergeCodingSessionHydration(
 				? [...hydrationEntry.events, item]
 				: [...mergedEvents, item];
 	}
-	mergedEvents = mergedEvents.toSorted(compareCodingSessionEventItems);
-
 	const cached = cache.get(key);
 	const currentLastSequence =
 		cached?.events === currentEvents
@@ -192,16 +223,10 @@ function mergeCodingSessionHydration(
 	const entry = {
 		events: mergedEvents,
 		lastSequence: Math.max(hydrationEntry.lastSequence, currentLastSequence),
+		...resolveLastLiveSequence(cached, 0, false),
 	};
 	rememberCodingSessionEventCacheEntry(cache, key, entry);
 	return entry;
-}
-
-function compareCodingSessionEventItems(
-	left: CodingSessionEventStreamItem,
-	right: CodingSessionEventStreamItem,
-): number {
-	return left.sequence - right.sequence || left.createdAt - right.createdAt;
 }
 
 function codingSessionEventItemKey(item: CodingSessionEventStreamItem): string {

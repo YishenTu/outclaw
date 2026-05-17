@@ -206,6 +206,14 @@ function findHistorySuffixInLiveSnapshot(
 	history: CodingSessionEvent[],
 	liveSnapshot: CodingSessionEvent[],
 ): { length: number } {
+	const semanticOverlap = findSemanticHistorySuffixInLiveSnapshot(
+		history,
+		liveSnapshot,
+	);
+	if (semanticOverlap.length > 0) {
+		return semanticOverlap;
+	}
+
 	const maxLength = Math.min(history.length, liveSnapshot.length);
 	for (let length = maxLength; length > 0; length -= 1) {
 		const historyStart = history.length - length;
@@ -236,6 +244,104 @@ function findHistorySuffixInLiveSnapshot(
 	return { length: 0 };
 }
 
+type CodingEventSignaturePart =
+	| { type: "event"; key: string }
+	| { type: "text"; text: string }
+	| { type: "thinking"; text: string };
+
+function findSemanticHistorySuffixInLiveSnapshot(
+	history: CodingSessionEvent[],
+	liveSnapshot: CodingSessionEvent[],
+): { length: number } {
+	for (let historyStart = 0; historyStart < history.length; historyStart += 1) {
+		if (history[historyStart]?.type !== "user_prompt") {
+			continue;
+		}
+		const historySignature = buildCodingEventSignature(
+			history.slice(historyStart),
+		);
+		for (
+			let snapshotStart = 0;
+			snapshotStart < liveSnapshot.length;
+			snapshotStart += 1
+		) {
+			if (liveSnapshot[snapshotStart]?.type !== "user_prompt") {
+				continue;
+			}
+			const liveSignature = buildCodingEventSignature(
+				liveSnapshot.slice(snapshotStart),
+			);
+			if (codingEventSignatureCoveredByLive(historySignature, liveSignature)) {
+				return { length: history.length - historyStart };
+			}
+		}
+	}
+
+	return { length: 0 };
+}
+
+function buildCodingEventSignature(
+	events: CodingSessionEvent[],
+): CodingEventSignaturePart[] {
+	const signature: CodingEventSignaturePart[] = [];
+	let text = "";
+	let thinking = "";
+
+	const flushText = () => {
+		if (text !== "") {
+			signature.push({ type: "text", text });
+			text = "";
+		}
+	};
+	const flushThinking = () => {
+		if (thinking !== "") {
+			signature.push({ type: "thinking", text: thinking });
+			thinking = "";
+		}
+	};
+
+	for (const event of events) {
+		if (event.type === "text") {
+			flushThinking();
+			text += event.text;
+			continue;
+		}
+		if (event.type === "thinking") {
+			flushText();
+			thinking += event.text;
+			continue;
+		}
+
+		flushText();
+		flushThinking();
+		signature.push({ type: "event", key: codingSessionEventKey(event) });
+	}
+
+	flushText();
+	flushThinking();
+	return signature;
+}
+
+function codingEventSignatureCoveredByLive(
+	history: CodingEventSignaturePart[],
+	live: CodingEventSignaturePart[],
+): boolean {
+	if (history.length === 0 || live.length < history.length) {
+		return false;
+	}
+
+	return history.every((part, index) => {
+		const livePart = live[index];
+		if (!livePart || livePart.type !== part.type) {
+			return false;
+		}
+		if (part.type === "event") {
+			return livePart.type === "event" && livePart.key === part.key;
+		}
+		return livePart.type === part.type && livePart.text.startsWith(part.text);
+	});
+}
+
 function countHistoryLiveEventOverlap(
 	history: CodingSessionEvent[],
 	bufferedLiveEvents: CodingSessionEvent[],
@@ -263,5 +369,30 @@ function countHistoryLiveEventOverlap(
 }
 
 function codingSessionEventKey(event: CodingSessionEvent): string {
-	return JSON.stringify(event);
+	if (event.type === "user_prompt") {
+		return JSON.stringify({
+			type: event.type,
+			text: event.text,
+			...(event.images ? { images: event.images } : {}),
+		});
+	}
+	if (event.type === "done") {
+		return JSON.stringify({ type: event.type });
+	}
+	if (event.type === "turn_aborted") {
+		return JSON.stringify({ type: event.type });
+	}
+
+	return JSON.stringify(stableCodingSessionEventRecord(event));
+}
+
+function stableCodingSessionEventRecord(
+	event: CodingSessionEvent,
+): Record<string, unknown> {
+	const record = { ...event } as Record<string, unknown>;
+	delete record.durationMs;
+	delete record.sessionId;
+	delete record.timestamp;
+	delete record.usage;
+	return record;
 }

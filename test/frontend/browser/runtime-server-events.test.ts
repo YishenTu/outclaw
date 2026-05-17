@@ -1822,6 +1822,57 @@ describe("browser runtime server events", () => {
 		}
 	});
 
+	test("opens linked coding sessions when runtime state has the active chat before the sidebar store", async () => {
+		const { options } = createHandlerOptions();
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = new URL(String(input), "http://localhost");
+			expect(url.pathname).toBe("/api/coding/sessions/codex/code-1");
+			return Response.json({
+				providerId: "codex",
+				sdkSessionId: "code-1",
+				repositoryId: "repo-1",
+				title: "Fix tests",
+				model: "gpt-5.5",
+				lastActive: 300,
+				cwd: "/workspace/outclaw",
+				lifecycleStatus: "open",
+				runStatus: "running",
+				createdAt: 250,
+				source: "code",
+				tag: "code",
+			});
+		}) as typeof fetch;
+		try {
+			useAgentsStore.getState().setActiveAgent("agent-railly");
+			useRuntimeStore.setState({
+				providerId: "claude",
+				sessionId: "chat-1",
+			});
+
+			handleBrowserServerEvent(
+				{
+					type: "browser_chat_coding_links_changed",
+					chatAgentId: "agent-railly",
+					chatProviderId: "claude",
+					chatSdkSessionId: "chat-1",
+					codingProviderId: "codex",
+					codingSdkSessionId: "code-1",
+				},
+				options,
+			);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(useTabsStore.getState().activeTabId).toBe(CHAT_TAB.id);
+			expect(useTabsStore.getState().tabs.map((tab) => tab.id)).toEqual([
+				CHAT_TAB.id,
+				"coding:repo-1:codex:code-1",
+			]);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
 	test("routes coding session events through the shared browser websocket handler", () => {
 		const { options } = createHandlerOptions();
 

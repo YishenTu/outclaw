@@ -124,6 +124,66 @@ describe("coding session event cache", () => {
 		]);
 	});
 
+	test("appends live websocket events after hydrated history when live sequence restarts", () => {
+		const key = codingSessionEventCacheKey({
+			providerId: "codex",
+			sdkSessionId: "session-1",
+		});
+
+		hydrateCodingSessionCachedEvents(key, [
+			streamItem(1, { type: "user_prompt", text: "first" }),
+			streamItem(2, { type: "text", text: "done" }),
+			streamItem(3, { type: "done", sessionId: "session-1", durationMs: 0 }),
+		]);
+		appendCodingSessionCachedEvent(
+			streamItem(1, { type: "user_prompt", text: "follow up" }),
+		);
+		appendCodingSessionCachedEvent(
+			streamItem(2, { type: "text", text: "streaming" }),
+		);
+
+		expect(
+			readCodingSessionCachedEvents(key).map((item) => item.event),
+		).toEqual([
+			{ type: "user_prompt", text: "first" },
+			{ type: "text", text: "done" },
+			{ type: "done", sessionId: "session-1", durationMs: 0 },
+			{ type: "user_prompt", text: "follow up" },
+			{ type: "text", text: "streaming" },
+		]);
+	});
+
+	test("keeps live restarted-sequence events after stale provider hydration", () => {
+		const key = codingSessionEventCacheKey({
+			providerId: "codex",
+			sdkSessionId: "session-1",
+		});
+
+		hydrateCodingSessionCachedEvents(key, [
+			streamItem(1, { type: "user_prompt", text: "first" }),
+			streamItem(2, { type: "text", text: "done" }),
+			streamItem(3, { type: "done", sessionId: "session-1", durationMs: 0 }),
+		]);
+		appendCodingSessionCachedEvent(
+			streamItem(1, { type: "user_prompt", text: "follow up" }),
+		);
+
+		hydrateCodingSessionCachedEvents(key, [
+			streamItem(1, { type: "user_prompt", text: "first" }),
+			streamItem(2, { type: "text", text: "done" }),
+			streamItem(3, { type: "done", sessionId: "session-1", durationMs: 0 }),
+		]);
+
+		expect(
+			readCodingSessionCachedEvents(key).map((item) => item.event),
+		).toEqual([
+			{ type: "user_prompt", text: "first" },
+			{ type: "text", text: "done" },
+			{ type: "done", sessionId: "session-1", durationMs: 0 },
+			{ type: "user_prompt", text: "follow up" },
+		]);
+	});
+
 	test("drops provider-neutral non-transcript events while advancing the replay cursor", () => {
 		const cache: CodingSessionEventCache = new Map();
 		const entry = appendCodingSessionEventBatch(

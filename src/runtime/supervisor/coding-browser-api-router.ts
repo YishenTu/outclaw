@@ -657,6 +657,8 @@ async function startCodingSession(
 	}
 	if (typeof body.linkedChatSessionId === "string") {
 		startParams.linkedChatSessionId = body.linkedChatSessionId;
+	} else if (chatContext.value) {
+		startParams.linkedChatSessionId = chatContext.value.chatSdkSessionId;
 	}
 	const result = await browserApi.startCodingSession({
 		...startParams,

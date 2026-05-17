@@ -197,6 +197,84 @@ describe("openCodingSessionEventStream", () => {
 		}
 	});
 
+	test("does not duplicate a live follow-up turn already represented in condensed provider history", async () => {
+		const liveEvents = new CodingSessionEventHub();
+		liveEvents.append({
+			providerId: "codex",
+			sdkSessionId: "s1",
+			event: { type: "user_prompt", text: "follow up" },
+			timestamp: 20,
+		});
+		liveEvents.append({
+			providerId: "codex",
+			sdkSessionId: "s1",
+			event: { type: "text", text: "hel", sessionId: "s1" },
+			timestamp: 21,
+		});
+		liveEvents.append({
+			providerId: "codex",
+			sdkSessionId: "s1",
+			event: { type: "text", text: "lo", sessionId: "s1" },
+			timestamp: 22,
+		});
+		liveEvents.append({
+			providerId: "codex",
+			sdkSessionId: "s1",
+			event: { type: "done", sessionId: "s1", durationMs: 7 },
+			timestamp: 23,
+		});
+
+		const iterator = openCodingSessionEventStream({
+			history: {
+				readCodingSessionEvents: async () => [
+					{ type: "user_prompt", text: "first", sessionId: "s1" },
+					{ type: "text", text: "old", sessionId: "s1" },
+					{ type: "done", sessionId: "s1", durationMs: 0 },
+					{
+						type: "user_prompt",
+						text: "follow up",
+						sessionId: "s1",
+						timestamp: 19,
+					},
+					{ type: "text", text: "hello", sessionId: "s1", timestamp: 23 },
+					{ type: "done", sessionId: "s1", durationMs: 0 },
+				],
+			},
+			liveEvents,
+			providerId: "codex",
+			sdkSessionId: "s1",
+			follow: false,
+		})[Symbol.asyncIterator]();
+
+		try {
+			const emitted = [
+				(await nextOrTimeout(iterator)).value?.event,
+				(await nextOrTimeout(iterator)).value?.event,
+				(await nextOrTimeout(iterator)).value?.event,
+				(await nextOrTimeout(iterator)).value?.event,
+				(await nextOrTimeout(iterator)).value?.event,
+				(await nextOrTimeout(iterator)).value?.event,
+				(await nextOrTimeout(iterator)).value?.event,
+			];
+
+			expect(emitted).toEqual([
+				{ type: "user_prompt", text: "first", sessionId: "s1" },
+				{ type: "text", text: "old", sessionId: "s1" },
+				{ type: "done", sessionId: "s1", durationMs: 0 },
+				{ type: "user_prompt", text: "follow up" },
+				{ type: "text", text: "hel", sessionId: "s1" },
+				{ type: "text", text: "lo", sessionId: "s1" },
+				{ type: "done", sessionId: "s1", durationMs: 7 },
+			]);
+			expect(await iterator.next()).toEqual({
+				done: true,
+				value: undefined,
+			});
+		} finally {
+			liveEvents.close();
+		}
+	});
+
 	test("reads provider history before following live events", async () => {
 		const liveEvents = new CodingSessionEventHub();
 		const controller = new AbortController();
