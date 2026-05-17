@@ -19,6 +19,7 @@ such as `$`, `!`, quotes, or globs.
 
 ## Guidance
 
+- Run these commands from the agent workspace by default (`~/.outclaw/agents/<agent>/`), even when operating on a project repo. Supply the repo as an explicit path or registered id (`oc coding start /absolute/path/to/repo "..."`).
 - Prefer the short form when the target is clear.
 - Use `start` explicitly when you want to force repository/path start semantics.
 - Pass a local repo path when you know the workspace. Pass a registered repository id only when you have one.
