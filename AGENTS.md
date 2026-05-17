@@ -20,17 +20,15 @@ A mini OpenClaw: a multi-agent autonomous runtime. Backend adapters currently su
 
 ### Runtime / Provider Seam
 
-`src/runtime/` is provider-neutral orchestration. `src/backend/` owns provider behavior.
+`src/runtime/` owns provider-neutral orchestration. `src/backend/` owns provider behavior behind facade contracts.
 
-- Runtime owns scheduling, queueing, session selection, persistence policy, WS/HTTP fanout, browser APIs, frontend delivery coordination, process lifecycle, and provider-neutral coding repository/session bookkeeping.
-- Backend adapters own run/resume/steer semantics, provider event translation, provider-native history/transcript parsing, model and skill capability lookup, workspace setup, and provider-specific storage lookup.
-- If runtime needs provider-dependent behavior, extend the facade in `src/common/protocol.ts` with an explicit method or capability. Do not branch on concrete provider identity inside runtime code.
-- Runtime must not import provider SDKs, import backend adapter internals, parse provider-native transcript formats, or create provider-specific filesystem layout.
-- Persist provider ownership alongside provider session identifiers. Never assume a single global provider namespace, and never resume, replay, switch, or delete across a provider mismatch.
-- Composition in `src/index.ts` wires concrete providers and may choose defaults. `createAgentRuntime()` and runtime internals receive providers through facade contracts and must stay provider-neutral.
-- CLI and onboarding code may call provider setup APIs at the entrypoint boundary, but provider-specific behavior should stay delegated to backend adapters or setup helpers.
-- Use provider-neutral names in `src/common/` and `src/runtime/`, and keep runtime tests on facade contracts rather than provider-native message shapes.
-- Keep all shared protocol types in `src/common/protocol.ts`. Import directly from that source; do not create re-export shims or barrel files for shared types.
+- Runtime owns scheduling, queueing, persistence policy, fanout, frontend coordination, process lifecycle, and provider-neutral session bookkeeping.
+- Backend adapters own run/resume/steer semantics, provider event translation, provider-native history/transcript parsing, capability lookup, workspace setup, and provider-specific storage lookup.
+- Runtime must not import provider SDKs or adapter internals, parse provider-native transcripts, create provider-specific filesystem layout, or branch on concrete provider identity.
+- If runtime needs provider-dependent behavior, add an explicit facade method or capability in `src/common/protocol.ts`.
+- Persist provider ownership with provider session identifiers. Never resume, replay, switch, or delete across a provider mismatch.
+- Concrete provider wiring belongs at entrypoint boundaries such as `src/index.ts`, CLI, and onboarding. Runtime constructors and internals receive providers through facade contracts.
+- Keep shared protocol types in `src/common/protocol.ts`; import directly from there, without re-export shims.
 
 Respect these import boundaries:
 

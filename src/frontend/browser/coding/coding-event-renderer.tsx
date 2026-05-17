@@ -641,14 +641,7 @@ function renderCommand(entry: ToolEntry): React.ReactNode {
 			meta={meta}
 			isFailure={isFailure}
 		>
-			<ToolBody>
-				<ToolSection label="input">
-					<div className="whitespace-pre-wrap break-words">{command}</div>
-				</ToolSection>
-				<ToolSection label="output">
-					{renderCommandOutput(output, isPending)}
-				</ToolSection>
-			</ToolBody>
+			<ToolBody>{renderCommandTranscript(command, output, isPending)}</ToolBody>
 		</ToolFrame>
 	);
 }
@@ -1227,12 +1220,19 @@ function truncate(text: string, max: number): string {
 	return `${text.slice(0, max - 1)}…`;
 }
 
-function renderCommandOutput(
+function renderCommandTranscript(
+	command: string,
 	output: string | undefined,
 	isPending: boolean,
 ): React.ReactNode {
+	const prompt = `$${command}`;
 	if (!output) {
-		return <ToolEmpty>{isPending ? "running…" : "No output"}</ToolEmpty>;
+		return (
+			<div className="scrollbar-none max-h-72 overflow-auto">
+				<div className="whitespace-pre-wrap break-words">{prompt}</div>
+				<ToolEmpty>{isPending ? "running…" : "No output"}</ToolEmpty>
+			</div>
+		);
 	}
 	const lines = output.split("\n");
 	const truncated = lines.length > COMMAND_OUTPUT_MAX_LINES;
@@ -1241,6 +1241,7 @@ function renderCommandOutput(
 	);
 	return (
 		<div className="scrollbar-none max-h-72 overflow-auto">
+			<div className="whitespace-pre-wrap break-words">{prompt}</div>
 			{visible.map(({ key, line }) => (
 				<div key={key} className="whitespace-pre">
 					{line || " "}

@@ -1325,6 +1325,64 @@ describe("CodexAdapter", () => {
 		]);
 	});
 
+	test("strips Codex skill payloads from JSONL user prompts", () => {
+		const jsonl = [
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "user",
+					content: [
+						{
+							type: "input_text",
+							text: [
+								"$commit-push",
+								"",
+								"<skill>",
+								"<name>commit-push</name>",
+								"<path>/Users/me/.codex/skills/commit-push/SKILL.md</path>",
+								"---",
+								"name: commit-push",
+								"description: Create a git commit and push",
+								"---",
+								"",
+								"## Task",
+								"",
+								"Commit all uncommitted changes, then push to remote.",
+								"</skill>",
+							].join("\n"),
+						},
+					],
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "assistant",
+					content: [{ type: "output_text", text: "Done." }],
+				},
+			},
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n");
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-skill" }),
+		).toEqual([
+			{
+				type: "user_prompt",
+				text: "$commit-push",
+				sessionId: "codex-thread-skill",
+			},
+			{
+				type: "text",
+				text: "Done.",
+				sessionId: "codex-thread-skill",
+			},
+		]);
+	});
+
 	test("preserves Codex JSONL row timestamps on chat-replay events", () => {
 		const userTimestamp = Date.parse("2026-05-14T02:46:08.444Z");
 		const assistantTimestamp = Date.parse("2026-05-14T02:46:11.012Z");

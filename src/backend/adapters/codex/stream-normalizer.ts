@@ -9,7 +9,10 @@ import type {
 	ToolCallDetail,
 	UsageInfo,
 } from "../../../common/protocol.ts";
-import { stripOaiMemoryCitationBlocks } from "./transcript-cleanup.ts";
+import {
+	normalizeCodexJsonlUserPromptText,
+	stripOaiMemoryCitationBlocks,
+} from "./transcript-cleanup.ts";
 import type {
 	CodexServerNotification,
 	CodexThreadTokenUsage,
@@ -1222,35 +1225,10 @@ function inferImageMediaTypeFromPath(path: string): ImageMediaType | undefined {
 	return undefined;
 }
 
-function normalizeCodexJsonlUserPromptText(text: string): string {
-	const trimmedStart = text.trimStart();
-	if (!isCodexSessionBootstrapText(trimmedStart)) {
-		return text;
-	}
-
-	const environmentEnd = trimmedStart.indexOf("</environment_context>");
-	if (environmentEnd === -1) {
-		return "";
-	}
-
-	return trimmedStart
-		.slice(environmentEnd + "</environment_context>".length)
-		.trim();
-}
-
 function isCodexTurnAbortedMessage(text: string): boolean {
 	const trimmed = text.trim();
 	return (
 		trimmed.startsWith("<turn_aborted>") && trimmed.endsWith("</turn_aborted>")
-	);
-}
-
-function isCodexSessionBootstrapText(text: string): boolean {
-	return (
-		text.startsWith("# AGENTS.md instructions for ") &&
-		text.includes("\n<INSTRUCTIONS>") &&
-		text.includes("\n</INSTRUCTIONS>") &&
-		text.includes("<environment_context>")
 	);
 }
 

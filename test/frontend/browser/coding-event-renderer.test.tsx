@@ -193,6 +193,36 @@ describe("CodingEventView command grouping", () => {
 		expect(html).toContain("src/cli.ts");
 	});
 
+	test("renders bash command body as a terminal transcript without section labels", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, {
+				type: "command_execution_started",
+				callId: "call-1",
+				command: "git branch --show-current && git remote -v",
+				sessionId: "session-1",
+			}),
+			streamItem(2, {
+				type: "command_execution_completed",
+				callId: "call-1",
+				exitCode: 0,
+				output: "main\norigin\thttps://github.com/YishenTu/outclaw.git (fetch)",
+				sessionId: "session-1",
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(html).toContain(
+			"$git branch --show-current &amp;&amp; git remote -v",
+		);
+		expect(html).not.toContain(">input<");
+		expect(html).not.toContain(">output<");
+		expect(html).toContain(">main</div>");
+		expect(html).toMatch(
+			/\$git branch --show-current &amp;&amp; git remote -v<\/div><div class="whitespace-pre">main/,
+		);
+	});
+
 	test("renders a failing command with a danger style", () => {
 		const events: CodingSessionEventStreamItem[] = [
 			streamItem(1, {
