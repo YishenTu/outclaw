@@ -247,6 +247,36 @@ describe("dispatchBrowserTextPrompt", () => {
 		expect(calls).toEqual(["command:/status"]);
 	});
 
+	test("routes model shortcuts without creating a chat turn", () => {
+		const calls: string[] = [];
+		const socket = { id: "socket-1" };
+
+		const sent = dispatchBrowserTextPrompt({
+			input: " /gpt-5.5 ",
+			getActiveAgentId: () => "agent-a",
+			getCurrentSessionKey: () => "agent-a:claude:sdk-alpha",
+			getSocket: () => socket,
+			isSocketOpen: (candidate): candidate is typeof socket =>
+				candidate === socket,
+			pinSession: (sessionKey) => calls.push(`pin:${sessionKey}`),
+			pushUserMessage: () => calls.push("push"),
+			queueUserMessage: () => calls.push("queue"),
+			sendCommand: (command) => {
+				calls.push(`command:${command}`);
+				return true;
+			},
+			sendPrompt: () => calls.push("prompt"),
+			setRuntimeError: (error) => calls.push(`runtime:${error}`),
+			setSessionError: (sessionKey, error) => {
+				calls.push(`session:${sessionKey}:${error}`);
+			},
+			startAssistantTurn: (sessionKey) => calls.push(`start:${sessionKey}`),
+		});
+
+		expect(sent).toBe(true);
+		expect(calls).toEqual(["command:/gpt-5.5"]);
+	});
+
 	test("does not treat /coding as a browser runtime command", () => {
 		const calls: string[] = [];
 		const socket = { id: "socket-1" };

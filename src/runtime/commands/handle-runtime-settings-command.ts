@@ -3,6 +3,7 @@ import {
 	EFFORT_LEVELS,
 	type EffortLevel,
 	isEffortLevel,
+	parseModelShortcutCommand,
 } from "../../common/commands.ts";
 import type {
 	EffortChangedEvent,
@@ -30,6 +31,12 @@ interface HandleRuntimeSettingsCommandOptions {
 export async function handleRuntimeSettingsCommand(
 	options: HandleRuntimeSettingsCommandOptions,
 ): Promise<boolean> {
+	const modelShortcut = parseModelShortcutCommand(options.command);
+	if (modelShortcut) {
+		await handleModelCommand(options, modelShortcut);
+		return true;
+	}
+
 	if (options.command === "/model" || options.command.startsWith("/model ")) {
 		const modelArg = options.command.split(" ")[1]?.trim();
 		await handleModelCommand(options, modelArg);

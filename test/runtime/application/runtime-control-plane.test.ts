@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { Facade, ServerEvent } from "../../../src/common/protocol.ts";
+import type {
+	Facade,
+	ProviderModelInfo,
+	ServerEvent,
+} from "../../../src/common/protocol.ts";
 import { RuntimeClientGateway } from "../../../src/runtime/application/gateway/runtime-client-gateway.ts";
 import { RuntimeControlPlane } from "../../../src/runtime/application/runtime-control-plane.ts";
 import type { RuntimeExecutionCoordinator } from "../../../src/runtime/application/runtime-execution-coordinator.ts";
@@ -43,6 +47,25 @@ function createExecution(abortResult: boolean) {
 			},
 		} as unknown as RuntimeExecutionCoordinator,
 	};
+}
+
+function model(id: string): ProviderModelInfo {
+	return {
+		id,
+		model: id,
+		displayName: id,
+		description: "",
+		isDefault: false,
+		defaultReasoningEffort: "medium",
+		supportedReasoningEfforts: ["medium"],
+		serviceTiers: [],
+	};
+}
+
+async function flushAsyncCommand() {
+	for (let index = 0; index < 5; index += 1) {
+		await new Promise<void>((resolve) => setImmediate(resolve));
+	}
 }
 
 describe("RuntimeControlPlane", () => {
@@ -168,6 +191,89 @@ describe("RuntimeControlPlane", () => {
 		expect(ws.events()).toContainEqual({
 			type: "error",
 			message: "Invalid effort: turbo",
+		});
+	});
+
+	test("bare model shortcuts can switch providers when no session is active", async () => {
+		const state = new RuntimeState("claude");
+		const clients = createGateway(state);
+		const ws = mockWs();
+		clients.handleOpen(ws);
+		const { execution } = createExecution(false);
+		const controlPlane = new RuntimeControlPlane({
+			clients,
+			createStatusEvent: () => state.createStatusEvent(),
+			execution,
+			modelProviderResolver: {
+				async resolveProviderIdForModel(candidate) {
+					return candidate === "gpt-5.5" ? "codex" : undefined;
+				},
+				async resolveModelSelection(candidate) {
+					return candidate === "gpt-5.5"
+						? { providerId: "codex", model: model("gpt-5.5") }
+						: undefined;
+				},
+				async listModelSelections() {
+					return [];
+				},
+			},
+			sessions: new SessionService(state),
+			state,
+		});
+
+		controlPlane.handleCommand(ws, "/gpt-5.5");
+		await flushAsyncCommand();
+
+		expect(state.providerId).toBe("codex");
+		expect(state.model).toBe("gpt-5.5");
+		expect(ws.events()).toContainEqual({
+			type: "model_changed",
+			model: "gpt-5.5",
+			providerId: "codex",
+		});
+	});
+
+	test("bare model shortcuts cannot cross providers while a session is active", async () => {
+		const state = new RuntimeState("claude");
+		state.completeRun({
+			type: "done",
+			sessionId: "sdk-1",
+			durationMs: 1,
+		});
+		const clients = createGateway(state);
+		const ws = mockWs();
+		clients.handleOpen(ws);
+		const { execution } = createExecution(false);
+		const controlPlane = new RuntimeControlPlane({
+			clients,
+			createStatusEvent: () => state.createStatusEvent(),
+			execution,
+			modelProviderResolver: {
+				async resolveProviderIdForModel(candidate) {
+					return candidate === "gpt-5.5" ? "codex" : undefined;
+				},
+				async resolveModelSelection(candidate) {
+					return candidate === "gpt-5.5"
+						? { providerId: "codex", model: model("gpt-5.5") }
+						: undefined;
+				},
+				async listModelSelections() {
+					return [];
+				},
+			},
+			sessions: new SessionService(state),
+			state,
+		});
+
+		controlPlane.handleCommand(ws, "/gpt-5.5");
+		await flushAsyncCommand();
+
+		expect(state.providerId).toBe("claude");
+		expect(state.model).not.toBe("gpt-5.5");
+		expect(ws.events()).toContainEqual({
+			type: "error",
+			message:
+				"Cannot switch to codex while a claude session is active; start a new session first.",
 		});
 	});
 

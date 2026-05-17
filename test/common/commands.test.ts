@@ -9,6 +9,7 @@ import {
 	isRuntimeCommand,
 	listSlashCommands,
 	PROMPT_COMMANDS,
+	parseModelShortcutCommand,
 	routeSlashCommand,
 	SLASH_COMMANDS,
 } from "../../src/common/commands.ts";
@@ -42,6 +43,12 @@ describe("isRuntimeCommand", () => {
 		expect(isRuntimeCommand("/model haiku")).toBe(true);
 		expect(isRuntimeCommand("/thinking max")).toBe(true);
 		expect(isRuntimeCommand("/session list")).toBe(true);
+	});
+
+	test("recognises bare model shortcut commands", () => {
+		expect(isRuntimeCommand("/sonnet")).toBe(true);
+		expect(isRuntimeCommand("/GPT-5.4-MINI")).toBe(true);
+		expect(isRuntimeCommand("/gpt-5.4-mini now")).toBe(false);
 	});
 
 	test("/compact is NOT a runtime command", () => {
@@ -126,6 +133,21 @@ describe("routeSlashCommand", () => {
 
 	test("leaves provider-specific model shortcuts out of the shared catalog", () => {
 		expect(routeSlashCommand("/sonnet")).toBeUndefined();
+	});
+});
+
+describe("parseModelShortcutCommand", () => {
+	test("parses Claude and GPT model shortcuts without adding catalog routes", () => {
+		expect(parseModelShortcutCommand(" /sonnet ")).toBe("sonnet");
+		expect(parseModelShortcutCommand("/GPT-5.4-MINI")).toBe("gpt-5.4-mini");
+		expect(parseModelShortcutCommand("/gpt-5.5")).toBe("gpt-5.5");
+	});
+
+	test("rejects non-model slash commands and shortcuts with arguments", () => {
+		expect(parseModelShortcutCommand("/model")).toBeUndefined();
+		expect(parseModelShortcutCommand("/compact")).toBeUndefined();
+		expect(parseModelShortcutCommand("/gpt-5.5 please")).toBeUndefined();
+		expect(parseModelShortcutCommand("/unknown")).toBeUndefined();
 	});
 });
 

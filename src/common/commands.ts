@@ -70,6 +70,8 @@ export const PROMPT_COMMANDS = SLASH_COMMANDS.filter(
 	(command) => command.transport === "prompt",
 );
 
+const MODEL_SHORTCUT_COMMANDS = new Set(["opus", "sonnet", "haiku"]);
+
 export const RUNTIME_COMMANDS = SLASH_COMMANDS.filter(
 	(c) => c.transport === "runtime",
 );
@@ -124,12 +126,36 @@ export function canonicalizePromptSlashCommand(
 	return trimmed === `/${command.command}` ? trimmed : undefined;
 }
 
+export function parseModelShortcutCommand(input: string): string | undefined {
+	const trimmed = input.trim();
+	if (!trimmed.startsWith("/") || /\s/.test(trimmed)) {
+		return undefined;
+	}
+
+	const command = trimmed.slice(1);
+	if (!command) {
+		return undefined;
+	}
+
+	const normalized = command.toLowerCase();
+	if (MODEL_SHORTCUT_COMMANDS.has(normalized)) {
+		return normalized;
+	}
+	if (/^gpt-[a-z0-9][a-z0-9._-]*$/.test(normalized)) {
+		return normalized;
+	}
+	return undefined;
+}
+
 export function isEffortLevel(value: string): value is EffortLevel {
 	return EFFORT_LEVELS.includes(value as EffortLevel);
 }
 
 export function isRuntimeCommand(input: string): boolean {
-	return routeSlashCommand(input)?.transport === "runtime";
+	return (
+		routeSlashCommand(input)?.transport === "runtime" ||
+		parseModelShortcutCommand(input) !== undefined
+	);
 }
 
 export function isPromptSlashCommand(input: string): boolean {

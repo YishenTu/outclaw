@@ -146,6 +146,28 @@ describe("handleRuntimeSettingsCommand", () => {
 			});
 		});
 
+		test("routes bare model shortcuts through the provider catalog", async () => {
+			let selection:
+				| {
+						model: string;
+						providerId: string;
+				  }
+				| undefined;
+			const { run } = setup({
+				modelProviderResolver: catalogResolver(),
+				selectProviderModel: (nextSelection) => {
+					selection = nextSelection;
+				},
+			});
+
+			await expect(run("/gpt-5.5")).resolves.toBe(true);
+
+			expect(selection).toEqual({
+				providerId: "codex",
+				model: "gpt-5.5",
+			});
+		});
+
 		test("matches provider-qualified model ids through the catalog", async () => {
 			let selection:
 				| {

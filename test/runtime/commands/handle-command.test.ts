@@ -131,10 +131,10 @@ describe("handleRuntimeCommand", () => {
 			expect((event as { model: string }).model).toBe("haiku");
 		});
 
-		test("leaves provider-specific shortcuts outside the shared runtime command path", async () => {
+		test("changes model with a bare model shortcut", async () => {
 			const { state, run } = setup();
 			await run("/sonnet");
-			expect(state.model).toBe("");
+			expect(state.model).toBe("sonnet");
 		});
 	});
 
