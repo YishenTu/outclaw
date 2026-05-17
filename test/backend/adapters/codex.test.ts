@@ -3004,6 +3004,47 @@ describe("CodexAdapter", () => {
 		});
 	});
 
+	test("archives ephemeral threads after a completed Codex run", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "item/agentMessage/delta",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					itemId: "message-1",
+					delta: "Generated title",
+				},
+			},
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 1, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({
+				prompt: "generate a title",
+				cwd: "/work/repo",
+				ephemeral: true,
+				executionMode: "read_only",
+			}),
+		);
+
+		expect(events).toEqual([
+			{ type: "session_initialized", sessionId: "codex-thread-123" },
+			{ type: "text", text: "Generated title", sessionId: "codex-thread-123" },
+			{ type: "done", sessionId: "codex-thread-123", durationMs: 1 },
+		]);
+		expect(client.requests.at(-1)).toEqual({
+			method: "thread/archive",
+			params: { threadId: "codex-thread-123" },
+		});
+	});
+
 	test("Code Mode resume sends provider-default instructions and YOLO sandbox", async () => {
 		const client = new FakeCodexAppServerClient([
 			{

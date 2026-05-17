@@ -355,6 +355,7 @@ export class CodexAdapter implements Facade {
 			queue.push(notification);
 		});
 		let threadId: string | undefined;
+		let createdEphemeralThreadId: string | undefined;
 		let turnId: string | undefined;
 		let activeTurn: CodexActiveTurn | undefined;
 		let abortListener: (() => void) | undefined;
@@ -382,6 +383,9 @@ export class CodexAdapter implements Facade {
 					);
 
 			threadId = threadResult.thread.id;
+			if (params.ephemeral && !params.resume) {
+				createdEphemeralThreadId = threadId;
+			}
 			yield {
 				type: "session_initialized",
 				sessionId: threadId,
@@ -453,6 +457,9 @@ export class CodexAdapter implements Facade {
 			}
 			unsubscribe();
 			queue.close();
+			if (createdEphemeralThreadId) {
+				await archiveEphemeralCodexThread(client, createdEphemeralThreadId);
+			}
 		}
 	}
 
@@ -686,6 +693,18 @@ function projectLayerLoaded(readback: unknown): boolean {
 	}
 	const features = asRecord(config.features);
 	return features?.multi_agent === false && features.memories === false;
+}
+
+async function archiveEphemeralCodexThread(
+	client: CodexAppServerClient,
+	threadId: string,
+): Promise<void> {
+	try {
+		await client.request("thread/archive", { threadId });
+	} catch {
+		// Ephemeral cleanup must not turn an otherwise completed title run into
+		// a failed chat response. The thread remains recoverable if archival fails.
+	}
 }
 
 function buildThreadStartParams(params: RunParams): Record<string, unknown> {
