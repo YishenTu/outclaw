@@ -1,6 +1,6 @@
 # outclaw
 
-A mini OpenClaw: an autonomous agent runtime. The current backend Adapter uses the Claude Agent SDK, while runtime orchestration stays provider-neutral.
+A mini OpenClaw: a multi-agent autonomous runtime. Backend adapters currently support the Claude Agent SDK and Codex app-server, while runtime orchestration stays provider-neutral.
 
 ## Working Principles
 
@@ -12,33 +12,33 @@ A mini OpenClaw: an autonomous agent runtime. The current backend Adapter uses t
 
 ## Architecture
 
-- **Common** (`src/common/`): Shared protocol types, serialization, helpers.
-- **Backend** (`src/backend/`): Facade contracts and provider Adapters.
-- **Runtime** (`src/runtime/`): Provider-neutral orchestration: WS server, active session, persistence, queues, scheduling, process lifecycle, prompt assembly, and frontend delivery coordination.
-- **Frontend** (`src/frontend/`): TUI, browser UI, and Telegram bot connected to the runtime.
-- **CLI** (`src/cli.ts`): `oc` command entrypoint.
+- **Common** (`src/common/`): Shared protocol types, facade contracts, serialization, and helpers.
+- **Backend** (`src/backend/`): Provider adapters behind the facade, currently Claude Agent SDK and Codex app-server.
+- **Runtime** (`src/runtime/`): Provider-neutral orchestration: supervisor, transport, agent runtime state, session persistence, queues, scheduling, process lifecycle, prompt assembly, browser APIs, coding-session bookkeeping, memory watchers, and frontend delivery coordination.
+- **Frontend** (`src/frontend/`): TUI, browser UI, Telegram bot, and runtime client code connected through the shared protocol.
+- **CLI** (`src/cli.ts`, `src/cli/`): `oc` command entrypoint and command implementations for daemon/control-plane operations.
 
 ### Runtime / Provider Seam
 
 `src/runtime/` is provider-neutral orchestration. `src/backend/` owns provider behavior.
 
-- Runtime owns scheduling, queueing, session selection, persistence policy, WS fanout, frontend delivery coordination, and process lifecycle.
-- Backend Adapters own run/resume semantics, provider event translation, provider-native history/transcript parsing, capabilities, setup, and provider-specific storage lookup.
-- If runtime needs provider-dependent behavior, extend the backend facade with an explicit method or capability. Do not branch on provider identity inside runtime code.
-- Runtime must not import provider SDKs, parse provider-native transcript formats, or create provider-specific filesystem layout.
+- Runtime owns scheduling, queueing, session selection, persistence policy, WS/HTTP fanout, browser APIs, frontend delivery coordination, process lifecycle, and provider-neutral coding repository/session bookkeeping.
+- Backend adapters own run/resume/steer semantics, provider event translation, provider-native history/transcript parsing, model and skill capability lookup, workspace setup, and provider-specific storage lookup.
+- If runtime needs provider-dependent behavior, extend the facade in `src/common/protocol.ts` with an explicit method or capability. Do not branch on concrete provider identity inside runtime code.
+- Runtime must not import provider SDKs, import backend adapter internals, parse provider-native transcript formats, or create provider-specific filesystem layout.
 - Persist provider ownership alongside provider session identifiers. Never assume a single global provider namespace, and never resume, replay, switch, or delete across a provider mismatch.
-- Composition may choose a concrete provider in `src/index.ts`, but `createRuntime()`, `createAgentRuntime()`, and runtime internals must not default to one.
+- Composition in `src/index.ts` wires concrete providers and may choose defaults. `createAgentRuntime()` and runtime internals receive providers through facade contracts and must stay provider-neutral.
+- CLI and onboarding code may call provider setup APIs at the entrypoint boundary, but provider-specific behavior should stay delegated to backend adapters or setup helpers.
 - Use provider-neutral names in `src/common/` and `src/runtime/`, and keep runtime tests on facade contracts rather than provider-native message shapes.
 - Keep all shared protocol types in `src/common/protocol.ts`. Import directly from that source; do not create re-export shims or barrel files for shared types.
 
-Respect this import direction:
+Respect these import boundaries:
 
-```text
-common/  <- backend/  <- runtime/  <- frontend/
-                                  <- index.ts / cli.ts
-```
-
-`common/` imports nothing. `backend/` imports `common/`. `runtime/` imports `common/` and `backend/`. `frontend/` imports `common/` only. `frontend/` and `backend/` never import from each other.
+- `common/` imports no project layers.
+- `backend/` imports `common/` only.
+- `runtime/` imports `common/` only; it talks to providers through facade values supplied by composition.
+- `frontend/` imports `common/` only.
+- `src/index.ts` and `src/cli/**` are entrypoint/composition boundaries. Keep cross-layer wiring there and keep provider-specific behavior behind backend adapters/setup helpers.
 
 ## Design Principles
 
@@ -71,31 +71,13 @@ Run `bun run check` before considering implementation work done.
 ## Stack
 
 - **Runtime**: Bun
-- **Agent provider**: `@anthropic-ai/claude-agent-sdk`
+- **Agent providers**: Claude Agent SDK and Codex app-server
+- **Coding provider**: Codex app-server
 - **TUI**: Ink / React
-- **Browser UI**: React
+- **Browser UI**: React / Vite / Tailwind
 - **IM**: grammY / Telegram
 - **Language**: TypeScript strict mode
 - **Formatting/linting**: Biome, tabs, double quotes
-
-## CLI Commands
-
-```text
-oc start|restart [--lan] [--host HOST]
-oc stop
-oc status
-oc tui
-oc browser
-oc dev
-oc build
-oc onboard
-oc agent <list|create|config|rename|remove|ask|name>
-oc config <runtime|secure>
-oc session <list|search|transcript>
-oc cron run <cron-name>
-oc note "<content>" [--salience <tag>] [--hint <schema>]
-oc schema <status|stale> [--agent <name|id>] [--json]
-```
 
 ## Dev Commands
 
@@ -106,9 +88,9 @@ oc schema <status|stale> [--agent <name|id>] [--json]
 - `bun run test:watch`: TDD watch mode.
 - `bun run check`: lint, typecheck, and test.
 
-## SDK Exploration
+## Provider Exploration
 
-When Claude Agent SDK behavior is unclear, write a throwaway probe in `dev/`. Convert settled behavior into automated tests and delete the probe afterward. No API key is needed; the SDK uses the Claude Code session auth.
+When Claude Agent SDK or Codex app-server behavior is unclear, write a throwaway probe in `dev/`. Convert settled behavior into automated tests and delete the probe afterward. No API key is needed for Claude SDK probes; the SDK uses Claude Code session auth.
 
 ## Code Organization
 
