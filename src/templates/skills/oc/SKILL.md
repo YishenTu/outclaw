@@ -25,7 +25,7 @@ Use the `oc` CLI to manage agents, control the daemon, rebuild the browser bundl
 
 ## Gotchas
 
-- Run `oc` commands from the agent workspace (`~/.outclaw/agents/<agent>/`) by default, not from the target project repo. Pass explicit repo/session paths to subcommands such as `oc coding start /absolute/path/to/repo ...`. This keeps orchestration state anchored in the agent workspace and avoids accidental repo-cwd assumptions.
+- Run `oc` commands from your default cwd. Do not `cd` into the target project just to run `oc`; pass explicit repo/session paths to subcommands such as `oc coding start /absolute/path/to/repo ...`. This keeps orchestration separate from repo-local work and avoids accidental cwd assumptions.
 - `oc agent create|config|rename|remove`, `oc config runtime`, and `oc config secure` mutate files immediately, but the running daemon does not hot-reload them. They surface a restart-required notice; a later `oc restart` is still needed to apply them.
 
 ## Response Style
