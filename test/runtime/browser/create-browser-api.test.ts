@@ -2782,6 +2782,37 @@ describe("createBrowserApi", () => {
 		repositories.close();
 	});
 
+	test("reports a deleted registered coding repository before loading its tree", async () => {
+		const root = createTempDir("outclaw-browser-deleted-coding-tree-");
+		cleanupPaths.push(root);
+		const repositories = new CodingRepositoryStore(join(root, "coding.sqlite"));
+		const repositoryRoot = join(root, "repo");
+		mkdirSync(repositoryRoot, { recursive: true });
+		const repository = repositories.register({
+			rootCwd: repositoryRoot,
+			displayName: "repo",
+			source: "manual",
+		});
+		rmSync(repositoryRoot, { recursive: true, force: true });
+		const api = createBrowserApi({
+			agents: [],
+			codingRepositories: repositories,
+			getRememberedAgentId: () => undefined,
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map(),
+		});
+
+		await expect(api.listCodingRepositoryTree(repository.id)).rejects.toThrow(
+			`Coding repository path does not exist: ${repository.rootCwd}`,
+		);
+		expect(() => api.getCodingRepositoryCwd(repository.id)).toThrow(
+			`Coding repository path does not exist: ${repository.rootCwd}`,
+		);
+
+		repositories.close();
+	});
+
 	test("lists coding repository tree from the focused coding session cwd", async () => {
 		const root = createTempDir("outclaw-browser-coding-session-tree-");
 		cleanupPaths.push(root);

@@ -618,6 +618,8 @@ function statusForBrowserApiError(message: string): number {
 		message.startsWith("Unknown agent:") ||
 		message.startsWith("Unknown coding repository:") ||
 		message.startsWith("Unknown coding session:") ||
+		message.startsWith("Coding repository path does not exist:") ||
+		message.startsWith("Coding session path does not exist:") ||
 		message.startsWith("Unknown commit:")
 	) {
 		return 404;

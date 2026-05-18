@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import type { EffortLevel } from "../../common/commands.ts";
@@ -477,6 +477,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		if (!repository) {
 			throw new Error(`Unknown coding repository: ${repositoryId}`);
 		}
+		assertExistingDirectory(repository.rootCwd, "Coding repository path");
 		return repository.rootCwd;
 	}
 
@@ -517,6 +518,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 				`Coding session cwd must be within repository root: ${rootCwd}`,
 			);
 		}
+		assertExistingDirectory(sessionCwd, "Coding session path");
 		return { cwd: sessionCwd, rootCwd };
 	}
 
@@ -1731,6 +1733,28 @@ function isPathWithin(root: string, candidate: string): boolean {
 function canonicalizeForCompare(path: string): string {
 	const absolute = resolve(path);
 	return existsSync(absolute) ? realpathSync(absolute) : absolute;
+}
+
+function assertExistingDirectory(path: string, label: string): void {
+	try {
+		const stats = statSync(path);
+		if (!stats.isDirectory()) {
+			throw new Error(`${label} is not a directory: ${path}`);
+		}
+	} catch (error) {
+		if (isMissingPathError(error)) {
+			throw new Error(`${label} does not exist: ${path}`);
+		}
+		throw error;
+	}
+}
+
+function isMissingPathError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		(error.code === "ENOENT" || error.code === "ENOTDIR")
+	);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

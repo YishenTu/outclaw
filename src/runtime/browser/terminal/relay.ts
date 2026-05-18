@@ -3,6 +3,7 @@ import type { ServerWebSocket } from "bun";
 interface TerminalSocketData {
 	socketType: "runtime" | "terminal";
 	terminalCwd?: string;
+	terminalError?: string;
 }
 
 type TerminalSocket = ServerWebSocket<TerminalSocketData>;
@@ -106,10 +107,13 @@ export class TerminalRelay {
 	};
 
 	handleOpen = (ws: TerminalSocket) => {
+		if (ws.data.terminalError) {
+			this.reportUnavailableTarget(ws, ws.data.terminalError);
+			return;
+		}
 		const cwd = ws.data.terminalCwd;
 		if (!cwd) {
-			ws.send("Unknown agent\r\n");
-			ws.close();
+			this.reportUnavailableTarget(ws, "Terminal workspace is not available");
 			return;
 		}
 
@@ -145,11 +149,17 @@ export class TerminalRelay {
 			terminal,
 		};
 		this.sessions.set(ws, session);
-		const subprocess = this.runtime.spawn([shell], {
-			cwd,
-			env: getTerminalEnv(),
-			terminal,
-		});
+		let subprocess: Bun.Subprocess;
+		try {
+			subprocess = this.runtime.spawn([shell], {
+				cwd,
+				env: getTerminalEnv(),
+				terminal,
+			});
+		} catch (error) {
+			this.failStartup(ws, error);
+			return;
+		}
 		session.proc = subprocess;
 		session.cancelStartupInputFallback = (
 			this.options.scheduleStartupInputFallback ?? scheduleStartupInputFallback
@@ -162,6 +172,23 @@ export class TerminalRelay {
 			}
 		});
 	};
+
+	private reportUnavailableTarget(ws: TerminalSocket, message: string) {
+		if (ws.readyState === WebSocket.OPEN) {
+			ws.send(`${message}\r\n`);
+			ws.close();
+		}
+	}
+
+	private failStartup(ws: TerminalSocket, error: unknown) {
+		if (ws.readyState === WebSocket.OPEN) {
+			ws.send(`Terminal failed to start: ${formatError(error)}\r\n`);
+		}
+		this.finalizeSession(ws);
+		if (ws.readyState === WebSocket.OPEN) {
+			ws.close();
+		}
+	}
 
 	private resizeSession(
 		ws: TerminalSocket,
@@ -261,4 +288,8 @@ export class TerminalRelay {
 	private get startupInputFallbackMs() {
 		return this.options.startupInputFallbackMs ?? STARTUP_INPUT_FALLBACK_MS;
 	}
+}
+
+function formatError(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }

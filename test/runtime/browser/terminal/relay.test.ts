@@ -195,4 +195,74 @@ describe("TerminalRelay", () => {
 		expect(terminalWrite).toHaveBeenCalledWith("echo hi\r");
 		expect(fallbackScheduler.cancelled()).toBe(true);
 	});
+
+	test("reports terminal spawn failures without throwing from handleOpen", () => {
+		const terminalClose = mock(() => {});
+		const relay = new TerminalRelay({
+			createTerminal: mock(() => {
+				return {
+					close: terminalClose,
+					resize: mock(() => {}),
+					write: mock(() => {}),
+				} as unknown as Bun.Terminal;
+			}),
+			spawn: mock(() => {
+				throw new Error("ENOENT: no such file or directory");
+			}) as unknown as typeof Bun.spawn,
+		});
+
+		const sent: string[] = [];
+		const ws = {
+			data: {
+				socketType: "terminal" as const,
+				terminalCwd: "/missing/repo",
+			},
+			close: mock(() => {}),
+			readyState: WebSocket.OPEN,
+			send: mock((message: string) => {
+				sent.push(message);
+			}),
+		} as unknown as Parameters<TerminalRelay["handleOpen"]>[0];
+
+		expect(() => relay.handleOpen(ws)).not.toThrow();
+
+		expect(sent).toEqual([
+			"Terminal failed to start: ENOENT: no such file or directory\r\n",
+		]);
+		expect(terminalClose).toHaveBeenCalled();
+		expect(ws.close).toHaveBeenCalled();
+	});
+
+	test("reports terminal target errors without creating a terminal", () => {
+		const createTerminal = mock(() => {
+			throw new Error("unexpected terminal creation");
+		});
+		const relay = new TerminalRelay({
+			createTerminal,
+			spawn: mock(() => ({
+				exited: new Promise<number>(() => {}),
+				kill: mock(() => {}),
+			})) as unknown as typeof Bun.spawn,
+		});
+		const sent: string[] = [];
+		const ws = {
+			data: {
+				socketType: "terminal" as const,
+				terminalError: "Coding repository path does not exist: /missing/repo",
+			},
+			close: mock(() => {}),
+			readyState: WebSocket.OPEN,
+			send: mock((message: string) => {
+				sent.push(message);
+			}),
+		} as unknown as Parameters<TerminalRelay["handleOpen"]>[0];
+
+		relay.handleOpen(ws);
+
+		expect(createTerminal).not.toHaveBeenCalled();
+		expect(sent).toEqual([
+			"Coding repository path does not exist: /missing/repo\r\n",
+		]);
+		expect(ws.close).toHaveBeenCalled();
+	});
 });

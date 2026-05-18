@@ -251,6 +251,26 @@ describe("handleBrowserApiRequest", () => {
 		]);
 	});
 
+	test("returns not found for deleted coding repository workspace paths", async () => {
+		const browserApi = {
+			listCodingRepositoryTree: async () => {
+				throw new Error("Coding repository path does not exist: /missing/repo");
+			},
+		} as unknown as BrowserApi;
+		const url = new URL("http://localhost/api/coding/repositories/repo-1/tree");
+
+		const response = await handleBrowserApiRequest(
+			new Request(url),
+			url,
+			browserApi,
+		);
+
+		expect(response.status).toBe(404);
+		await expect(response.json()).resolves.toEqual({
+			error: "Coding repository path does not exist: /missing/repo",
+		});
+	});
+
 	test("routes coding repository clone requests through cloneCodingRepository", async () => {
 		const cloneCalls: Array<{
 			remoteUrl: string;
