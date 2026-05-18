@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+	createTranscriptAutoScrollState,
 	createTranscriptAutoScrollToken,
 	displayMessageRenderKey,
 	isNearTranscriptBottom,
+	resolveTranscriptAutoScrollState,
+	shouldShowTranscriptScrollToBottomButton,
 } from "../../../src/frontend/browser/components/chat/message-list-scroll.ts";
 
 describe("browser message list scroll", () => {
@@ -162,5 +165,81 @@ describe("browser message list scroll", () => {
 				scrollHeight: 980,
 			}),
 		).toBe(false);
+	});
+
+	test("pauses auto-scroll immediately when users scroll upward near the bottom", () => {
+		let state = createTranscriptAutoScrollState();
+
+		state = resolveTranscriptAutoScrollState(state, {
+			intent: "away-from-bottom",
+			metrics: {
+				scrollTop: 648,
+				clientHeight: 300,
+				scrollHeight: 980,
+			},
+		});
+
+		expect(state.stickToBottom).toBe(false);
+
+		state = resolveTranscriptAutoScrollState(state, {
+			intent: "none",
+			metrics: {
+				scrollTop: 650,
+				clientHeight: 300,
+				scrollHeight: 982,
+			},
+		});
+
+		expect(state.stickToBottom).toBe(false);
+
+		state = resolveTranscriptAutoScrollState(state, {
+			intent: "none",
+			metrics: {
+				scrollTop: 682,
+				clientHeight: 300,
+				scrollHeight: 982,
+			},
+		});
+
+		expect(state.stickToBottom).toBe(false);
+
+		state = resolveTranscriptAutoScrollState(state, {
+			intent: "toward-bottom",
+			metrics: {
+				scrollTop: 682,
+				clientHeight: 300,
+				scrollHeight: 982,
+			},
+		});
+
+		expect(state.stickToBottom).toBe(true);
+	});
+
+	test("shows scroll-to-bottom button only while auto-scroll is paused", () => {
+		let state = createTranscriptAutoScrollState();
+
+		expect(shouldShowTranscriptScrollToBottomButton(state)).toBe(false);
+
+		state = resolveTranscriptAutoScrollState(state, {
+			intent: "away-from-bottom",
+			metrics: {
+				scrollTop: 648,
+				clientHeight: 300,
+				scrollHeight: 980,
+			},
+		});
+
+		expect(shouldShowTranscriptScrollToBottomButton(state)).toBe(true);
+
+		state = resolveTranscriptAutoScrollState(state, {
+			intent: "toward-bottom",
+			metrics: {
+				scrollTop: 682,
+				clientHeight: 300,
+				scrollHeight: 982,
+			},
+		});
+
+		expect(shouldShowTranscriptScrollToBottomButton(state)).toBe(false);
 	});
 });
