@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AssistantTurnCopyButton } from "../../../src/frontend/browser/components/chat/assistant-turn-utility-bar.tsx";
+import { AssistantTurnCopyButton } from "../../../src/frontend/browser/components/transcript/assistant-turn-utility-bar.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 

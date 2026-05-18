@@ -1,18 +1,13 @@
-import type {
-	DisplayChatMessage,
-	DisplayMessage,
-} from "../../../../common/protocol.ts";
+import {
+	type TranscriptItem,
+	transcriptItemScrollKey,
+} from "./transcript-items.ts";
 
 const BOTTOM_STICKY_TOLERANCE_PX = 32;
 
 interface TranscriptAutoScrollTokenParams {
 	sessionKey: string | null;
-	messages: DisplayMessage[];
-	queuedPrompts?: DisplayChatMessage[];
-	streamingText: string;
-	streamingThinking: string;
-	isStreaming: boolean;
-	isCompacting?: boolean;
+	items: TranscriptItem[];
 }
 
 interface TranscriptScrollMetrics {
@@ -36,49 +31,8 @@ export function createTranscriptAutoScrollToken(
 ): string {
 	return [
 		params.sessionKey ?? "",
-		params.messages.map(displayMessageKey).join("\u0001"),
-		params.queuedPrompts?.map(displayMessageKey).join("\u0001") ?? "",
-		params.streamingThinking,
-		params.streamingText,
-		params.isStreaming ? "streaming" : "idle",
-		params.isCompacting ? "compacting" : "not-compacting",
+		params.items.map(transcriptItemScrollKey).join("\u0001"),
 	].join("\u0002");
-}
-
-export function displayMessageKey(message: DisplayMessage): string {
-	if (message.kind === "system") {
-		return `system:${message.event}:${message.text}`;
-	}
-
-	return [
-		"chat",
-		message.role,
-		message.content,
-		message.replyContext?.text ?? "",
-		message.thinking ?? "",
-		String(message.timestamp ?? ""),
-		message.images
-			?.map((image) =>
-				image.kind === "managed"
-					? image.path
-					: image.kind === "inline"
-						? `${image.mediaType}:${image.base64.length}`
-						: image.mediaType,
-			)
-			.join("|") ?? "",
-	].join(":");
-}
-
-export function displayMessageRenderKey(params: {
-	message: DisplayMessage;
-	index: number;
-	sessionKey: string | null;
-}): string {
-	return [
-		params.sessionKey ?? "",
-		params.index,
-		displayMessageKey(params.message),
-	].join("\u0003");
 }
 
 export function isNearTranscriptBottom(

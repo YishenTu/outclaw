@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getImageThumbnailClassName } from "../../../src/frontend/browser/components/chat/image-thumbnail-styles.ts";
+import { getImageThumbnailClassName } from "../../../src/frontend/browser/components/transcript/image-thumbnail-styles.ts";
 
 describe("browser image thumbnail styles", () => {
 	test("composer thumbnails preserve aspect ratio instead of forcing a square", () => {

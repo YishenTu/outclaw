@@ -104,7 +104,7 @@ describe("manualChunkForBrowserModule", () => {
 		).toBeUndefined();
 		expect(
 			manualChunkForBrowserModule(
-				"/Users/test/outclaw/src/frontend/browser/components/chat/message.tsx",
+				"/Users/test/outclaw/src/frontend/browser/components/transcript/message.tsx",
 			),
 		).toBeUndefined();
 	});

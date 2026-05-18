@@ -131,11 +131,11 @@ describe("CodingEventView command grouping", () => {
 		// later text delta starts a new block after the thinking group.
 		expect(html).toContain("hello world");
 		expect(html).toContain("again");
-		// Thinking is rendered through the chat-mode ThinkingBlock.
+		// Thinking is rendered through the shared transcript thinking block.
 		expect(html).toContain("Thinking");
 	});
 
-	test("renders user_prompt as a chat-mode user bubble", () => {
+	test("renders user_prompt as a shared transcript user bubble", () => {
 		const events: CodingSessionEventStreamItem[] = [
 			streamItem(1, { type: "user_prompt", text: "fix the tests" }),
 			streamItem(2, { type: "text", text: "on it", sessionId: "session-1" }),
@@ -143,12 +143,12 @@ describe("CodingEventView command grouping", () => {
 
 		const html = renderToStaticMarkup(<CodingEventView events={events} />);
 		// The user prompt should appear once, and the assistant text should also
-		// appear once via the shared chat Message component.
+		// appear once through the shared transcript message component.
 		expect(occurrences(html, "fix the tests")).toBe(1);
 		expect(html).toContain("on it");
 	});
 
-	test("renders turn_aborted with the chat-mode interrupt indicator", () => {
+	test("renders turn_aborted with the shared interrupt indicator", () => {
 		const events: CodingSessionEventStreamItem[] = [
 			streamItem(1, { type: "user_prompt", text: "fix the spinner" }),
 			streamItem(2, {

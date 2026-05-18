@@ -9,16 +9,18 @@ import {
 	Wrench,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { DisplayChatMessage } from "../../../common/protocol.ts";
-import { Message } from "../components/chat/message.tsx";
-import { ThinkingBlock } from "../components/chat/thinking-block.tsx";
+import { TranscriptItemList } from "../components/transcript/transcript-item-list.tsx";
+import {
+	assistantTranscriptMessage,
+	type TranscriptItem,
+} from "../components/transcript/transcript-items.ts";
 import type { CodingSessionEventStreamItem } from "../lib/api.ts";
 
 type FacadeLike = { type?: string; [key: string]: unknown };
 
 interface CodingEventGroup {
 	key: string;
-	render: () => React.ReactNode;
+	toItem: () => TranscriptItem;
 }
 
 interface CodingEventViewProps {
@@ -31,20 +33,14 @@ interface TurnFooter {
 }
 
 export function CodingEventView({ events }: CodingEventViewProps) {
-	const groups = useMemo(() => groupEvents(events), [events]);
-	if (groups.length === 0) {
-		return (
-			<div className="text-sm text-dark-400">
-				No turn output yet. Send a prompt to start.
-			</div>
-		);
-	}
+	const items = useMemo(() => createCodingTranscriptItems(events), [events]);
 
 	return (
 		<div className="flex flex-col gap-4">
-			{groups.map((group) => (
-				<div key={group.key}>{group.render()}</div>
-			))}
+			<TranscriptItemList
+				items={items}
+				emptyMessage="No turn output yet. Send a prompt to start."
+			/>
 		</div>
 	);
 }
@@ -70,33 +66,9 @@ export function isCodingTurnInFlight(
 	return false;
 }
 
-function assistantMessage(
-	content: string,
-	footer?: TurnFooter,
-): DisplayChatMessage {
-	const base: DisplayChatMessage = {
-		kind: "chat",
-		role: "assistant",
-		content,
-	};
-	if (!footer) {
-		return base;
-	}
-	return {
-		...base,
-		timestamp: footer.timestamp,
-		assistantTurn: {
-			source: "user",
-			...(footer.durationMs !== undefined
-				? { durationMs: footer.durationMs }
-				: {}),
-		},
-	};
-}
-
-function groupEvents(
+export function createCodingTranscriptItems(
 	events: CodingSessionEventStreamItem[],
-): CodingEventGroup[] {
+): TranscriptItem[] {
 	const groups: CodingEventGroup[] = [];
 	let currentText: { key: string; chunks: string[] } | undefined;
 	let currentThinking: { key: string; chunks: string[] } | undefined;
@@ -124,7 +96,12 @@ function groupEvents(
 			const captured = entry;
 			groups.push({
 				key: `tool-${callId}`,
-				render: () => renderToolEntry(captured),
+				toItem: () => ({
+					kind: "tool",
+					key: `tool-${callId}`,
+					node: renderToolEntry(captured),
+					scrollKey: `tool:${callId}:${toolEntryScrollKey(captured)}`,
+				}),
 			});
 		}
 	};
@@ -145,7 +122,12 @@ function groupEvents(
 			const captured = entry;
 			groups.push({
 				key: `tool-${callId}`,
-				render: () => renderToolEntry(captured),
+				toItem: () => ({
+					kind: "tool",
+					key: `tool-${callId}`,
+					node: renderToolEntry(captured),
+					scrollKey: `tool:${callId}:${toolEntryScrollKey(captured)}`,
+				}),
 			});
 		}
 	};
@@ -158,9 +140,12 @@ function groupEvents(
 		const key = currentText.key;
 		groups.push({
 			key,
-			render: () => (
-				<Message message={assistantMessage(text)} showUtilityBar={false} />
-			),
+			toItem: () => ({
+				kind: "message",
+				key,
+				message: assistantTranscriptMessage(text),
+				scrollKey: `assistant:${text}`,
+			}),
 		});
 		currentText = undefined;
 	};
@@ -173,7 +158,12 @@ function groupEvents(
 		const key = currentThinking.key;
 		groups.push({
 			key,
-			render: () => <ThinkingBlock content={text} />,
+			toItem: () => ({
+				kind: "thinking",
+				key,
+				content: text,
+				scrollKey: `thinking:${text}`,
+			}),
 		});
 		currentThinking = undefined;
 	};
@@ -188,15 +178,16 @@ function groupEvents(
 			const text = typeof event.text === "string" ? event.text : "";
 			groups.push({
 				key: `user-${item.sequence}`,
-				render: () => (
-					<Message
-						message={{
-							kind: "chat",
-							role: "user",
-							content: text,
-						}}
-					/>
-				),
+				toItem: () => ({
+					kind: "message",
+					key: `user-${item.sequence}`,
+					message: {
+						kind: "chat",
+						role: "user",
+						content: text,
+					},
+					scrollKey: `user:${text}`,
+				}),
 			});
 			currentTurnWorkStartIndex = groups.length;
 			continue;
@@ -241,12 +232,17 @@ function groupEvents(
 			if (workGroups.length > 0 || durationMs !== undefined) {
 				groups.splice(currentTurnWorkStartIndex, workGroups.length, {
 					key: `completed-work-${item.sequence}`,
-					render: () => (
-						<CompletedWorkDisclosure
-							durationMs={durationMs}
-							groups={workGroups}
-						/>
-					),
+					toItem: () => ({
+						kind: "tool",
+						key: `completed-work-${item.sequence}`,
+						node: (
+							<CompletedWorkDisclosure
+								durationMs={durationMs}
+								items={workGroups.map((group) => group.toItem())}
+							/>
+						),
+						scrollKey: `completed-work:${item.sequence}:${durationMs ?? ""}`,
+					}),
 				});
 			}
 			if (currentText) {
@@ -254,17 +250,25 @@ function groupEvents(
 				const key = currentText.key;
 				groups.push({
 					key,
-					render: () => (
-						<Message message={assistantMessage(text, footer)} showUtilityBar />
-					),
+					toItem: () => ({
+						kind: "message",
+						key,
+						message: assistantTranscriptMessage(text, footer),
+						scrollKey: `assistant-final:${text}:${footer.timestamp}:${durationMs ?? ""}`,
+						showUtilityBar: true,
+					}),
 				});
 				currentText = undefined;
 			} else {
 				groups.push({
 					key: `done-${item.sequence}`,
-					render: () => (
-						<Message message={assistantMessage("", footer)} showUtilityBar />
-					),
+					toItem: () => ({
+						kind: "message",
+						key: `done-${item.sequence}`,
+						message: assistantTranscriptMessage("", footer),
+						scrollKey: `assistant-final:${footer.timestamp}:${durationMs ?? ""}`,
+						showUtilityBar: true,
+					}),
 				});
 			}
 			currentTurnWorkStartIndex = groups.length;
@@ -276,7 +280,15 @@ function groupEvents(
 			flushThinking();
 			groups.push({
 				key: `turn-aborted-${item.sequence}`,
-				render: () => <TurnAbortedNotice />,
+				toItem: () => ({
+					kind: "message",
+					key: `turn-aborted-${item.sequence}`,
+					message: {
+						kind: "system",
+						event: "status",
+						text: "Request interrupted by user",
+					},
+				}),
 			});
 			currentTurnWorkStartIndex = groups.length;
 			continue;
@@ -314,7 +326,12 @@ function groupEvents(
 		if (type === "file_change_applied") {
 			groups.push({
 				key: `patch-${item.sequence}`,
-				render: () => renderFileChange(event),
+				toItem: () => ({
+					kind: "tool",
+					key: `patch-${item.sequence}`,
+					node: renderFileChange(event),
+					scrollKey: `patch-${item.sequence}:${JSON.stringify(event)}`,
+				}),
 			});
 			continue;
 		}
@@ -328,11 +345,16 @@ function groupEvents(
 				typeof event.message === "string" ? event.message : "Unknown error";
 			groups.push({
 				key: `error-${item.sequence}`,
-				render: () => (
-					<div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
-						{message}
-					</div>
-				),
+				toItem: () => ({
+					kind: "tool",
+					key: `error-${item.sequence}`,
+					node: (
+						<div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+							{message}
+						</div>
+					),
+					scrollKey: `error:${message}`,
+				}),
 			});
 			continue;
 		}
@@ -340,23 +362,28 @@ function groupEvents(
 		// Fallback for unrecognized event types: render JSON.
 		groups.push({
 			key: `raw-${item.sequence}`,
-			render: () => (
-				<details className="rounded-md border border-dark-800 bg-dark-900/20 px-3 py-2 text-xs text-dark-400">
-					<summary className="cursor-pointer text-dark-300">
-						Event: {type ?? "unknown"}
-					</summary>
-					<pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[11px] leading-4 text-dark-400">
-						{JSON.stringify(event, null, 2)}
-					</pre>
-				</details>
-			),
+			toItem: () => ({
+				kind: "tool",
+				key: `raw-${item.sequence}`,
+				node: (
+					<details className="rounded-md border border-dark-800 bg-dark-900/20 px-3 py-2 text-xs text-dark-400">
+						<summary className="cursor-pointer text-dark-300">
+							Event: {type ?? "unknown"}
+						</summary>
+						<pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[11px] leading-4 text-dark-400">
+							{JSON.stringify(event, null, 2)}
+						</pre>
+					</details>
+				),
+				scrollKey: `raw:${JSON.stringify(event)}`,
+			}),
 		});
 	}
 
 	flushText();
 	flushThinking();
 
-	return groups;
+	return groups.map((group) => group.toItem());
 }
 
 const COMMAND_OUTPUT_MAX_LINES = 20;
@@ -373,12 +400,20 @@ interface ToolEntry {
 	sequence: number;
 }
 
+function toolEntryScrollKey(entry: ToolEntry): string {
+	return JSON.stringify({
+		completed: entry.completed,
+		outputs: entry.outputs,
+		started: entry.started,
+	});
+}
+
 function CompletedWorkDisclosure({
 	durationMs,
-	groups,
+	items,
 }: {
 	durationMs?: number;
-	groups: CodingEventGroup[];
+	items: TranscriptItem[];
 }) {
 	const [open, setOpen] = useState(false);
 	const durationLabel = formatWorkDuration(durationMs);
@@ -395,8 +430,8 @@ function CompletedWorkDisclosure({
 			</summary>
 			{renderBody && (
 				<div className="mt-2 flex flex-col gap-3">
-					{groups.length > 0 ? (
-						groups.map((group) => <div key={group.key}>{group.render()}</div>)
+					{items.length > 0 ? (
+						<TranscriptItemList items={items} />
 					) : (
 						<div className="font-mono-ui px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-dark-600">
 							No intermediate output
@@ -430,18 +465,6 @@ function formatWorkDuration(
 	}
 
 	return `${seconds}s`;
-}
-
-function TurnAbortedNotice() {
-	return (
-		<Message
-			message={{
-				kind: "system",
-				event: "status",
-				text: "Request interrupted by user",
-			}}
-		/>
-	);
 }
 
 function toolCategoryFor(

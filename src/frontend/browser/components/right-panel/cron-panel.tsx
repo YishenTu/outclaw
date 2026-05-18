@@ -13,7 +13,7 @@ import {
 	updateAgentCronEnabled,
 } from "../../lib/api.ts";
 import { useRightPanelRefreshStore } from "../../stores/right-panel-refresh.ts";
-import { MarkdownContent } from "../chat/markdown-content.tsx";
+import { MarkdownContent } from "../transcript/markdown-content.tsx";
 
 const CRON_TABLE_COLUMNS =
 	"grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_auto]" as const;

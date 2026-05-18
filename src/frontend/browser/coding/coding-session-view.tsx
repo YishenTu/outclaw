@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
 	BrowserCodingRepositorySummary,
 	BrowserCodingSessionSummary,
@@ -6,7 +6,8 @@ import type {
 	WorkspaceFileEntry,
 } from "../../../common/protocol.ts";
 import { MessageInput } from "../components/chat/composer/message-input.tsx";
-import { ThinkingIndicator } from "../components/chat/thinking-indicator.tsx";
+import type { TranscriptItem } from "../components/transcript/transcript-items.ts";
+import { TranscriptSurface } from "../components/transcript/transcript-surface.tsx";
 import {
 	type CodingSessionEventStreamItem,
 	fetchCodingRepositorySkills,
@@ -19,7 +20,7 @@ import {
 import { useContextUsageStore } from "../stores/context-usage.ts";
 import type { CommandEntry } from "../stores/slash-commands.ts";
 import {
-	CodingEventView,
+	createCodingTranscriptItems,
 	isCodingTurnInFlight,
 } from "./coding-event-renderer.tsx";
 import { CodingModelSelector } from "./coding-model-selector.tsx";
@@ -366,8 +367,6 @@ export function ActiveSessionPanel({
 	const [streamError, setStreamError] = useState<string | undefined>();
 	const [submitting, setSubmitting] = useState(false);
 	const [resumeError, setResumeError] = useState<string | undefined>();
-	const scrollRef = useRef<HTMLDivElement>(null);
-	const eventLengthRef = useRef(0);
 	const usageSessionKey = codingSessionEventCacheKey({
 		providerId: session.providerId,
 		sdkSessionId: session.sdkSessionId,
@@ -379,7 +378,6 @@ export function ActiveSessionPanel({
 		};
 		syncEvents();
 		setStreamError(undefined);
-		eventLengthRef.current = 0;
 		let active = true;
 		const unsubscribe = subscribeCodingSessionCachedEvents(
 			usageSessionKey,
@@ -411,17 +409,6 @@ export function ActiveSessionPanel({
 			unsubscribe();
 		};
 	}, [session.providerId, session.sdkSessionId, usageSessionKey]);
-
-	useEffect(() => {
-		if (!scrollRef.current) {
-			return;
-		}
-		if (events.length === eventLengthRef.current) {
-			return;
-		}
-		eventLengthRef.current = events.length;
-		scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-	}, [events]);
 
 	const onSend = useCallback(
 		async ({ text }: { text: string }): Promise<boolean> => {
@@ -489,6 +476,27 @@ export function ActiveSessionPanel({
 	const turnInFlight = useMemo(() => isCodingTurnInFlight(events), [events]);
 	const isRunning =
 		turnInFlight || (events.length === 0 && session.runStatus === "running");
+	const transcriptItems = useMemo((): TranscriptItem[] => {
+		const items = createCodingTranscriptItems(events);
+		if (isRunning) {
+			items.push({
+				kind: "activity",
+				key: "coding-activity",
+				startedAt: null,
+				isWorking: events.length > 0,
+				scrollKey: `coding-activity:${events.length > 0 ? "working" : "thinking"}`,
+			});
+		}
+		if (streamError) {
+			items.push({
+				kind: "error",
+				key: "coding-stream-error",
+				message: streamError,
+				scrollKey: `coding-stream-error:${streamError}`,
+			});
+		}
+		return items;
+	}, [events, isRunning, streamError]);
 
 	return (
 		<div className="flex h-full min-h-0 flex-1 flex-col bg-dark-950">
@@ -498,20 +506,11 @@ export function ActiveSessionPanel({
 					<div className="mx-auto max-w-4xl">{resumeError}</div>
 				</div>
 			)}
-			<div
-				ref={scrollRef}
-				className="scrollbar-none flex-1 overflow-y-auto overflow-x-hidden"
-			>
-				<div className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
-					<CodingEventView events={events} />
-					{isRunning && (
-						<ThinkingIndicator startedAt={null} isWorking={events.length > 0} />
-					)}
-					{streamError && (
-						<div className="text-xs text-danger">{streamError}</div>
-					)}
-				</div>
-			</div>
+			<TranscriptSurface
+				sessionKey={usageSessionKey}
+				items={transcriptItems}
+				emptyMessage="No turn output yet. Send a prompt to start."
+			/>
 			<MessageInput
 				onSend={onSend}
 				model={null}

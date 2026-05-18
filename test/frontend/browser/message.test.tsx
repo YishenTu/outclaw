@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Message } from "../../../src/frontend/browser/components/chat/message.tsx";
+import { Message } from "../../../src/frontend/browser/components/transcript/message.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
 

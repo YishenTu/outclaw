@@ -5,7 +5,7 @@ import {
 	chatImageLabel,
 	inlineChatImageSrc,
 	shouldShowAssistantUtilityBar,
-} from "../../../src/frontend/browser/components/chat/message-render-projection.ts";
+} from "../../../src/frontend/browser/components/transcript/message-render-projection.ts";
 
 describe("browser message render projection", () => {
 	test("projects image keys, labels, and inline sources", () => {

@@ -1,51 +1,64 @@
 import { describe, expect, test } from "bun:test";
+import { createChatTranscriptItems } from "../../../src/frontend/browser/components/transcript/chat-transcript-items.ts";
+import { displayMessageRenderKey } from "../../../src/frontend/browser/components/transcript/transcript-items.ts";
 import {
 	createTranscriptAutoScrollState,
 	createTranscriptAutoScrollToken,
-	displayMessageRenderKey,
 	isNearTranscriptBottom,
 	resolveTranscriptAutoScrollState,
 	shouldShowTranscriptScrollToBottomButton,
-} from "../../../src/frontend/browser/components/chat/message-list-scroll.ts";
+} from "../../../src/frontend/browser/components/transcript/transcript-scroll.ts";
 
 describe("browser message list scroll", () => {
 	test("auto-scroll token stays stable for identical transcript content", () => {
 		const first = createTranscriptAutoScrollToken({
 			sessionKey: "agent-a:claude:sdk-1",
-			messages: [
-				{
-					kind: "chat",
-					role: "user",
-					content: "hello",
-				},
-				{
-					kind: "chat",
-					role: "assistant",
-					content: "hi",
-				},
-			],
-			streamingText: "",
-			streamingThinking: "",
-			isStreaming: false,
+			items: createChatTranscriptItems({
+				sessionKey: "agent-a:claude:sdk-1",
+				messages: [
+					{
+						kind: "chat",
+						role: "user",
+						content: "hello",
+					},
+					{
+						kind: "chat",
+						role: "assistant",
+						content: "hi",
+					},
+				],
+				queuedPrompts: [],
+				streamingText: "",
+				streamingThinking: "",
+				isStreaming: false,
+				isCompacting: false,
+				thinkingStartedAt: null,
+			}),
 		});
 
 		const second = createTranscriptAutoScrollToken({
 			sessionKey: "agent-a:claude:sdk-1",
-			messages: [
-				{
-					kind: "chat",
-					role: "user",
-					content: "hello",
-				},
-				{
-					kind: "chat",
-					role: "assistant",
-					content: "hi",
-				},
-			],
-			streamingText: "",
-			streamingThinking: "",
-			isStreaming: false,
+			items: createChatTranscriptItems({
+				sessionKey: "agent-a:claude:sdk-1",
+				messages: [
+					{
+						kind: "chat",
+						role: "user",
+						content: "hello",
+					},
+					{
+						kind: "chat",
+						role: "assistant",
+						content: "hi",
+					},
+				],
+				queuedPrompts: [],
+				streamingText: "",
+				streamingThinking: "",
+				isStreaming: false,
+				isCompacting: false,
+				thinkingStartedAt: null,
+			}),
 		});
 
 		expect(second).toBe(first);
@@ -54,30 +67,42 @@ describe("browser message list scroll", () => {
 	test("auto-scroll token changes when the transcript content changes", () => {
 		const before = createTranscriptAutoScrollToken({
 			sessionKey: "agent-a:claude:sdk-1",
-			messages: [
-				{
-					kind: "chat",
-					role: "assistant",
-					content: "alpha",
-				},
-			],
-			streamingText: "",
-			streamingThinking: "",
-			isStreaming: false,
+			items: createChatTranscriptItems({
+				sessionKey: "agent-a:claude:sdk-1",
+				messages: [
+					{
+						kind: "chat",
+						role: "assistant",
+						content: "alpha",
+					},
+				],
+				queuedPrompts: [],
+				streamingText: "",
+				streamingThinking: "",
+				isStreaming: false,
+				isCompacting: false,
+				thinkingStartedAt: null,
+			}),
 		});
 
 		const after = createTranscriptAutoScrollToken({
 			sessionKey: "agent-a:claude:sdk-1",
-			messages: [
-				{
-					kind: "chat",
-					role: "assistant",
-					content: "alpha",
-				},
-			],
-			streamingText: "beta",
-			streamingThinking: "",
-			isStreaming: true,
+			items: createChatTranscriptItems({
+				sessionKey: "agent-a:claude:sdk-1",
+				messages: [
+					{
+						kind: "chat",
+						role: "assistant",
+						content: "alpha",
+					},
+				],
+				queuedPrompts: [],
+				streamingText: "beta",
+				streamingThinking: "",
+				isStreaming: true,
+				isCompacting: false,
+				thinkingStartedAt: null,
+			}),
 		});
 
 		expect(after).not.toBe(before);
@@ -86,18 +111,12 @@ describe("browser message list scroll", () => {
 	test("auto-scroll token changes when the active session changes", () => {
 		const first = createTranscriptAutoScrollToken({
 			sessionKey: "agent-a:claude:sdk-1",
-			messages: [],
-			streamingText: "",
-			streamingThinking: "",
-			isStreaming: false,
+			items: [],
 		});
 
 		const second = createTranscriptAutoScrollToken({
 			sessionKey: "agent-a:claude:sdk-2",
-			messages: [],
-			streamingText: "",
-			streamingThinking: "",
-			isStreaming: false,
+			items: [],
 		});
 
 		expect(second).not.toBe(first);
