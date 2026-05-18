@@ -12,6 +12,12 @@ import {
 	fetchAgentCronHistory,
 	updateAgentCronEnabled,
 } from "../../lib/api.ts";
+import {
+	getCronPanelAgentCache,
+	shouldLoadCronEntries,
+	shouldShowCronLoading,
+	useCronPanelCacheStore,
+} from "../../stores/cron-panel-cache.ts";
 import { useRightPanelRefreshStore } from "../../stores/right-panel-refresh.ts";
 import { MarkdownContent } from "../transcript/markdown-content.tsx";
 
@@ -293,10 +299,18 @@ export function CronPanel({ agentId, treeEntries }: CronPanelProps) {
 	const cronRevision = useRightPanelRefreshStore(
 		(state) => state.cronRevisionByAgent[agentId] ?? 0,
 	);
-	const [entries, setEntries] = useState<BrowserCronEntry[]>([]);
+	const cronCache = useCronPanelCacheStore((state) =>
+		getCronPanelAgentCache(state, agentId),
+	);
+	const acceptCronEntries = useCronPanelCacheStore(
+		(state) => state.acceptEntries,
+	);
+	const beginCronLoad = useCronPanelCacheStore((state) => state.beginLoad);
+	const rejectCronEntries = useCronPanelCacheStore(
+		(state) => state.rejectEntries,
+	);
+	const updateCronEntry = useCronPanelCacheStore((state) => state.updateEntry);
 	const [pendingPaths, setPendingPaths] = useState<Record<string, boolean>>({});
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
 	const [mutationError, setMutationError] = useState<string | null>(null);
 	const [expandedPath, setExpandedPath] = useState<string | null>(null);
 	const [historyByName, setHistoryByName] = useState<
@@ -309,12 +323,21 @@ export function CronPanel({ agentId, treeEntries }: CronPanelProps) {
 		() => buildFallbackCronEntries(treeEntries),
 		[treeEntries],
 	);
+	const cronNeedsLoad = shouldLoadCronEntries({
+		cronRevision,
+		loadedRevision: cronCache.loadedRevision,
+	});
+	const cronLoading =
+		cronCache.loading || (cronNeedsLoad && cronCache.error === null);
 	const visibleEntries = useMemo(
 		() =>
-			(entries.length > 0 ? entries : error ? fallbackEntries : entries).filter(
-				(entry) => isCronJobFile(entry.path),
-			),
-		[entries, error, fallbackEntries],
+			(cronCache.entries.length > 0
+				? cronCache.entries
+				: cronCache.error
+					? fallbackEntries
+					: cronCache.entries
+			).filter((entry) => isCronJobFile(entry.path)),
+		[cronCache.entries, cronCache.error, fallbackEntries],
 	);
 
 	const loadHistoryPage = useCallback(
@@ -396,37 +419,44 @@ export function CronPanel({ agentId, treeEntries }: CronPanelProps) {
 	useEffect(() => {
 		void cronRevision;
 
+		if (!cronNeedsLoad) {
+			return;
+		}
+
 		let cancelled = false;
 		setMutationError(null);
-		setLoading(true);
-		setError(null);
+		beginCronLoad(agentId);
 		void fetchAgentCron(agentId)
 			.then((nextEntries) => {
 				if (!cancelled) {
-					setEntries(nextEntries);
-					setError(null);
+					acceptCronEntries(agentId, cronRevision, nextEntries);
 				}
 			})
 			.catch((nextError) => {
 				if (!cancelled) {
-					setEntries(fallbackEntries);
-					setError(
+					rejectCronEntries(
+						agentId,
+						cronRevision,
 						nextError instanceof Error
 							? nextError.message
 							: "Failed to load cron jobs",
+						fallbackEntries,
 					);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setLoading(false);
 				}
 			});
 
 		return () => {
 			cancelled = true;
 		};
-	}, [agentId, cronRevision, fallbackEntries]);
+	}, [
+		acceptCronEntries,
+		agentId,
+		beginCronLoad,
+		cronNeedsLoad,
+		cronRevision,
+		fallbackEntries,
+		rejectCronEntries,
+	]);
 
 	useEffect(() => {
 		if (lastHistoryRefreshRevisionRef.current === cronRevision) {
@@ -445,14 +475,18 @@ export function CronPanel({ agentId, treeEntries }: CronPanelProps) {
 		loadHistoryPage(expandedEntry.name);
 	}, [cronRevision, expandedPath, loadHistoryPage, visibleEntries]);
 
-	if (loading) {
+	if (
+		shouldShowCronLoading({ entries: visibleEntries, loading: cronLoading })
+	) {
 		return (
 			<div className="px-4 py-4 text-sm text-dark-500">Loading cron jobs…</div>
 		);
 	}
 
-	if (error && fallbackEntries.length === 0) {
-		return <div className="px-4 py-4 text-sm text-danger">{error}</div>;
+	if (cronCache.error && fallbackEntries.length === 0) {
+		return (
+			<div className="px-4 py-4 text-sm text-danger">{cronCache.error}</div>
+		);
 	}
 
 	if (visibleEntries.length === 0) {
@@ -467,8 +501,8 @@ export function CronPanel({ agentId, treeEntries }: CronPanelProps) {
 		<div className="flex h-full min-h-0 flex-col">
 			<CronPanelHeader />
 			<div className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-3 py-3">
-				{error ? (
-					<div className="px-2 py-2 text-xs text-danger">{error}</div>
+				{cronCache.error ? (
+					<div className="px-2 py-2 text-xs text-danger">{cronCache.error}</div>
 				) : null}
 				{mutationError ? (
 					<div className="px-2 py-2 text-xs text-danger">{mutationError}</div>
@@ -516,17 +550,7 @@ export function CronPanel({ agentId, treeEntries }: CronPanelProps) {
 										!entry.enabled,
 									)
 										.then((nextEntry) => {
-											setEntries((current) =>
-												current.map((currentEntry) =>
-													currentEntry.path === nextEntry.path
-														? {
-																...currentEntry,
-																...nextEntry,
-																error: undefined,
-															}
-														: currentEntry,
-												),
-											);
+											updateCronEntry(agentId, nextEntry);
 										})
 										.catch((nextError) => {
 											setMutationError(
