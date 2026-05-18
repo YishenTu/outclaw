@@ -61,4 +61,26 @@ describe("browser message input", () => {
 		expect(compactHtml).not.toContain("Thinking: Medium");
 		expect(compactHtml).toContain("<span>Medium</span>");
 	});
+
+	test("shows an enabled stop action while the current turn is interruptible", () => {
+		const html = renderToStaticMarkup(
+			<MessageInput
+				onSend={() => false}
+				model={null}
+				effort={null}
+				onModelChange={() => false}
+				onEffortChange={() => false}
+				interruptible
+			/>,
+		);
+
+		const stopButton = html.match(
+			/<button[^>]*aria-label="Stop response"[^>]*>/,
+		)?.[0];
+		expect(html).toContain('aria-label="Stop response"');
+		expect(html).toContain("lucide-circle-stop");
+		expect(html).not.toContain('aria-label="Send message"');
+		expect(stopButton).toBeDefined();
+		expect(stopButton).not.toContain(' disabled=""');
+	});
 });

@@ -1,4 +1,4 @@
-import { Send } from "lucide-react";
+import { CircleStop, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
 	detectMentionToken,
@@ -155,6 +155,9 @@ export function MessageInput({
 		value,
 	});
 	const isInputDisabled = disabled || submitting;
+	const canInterrupt = interruptible && !isInputDisabled;
+	const actionButtonEnabled = interruptible ? canInterrupt : canSend;
+	const actionButtonLabel = interruptible ? "Stop response" : "Send message";
 	const sessionActive =
 		sessionKey !== null && !sessionKey.endsWith(`:${PENDING_SESSION_ID}`);
 	const runtimePopupItemCount = resolveRuntimePopupItemCount(runtimePopup);
@@ -563,19 +566,26 @@ export function MessageInput({
 						</div>
 						<button
 							type="button"
-							disabled={!canSend}
+							disabled={!actionButtonEnabled}
 							tabIndex={-1}
 							onMouseDown={(event) => event.preventDefault()}
 							onClick={() => {
+								if (interruptible) {
+									interrupt();
+									return;
+								}
 								void submitValue();
 							}}
+							aria-label={actionButtonLabel}
 							className={`p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-								canSend
-									? "text-brand hover:text-ember"
+								actionButtonEnabled
+									? interruptible
+										? "text-danger hover:text-ember"
+										: "text-brand hover:text-ember"
 									: "text-dark-400 hover:text-dark-200"
 							}`}
 						>
-							<Send size={18} />
+							{interruptible ? <CircleStop size={18} /> : <Send size={18} />}
 						</button>
 					</div>
 				</section>
