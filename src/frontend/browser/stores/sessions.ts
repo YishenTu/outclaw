@@ -32,6 +32,11 @@ export interface SessionsState {
 		sessions: SessionEntry[],
 		nextCursor?: SessionCursor,
 	) => void;
+	refreshSessions: (
+		agentId: string,
+		sessions: SessionEntry[],
+		nextCursor?: SessionCursor,
+	) => void;
 	setActiveSession: (agentId: string, session: SessionRef | null) => void;
 	setSearchResults: (
 		agentId: string,
@@ -140,6 +145,31 @@ export const useSessionsStore = create<SessionsState>((set) => ({
 				),
 			},
 		})),
+	refreshSessions: (agentId, sessions, nextCursor) =>
+		set((state) => {
+			const current = state.sessionsByAgent[agentId] ?? [];
+			const nextSessions = mergeRefreshedLeadingPage(
+				current,
+				sessions,
+				nextCursor,
+			);
+			if (
+				sessionEntriesEqual(state.sessionsByAgent[agentId], nextSessions) &&
+				cursorsEqual(state.nextCursorByAgent[agentId], nextCursor)
+			) {
+				return state;
+			}
+			return {
+				nextCursorByAgent: {
+					...state.nextCursorByAgent,
+					[agentId]: nextCursor,
+				},
+				sessionsByAgent: {
+					...state.sessionsByAgent,
+					[agentId]: nextSessions,
+				},
+			};
+		}),
 	setActiveSession: (agentId, session) =>
 		set((state) => {
 			if (sessionRefsEqual(state.activeSessionByAgent[agentId], session)) {
@@ -294,4 +324,37 @@ function mergeSessions(
 		seen.add(key);
 	}
 	return merged;
+}
+
+function mergeRefreshedLeadingPage(
+	current: SessionEntry[],
+	refreshed: SessionEntry[],
+	nextCursor: SessionCursor | undefined,
+): SessionEntry[] {
+	if (!nextCursor) {
+		return refreshed;
+	}
+
+	const refreshedKeys = new Set(refreshed.map(sessionKey));
+	const preservedTail = current.filter(
+		(session) =>
+			isAfterCursor(session, nextCursor) &&
+			!refreshedKeys.has(sessionKey(session)),
+	);
+	return [...refreshed, ...preservedTail];
+}
+
+function isAfterCursor(
+	session: Pick<SessionEntry, "lastActive" | "sdkSessionId">,
+	cursor: SessionCursor,
+): boolean {
+	return (
+		session.lastActive < cursor.lastActive ||
+		(session.lastActive === cursor.lastActive &&
+			session.sdkSessionId > cursor.sdkSessionId)
+	);
+}
+
+function sessionKey(session: SessionRef): string {
+	return `${session.agentId}\u0000${session.providerId}\u0000${session.sdkSessionId}`;
 }

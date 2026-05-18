@@ -48,6 +48,15 @@ const SESSION_BETA: SessionEntry = {
 	lastActive: 90,
 };
 
+const SESSION_GAMMA: SessionEntry = {
+	agentId: "agent-a",
+	providerId: "claude",
+	sdkSessionId: "sdk-gamma",
+	title: "Gamma",
+	model: "sonnet",
+	lastActive: 80,
+};
+
 const SESSION_OTHER_PROVIDER: SessionEntry = {
 	agentId: "agent-a",
 	providerId: "mock",
@@ -263,6 +272,73 @@ describe("browser stores", () => {
 		useSessionsStore.getState().clearSearch("agent-a");
 		expect(
 			useSessionsStore.getState().searchByAgent["agent-a"],
+		).toBeUndefined();
+	});
+
+	test("sessions store refreshes the loaded leading page without collapsing older loaded rows", () => {
+		const staleCoveredSession: SessionEntry = {
+			agentId: "agent-a",
+			providerId: "claude",
+			sdkSessionId: "sdk-stale",
+			title: "Stale",
+			model: "sonnet",
+			lastActive: 95,
+		};
+		const insertedSession: SessionEntry = {
+			agentId: "agent-a",
+			providerId: "claude",
+			sdkSessionId: "sdk-inserted",
+			title: "Inserted",
+			model: "opus",
+			lastActive: 90,
+		};
+		useSessionsStore
+			.getState()
+			.setSessions("agent-a", [
+				SESSION_ALPHA,
+				staleCoveredSession,
+				SESSION_GAMMA,
+			]);
+
+		useSessionsStore
+			.getState()
+			.refreshSessions(
+				"agent-a",
+				[
+					{ ...SESSION_ALPHA, title: "Alpha updated", lastActive: 100 },
+					insertedSession,
+				],
+				{
+					lastActive: insertedSession.lastActive,
+					sdkSessionId: insertedSession.sdkSessionId,
+				},
+			);
+
+		expect(useSessionsStore.getState().sessionsByAgent["agent-a"]).toEqual([
+			{ ...SESSION_ALPHA, title: "Alpha updated", lastActive: 100 },
+			insertedSession,
+			SESSION_GAMMA,
+		]);
+		expect(useSessionsStore.getState().nextCursorByAgent["agent-a"]).toEqual({
+			lastActive: insertedSession.lastActive,
+			sdkSessionId: insertedSession.sdkSessionId,
+		});
+	});
+
+	test("sessions store replaces the loaded list when a refresh page is complete", () => {
+		useSessionsStore
+			.getState()
+			.setSessions("agent-a", [SESSION_ALPHA, SESSION_BETA, SESSION_GAMMA]);
+
+		useSessionsStore
+			.getState()
+			.refreshSessions("agent-a", [{ ...SESSION_ALPHA, title: "Only" }]);
+
+		expect(useSessionsStore.getState().sessionsByAgent["agent-a"]).toEqual([
+			{ ...SESSION_ALPHA, title: "Only" },
+		]);
+		expect(
+			useSessionsStore.getState().nextCursorByAgent["agent-a"],
 		).toBeUndefined();
 	});
 

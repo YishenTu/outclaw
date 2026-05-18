@@ -35,6 +35,11 @@ import {
 	useTerminalRunCommand,
 } from "../components/right-panel/terminal/use-agent-terminal-run-command.ts";
 import {
+	browserTreeEntriesEqual,
+	resolveTreeRefreshFailure,
+	shouldShowTreeLoading,
+} from "../components/right-panel/tree-refresh-policy.ts";
+import {
 	fetchCodingRepositoryTree,
 	initGitRepo,
 	updateCodingRepositoryTerminalRunCommand,
@@ -177,6 +182,13 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	const [tree, setTree] = useState<BrowserTreeEntry[]>([]);
 	const [treeLoading, setTreeLoading] = useState(false);
 	const [treeError, setTreeError] = useState<string | null>(null);
+	const treeRef = useRef<BrowserTreeEntry[]>([]);
+	const [loadedTreeWorkspaceKey, setLoadedTreeWorkspaceKey] = useState<
+		string | null
+	>(null);
+	const [loadedTreeGitRevision, setLoadedTreeGitRevision] = useState<
+		number | null
+	>(null);
 	const loadingTreeDirectoriesRef = useRef(new Set<string>());
 	const latestWorkspaceKey = useRef(workspaceKey);
 	const [selectedGitCommitSha, setSelectedGitCommitSha] = useState<
@@ -210,18 +222,43 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		loadingTreeDirectoriesRef.current.clear();
 		latestWorkspaceKey.current = workspaceKey;
 	}
+	const setVisibleTree = useCallback((entries: BrowserTreeEntry[]) => {
+		setTree((current) => {
+			if (browserTreeEntriesEqual(current, entries)) {
+				treeRef.current = current;
+				return current;
+			}
+			treeRef.current = entries;
+			return entries;
+		});
+	}, []);
+	const updateVisibleTree = useCallback(
+		(updater: (current: BrowserTreeEntry[]) => BrowserTreeEntry[]) => {
+			setTree((current) => {
+				const next = updater(current);
+				treeRef.current = next;
+				return next;
+			});
+		},
+		[],
+	);
 
 	useEffect(() => {
 		if (!workspaceKey) {
-			setTree([]);
+			setVisibleTree([]);
 			setTreeError(null);
 			setTreeLoading(false);
+			setLoadedTreeWorkspaceKey(null);
+			setLoadedTreeGitRevision(null);
 			return;
 		}
 		if (
 			!shouldLoadCodingRepositoryTree({
 				activeTab,
 				focusedWorkspaceKey: workspaceKey,
+				gitRevision,
+				loadedTreeGitRevision,
+				loadedTreeWorkspaceKey,
 			})
 		) {
 			return;
@@ -232,7 +269,17 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 			return;
 		}
 		let cancelled = false;
-		setTreeLoading(true);
+		const canKeepCurrentTree =
+			loadedTreeWorkspaceKey === workspaceKey && treeRef.current.length > 0;
+		if (!canKeepCurrentTree) {
+			setVisibleTree([]);
+		}
+		setTreeLoading(
+			shouldShowTreeLoading({
+				entries: canKeepCurrentTree ? treeRef.current : [],
+				loading: true,
+			}),
+		);
 		setTreeError(null);
 		void fetchCodingRepositoryTree(
 			requestTarget.repositoryId,
@@ -241,17 +288,28 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		)
 			.then((entries) => {
 				if (!cancelled) {
-					setTree(entries);
+					setVisibleTree(entries);
 					setTreeError(null);
 					loadingTreeDirectoriesRef.current.clear();
+					setLoadedTreeWorkspaceKey(workspaceKey);
+					setLoadedTreeGitRevision(gitRevision);
 				}
 			})
 			.catch((error) => {
 				if (!cancelled) {
-					setTree([]);
-					setTreeError(
-						error instanceof Error ? error.message : "Failed to load file tree",
-					);
+					const failure = resolveTreeRefreshFailure({
+						currentTree: treeRef.current,
+						errorMessage:
+							error instanceof Error
+								? error.message
+								: "Failed to load file tree",
+					});
+					setVisibleTree(failure.tree);
+					setTreeError(failure.treeError);
+					if (failure.tree.length === 0) {
+						setLoadedTreeWorkspaceKey(workspaceKey);
+						setLoadedTreeGitRevision(gitRevision);
+					}
 				}
 			})
 			.finally(() => {
@@ -263,7 +321,14 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 		return () => {
 			cancelled = true;
 		};
-	}, [activeTab, workspaceKey]);
+	}, [
+		activeTab,
+		gitRevision,
+		loadedTreeGitRevision,
+		loadedTreeWorkspaceKey,
+		setVisibleTree,
+		workspaceKey,
+	]);
 
 	const handleOpenTreeDirectory = useCallback(
 		(params: { path: string }) => {
@@ -294,7 +359,7 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 					) {
 						return;
 					}
-					setTree((current) =>
+					updateVisibleTree((current) =>
 						mergeTreeDirectoryChildren(current, params.path, entries),
 					);
 				})
@@ -305,7 +370,7 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 					loadingTreeDirectoriesRef.current.delete(params.path);
 				});
 		},
-		[tree],
+		[tree, updateVisibleTree],
 	);
 
 	useEffect(() => {
@@ -535,7 +600,10 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 				<div className="flex h-full min-h-0 flex-col">
 					<FileTreeHeader agentName={repository?.displayName ?? null} />
 					<div className="scrollbar-none min-h-0 flex-1 overflow-y-auto">
-						{treeLoading ? (
+						{shouldShowTreeLoading({
+							entries: tree,
+							loading: treeLoading,
+						}) ? (
 							<div className="px-4 py-4 text-sm text-dark-500">
 								Loading files…
 							</div>
@@ -721,11 +789,23 @@ export function treeDirectoryLoaded(
 export function shouldLoadCodingRepositoryTree({
 	activeTab,
 	focusedWorkspaceKey,
+	gitRevision,
+	loadedTreeGitRevision,
+	loadedTreeWorkspaceKey,
 }: {
 	activeTab: CodingRightTab;
 	focusedWorkspaceKey: string | undefined;
+	gitRevision: number;
+	loadedTreeGitRevision: number | null;
+	loadedTreeWorkspaceKey: string | null;
 }): boolean {
-	return activeTab === "files" && focusedWorkspaceKey !== undefined;
+	if (activeTab !== "files" || focusedWorkspaceKey === undefined) {
+		return false;
+	}
+	return (
+		loadedTreeWorkspaceKey !== focusedWorkspaceKey ||
+		loadedTreeGitRevision !== gitRevision
+	);
 }
 
 export function shouldLoadCodingRepositoryGitStatus({

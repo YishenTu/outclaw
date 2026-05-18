@@ -262,7 +262,6 @@ export function applyBrowserChatEvent(
 			if (event.usage) {
 				useContextUsageStore.getState().setUsage(nextSessionKey, event.usage);
 			}
-			options.refreshSidebar();
 			return true;
 		}
 		case "error": {

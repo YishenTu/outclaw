@@ -527,6 +527,82 @@ function updateSearchRunStatus(
 	return changed ? Object.fromEntries(entries) : searchByRepository;
 }
 
+function codingSessionSummariesEqual(
+	left: BrowserCodingSessionSummary[] | undefined,
+	right: BrowserCodingSessionSummary[],
+): boolean {
+	return (
+		left !== undefined &&
+		left.length === right.length &&
+		left.every((session, index) => {
+			const other = right[index];
+			return other !== undefined && codingSessionSummaryEqual(session, other);
+		})
+	);
+}
+
+function codingSessionSummaryEqual(
+	left: BrowserCodingSessionSummary,
+	right: BrowserCodingSessionSummary,
+): boolean {
+	return (
+		left.providerId === right.providerId &&
+		left.sdkSessionId === right.sdkSessionId &&
+		left.repositoryId === right.repositoryId &&
+		left.title === right.title &&
+		left.model === right.model &&
+		left.lastActive === right.lastActive &&
+		left.cwd === right.cwd &&
+		left.lifecycleStatus === right.lifecycleStatus &&
+		left.runStatus === right.runStatus &&
+		left.createdAt === right.createdAt &&
+		left.source === right.source &&
+		left.tag === right.tag &&
+		left.ocSessionId === right.ocSessionId &&
+		left.linkedChatSessionId === right.linkedChatSessionId &&
+		left.browserTabId === right.browserTabId &&
+		left.failedAt === right.failedAt &&
+		left.failureMessage === right.failureMessage
+	);
+}
+
+function codingRepositoriesEqual(
+	left: BrowserCodingRepositorySummary[],
+	right: BrowserCodingRepositorySummary[],
+): boolean {
+	return (
+		left.length === right.length &&
+		left.every((repository, index) => {
+			const other = right[index];
+			return (
+				other !== undefined &&
+				repository.id === other.id &&
+				repository.rootCwd === other.rootCwd &&
+				repository.displayName === other.displayName &&
+				repository.remoteUrl === other.remoteUrl &&
+				repository.source === other.source &&
+				repository.status === other.status &&
+				repository.terminalRunCommand === other.terminalRunCommand &&
+				repository.createdAt === other.createdAt &&
+				repository.lastActive === other.lastActive
+			);
+		})
+	);
+}
+
+function sessionCursorsEqual(
+	left: SessionCursor | undefined,
+	right: SessionCursor | undefined,
+): boolean {
+	if (!left || !right) {
+		return left === right;
+	}
+	return (
+		left.lastActive === right.lastActive &&
+		left.sdkSessionId === right.sdkSessionId
+	);
+}
+
 export const useCodingStore = create<CodingState>()(
 	persist(
 		(set) => ({
@@ -603,6 +679,12 @@ export const useCodingStore = create<CodingState>()(
 			},
 			setRepositories(repositories) {
 				set((state) => {
+					if (
+						state.repositoriesLoaded &&
+						codingRepositoriesEqual(state.repositories, repositories)
+					) {
+						return state;
+					}
 					const stillExists =
 						state.focusedRepositoryId === undefined ||
 						repositories.some(
@@ -623,16 +705,30 @@ export const useCodingStore = create<CodingState>()(
 				});
 			},
 			setRepositorySessions(repositoryId, sessions, nextCursor) {
-				set((state) => ({
-					sessionsByRepository: {
-						...state.sessionsByRepository,
-						[repositoryId]: sessions,
-					},
-					nextCursorByRepository: {
-						...state.nextCursorByRepository,
-						[repositoryId]: nextCursor,
-					},
-				}));
+				set((state) => {
+					if (
+						codingSessionSummariesEqual(
+							state.sessionsByRepository[repositoryId],
+							sessions,
+						) &&
+						sessionCursorsEqual(
+							state.nextCursorByRepository[repositoryId],
+							nextCursor,
+						)
+					) {
+						return state;
+					}
+					return {
+						sessionsByRepository: {
+							...state.sessionsByRepository,
+							[repositoryId]: sessions,
+						},
+						nextCursorByRepository: {
+							...state.nextCursorByRepository,
+							[repositoryId]: nextCursor,
+						},
+					};
+				});
 			},
 			appendRepositorySessions(repositoryId, sessions, nextCursor) {
 				set((state) => {

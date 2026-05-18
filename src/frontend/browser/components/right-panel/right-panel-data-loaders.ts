@@ -16,6 +16,11 @@ import {
 	shouldFetchGitStatus,
 	shouldFetchInbox,
 } from "./right-panel-fetch-policy.ts";
+import {
+	browserTreeEntriesEqual,
+	resolveTreeRefreshFailure,
+	shouldShowTreeLoading,
+} from "./tree-refresh-policy.ts";
 
 export function useAgentTreeLoader(params: {
 	activeAgentId: string | null;
@@ -35,6 +40,17 @@ export function useAgentTreeLoader(params: {
 	const [loadedTreeGitRevision, setLoadedTreeGitRevision] = useState<
 		number | null
 	>(null);
+	const treeRef = useRef<BrowserTreeEntry[]>([]);
+	const setVisibleTree = useCallback((entries: BrowserTreeEntry[]) => {
+		setTree((current) => {
+			if (browserTreeEntriesEqual(current, entries)) {
+				treeRef.current = current;
+				return current;
+			}
+			treeRef.current = entries;
+			return entries;
+		});
+	}, []);
 
 	useEffect(() => {
 		void params.treeRevision;
@@ -46,7 +62,7 @@ export function useAgentTreeLoader(params: {
 		}
 
 		if (!params.activeAgentId) {
-			setTree([]);
+			setVisibleTree([]);
 			setTreeError(null);
 			setTreeLoading(false);
 			setLoadedTreeAgentId(null);
@@ -70,12 +86,22 @@ export function useAgentTreeLoader(params: {
 		}
 
 		let cancelled = false;
-		setTreeLoading(true);
+		const canKeepCurrentTree =
+			loadedTreeAgentId === params.activeAgentId && treeRef.current.length > 0;
+		if (!canKeepCurrentTree) {
+			setVisibleTree([]);
+		}
+		setTreeLoading(
+			shouldShowTreeLoading({
+				entries: canKeepCurrentTree ? treeRef.current : [],
+				loading: true,
+			}),
+		);
 		setTreeError(null);
 		void fetchAgentTree(params.activeAgentId)
 			.then((nextTree) => {
 				if (!cancelled) {
-					setTree(nextTree);
+					setVisibleTree(nextTree);
 					setTreeError(null);
 					setLoadedTreeAgentId(params.activeAgentId);
 					setLoadedTreeRevision(params.treeRevision);
@@ -84,13 +110,20 @@ export function useAgentTreeLoader(params: {
 			})
 			.catch((error) => {
 				if (!cancelled) {
-					setTree([]);
-					setTreeError(
-						error instanceof Error ? error.message : "Failed to load file tree",
-					);
-					setLoadedTreeAgentId(params.activeAgentId);
-					setLoadedTreeRevision(params.treeRevision);
-					setLoadedTreeGitRevision(params.gitRevision);
+					const failure = resolveTreeRefreshFailure({
+						currentTree: treeRef.current,
+						errorMessage:
+							error instanceof Error
+								? error.message
+								: "Failed to load file tree",
+					});
+					setVisibleTree(failure.tree);
+					setTreeError(failure.treeError);
+					if (failure.tree.length === 0) {
+						setLoadedTreeAgentId(params.activeAgentId);
+						setLoadedTreeRevision(params.treeRevision);
+						setLoadedTreeGitRevision(params.gitRevision);
+					}
 				}
 			})
 			.finally(() => {
@@ -110,6 +143,7 @@ export function useAgentTreeLoader(params: {
 		loadedTreeAgentId,
 		loadedTreeGitRevision,
 		loadedTreeRevision,
+		setVisibleTree,
 	]);
 
 	return {

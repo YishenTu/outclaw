@@ -1,6 +1,7 @@
 import type {
 	BrowserAgentsResponse,
 	BrowserCodingSessionRunStatus,
+	BrowserSessionPageResponse,
 	ServerEvent,
 	UsageInfo,
 } from "../../../common/protocol.ts";
@@ -121,6 +122,26 @@ export function applySidebarSummary(summary: BrowserAgentsResponse) {
 	}
 }
 
+export function applyAgentSessionPage(
+	agentId: string,
+	page: BrowserSessionPageResponse,
+) {
+	useSessionsStore.getState().refreshSessions(
+		agentId,
+		page.sessions.map(
+			(session): SessionEntry => ({
+				agentId,
+				providerId: session.providerId,
+				sdkSessionId: session.sdkSessionId,
+				title: session.title,
+				model: session.model,
+				lastActive: session.lastActive,
+			}),
+		),
+		page.nextCursor,
+	);
+}
+
 function resolveSidebarActiveSession(params: {
 	agent: BrowserAgentsResponse["agents"][number];
 	currentActiveSession:
@@ -192,6 +213,7 @@ interface BrowserServerEventHandlerOptions
 		currentSessionKey: string,
 	) => ReturnType<BrowserChatEventHandlerOptions["completeLiveRunSession"]>;
 	invalidateSidebarRefresh: () => void;
+	refreshAgentSessions: (agentId: string) => void;
 	/**
 	 * Targeted refresh of slash commands / skills for the agent this client is
 	 * currently bound to. Used on agent_switched to update the command palette
@@ -374,7 +396,6 @@ export function handleBrowserServerEvent(
 			} else {
 				useSessionsStore.getState().deleteSessionBySdkId(event.sdkSessionId);
 			}
-			options.refreshSidebar();
 			return;
 		}
 		case "session_cleared": {
@@ -423,6 +444,10 @@ export function handleBrowserServerEvent(
 			}
 			return;
 		case "browser_agents_invalidated":
+			if (event.agentId) {
+				options.refreshAgentSessions(event.agentId);
+				return;
+			}
 			options.refreshSidebar();
 			return;
 		case "browser_agent_active_session_changed":

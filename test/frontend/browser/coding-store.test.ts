@@ -183,6 +183,45 @@ describe("useCodingStore", () => {
 		});
 	});
 
+	test("setRepositorySessions is silent when a refresh returns the same loaded page", () => {
+		const sessions = [
+			makeSession({
+				providerId: "codex",
+				sdkSessionId: "session-1",
+				title: "Session 1",
+				lastActive: 10,
+			}),
+		];
+		const cursor = { lastActive: 10, sdkSessionId: "session-1" };
+		useCodingStore.getState().setRepositorySessions("repo-a", sessions, cursor);
+		const sessionsByRepository = useCodingStore.getState().sessionsByRepository;
+		const nextCursorByRepository =
+			useCodingStore.getState().nextCursorByRepository;
+
+		useCodingStore
+			.getState()
+			.setRepositorySessions("repo-a", [...sessions], { ...cursor });
+
+		expect(useCodingStore.getState().sessionsByRepository).toBe(
+			sessionsByRepository,
+		);
+		expect(useCodingStore.getState().nextCursorByRepository).toBe(
+			nextCursorByRepository,
+		);
+	});
+
+	test("setRepositories is silent when a refresh returns the same repository list", () => {
+		const repositories = [makeRepo("repo-a"), makeRepo("repo-b")];
+		useCodingStore.getState().setRepositories(repositories);
+		const storedRepositories = useCodingStore.getState().repositories;
+
+		useCodingStore
+			.getState()
+			.setRepositories(repositories.map((repository) => ({ ...repository })));
+
+		expect(useCodingStore.getState().repositories).toBe(storedRepositories);
+	});
+
 	test("setCodingModels loads provider models without selecting explicit code settings", () => {
 		useCodingStore.getState().setCodingModels([
 			{

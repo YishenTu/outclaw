@@ -70,6 +70,7 @@ import {
 	resolveSavedTerminalRunCommand,
 	useAgentTerminalRunCommand,
 } from "./terminal/use-agent-terminal-run-command.ts";
+import { shouldShowTreeLoading } from "./tree-refresh-policy.ts";
 
 const TAB_LABELS: Record<UpperRightPanelTab, string> = {
 	inbox: "Inbox",
@@ -632,7 +633,10 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 							isGraph ? "hidden" : ""
 						}`}
 					>
-						{treeLoading ? (
+						{shouldShowTreeLoading({
+							entries: tree,
+							loading: treeLoading,
+						}) ? (
 							<div className="px-4 py-4 text-sm text-dark-500">
 								Loading files…
 							</div>

@@ -26,11 +26,16 @@ import { createBrowserSwitchDispatcher } from "../commands/browser-switch-dispat
 import { createBrowserLiveRunBridge } from "../events/browser-live-run-bridge.ts";
 import { createBrowserSocketLifecycle } from "../events/browser-socket-lifecycle.ts";
 import {
+	applyAgentSessionPage,
 	applySidebarSummary,
 	handleBrowserServerEvent,
 } from "../events/runtime-server-events.ts";
 import { useRuntimeLatencyPolling } from "../latency/use-runtime-latency.ts";
-import { fetchSidebarSummary, uploadPromptImages } from "../lib/api.ts";
+import {
+	fetchAgentSessions,
+	fetchSidebarSummary,
+	uploadPromptImages,
+} from "../lib/api.ts";
 import { dispatchBrowserPrompt as dispatchBrowserPromptMessage } from "../prompts/send-browser-prompt.ts";
 import { dispatchBrowserTextPrompt } from "../prompts/send-browser-text-prompt.ts";
 import {
@@ -188,9 +193,13 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 	const sidebarRefreshCoordinator = useMemo(
 		() =>
 			createSidebarRefreshCoordinator({
+				applyAgentSessionPage,
 				applySidebarSummary,
+				fetchAgentSessionPage: fetchAgentSessions,
 				fetchSidebarSummary,
 				gate: sidebarRefreshGateRef.current,
+				getLoadedAgentSessionCount: (agentId) =>
+					useSessionsStore.getState().sessionsByAgent[agentId]?.length ?? 0,
 				getSocket: () => wsRef.current,
 				isSocketOpen: isRuntimeSocketOpen,
 				sendRequestSkills,
@@ -364,6 +373,9 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 					sidebarRefreshCoordinator.invalidate();
 				},
 				pinObservedSessionKey: liveRunBridgeRef.current.pinObservedSessionKey,
+				refreshAgentSessions: (agentId) => {
+					sidebarRefreshCoordinator.refreshAgentSessions(agentId);
+				},
 				refreshSidebar,
 				requestSkills: () => {
 					const socket = wsRef.current;

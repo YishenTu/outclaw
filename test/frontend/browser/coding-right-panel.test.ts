@@ -167,20 +167,56 @@ describe("coding right panel state", () => {
 			shouldLoadCodingRepositoryTree({
 				activeTab: "files",
 				focusedWorkspaceKey: "repo-1",
+				gitRevision: 1,
+				loadedTreeGitRevision: null,
+				loadedTreeWorkspaceKey: null,
 			}),
 		).toBe(true);
 		expect(
 			shouldLoadCodingRepositoryTree({
 				activeTab: "git",
 				focusedWorkspaceKey: "repo-1",
+				gitRevision: 1,
+				loadedTreeGitRevision: null,
+				loadedTreeWorkspaceKey: null,
 			}),
 		).toBe(false);
 		expect(
 			shouldLoadCodingRepositoryTree({
 				activeTab: "files",
 				focusedWorkspaceKey: undefined,
+				gitRevision: 1,
+				loadedTreeGitRevision: null,
+				loadedTreeWorkspaceKey: null,
 			}),
 		).toBe(false);
+		expect(
+			shouldLoadCodingRepositoryTree({
+				activeTab: "files",
+				focusedWorkspaceKey: "repo-1",
+				gitRevision: 1,
+				loadedTreeGitRevision: 1,
+				loadedTreeWorkspaceKey: "repo-1",
+			}),
+		).toBe(false);
+		expect(
+			shouldLoadCodingRepositoryTree({
+				activeTab: "files",
+				focusedWorkspaceKey: "repo-1",
+				gitRevision: 2,
+				loadedTreeGitRevision: 1,
+				loadedTreeWorkspaceKey: "repo-1",
+			}),
+		).toBe(true);
+		expect(
+			shouldLoadCodingRepositoryTree({
+				activeTab: "files",
+				focusedWorkspaceKey: "repo-2",
+				gitRevision: 1,
+				loadedTreeGitRevision: 1,
+				loadedTreeWorkspaceKey: "repo-1",
+			}),
+		).toBe(true);
 	});
 
 	test("loads repository git status only when the visible git workspace is stale", () => {

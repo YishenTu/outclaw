@@ -86,6 +86,8 @@ function createHandlerOptions(overrides: Record<string, unknown> = {}) {
 			invalidateSidebarRefresh: () => calls.push("sidebar:invalidate"),
 			pinObservedSessionKey: (agentId: string, observedSessionId?: string) =>
 				`${agentId}:mock:${observedSessionId ?? "observed"}`,
+			refreshAgentSessions: (agentId: string) =>
+				calls.push(`sidebar:refresh-agent:${agentId}`),
 			refreshSidebar: () => calls.push("sidebar:refresh"),
 			requestSkills: () => calls.push("skills:request"),
 			routeObservedSessionKey: (agentId: string, observedSessionId?: string) =>
@@ -235,13 +237,26 @@ describe("browser runtime server events", () => {
 		).toBe(activeSession);
 	});
 
-	test("refreshes sidebar agent data when the global agents summary is invalidated", () => {
+	test("refreshes only one agent session list when that agent's catalog is invalidated", () => {
 		const { calls, options } = createHandlerOptions();
 
 		handleBrowserServerEvent(
 			{
 				type: "browser_agents_invalidated",
 				agentId: "agent-mimi",
+			},
+			options,
+		);
+
+		expect(calls).toEqual(["sidebar:refresh-agent:agent-mimi"]);
+	});
+
+	test("refreshes the full sidebar when an agents invalidation is not scoped", () => {
+		const { calls, options } = createHandlerOptions();
+
+		handleBrowserServerEvent(
+			{
+				type: "browser_agents_invalidated",
 			},
 			options,
 		);
@@ -1411,10 +1426,7 @@ describe("browser runtime server events", () => {
 		expect(
 			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
 		).toEqual(createBrowserSessionRef("agent-railly", "mock", "sdk-active"));
-		expect(calls).toEqual([
-			"live:complete:agent-railly:mock:sdk-active",
-			"sidebar:refresh",
-		]);
+		expect(calls).toEqual(["live:complete:agent-railly:mock:sdk-active"]);
 	});
 
 	test("ignores late background output after the chat turn has completed", () => {
@@ -1674,7 +1686,6 @@ describe("browser runtime server events", () => {
 		).toEqual(USAGE);
 		expect(calls).toEqual([
 			"live:complete:agent-railly:mock:sdk-pending->agent-railly:mock:sdk-final",
-			"sidebar:refresh",
 		]);
 	});
 
@@ -1841,7 +1852,7 @@ describe("browser runtime server events", () => {
 		expect(useSessionsStore.getState().sessionsByAgent["agent-railly"]).toEqual(
 			[],
 		);
-		expect(calls).toContain("sidebar:refresh");
+		expect(calls).not.toContain("sidebar:refresh");
 
 		handleBrowserServerEvent(
 			{
