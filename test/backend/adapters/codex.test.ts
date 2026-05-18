@@ -2213,6 +2213,74 @@ describe("CodexAdapter", () => {
 		}
 	});
 
+	test("hides standalone Codex environment context rows from chat history replay", async () => {
+		const root = mkdtempSync(join(tmpdir(), "outclaw-codex-env-"));
+		try {
+			const transcriptPath = join(root, "codex-thread-123.jsonl");
+			writeFileSync(
+				transcriptPath,
+				[
+					{
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "user",
+							content: [
+								{
+									type: "input_text",
+									text: [
+										"<environment_context>",
+										"  <current_date>2026-05-18</current_date>",
+										"  <timezone>Asia/Shanghai</timezone>",
+										"</environment_context>",
+									].join("\n"),
+								},
+							],
+						},
+					},
+					{
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "user",
+							content: [{ type: "input_text", text: "continue" }],
+						},
+					},
+					{
+						type: "response_item",
+						payload: {
+							type: "message",
+							role: "assistant",
+							content: [{ type: "output_text", text: "Done." }],
+							phase: "final_answer",
+						},
+					},
+				]
+					.map((row) => JSON.stringify(row))
+					.join("\n"),
+			);
+			const client = new FakeCodexAppServerClient([], {
+				threadPath: transcriptPath,
+			});
+			const adapter = new CodexAdapter({ client });
+
+			await expect(adapter.readHistory("codex-thread-123")).resolves.toEqual([
+				{
+					kind: "chat",
+					role: "user",
+					content: "continue",
+				},
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "Done.",
+				},
+			]);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	test("restores local prompt images from Codex chat history and transcript exports", async () => {
 		const root = mkdtempSync(join(tmpdir(), "outclaw-codex-chat-images-"));
 		try {

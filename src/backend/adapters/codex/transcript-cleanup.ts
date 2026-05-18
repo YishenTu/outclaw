@@ -16,7 +16,9 @@ export function stripOaiMemoryCitationBlocks(text: string): string {
 }
 
 export function normalizeCodexJsonlUserPromptText(text: string): string {
-	return stripCodexSkillBlocks(stripCodexSessionBootstrapText(text));
+	return stripCodexSkillBlocks(
+		stripCodexEnvironmentContextBlocks(stripCodexSessionBootstrapText(text)),
+	);
 }
 
 function stripCodexSkillBlocks(text: string): string {
@@ -44,6 +46,25 @@ function stripCodexSessionBootstrapText(text: string): string {
 	return trimmedStart
 		.slice(environmentEnd + "</environment_context>".length)
 		.trim();
+}
+
+function stripCodexEnvironmentContextBlocks(text: string): string {
+	let stripped = text;
+	while (true) {
+		const trimmedStart = stripped.trimStart();
+		if (!trimmedStart.startsWith("<environment_context>")) {
+			return stripped;
+		}
+
+		const environmentEnd = trimmedStart.indexOf("</environment_context>");
+		if (environmentEnd === -1) {
+			return stripped;
+		}
+
+		stripped = trimmedStart
+			.slice(environmentEnd + "</environment_context>".length)
+			.trim();
+	}
 }
 
 function isCodexSessionBootstrapText(text: string): boolean {
