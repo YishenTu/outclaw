@@ -10,11 +10,13 @@ import { useCodingStore } from "../coding/coding-store.ts";
 import { fetchCodingSession } from "../lib/api.ts";
 import {
 	createBrowserSessionRef,
+	createPendingSessionKey,
 	createSessionKey,
 } from "../sessions/session.ts";
 import { useAgentFilesStore } from "../stores/agent-files.ts";
 import { useAgentsStore } from "../stores/agents.ts";
 import { useChatStore } from "../stores/chat.ts";
+import { useComposerRecoveryStore } from "../stores/composer-recovery.ts";
 import { useContextUsageStore } from "../stores/context-usage.ts";
 import { useRightPanelRefreshStore } from "../stores/right-panel-refresh.ts";
 import { useRuntimeStore } from "../stores/runtime.ts";
@@ -229,8 +231,15 @@ export function handleBrowserServerEvent(
 		}
 		case "runtime_status": {
 			const agentId = options.getActiveAgentId();
-			const providerId =
-				event.providerId ?? useRuntimeStore.getState().providerId;
+			const previousRuntime = useRuntimeStore.getState();
+			const providerId = event.providerId ?? previousRuntime.providerId;
+			const stoppedBeforeProviderSessionInitialized =
+				agentId !== null &&
+				providerId !== null &&
+				previousRuntime.running &&
+				previousRuntime.sessionId === null &&
+				!event.running &&
+				!event.sessionId;
 			const currentSessionKey =
 				agentId && event.running && event.sessionId && providerId
 					? options.getCurrentSessionKey(agentId)
@@ -263,6 +272,9 @@ export function handleBrowserServerEvent(
 						useChatStore
 							.getState()
 							.adoptSession(binding.adoptFromSessionKey, binding.sessionKey);
+						useComposerRecoveryStore
+							.getState()
+							.clearDraft(binding.adoptFromSessionKey);
 					}
 				}
 
@@ -272,6 +284,13 @@ export function handleBrowserServerEvent(
 				}
 			} else if (!event.running) {
 				useSessionsStore.getState().setActiveSession(agentId, null);
+			}
+
+			if (stoppedBeforeProviderSessionInitialized) {
+				const pendingSessionKey = createPendingSessionKey(agentId, providerId);
+				useComposerRecoveryStore.getState().requestRestore(pendingSessionKey);
+				useChatStore.getState().clearSession(pendingSessionKey);
+				options.clearLiveRunSessions();
 			}
 
 			if (event.running) {

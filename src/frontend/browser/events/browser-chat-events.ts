@@ -5,6 +5,7 @@ import {
 	createSessionKey,
 } from "../sessions/session.ts";
 import { hasActiveChatTurn, useChatStore } from "../stores/chat.ts";
+import { useComposerRecoveryStore } from "../stores/composer-recovery.ts";
 import { useContextUsageStore } from "../stores/context-usage.ts";
 import { useRuntimeStore } from "../stores/runtime.ts";
 import { useSessionsStore } from "../stores/sessions.ts";
@@ -250,6 +251,9 @@ export function applyBrowserChatEvent(
 				useChatStore
 					.getState()
 					.adoptSession(completion.adoptFromSessionKey, completion.sessionKey);
+				useComposerRecoveryStore
+					.getState()
+					.clearDraft(completion.adoptFromSessionKey);
 			}
 			useChatStore.getState().finalizeMessage(completion.sessionKey, {
 				timestamp: Date.now(),

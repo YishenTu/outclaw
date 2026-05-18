@@ -23,6 +23,7 @@ import {
 	hasActiveChatTurn,
 	useChatStore,
 } from "../../../src/frontend/browser/stores/chat.ts";
+import { useComposerRecoveryStore } from "../../../src/frontend/browser/stores/composer-recovery.ts";
 import { useContextUsageStore } from "../../../src/frontend/browser/stores/context-usage.ts";
 import { useRightPanelRefreshStore } from "../../../src/frontend/browser/stores/right-panel-refresh.ts";
 import { useRuntimeStore } from "../../../src/frontend/browser/stores/runtime.ts";
@@ -56,6 +57,7 @@ function resetBrowserStores() {
 	resetStore(useAgentFilesStore);
 	resetStore(useSessionsStore);
 	resetStore(useChatStore);
+	resetStore(useComposerRecoveryStore);
 	resetStore(useContextUsageStore);
 	resetStore(useRuntimeStore);
 	resetStore(useRuntimePopupStore);
@@ -649,6 +651,130 @@ describe("browser runtime server events", () => {
 		// the active-session indicator update.
 		expect(calls.filter((call) => call === "sidebar:refresh").length).toBe(0);
 		expect(calls.filter((call) => call === "skills:request").length).toBe(1);
+	});
+
+	test("returns a pre-initialization interrupted browser run to the blank session", () => {
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+		});
+		const pendingSessionKey = "agent-railly:mock:__pending__";
+		useChatStore.getState().pushMessage(pendingSessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "slow task",
+		});
+		useChatStore.getState().startAssistantTurn(pendingSessionKey, {
+			pendingPromptStart: true,
+		});
+		const submittedDraft = {
+			text: "slow task",
+			images: [],
+		};
+		useComposerRecoveryStore
+			.getState()
+			.saveDraft(pendingSessionKey, submittedDraft);
+		const { options } = createHandlerOptions({
+			getCurrentSessionKey: () => pendingSessionKey,
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "runtime_status",
+				agentName: "railly",
+				providerId: "mock",
+				model: "opus",
+				effort: "medium",
+				running: false,
+			},
+			options,
+		);
+
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
+		).toBeNull();
+		expect(
+			useChatStore.getState().getSession(pendingSessionKey),
+		).toBeUndefined();
+		expect(
+			useComposerRecoveryStore
+				.getState()
+				.consumeRestorableDraft(pendingSessionKey),
+		).toEqual(submittedDraft);
+		expect(useRuntimeStore.getState()).toMatchObject({
+			running: false,
+			sessionId: null,
+			sessionTitle: null,
+		});
+	});
+
+	test("keeps initialized interrupted browser runs on the provider session", () => {
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "mock",
+			model: "opus",
+			effort: "medium",
+			running: true,
+			sessionId: "sdk-active",
+			sessionTitle: "Slow task",
+		});
+		const sessionKey = "agent-railly:mock:sdk-active";
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "slow task",
+		});
+		useChatStore.getState().startAssistantTurn(sessionKey);
+		const { options } = createHandlerOptions({
+			getCurrentSessionKey: () => sessionKey,
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "runtime_status",
+				agentName: "railly",
+				providerId: "mock",
+				model: "opus",
+				effort: "medium",
+				running: false,
+				sessionId: "sdk-active",
+				sessionTitle: "Slow task",
+			},
+			options,
+		);
+
+		expect(
+			useSessionsStore.getState().activeSessionByAgent["agent-railly"],
+		).toEqual(createBrowserSessionRef("agent-railly", "mock", "sdk-active"));
+		expect(useChatStore.getState().getSession(sessionKey)).toMatchObject({
+			messages: [
+				{
+					kind: "chat",
+					role: "user",
+					content: "slow task",
+				},
+			],
+			isStreaming: true,
+			isThinking: true,
+		});
+		expect(useRuntimeStore.getState()).toMatchObject({
+			running: false,
+			sessionId: "sdk-active",
+			sessionTitle: "Slow task",
+		});
 	});
 
 	test("clears browser session state after a session clear event", () => {

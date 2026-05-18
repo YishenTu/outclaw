@@ -262,7 +262,16 @@ export class PromptDispatcher {
 			}
 		}
 
-		if (
+		const interruptedBeforeBrowserSessionInitialized =
+			abortController.signal.aborted &&
+			!completedEvent &&
+			!context.resumeSessionId &&
+			task.source === "browser" &&
+			this.options.state.sessionId === undefined;
+
+		if (interruptedBeforeBrowserSessionInitialized) {
+			this.options.state.clearSession();
+		} else if (
 			abortController.signal.aborted &&
 			!completedEvent &&
 			!context.resumeSessionId &&
@@ -270,7 +279,7 @@ export class PromptDispatcher {
 			shouldPersistInterruptedRun(task.source)
 		) {
 			this.options.sessions.recordInterruptedRun({
-				sessionId: context.ocSessionId,
+				sessionId: this.options.state.sessionId ?? context.ocSessionId,
 				title: titleForPersistence(context),
 				model: storedModel,
 				providerId: context.providerId,

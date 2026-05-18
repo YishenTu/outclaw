@@ -547,7 +547,9 @@ export class RuntimeExecutionCoordinator {
 				lane.resolvedProviderId = context.providerId;
 				resolveAutoTitleEarly(completedSessionId);
 			} else if (!context.sessionId) {
-				if (
+				if (abortController.signal.aborted && task.source === "browser") {
+					this.options.autoTitle?.cancel(context.ocSessionId);
+				} else if (
 					abortController.signal.aborted &&
 					(task.source === "browser" ||
 						task.source === "telegram" ||

@@ -375,6 +375,68 @@ class ShutdownAutoTitleFacade implements Facade {
 	}
 }
 
+class BrowserPreInitAbortFacade implements Facade {
+	providerId = PROVIDER_ID;
+	allParams: RunParams[] = [];
+	started = createDeferred();
+	titleAbortObserved = false;
+	private readonly titleRelease = createDeferred();
+	private readonly titleSettled = createDeferred();
+
+	get titleCalls(): RunParams[] {
+		return this.allParams.filter(isAutoTitleRun);
+	}
+
+	waitForTitleSettled(): Promise<void> {
+		return this.titleSettled.promise;
+	}
+
+	async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+		this.allParams.push({ ...params });
+
+		if (isAutoTitleRun(params)) {
+			try {
+				if (params.abortController?.signal.aborted) {
+					this.titleAbortObserved = true;
+					this.titleRelease.resolve();
+				} else {
+					params.abortController?.signal.addEventListener(
+						"abort",
+						() => {
+							this.titleAbortObserved = true;
+							this.titleRelease.resolve();
+						},
+						{ once: true },
+					);
+				}
+				await this.titleRelease.promise;
+				if (this.titleAbortObserved) {
+					return;
+				}
+				yield { type: "text", text: "Late title" };
+				yield {
+					type: "done",
+					sessionId: "ephemeral-title-session",
+					durationMs: 1,
+				};
+			} finally {
+				this.titleSettled.resolve();
+			}
+			return;
+		}
+
+		this.started.resolve();
+		await new Promise<void>((resolve) => {
+			params.abortController?.signal.addEventListener(
+				"abort",
+				() => resolve(),
+				{ once: true },
+			);
+		});
+		yield { type: "error", message: "AbortError: operation aborted" };
+	}
+}
+
 class EarlySessionAutoTitleFacade implements Facade {
 	providerId = PROVIDER_ID;
 	allParams: RunParams[] = [];
@@ -2705,6 +2767,50 @@ describe("RuntimeController", () => {
 				type: "error",
 				message: "AbortError: operation aborted",
 			});
+		});
+
+		test("browser /stop before session initialization returns to a blank session", async () => {
+			cleanupStore(TEST_DB);
+			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+			const facade = new BrowserPreInitAbortFacade();
+			const { controller } = createController({
+				autoTitle: { model: "haiku" },
+				facade,
+				store,
+			});
+			const browser = mockWs("browser");
+			controller.handleOpen(browser);
+
+			controller.handleMessage(browser, prompt("slow task"));
+			await facade.started.promise;
+			await waitForCondition(() => facade.titleCalls.length === 1);
+
+			controller.handleMessage(browser, command("/stop"));
+			await facade.waitForTitleSettled();
+			await waitForCondition(() =>
+				browser
+					.events()
+					.some(
+						(event) =>
+							event.type === "runtime_status" && event.running === false,
+					),
+			);
+
+			expect(store.getActiveSessionId(PROVIDER_ID)).toBeUndefined();
+			expect(store.list({ limit: 20, providerId: PROVIDER_ID })).toEqual([]);
+			expect(facade.titleAbortObserved).toBe(true);
+			const latestStatus = browser
+				.events()
+				.filter((event) => event.type === "runtime_status")
+				.at(-1) as
+				| { running: boolean; sessionId?: string; sessionTitle?: string }
+				| undefined;
+			expect(latestStatus).toMatchObject({ running: false });
+			expect(latestStatus?.sessionId).toBeUndefined();
+			expect(latestStatus?.sessionTitle).toBeUndefined();
+
+			store.close();
+			cleanupStore(TEST_DB);
 		});
 
 		test("interrupted fresh sessions remain replayable after restart", async () => {

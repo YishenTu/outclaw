@@ -1,5 +1,5 @@
 import { CircleStop, Send } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	detectMentionToken,
 	matchMentionEntries,
@@ -19,6 +19,7 @@ import { useWs } from "../../../contexts/websocket-context.tsx";
 import { PENDING_SESSION_ID } from "../../../sessions/session.ts";
 import { useAgentFilesStore } from "../../../stores/agent-files.ts";
 import { useAgentsStore } from "../../../stores/agents.ts";
+import { useComposerRecoveryStore } from "../../../stores/composer-recovery.ts";
 import { useRuntimePopupStore } from "../../../stores/runtime-popup.ts";
 import type { CommandEntry } from "../../../stores/slash-commands.ts";
 import { useSlashCommandsStore } from "../../../stores/slash-commands.ts";
@@ -125,6 +126,17 @@ export function MessageInput({
 	const agentFiles = agentFilesEntry?.files ?? EMPTY_FILES;
 	const mentionFiles = fileMentionEntries ?? agentFiles;
 	const requestAgentFiles = useAgentFilesStore((state) => state.requestFiles);
+	const saveRecoveryDraft = useComposerRecoveryStore(
+		(state) => state.saveDraft,
+	);
+	const consumeRestorableDraft = useComposerRecoveryStore(
+		(state) => state.consumeRestorableDraft,
+	);
+	const hasRestorableDraft = useComposerRecoveryStore((state) =>
+		sessionKey
+			? (state.draftsBySessionKey[sessionKey]?.restorable ?? false)
+			: false,
+	);
 	const mentionToken = detectMentionToken(value, cursor);
 	const mentionMatches: WorkspaceFileEntry[] = mentionToken
 		? matchMentionEntries(mentionFiles, mentionToken.query, {
@@ -171,6 +183,12 @@ export function MessageInput({
 			textareaRef.current?.focus();
 		});
 	}
+
+	const replaceDraft = useCallback((nextDraft: ComposerDraft) => {
+		draftRef.current = nextDraft;
+		setValue(nextDraft.text);
+		setImages(nextDraft.images);
+	}, []);
 
 	const interrupt = onInterrupt ?? (() => sendCommand("/stop"));
 
@@ -246,18 +264,31 @@ export function MessageInput({
 		setImages([]);
 	}, [attachmentsEnabled]);
 
+	useEffect(() => {
+		if (!sessionKey || !hasRestorableDraft) {
+			return;
+		}
+
+		const recoveredDraft = consumeRestorableDraft(sessionKey);
+		if (!recoveredDraft) {
+			return;
+		}
+
+		const currentDraft = draftRef.current;
+		if (currentDraft.text !== "" || currentDraft.images.length > 0) {
+			return;
+		}
+
+		replaceDraft(recoveredDraft);
+		setCursor(recoveredDraft.text.length);
+	}, [consumeRestorableDraft, hasRestorableDraft, sessionKey, replaceDraft]);
+
 	function syncCursorFromTextarea() {
 		const textarea = textareaRef.current;
 		if (!textarea) {
 			return;
 		}
 		setCursor(textarea.selectionStart ?? value.length);
-	}
-
-	function replaceDraft(nextDraft: ComposerDraft) {
-		draftRef.current = nextDraft;
-		setValue(nextDraft.text);
-		setImages(nextDraft.images);
 	}
 
 	function replaceDraftText(text: string) {
@@ -367,6 +398,9 @@ export function MessageInput({
 				images: submittedDraft.images,
 			});
 			if (sent) {
+				if (sessionKey && !sessionActive) {
+					saveRecoveryDraft(sessionKey, submittedDraft);
+				}
 				closeRuntimePopup();
 				const nextDraft = clearSubmittedDraftIfUnchanged(
 					draftRef.current,
