@@ -1,3 +1,4 @@
+import type { handleTelegramRuntimeTextCommand } from "./commands/runtime.ts";
 import type { TelegramMessageFileRecord } from "./files/message-file-ref.ts";
 import type { handleTelegramMemoryTextCommand } from "./memory/register.ts";
 import type { handleTelegramDocumentMessage } from "./messages/document.ts";
@@ -116,6 +117,7 @@ export interface TelegramMessageHandlerDependencies {
 	handleDocumentMessage: typeof handleTelegramDocumentMessage;
 	handleMemoryTextCommand: typeof handleTelegramMemoryTextCommand;
 	handlePhotoMessage: typeof handleTelegramPhotoMessage;
+	handleRuntimeTextCommand: typeof handleTelegramRuntimeTextCommand;
 	handleTextMessage: typeof handleTelegramTextMessage;
 	handleVoiceMessage: typeof handleTelegramVoiceMessage;
 }
@@ -181,6 +183,14 @@ export function registerTelegramMessageHandlers(params: {
 	params.bot.on("message:text", async (ctx) => {
 		if (
 			await params.dependencies.handleMemoryTextCommand(
+				ctx,
+				params.createBridge,
+			)
+		) {
+			return;
+		}
+		if (
+			await params.dependencies.handleRuntimeTextCommand(
 				ctx,
 				params.createBridge,
 			)

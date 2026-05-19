@@ -6,6 +6,7 @@ import {
 import { TELEGRAM_COMMANDS } from "../../../../src/frontend/telegram/commands/catalog.ts";
 import {
 	executeTelegramRuntimeCommand,
+	handleTelegramRuntimeTextCommand,
 	registerTelegramRuntimeCommands,
 	TELEGRAM_RUNTIME_COMMAND_NAMES,
 } from "../../../../src/frontend/telegram/commands/runtime.ts";
@@ -140,6 +141,52 @@ describe("Telegram runtime commands", () => {
 		});
 
 		expect(reply).toBe("[error] invalid alias");
+	});
+
+	test("runtime text fallback handles model shortcuts that Telegram cannot register", async () => {
+		const calls: Array<{ command: string; expectedTypes: string[] }> = [];
+		const reply = mock(async (_text: string) => undefined);
+
+		const handled = await handleTelegramRuntimeTextCommand(
+			{
+				message: { text: " /gpt-5.4 " },
+				reply,
+			},
+			() => ({
+				sendCommandAndWait: async (command, expectedTypes) => {
+					calls.push({
+						command,
+						expectedTypes: [...(expectedTypes ?? [])],
+					});
+					return { type: "model_changed", model: "gpt-5.4" };
+				},
+			}),
+		);
+
+		expect(handled).toBe(true);
+		expect(calls).toEqual([
+			{ command: "/gpt-5.4", expectedTypes: ["model_changed"] },
+		]);
+		expect(reply).toHaveBeenCalledWith("Model: gpt-5.4");
+	});
+
+	test("runtime text fallback leaves prompt slash commands for prompt handling", async () => {
+		const reply = mock(async (_text: string) => undefined);
+		const bridge = {
+			sendCommandAndWait: mock(async () => ({ type: "done" })),
+		};
+
+		const handled = await handleTelegramRuntimeTextCommand(
+			{
+				message: { text: "/compact" },
+				reply,
+			},
+			() => bridge,
+		);
+
+		expect(handled).toBe(false);
+		expect(bridge.sendCommandAndWait).not.toHaveBeenCalled();
+		expect(reply).not.toHaveBeenCalled();
 	});
 
 	test("/thinking without an argument requests the current effort", async () => {

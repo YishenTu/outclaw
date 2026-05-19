@@ -26,6 +26,7 @@ let registerTelegramRuntimeCommands = mock(() => {});
 let registerTelegramMemoryHandlers = mock(() => {});
 let registerTelegramPromptCommands = mock(() => {});
 let handleTelegramMemoryTextCommand = mock(async () => false);
+let handleTelegramRuntimeTextCommand = mock(async () => false);
 let lastHeartbeatArgs: unknown[] = [];
 let lastTextMessageArgs: unknown[] = [];
 let lastPhotoMessageArgs: unknown[] = [];
@@ -150,6 +151,7 @@ function resetFakes() {
 	registerTelegramMemoryHandlers = mock(() => {});
 	registerTelegramPromptCommands = mock(() => {});
 	handleTelegramMemoryTextCommand = mock(async () => false);
+	handleTelegramRuntimeTextCommand = mock(async () => false);
 	lastHeartbeatArgs = [];
 	lastTextMessageArgs = [];
 	lastPhotoMessageArgs = [];
@@ -204,6 +206,9 @@ function createTestDependencies(params: {
 		handleMemoryTextCommand: (
 			...args: Parameters<typeof handleTelegramMemoryTextCommand>
 		) => handleTelegramMemoryTextCommand(...args),
+		handleRuntimeTextCommand: (
+			...args: Parameters<typeof handleTelegramRuntimeTextCommand>
+		) => handleTelegramRuntimeTextCommand(...args),
 		logError: params.logError ?? (() => undefined),
 		logInfo: params.logInfo ?? (() => undefined),
 		registerMemoryHandlers: (
@@ -818,6 +823,37 @@ describe("startTelegramBot", () => {
 		await bot.handlers.get("message:text")?.(textCtx);
 
 		expect(handleTelegramMemoryTextCommand).toHaveBeenCalledTimes(1);
+		expect(handleTelegramTextMessage).not.toHaveBeenCalled();
+
+		service.stop();
+	});
+
+	test("intercepts model shortcut text commands before prompt handling", async () => {
+		handleTelegramRuntimeTextCommand = mock(async () => true);
+		const service = startTelegramBot(
+			{
+				botId: "bot-a",
+				token: "telegram-token",
+				runtimeUrl: "ws://runtime",
+				allowedUsers: [1],
+				filesRoot: "/tmp/files",
+			},
+			createTestDependencies({}),
+		);
+
+		const bot = FakeBot.lastInstance as FakeBot;
+		const textCtx = {
+			chat: { id: 42 },
+			from: { id: 1 },
+			message: { text: "/gpt-5.4" },
+			reply: mock(async (_text: string, _options?: object) => undefined),
+			replyWithChatAction: mock(async () => undefined),
+			replyWithPhoto: mock(async () => undefined),
+		};
+		await bot.handlers.get("message:text")?.(textCtx);
+
+		expect(handleTelegramMemoryTextCommand).toHaveBeenCalledTimes(1);
+		expect(handleTelegramRuntimeTextCommand).toHaveBeenCalledTimes(1);
 		expect(handleTelegramTextMessage).not.toHaveBeenCalled();
 
 		service.stop();

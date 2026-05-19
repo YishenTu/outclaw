@@ -8,7 +8,10 @@ import {
 import { createTelegramBridge } from "./bridge/client.ts";
 import { TELEGRAM_COMMANDS } from "./commands/catalog.ts";
 import { registerTelegramPromptCommands } from "./commands/prompt.ts";
-import { registerTelegramRuntimeCommands } from "./commands/runtime.ts";
+import {
+	handleTelegramRuntimeTextCommand,
+	registerTelegramRuntimeCommands,
+} from "./commands/runtime.ts";
 import type {
 	TelegramMessageFile,
 	TelegramMessageFileRecord,
@@ -145,6 +148,13 @@ const DEFAULT_TELEGRAM_BOT_DEPENDENCIES: TelegramBotDependencies = {
 			ctx as unknown as Parameters<typeof handleTelegramMemoryTextCommand>[0],
 			bridge as unknown as Parameters<
 				typeof handleTelegramMemoryTextCommand
+			>[1],
+		),
+	handleRuntimeTextCommand: (ctx, bridge) =>
+		handleTelegramRuntimeTextCommand(
+			ctx as unknown as Parameters<typeof handleTelegramRuntimeTextCommand>[0],
+			bridge as unknown as Parameters<
+				typeof handleTelegramRuntimeTextCommand
 			>[1],
 		),
 	logError: (message) => console.error(message),

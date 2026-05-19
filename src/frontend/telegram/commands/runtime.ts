@@ -1,4 +1,7 @@
-import { listSlashCommands } from "../../../common/commands.ts";
+import {
+	listSlashCommands,
+	parseModelShortcutCommand,
+} from "../../../common/commands.ts";
 import type { RuntimeStatusEvent } from "../../../common/protocol.ts";
 import { formatStatusCompact } from "../../../common/status.ts";
 
@@ -17,6 +20,12 @@ export interface TelegramRuntimeCommandBridge {
 interface TelegramCommandContext {
 	from?: { id: number };
 	match?: string;
+	reply(text: string): Promise<unknown>;
+}
+
+interface TelegramRuntimeTextCommandContext {
+	from?: { id: number };
+	message?: { text?: string };
 	reply(text: string): Promise<unknown>;
 }
 
@@ -67,6 +76,12 @@ function formatError(event: TelegramCommandEvent): string | undefined {
 	return event.type === "error"
 		? `[error] ${String(event.message ?? "")}`
 		: undefined;
+}
+
+function formatModelReply(event: TelegramCommandEvent): string | undefined {
+	return event.type === "model_changed"
+		? `Model: ${String(event.model)}`
+		: formatError(event);
 }
 
 const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
@@ -120,10 +135,7 @@ const TELEGRAM_RUNTIME_COMMAND_DEFINITIONS: Record<
 	model: {
 		buildCommand: (match) => (match ? `/model ${match}` : "/model"),
 		expectedTypes: () => new Set(["model_changed"]),
-		formatReply: (event) =>
-			event.type === "model_changed"
-				? `Model: ${String(event.model)}`
-				: formatError(event),
+		formatReply: formatModelReply,
 	},
 	thinking: {
 		buildCommand: (match) => (match ? `/thinking ${match}` : "/thinking"),
@@ -173,6 +185,39 @@ export async function executeTelegramRuntimeCommand(
 		definition.expectedTypes(trimmedMatch),
 	);
 	return definition.formatReply(event);
+}
+
+export async function handleTelegramRuntimeTextCommand(
+	ctx: TelegramRuntimeTextCommandContext,
+	createBridge: TelegramRuntimeCommandBridgeFactory,
+): Promise<boolean> {
+	const request = buildRuntimeTextCommandRequest(ctx.message?.text ?? "");
+	if (!request) {
+		return false;
+	}
+
+	const event = await createBridge(ctx).sendCommandAndWait(
+		request.command,
+		request.expectedTypes,
+	);
+	const reply = formatModelReply(event);
+	if (reply) {
+		await ctx.reply(reply);
+	}
+	return true;
+}
+
+function buildRuntimeTextCommandRequest(
+	text: string,
+): { command: string; expectedTypes: ReadonlySet<string> } | undefined {
+	const command = text.trim();
+	if (!parseModelShortcutCommand(command)) {
+		return undefined;
+	}
+	return {
+		command,
+		expectedTypes: new Set(["model_changed"]),
+	};
 }
 
 export function registerTelegramRuntimeCommands(
