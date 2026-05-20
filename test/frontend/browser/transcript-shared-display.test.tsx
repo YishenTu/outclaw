@@ -57,6 +57,47 @@ describe("shared browser transcript display", () => {
 		]);
 	});
 
+	test("chat and code mode split provider thinking blocks the same way", () => {
+		const chatItems = createChatTranscriptItems({
+			sessionKey: "agent-a:codex:sdk-chat",
+			messages: [],
+			queuedPrompts: [],
+			streamingThinking: "inspect filesrun tests",
+			streamingThinkingBlocks: ["inspect files", "run tests"],
+			streamingText: "",
+			isStreaming: true,
+			isCompacting: false,
+			thinkingStartedAt: null,
+		});
+		const codingItems = createCodingTranscriptItems([
+			streamItem(1, {
+				type: "thinking",
+				text: "inspect",
+				blockId: "reasoning-1:summary:0",
+			}),
+			streamItem(2, {
+				type: "thinking",
+				text: " files",
+				blockId: "reasoning-1:summary:0",
+			}),
+			streamItem(3, {
+				type: "thinking",
+				text: "run tests",
+				blockId: "reasoning-1:summary:1",
+			}),
+		]);
+
+		expect(chatItems.map((item) => item.kind)).toEqual([
+			"thinking",
+			"thinking",
+			"activity",
+		]);
+		expect(codingItems.map((item) => item.kind)).toEqual([
+			"thinking",
+			"thinking",
+		]);
+	});
+
 	test("only code mode emits tool transcript items", () => {
 		const chatItems = createChatTranscriptItems({
 			sessionKey: "agent-a:claude:sdk-chat",

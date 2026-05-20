@@ -12,6 +12,7 @@ interface MessageListProps {
 	queuedPrompts?: DisplayChatMessage[];
 	streamingText: string;
 	streamingThinking: string;
+	streamingThinkingBlocks?: string[];
 	isStreaming: boolean;
 	isCompacting: boolean;
 	thinkingStartedAt: number | null;
@@ -23,6 +24,7 @@ export const MessageList = memo(function MessageList({
 	queuedPrompts = [],
 	streamingText,
 	streamingThinking,
+	streamingThinkingBlocks,
 	isStreaming,
 	isCompacting,
 	thinkingStartedAt,
@@ -35,6 +37,7 @@ export const MessageList = memo(function MessageList({
 				queuedPrompts,
 				streamingText,
 				streamingThinking,
+				streamingThinkingBlocks,
 				isStreaming,
 				isCompacting,
 				thinkingStartedAt,
@@ -45,6 +48,7 @@ export const MessageList = memo(function MessageList({
 			queuedPrompts,
 			streamingText,
 			streamingThinking,
+			streamingThinkingBlocks,
 			isStreaming,
 			isCompacting,
 			thinkingStartedAt,

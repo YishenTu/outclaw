@@ -17,6 +17,7 @@ describe("StreamingStateStore", () => {
 
 		expect(store.get("claude", "sdk-123")).toEqual({
 			thinking: "plan ",
+			thinkingBlocks: ["plan "],
 			text: "hello world",
 			images: [
 				{
@@ -25,6 +26,33 @@ describe("StreamingStateStore", () => {
 					mediaType: "image/png",
 				},
 			],
+		});
+	});
+
+	test("records provider thinking block boundaries in active snapshots", () => {
+		const store = new StreamingStateStore();
+		store.start("codex", "sdk-123");
+
+		store.recordEvent("codex", "sdk-123", {
+			type: "thinking",
+			text: "inspect",
+			blockId: "reasoning-1:summary:0",
+		});
+		store.recordEvent("codex", "sdk-123", {
+			type: "thinking",
+			text: " files",
+			blockId: "reasoning-1:summary:0",
+		});
+		store.recordEvent("codex", "sdk-123", {
+			type: "thinking",
+			text: "run tests",
+			blockId: "reasoning-1:summary:1",
+		});
+
+		expect(store.get("codex", "sdk-123")).toMatchObject({
+			thinking: "inspect filesrun tests",
+			thinkingBlocks: ["inspect files", "run tests"],
+			thinkingBlockId: "reasoning-1:summary:1",
 		});
 	});
 

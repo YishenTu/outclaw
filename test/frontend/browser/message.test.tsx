@@ -65,4 +65,22 @@ describe("browser chat message", () => {
 		expect(html).toContain("<strong>Checking integration steps</strong>");
 		expect(html).not.toContain("**Checking integration steps**");
 	});
+
+	test("renders each assistant thinking block separately", () => {
+		const html = renderToStaticMarkup(
+			<Message
+				message={{
+					kind: "chat",
+					role: "assistant",
+					thinking: "inspect filesrun tests",
+					thinkingBlocks: ["inspect files", "run tests"],
+					content: "done",
+				}}
+			/>,
+		);
+
+		expect(html.match(/Thinking/g)).toHaveLength(2);
+		expect(html).toContain("inspect files");
+		expect(html).toContain("run tests");
+	});
 });

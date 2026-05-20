@@ -7,6 +7,10 @@ import type {
 	TranscriptTurn,
 } from "../../../common/protocol.ts";
 import { parsePromptWithReplyContext } from "../../../common/reply-context.ts";
+import {
+	distinctThinkingBlocks,
+	ThinkingBlockAccumulator,
+} from "../../../common/thinking-blocks.ts";
 import { normalizeCodexJsonlEvents } from "./stream-normalizer.ts";
 import type { CodexAppServerClient, CodexThreadReadResult } from "./types.ts";
 
@@ -55,18 +59,21 @@ export function projectCodexChatDisplayMessages(
 	events: CodingSessionEvent[],
 ): DisplayMessage[] {
 	const messages: DisplayMessage[] = [];
-	let pendingThinking = "";
+	const pendingThinking = new ThinkingBlockAccumulator();
 	let pendingAssistantText = "";
 	let pendingAssistantTimestamp: number | undefined;
 
 	const flushAssistant = (timestamp?: number) => {
-		if (pendingAssistantText || pendingThinking) {
+		const thinking = pendingThinking.snapshot();
+		if (pendingAssistantText || thinking.text) {
 			const assistantTimestamp = timestamp ?? pendingAssistantTimestamp;
+			const thinkingBlocks = distinctThinkingBlocks(thinking);
 			const message: DisplayMessage = {
 				kind: "chat",
 				role: "assistant",
 				content: pendingAssistantText,
-				...(pendingThinking ? { thinking: pendingThinking } : {}),
+				...(thinking.text ? { thinking: thinking.text } : {}),
+				...(thinkingBlocks ? { thinkingBlocks } : {}),
 				...(assistantTimestamp !== undefined
 					? { timestamp: assistantTimestamp }
 					: {}),
@@ -74,7 +81,7 @@ export function projectCodexChatDisplayMessages(
 			messages.push(message);
 		}
 		pendingAssistantText = "";
-		pendingThinking = "";
+		pendingThinking.clear();
 		pendingAssistantTimestamp = undefined;
 	};
 
@@ -108,7 +115,7 @@ export function projectCodexChatDisplayMessages(
 				break;
 			}
 			case "thinking": {
-				pendingThinking += event.text;
+				pendingThinking.append(event);
 				pendingAssistantTimestamp =
 					event.timestamp ?? pendingAssistantTimestamp;
 				break;

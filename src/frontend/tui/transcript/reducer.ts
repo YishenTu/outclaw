@@ -1,11 +1,16 @@
 import { COMPACT_BOUNDARY_TEXT } from "../../../common/compact-boundary.ts";
 import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
+import {
+	appendThinkingBlockDelta,
+	createThinkingBlockState,
+	startsNewThinkingBlock,
+} from "../../../common/thinking-blocks.ts";
 import type { SessionMenuData } from "../sessions/types.ts";
 import type { TuiMessage, TuiMessageRole, TuiState } from "./state.ts";
 
 export type TuiAction =
 	| { type: "append_streaming"; text: string }
-	| { type: "append_thinking"; text: string }
+	| { type: "append_thinking"; text: string; blockId?: string }
 	| { type: "commit_streaming" }
 	| { type: "queue_prompt"; text: string }
 	| {
@@ -105,18 +110,70 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				pendingPromptStart: false,
 				running: true,
 			};
-		case "append_thinking":
+		case "append_thinking": {
+			const streamingThinking = createThinkingBlockState({
+				text: state.streamingThinking,
+				blocks: state.streamingThinking === "" ? [] : [state.streamingThinking],
+				currentBlockId: state.streamingThinkingBlockId,
+			});
+			const heartbeatThinking = createThinkingBlockState({
+				text: state.heartbeatStreamingThinking,
+				blocks:
+					state.heartbeatStreamingThinking === ""
+						? []
+						: [state.heartbeatStreamingThinking],
+				currentBlockId: state.heartbeatStreamingThinkingBlockId,
+			});
+			if (
+				!state.heartbeatPending &&
+				startsNewThinkingBlock(streamingThinking, action)
+			) {
+				const messages = [...state.messages];
+				if (state.activePrompt) {
+					messages.push(state.activePrompt);
+				}
+				messages.push({
+					id: state.nextId,
+					role: "thinking",
+					text: state.streamingThinking,
+				});
+				return {
+					...state,
+					activePrompt: undefined,
+					messages,
+					streamingThinking: action.text,
+					streamingThinkingBlockId: action.blockId,
+					pendingPromptStart: false,
+					running: true,
+					nextId: state.nextId + 1,
+				};
+			}
+			const nextStreamingThinking = appendThinkingBlockDelta(
+				streamingThinking,
+				action,
+			);
+			const nextHeartbeatThinking = appendThinkingBlockDelta(
+				heartbeatThinking,
+				action,
+			);
 			return {
 				...state,
 				streamingThinking: state.heartbeatPending
 					? state.streamingThinking
-					: state.streamingThinking + action.text,
+					: nextStreamingThinking.text,
+				streamingThinkingBlockId: state.heartbeatPending
+					? state.streamingThinkingBlockId
+					: nextStreamingThinking.currentBlockId,
 				heartbeatStreamingThinking: state.heartbeatPending
-					? state.heartbeatStreamingThinking + action.text
+					? nextHeartbeatThinking.text
 					: state.heartbeatStreamingThinking,
+				heartbeatStreamingThinkingBlockId: state.heartbeatPending
+					? nextHeartbeatThinking.currentBlockId
+					: state.heartbeatStreamingThinkingBlockId,
 				pendingPromptStart: false,
 				running: true,
 			};
+		}
 		case "commit_streaming": {
 			if (
 				!state.activePrompt &&
@@ -143,9 +200,11 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				messages: flushed.messages,
 				streaming: "",
 				streamingThinking: "",
+				streamingThinkingBlockId: undefined,
 				heartbeatPending: false,
 				heartbeatStreaming: "",
 				heartbeatStreamingThinking: "",
+				heartbeatStreamingThinkingBlockId: undefined,
 				pendingPromptStart: false,
 				running: false,
 				nextId: flushed.nextId,
@@ -186,6 +245,10 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 					action.variant === "heartbeat"
 						? ""
 						: stateWithPendingPromptQueued.heartbeatStreamingThinking,
+				heartbeatStreamingThinkingBlockId:
+					action.variant === "heartbeat"
+						? undefined
+						: stateWithPendingPromptQueued.heartbeatStreamingThinkingBlockId,
 				nextId: stateWithPendingPromptQueued.nextId + 1,
 			};
 		}
@@ -207,9 +270,11 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				messages: flushed.messages,
 				streaming: "",
 				streamingThinking: "",
+				streamingThinkingBlockId: undefined,
 				heartbeatPending: false,
 				heartbeatStreaming: "",
 				heartbeatStreamingThinking: "",
+				heartbeatStreamingThinkingBlockId: undefined,
 				pendingPromptStart: false,
 				running: false,
 				nextId: flushed.nextId + 1,
@@ -223,9 +288,11 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				messages: [],
 				streaming: "",
 				streamingThinking: "",
+				streamingThinkingBlockId: undefined,
 				heartbeatPending: false,
 				heartbeatStreaming: "",
 				heartbeatStreamingThinking: "",
+				heartbeatStreamingThinkingBlockId: undefined,
 				pendingPromptStart: false,
 				queuedPrompts: [],
 				running: false,
@@ -243,6 +310,8 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				heartbeatPending: false,
 				heartbeatStreaming: "",
 				heartbeatStreamingThinking: "",
+				heartbeatStreamingThinkingBlockId: undefined,
+				streamingThinkingBlockId: undefined,
 				pendingPromptStart: false,
 				queuedPrompts: [],
 				nextId: maxId + 1,

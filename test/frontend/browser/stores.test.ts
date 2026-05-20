@@ -640,6 +640,65 @@ describe("browser stores", () => {
 		expect(finalizedSession?.isThinking).toBe(false);
 	});
 
+	test("chat store preserves provider thinking block boundaries", () => {
+		const sessionKey = "agent-a:codex:sdk-alpha";
+
+		useChatStore
+			.getState()
+			.appendThinking(sessionKey, "inspect", "reasoning-1:summary:0");
+		useChatStore
+			.getState()
+			.appendThinking(sessionKey, " files", "reasoning-1:summary:0");
+		useChatStore
+			.getState()
+			.appendThinking(sessionKey, "run tests", "reasoning-1:summary:1");
+		useChatStore.getState().appendText(sessionKey, "done");
+
+		const streamingSession = useChatStore.getState().getSession(sessionKey);
+		expect(streamingSession?.streamingThinking).toBe("inspect filesrun tests");
+		expect(streamingSession?.streamingThinkingBlocks).toEqual([
+			"inspect files",
+			"run tests",
+		]);
+
+		useChatStore.getState().finalizeMessage(sessionKey);
+
+		expect(useChatStore.getState().getMessages(sessionKey)).toEqual([
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "done",
+				thinking: "inspect filesrun tests",
+				thinkingBlocks: ["inspect files", "run tests"],
+			},
+		]);
+	});
+
+	test("chat store continues a restored provider thinking block after reload", () => {
+		const sessionKey = "agent-a:codex:sdk-alpha";
+
+		useChatStore.getState().restoreStreamingState(sessionKey, {
+			images: [],
+			text: "",
+			thinking: "inspect",
+			thinkingBlocks: ["inspect"],
+			thinkingBlockId: "reasoning-1:summary:0",
+		});
+		useChatStore
+			.getState()
+			.appendThinking(sessionKey, " files", "reasoning-1:summary:0");
+		useChatStore
+			.getState()
+			.appendThinking(sessionKey, "run tests", "reasoning-1:summary:1");
+
+		const session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.streamingThinking).toBe("inspect filesrun tests");
+		expect(session?.streamingThinkingBlocks).toEqual([
+			"inspect files",
+			"run tests",
+		]);
+	});
+
 	test("chat store can stamp finalized live turns with timestamps", () => {
 		const sessionKey = "agent-a:claude:sdk-alpha";
 		const promptTimestamp = new Date("2025-01-15T14:30:00.000Z");

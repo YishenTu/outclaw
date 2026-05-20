@@ -26,9 +26,11 @@ export interface TuiState {
 	activePrompt?: TuiMessage;
 	streaming: string;
 	streamingThinking: string;
+	streamingThinkingBlockId?: string;
 	heartbeatPending: boolean;
 	heartbeatStreaming: string;
 	heartbeatStreamingThinking: string;
+	heartbeatStreamingThinkingBlockId?: string;
 	pendingPromptStart: boolean;
 	queuedPrompts: TuiQueuedPrompt[];
 	running: boolean;

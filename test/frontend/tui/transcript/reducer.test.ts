@@ -11,8 +11,18 @@ describe("mapEventToActions", () => {
 	});
 
 	test("thinking event → append_thinking", () => {
-		expect(mapEventToActions({ type: "thinking", text: "reasoning" })).toEqual([
-			{ type: "append_thinking", text: "reasoning" },
+		expect(
+			mapEventToActions({
+				type: "thinking",
+				text: "reasoning",
+				blockId: "reasoning-1:summary:0",
+			}),
+		).toEqual([
+			{
+				type: "append_thinking",
+				text: "reasoning",
+				blockId: "reasoning-1:summary:0",
+			},
 		]);
 	});
 
@@ -326,6 +336,32 @@ describe("mapEventToActions", () => {
 				messages: [
 					{ id: 1, role: "thinking", text: "Let me reason" },
 					{ id: 2, role: "assistant", text: "The answer" },
+				],
+			},
+		]);
+	});
+
+	test("history_replay with thinking blocks keeps blocks separate", () => {
+		const actions = mapEventToActions({
+			type: "history_replay",
+			sdkSessionId: "sdk-1",
+			messages: [
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "The answer",
+					thinking: "inspect filesrun tests",
+					thinkingBlocks: ["inspect files", "run tests"],
+				},
+			],
+		});
+		expect(actions).toEqual([
+			{
+				type: "replay",
+				messages: [
+					{ id: 1, role: "thinking", text: "inspect files" },
+					{ id: 2, role: "thinking", text: "run tests" },
+					{ id: 3, role: "assistant", text: "The answer" },
 				],
 			},
 		]);
@@ -654,6 +690,30 @@ describe("applyAction", () => {
 			text: " about this",
 		});
 		expect(next2.streamingThinking).toBe("let me think about this");
+	});
+
+	test("append_thinking starts a new row when provider block changes", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "inspect",
+			blockId: "reasoning-1:summary:0",
+		});
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: " files",
+			blockId: "reasoning-1:summary:0",
+		});
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "run tests",
+			blockId: "reasoning-1:summary:1",
+		});
+
+		expect(state.messages).toEqual([
+			{ id: 1, role: "thinking", text: "inspect files" },
+		]);
+		expect(state.streamingThinking).toBe("run tests");
 	});
 
 	test("commit_streaming flushes thinking then text", () => {

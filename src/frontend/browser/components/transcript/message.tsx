@@ -3,6 +3,7 @@ import { Heart } from "lucide-react";
 import { formatCompactBoundaryIndicator } from "../../../../common/compact-boundary.ts";
 import type { DisplayMessage } from "../../../../common/protocol.ts";
 import { QUEUED_PROMPT_LABEL } from "../../../../common/queued-prompt.ts";
+import { effectiveThinkingBlocks } from "../../../../common/thinking-blocks.ts";
 import { AssistantTurnUtilityBar } from "./assistant-turn-utility-bar.tsx";
 import { getImageThumbnailClassName } from "./image-thumbnail-styles.ts";
 import { MarkdownContent } from "./markdown-content.tsx";
@@ -116,14 +117,19 @@ export function Message({
 		);
 	}
 
+	const thinkingBlocks = effectiveThinkingBlocks({
+		text: message.thinking,
+		blocks: message.thinkingBlocks,
+	});
+
 	return (
 		<div className="flex flex-col items-start">
 			<div className="w-full text-dark-100">
-				{message.thinking && (
-					<div className="mb-2">
-						<ThinkingBlock content={message.thinking} />
+				{withThinkingBlockKeys(thinkingBlocks).map(({ key, block }) => (
+					<div className="mb-2" key={key}>
+						<ThinkingBlock content={block} />
 					</div>
-				)}
+				))}
 				<div className="flex flex-col gap-2">
 					{message.content.trim() !== "" && (
 						<div className="px-3">
@@ -148,4 +154,19 @@ export function Message({
 			</div>
 		</div>
 	);
+}
+
+function withThinkingBlockKeys(
+	blocks: string[],
+): Array<{ key: string; block: string }> {
+	const counts = new Map<string, number>();
+	return blocks.map((block) => {
+		const head = block.slice(0, 64);
+		const seen = counts.get(head) ?? 0;
+		counts.set(head, seen + 1);
+		return {
+			key: seen === 0 ? head : `${head}#${seen}`,
+			block,
+		};
+	});
 }

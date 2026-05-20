@@ -147,6 +147,7 @@ export function ChatPanel({ active = true }: ChatPanelProps) {
 					queuedPrompts={chatSession?.queuedPrompts ?? []}
 					streamingText={chatSession?.streamingText ?? ""}
 					streamingThinking={chatSession?.streamingThinking ?? ""}
+					streamingThinkingBlocks={chatSession?.streamingThinkingBlocks ?? []}
 					isStreaming={chatSession?.isStreaming ?? false}
 					isCompacting={chatSession?.isCompacting ?? false}
 					thinkingStartedAt={chatSession?.thinkingStartedAt ?? null}

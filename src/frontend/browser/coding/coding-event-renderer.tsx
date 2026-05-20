@@ -9,6 +9,12 @@ import {
 	Wrench,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import {
+	appendThinkingBlockDelta,
+	createThinkingBlockState,
+	effectiveThinkingBlocks,
+	type ThinkingBlockState,
+} from "../../../common/thinking-blocks.ts";
 import { TranscriptItemList } from "../components/transcript/transcript-item-list.tsx";
 import {
 	assistantTranscriptMessage,
@@ -71,9 +77,7 @@ export function createCodingTranscriptItems(
 ): TranscriptItem[] {
 	const groups: CodingEventGroup[] = [];
 	let currentText: { key: string; chunks: string[] } | undefined;
-	let currentThinking:
-		| { key: string; blockId?: string; chunks: string[] }
-		| undefined;
+	let currentThinking: { key: string; state: ThinkingBlockState } | undefined;
 	let currentTurnWorkStartIndex = 0;
 	const toolEntriesByCallId = new Map<string, ToolEntry>();
 
@@ -156,17 +160,19 @@ export function createCodingTranscriptItems(
 		if (!currentThinking) {
 			return;
 		}
-		const text = currentThinking.chunks.join("");
-		const key = currentThinking.key;
-		groups.push({
-			key,
-			toItem: () => ({
-				kind: "thinking",
+		const thinkingBlocks = effectiveThinkingBlocks(currentThinking.state);
+		for (const [index, text] of thinkingBlocks.entries()) {
+			const key = `${currentThinking.key}-${index}`;
+			groups.push({
 				key,
-				content: text,
-				scrollKey: `thinking:${text}`,
-			}),
-		});
+				toItem: () => ({
+					kind: "thinking",
+					key,
+					content: text,
+					scrollKey: `thinking:${text}`,
+				}),
+			});
+		}
 		currentThinking = undefined;
 	};
 
@@ -214,16 +220,18 @@ export function createCodingTranscriptItems(
 			const text = typeof event.text === "string" ? event.text : "";
 			const blockId =
 				typeof event.blockId === "string" ? event.blockId : undefined;
-			if (currentThinking && currentThinking.blockId !== blockId) {
-				flushThinking();
-			}
 			if (currentThinking) {
-				currentThinking.chunks.push(text);
+				currentThinking.state = appendThinkingBlockDelta(
+					currentThinking.state,
+					{ text, blockId },
+				);
 			} else {
 				currentThinking = {
 					key: `thinking-${item.sequence}`,
-					...(blockId ? { blockId } : {}),
-					chunks: [text],
+					state: appendThinkingBlockDelta(createThinkingBlockState(), {
+						text,
+						blockId,
+					}),
 				};
 			}
 			continue;

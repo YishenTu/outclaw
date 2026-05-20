@@ -87,6 +87,8 @@ export function applyBrowserChatEvent(
 				images: event.images,
 				text: event.text,
 				thinking: event.thinking,
+				thinkingBlocks: event.thinkingBlocks,
+				thinkingBlockId: event.thinkingBlockId,
 			});
 			return true;
 		}
@@ -132,7 +134,9 @@ export function applyBrowserChatEvent(
 			if (!sessionKey) {
 				return true;
 			}
-			useChatStore.getState().appendThinking(sessionKey, event.text);
+			useChatStore
+				.getState()
+				.appendThinking(sessionKey, event.text, event.blockId);
 			return true;
 		}
 		case "text": {

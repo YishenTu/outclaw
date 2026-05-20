@@ -1,19 +1,33 @@
 import type { DisplayImage, FacadeEvent } from "../../../common/protocol.ts";
+import {
+	appendThinkingBlockDelta,
+	createThinkingBlockState,
+	snapshotThinkingBlockState,
+	type ThinkingBlockState,
+} from "../../../common/thinking-blocks.ts";
 
 export interface StreamingStateSnapshot {
 	images: DisplayImage[];
 	text: string;
 	thinking: string;
+	thinkingBlocks: string[];
+	thinkingBlockId?: string;
+}
+
+interface MutableStreamingStateSnapshot {
+	images: DisplayImage[];
+	text: string;
+	thinking: ThinkingBlockState;
 }
 
 export class StreamingStateStore {
-	private readonly snapshots = new Map<string, StreamingStateSnapshot>();
+	private readonly snapshots = new Map<string, MutableStreamingStateSnapshot>();
 
 	start(providerId: string, sessionId: string) {
 		this.snapshots.set(streamingKey(providerId, sessionId), {
 			images: [],
 			text: "",
-			thinking: "",
+			thinking: createThinkingBlockState(),
 		});
 	}
 
@@ -29,7 +43,7 @@ export class StreamingStateStore {
 		}
 
 		if (event.type === "thinking") {
-			snapshot.thinking += event.text;
+			snapshot.thinking = appendThinkingBlockDelta(snapshot.thinking, event);
 			return;
 		}
 
@@ -50,11 +64,16 @@ export class StreamingStateStore {
 		if (!snapshot) {
 			return undefined;
 		}
+		const thinking = snapshotThinkingBlockState(snapshot.thinking);
 
 		return {
 			images: [...snapshot.images],
 			text: snapshot.text,
-			thinking: snapshot.thinking,
+			thinking: thinking.text,
+			thinkingBlocks: thinking.blocks,
+			...(thinking.currentBlockId !== undefined
+				? { thinkingBlockId: thinking.currentBlockId }
+				: {}),
 		};
 	}
 

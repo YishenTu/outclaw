@@ -11,6 +11,10 @@ import type {
 	BrowserCodingSessionStatusResponse,
 	CodingSessionEvent,
 } from "../../common/protocol.ts";
+import {
+	effectiveThinkingBlocks,
+	ThinkingBlockAccumulator,
+} from "../../common/thinking-blocks.ts";
 import { loadGlobalConfig } from "../../runtime/config/index.ts";
 import {
 	formatCodingCancelUsage,
@@ -1173,22 +1177,14 @@ function readCodingStatusError(
 class CodingTranscriptRenderer {
 	private readonly commandOutputSeen = new Set<string>();
 	private lastOutputEndedWithNewline = true;
-	private pendingThinking = "";
-	private pendingThinkingBlockId: string | undefined;
+	private readonly pendingThinking = new ThinkingBlockAccumulator();
 	private wroteAny = false;
 
 	constructor(private readonly write: (chunk: string) => void) {}
 
 	render(event: CodingSessionEvent) {
 		if (event.type === "thinking") {
-			if (
-				this.pendingThinking !== "" &&
-				this.pendingThinkingBlockId !== event.blockId
-			) {
-				this.flushThinking();
-			}
-			this.pendingThinkingBlockId = event.blockId;
-			this.pendingThinking += event.text;
+			this.pendingThinking.append(event);
 			return;
 		}
 		this.flushThinking();
@@ -1285,11 +1281,13 @@ class CodingTranscriptRenderer {
 	}
 
 	private flushThinking() {
-		const text = this.pendingThinking.trim();
-		this.pendingThinking = "";
-		this.pendingThinkingBlockId = undefined;
-		if (text) {
-			this.writeBlock(`[thinking] ${text}`);
+		const snapshot = this.pendingThinking.snapshot();
+		this.pendingThinking.clear();
+		for (const block of effectiveThinkingBlocks(snapshot)) {
+			const text = block.trim();
+			if (text) {
+				this.writeBlock(`[thinking] ${text}`);
+			}
 		}
 	}
 

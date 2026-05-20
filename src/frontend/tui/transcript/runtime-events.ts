@@ -5,6 +5,7 @@ import type {
 	ServerEvent,
 } from "../../../common/protocol.ts";
 import { ROLLOVER_DISPLAY_LABEL } from "../../../common/rollover-prompt.ts";
+import { effectiveThinkingBlocks } from "../../../common/thinking-blocks.ts";
 import { formatLivePrompt, formatReplyText, formatStatus } from "./format.ts";
 import type { TuiAction } from "./reducer.ts";
 import type { TuiMessage } from "./state.ts";
@@ -14,7 +15,9 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 		case "text":
 			return [{ type: "append_streaming", text: event.text }];
 		case "thinking":
-			return [{ type: "append_thinking", text: event.text }];
+			return [
+				{ type: "append_thinking", text: event.text, blockId: event.blockId },
+			];
 		case "done":
 			return [{ type: "commit_streaming" }];
 		case "error":
@@ -117,12 +120,18 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 					});
 					continue;
 				}
-				if (message.role === "assistant" && message.thinking) {
-					messages.push({
-						id: id++,
-						role: "thinking",
+				if (message.role === "assistant") {
+					const thinkingBlocks = effectiveThinkingBlocks({
 						text: message.thinking,
+						blocks: message.thinkingBlocks,
 					});
+					for (const thinking of thinkingBlocks) {
+						messages.push({
+							id: id++,
+							role: "thinking",
+							text: thinking,
+						});
+					}
 				}
 				const text = replayContent(message);
 				if (text) {

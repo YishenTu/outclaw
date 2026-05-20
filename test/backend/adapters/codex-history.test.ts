@@ -53,6 +53,39 @@ describe("projectCodexChatDisplayMessages", () => {
 		]);
 	});
 
+	test("preserves adjacent Codex thinking block boundaries in chat replay", () => {
+		const events: CodingSessionEvent[] = [
+			event({ type: "user_prompt", text: "fix it" }),
+			event({
+				type: "thinking",
+				text: "inspect",
+				blockId: "reasoning-1:summary:0",
+			}),
+			event({
+				type: "thinking",
+				text: " files",
+				blockId: "reasoning-1:summary:0",
+			}),
+			event({
+				type: "thinking",
+				text: "run tests",
+				blockId: "reasoning-1:summary:1",
+			}),
+			event({ type: "text", text: "done" }),
+		];
+
+		expect(projectCodexChatDisplayMessages(events)).toEqual([
+			{ kind: "chat", role: "user", content: "fix it" },
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "done",
+				thinking: "inspect filesrun tests",
+				thinkingBlocks: ["inspect files", "run tests"],
+			},
+		]);
+	});
+
 	test("drops tool/command/file-change rows from chat replay", () => {
 		const events: CodingSessionEvent[] = [
 			event({ type: "user_prompt", text: "fix the lint" }),

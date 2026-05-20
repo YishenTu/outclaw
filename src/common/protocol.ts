@@ -505,6 +505,7 @@ export interface DisplayChatMessage {
 	role: "user" | "assistant";
 	content: string;
 	thinking?: string;
+	thinkingBlocks?: string[];
 	images?: DisplayImage[];
 	replyContext?: ReplyContext;
 	timestamp?: number;
@@ -576,6 +577,8 @@ export interface StreamingSyncEvent {
 	sdkSessionId: string;
 	text: string;
 	thinking: string;
+	thinkingBlocks?: string[];
+	thinkingBlockId?: string;
 	images: DisplayImage[];
 }
 

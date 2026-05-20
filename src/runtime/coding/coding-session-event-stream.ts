@@ -1,4 +1,10 @@
 import type { CodingSessionEvent } from "../../common/protocol.ts";
+import {
+	appendThinkingBlockDelta,
+	createThinkingBlockState,
+	effectiveThinkingBlocks,
+	type ThinkingBlockState,
+} from "../../common/thinking-blocks.ts";
 import type {
 	CodingSessionEventRecorder,
 	StoredCodingSessionEvent,
@@ -285,8 +291,7 @@ function buildCodingEventSignature(
 ): CodingEventSignaturePart[] {
 	const signature: CodingEventSignaturePart[] = [];
 	let text = "";
-	let thinking = "";
-	let thinkingBlockId: string | undefined;
+	let thinking: ThinkingBlockState = createThinkingBlockState();
 
 	const flushText = () => {
 		if (text !== "") {
@@ -295,11 +300,10 @@ function buildCodingEventSignature(
 		}
 	};
 	const flushThinking = () => {
-		if (thinking !== "") {
-			signature.push({ type: "thinking", text: thinking });
-			thinking = "";
-			thinkingBlockId = undefined;
+		for (const block of effectiveThinkingBlocks(thinking)) {
+			signature.push({ type: "thinking", text: block });
 		}
+		thinking = createThinkingBlockState();
 	};
 
 	for (const event of events) {
@@ -310,12 +314,7 @@ function buildCodingEventSignature(
 		}
 		if (event.type === "thinking") {
 			flushText();
-			const blockId = event.blockId;
-			if (thinking !== "" && thinkingBlockId !== blockId) {
-				flushThinking();
-			}
-			thinkingBlockId = blockId;
-			thinking += event.text;
+			thinking = appendThinkingBlockDelta(thinking, event);
 			continue;
 		}
 

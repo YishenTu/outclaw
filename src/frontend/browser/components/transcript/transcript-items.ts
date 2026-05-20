@@ -55,6 +55,7 @@ export function displayMessageKey(message: DisplayMessage): string {
 		message.content,
 		message.replyContext?.text ?? "",
 		message.thinking ?? "",
+		message.thinkingBlocks?.join("\u0002") ?? "",
 		String(message.timestamp ?? ""),
 		message.images
 			?.map((image) =>

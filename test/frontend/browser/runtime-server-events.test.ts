@@ -885,6 +885,7 @@ describe("browser runtime server events", () => {
 				sdkSessionId: "sdk-active",
 				text: "partial",
 				thinking: "plan",
+				thinkingBlockId: "reasoning-1:summary:0",
 				images: [
 					{
 						kind: "managed",
@@ -892,6 +893,15 @@ describe("browser runtime server events", () => {
 						mediaType: "image/png",
 					},
 				],
+			},
+			options,
+		);
+		handleBrowserServerEvent(
+			{
+				type: "thinking",
+				text: " next",
+				blockId: "reasoning-1:summary:0",
+				sessionId: "sdk-active",
 			},
 			options,
 		);
@@ -915,7 +925,8 @@ describe("browser runtime server events", () => {
 		]);
 		expect(session).toMatchObject({
 			streamingText: "partial",
-			streamingThinking: "plan",
+			streamingThinking: "plan next",
+			streamingThinkingBlocks: ["plan next"],
 			isStreaming: true,
 			isThinking: true,
 		});

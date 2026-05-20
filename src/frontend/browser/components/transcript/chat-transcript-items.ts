@@ -2,6 +2,7 @@ import type {
 	DisplayChatMessage,
 	DisplayMessage,
 } from "../../../../common/protocol.ts";
+import { effectiveThinkingBlocks } from "../../../../common/thinking-blocks.ts";
 import { shouldShowAssistantUtilityBar } from "./message-render-projection.ts";
 import {
 	assistantTranscriptMessage,
@@ -18,6 +19,7 @@ interface ChatTranscriptItemsParams {
 	sessionKey: string | null;
 	streamingText: string;
 	streamingThinking: string;
+	streamingThinkingBlocks?: string[];
 	thinkingStartedAt: number | null;
 }
 
@@ -41,12 +43,16 @@ export function createChatTranscriptItems(
 		});
 	}
 
-	if (params.streamingThinking !== "") {
+	const thinkingBlocks = effectiveThinkingBlocks({
+		text: params.streamingThinking,
+		blocks: params.streamingThinkingBlocks,
+	});
+	for (const [index, block] of thinkingBlocks.entries()) {
 		items.push({
 			kind: "thinking",
-			key: "streaming-thinking",
-			content: params.streamingThinking,
-			scrollKey: `thinking:${params.streamingThinking}`,
+			key: `streaming-thinking-${index}`,
+			content: block,
+			scrollKey: `thinking:${block}`,
 		});
 	}
 
@@ -61,7 +67,7 @@ export function createChatTranscriptItems(
 
 	if (params.isStreaming || params.isCompacting) {
 		const hasAssistantOutput =
-			params.streamingThinking !== "" || params.streamingText !== "";
+			thinkingBlocks.length > 0 || params.streamingText !== "";
 		items.push({
 			kind: "activity",
 			key: "streaming-activity",

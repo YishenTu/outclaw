@@ -133,6 +133,12 @@ export function createRuntimeController(
 				images: snapshot.images,
 				text: snapshot.text,
 				thinking: snapshot.thinking,
+				...(snapshot.thinkingBlocks.length > 1
+					? { thinkingBlocks: snapshot.thinkingBlocks }
+					: {}),
+				...(snapshot.thinkingBlockId !== undefined
+					? { thinkingBlockId: snapshot.thinkingBlockId }
+					: {}),
 			};
 		},
 		getStatusEvent: () => getStatusEvent(),
