@@ -90,6 +90,26 @@ export function appendAssistantStreamEvent(
 	return cloneAssistantMessageSegments(segments);
 }
 
+export function isAssistantActionBoundaryEvent(event: {
+	type: string;
+}): boolean {
+	switch (event.type) {
+		case "command_execution_started":
+		case "command_execution_output":
+		case "command_execution_completed":
+		case "file_change_applied":
+		case "subagent_tool_started":
+		case "subagent_tool_completed":
+		case "web_search_started":
+		case "web_search_completed":
+		case "tool_call_started":
+		case "tool_call_completed":
+			return true;
+		default:
+			return false;
+	}
+}
+
 export function aggregateAssistantMessageSegments(
 	segments: readonly AssistantMessageSegment[],
 ): AssistantMessageAggregate {

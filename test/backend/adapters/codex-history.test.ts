@@ -113,6 +113,50 @@ describe("projectCodexChatDisplayMessages", () => {
 		]);
 	});
 
+	test("splits assistant chat replay at hidden tool action boundaries", () => {
+		const events: CodingSessionEvent[] = [
+			event({ type: "user_prompt", text: "fix it" }),
+			event({
+				type: "thinking",
+				text: "inspect files",
+				blockId: "reasoning-1:summary:0",
+			}),
+			event({ type: "text", text: "I will inspect." }),
+			event({
+				type: "command_execution_started",
+				callId: "call_ls",
+				command: "ls",
+			}),
+			event({
+				type: "command_execution_completed",
+				callId: "call_ls",
+				exitCode: 0,
+			}),
+			event({
+				type: "thinking",
+				text: "run tests",
+				blockId: "reasoning-1:summary:1",
+			}),
+			event({ type: "text", text: "Done." }),
+		];
+
+		expect(projectCodexChatDisplayMessages(events)).toEqual([
+			{ kind: "chat", role: "user", content: "fix it" },
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "I will inspect.",
+				thinking: "inspect files",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Done.",
+				thinking: "run tests",
+			},
+		]);
+	});
+
 	test("uses the done event timestamp as the assistant completion time", () => {
 		const textTimestamp = Date.parse("2026-05-14T02:46:11.012Z");
 		const doneTimestamp = Date.parse("2026-05-14T02:46:12.200Z");

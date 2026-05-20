@@ -703,6 +703,36 @@ describe("browser stores", () => {
 		]);
 	});
 
+	test("chat store commits the current assistant group at action boundaries", () => {
+		const sessionKey = "agent-a:codex:sdk-alpha";
+
+		useChatStore
+			.getState()
+			.appendThinking(sessionKey, "inspect files", "reasoning-1:summary:0");
+		useChatStore.getState().appendText(sessionKey, "I will inspect.");
+		useChatStore.getState().commitStreamingMessage(sessionKey);
+		useChatStore
+			.getState()
+			.appendThinking(sessionKey, "run tests", "reasoning-1:summary:1");
+		useChatStore.getState().appendText(sessionKey, "Done.");
+		useChatStore.getState().finalizeMessage(sessionKey);
+
+		expect(useChatStore.getState().getMessages(sessionKey)).toEqual([
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "I will inspect.",
+				thinking: "inspect files",
+			},
+			{
+				kind: "chat",
+				role: "assistant",
+				content: "Done.",
+				thinking: "run tests",
+			},
+		]);
+	});
+
 	test("chat store continues a restored provider thinking block after reload", () => {
 		const sessionKey = "agent-a:codex:sdk-alpha";
 

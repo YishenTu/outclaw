@@ -26,6 +26,16 @@ describe("mapEventToActions", () => {
 		]);
 	});
 
+	test("tool action events commit the current streaming segment", () => {
+		expect(
+			mapEventToActions({
+				type: "command_execution_started",
+				callId: "call_ls",
+				command: "ls",
+			}),
+		).toEqual([{ type: "commit_streaming_segment" }]);
+	});
+
 	test("done event → commit_streaming", () => {
 		expect(
 			mapEventToActions({
@@ -800,6 +810,38 @@ describe("applyAction", () => {
 		]);
 		expect(state.streaming).toBe("");
 		expect(state.streamingThinking).toBe("");
+		expect(state.running).toBe(false);
+	});
+
+	test("commit_streaming_segment keeps the run active while splitting output", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "inspect files",
+			blockId: "reasoning-1:summary:0",
+		});
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: "I will inspect.",
+		});
+		state = applyAction(state, { type: "commit_streaming_segment" });
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "run tests",
+			blockId: "reasoning-1:summary:1",
+		});
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: "Done.",
+		});
+		state = applyAction(state, { type: "commit_streaming" });
+
+		expect(state.messages).toEqual([
+			{ id: 1, role: "thinking", text: "inspect files" },
+			{ id: 2, role: "assistant", text: "I will inspect." },
+			{ id: 3, role: "thinking", text: "run tests" },
+			{ id: 4, role: "assistant", text: "Done." },
+		]);
 		expect(state.running).toBe(false);
 	});
 

@@ -16,6 +16,7 @@ import type { TuiMessage, TuiMessageRole, TuiState } from "./state.ts";
 export type TuiAction =
 	| { type: "append_streaming"; text: string }
 	| { type: "append_thinking"; text: string; blockId?: string }
+	| { type: "commit_streaming_segment" }
 	| { type: "commit_streaming" }
 	| { type: "queue_prompt"; text: string }
 	| {
@@ -271,6 +272,39 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				heartbeatStreamingThinkingBlockId: undefined,
 				pendingPromptStart: false,
 				running: false,
+				nextId: flushed.nextId,
+			};
+		}
+		case "commit_streaming_segment": {
+			if (
+				!state.activePrompt &&
+				!state.streaming &&
+				!state.streamingThinking &&
+				!state.heartbeatStreaming &&
+				!state.heartbeatStreamingThinking
+			) {
+				return {
+					...state,
+					pendingPromptStart: false,
+					running: true,
+				};
+			}
+			const flushed = state.heartbeatPending
+				? flushHeartbeatBuffers(state)
+				: flushStreamingBuffers([...state.messages], state.nextId, state);
+			return {
+				...state,
+				activePrompt: undefined,
+				messages: flushed.messages,
+				streaming: "",
+				streamingThinking: "",
+				streamingThinkingBlockId: undefined,
+				heartbeatPending: false,
+				heartbeatStreaming: "",
+				heartbeatStreamingThinking: "",
+				heartbeatStreamingThinkingBlockId: undefined,
+				pendingPromptStart: false,
+				running: true,
 				nextId: flushed.nextId,
 			};
 		}

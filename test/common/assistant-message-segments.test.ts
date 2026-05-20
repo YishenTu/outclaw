@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	assistantTextSegment,
 	assistantThinkingSegment,
+	isAssistantActionBoundaryEvent,
 	startsNewAssistantMessageSegment,
 } from "../../src/common/assistant-message-segments.ts";
 
@@ -52,5 +53,16 @@ describe("assistant message segments", () => {
 				assistantThinkingSegment(""),
 			),
 		).toBe(false);
+	});
+
+	test("provider tool events split assistant output groups", () => {
+		expect(
+			isAssistantActionBoundaryEvent({ type: "command_execution_started" }),
+		).toBe(true);
+		expect(
+			isAssistantActionBoundaryEvent({ type: "tool_call_completed" }),
+		).toBe(true);
+		expect(isAssistantActionBoundaryEvent({ type: "thinking" })).toBe(false);
+		expect(isAssistantActionBoundaryEvent({ type: "text" })).toBe(false);
 	});
 });

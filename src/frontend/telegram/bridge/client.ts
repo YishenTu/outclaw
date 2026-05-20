@@ -1,3 +1,4 @@
+import { isAssistantActionBoundaryEvent } from "../../../common/assistant-message-segments.ts";
 import {
 	type ImageEvent,
 	type ImageRef,
@@ -15,6 +16,7 @@ import {
 export type StreamChunk =
 	| { type: "thinking"; text: string; blockId?: string }
 	| { type: "text"; text: string }
+	| { type: "action_boundary" }
 	| { type: "compacting_started" }
 	| { type: "compacting_finished" };
 
@@ -269,6 +271,8 @@ export function createTelegramBridge(url: string) {
 								: "Unexpected status event",
 						),
 					);
+				} else if (isAssistantActionBoundaryEvent(event)) {
+					enqueue({ type: "action_boundary" });
 				} else if (event.type === "done") {
 					done = true;
 					closeSocket(ws);

@@ -1,6 +1,7 @@
 import {
 	assistantMessageSegmentsFromAggregates,
 	hasAssistantMessageSegments,
+	isAssistantActionBoundaryEvent,
 } from "../../../common/assistant-message-segments.ts";
 import { canonicalizePromptSlashCommand } from "../../../common/commands.ts";
 import { HEARTBEAT_DISPLAY_LABEL } from "../../../common/heartbeat-prompt.ts";
@@ -178,6 +179,19 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 			return [{ type: "start_compacting" }];
 		case "compacting_finished":
 			return [{ type: "finish_compacting" }];
+		case "command_execution_started":
+		case "command_execution_output":
+		case "command_execution_completed":
+		case "file_change_applied":
+		case "subagent_tool_started":
+		case "subagent_tool_completed":
+		case "web_search_started":
+		case "web_search_completed":
+		case "tool_call_started":
+		case "tool_call_completed":
+			return isAssistantActionBoundaryEvent(event)
+				? [{ type: "commit_streaming_segment" }]
+				: [{ type: "noop" }];
 		case "session_renamed":
 		case "session_deleted":
 		case "session_info":

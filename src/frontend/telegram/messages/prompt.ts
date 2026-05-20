@@ -181,6 +181,13 @@ export async function runTelegramPrompt(
 				});
 				continue;
 			}
+			if (chunk.type === "action_boundary") {
+				for (const segmentDraft of segmentDrafts) {
+					await finalizeSegmentDraft(ctx, segmentDraft);
+				}
+				segmentDrafts.length = 0;
+				continue;
+			}
 
 			if (chunk.type !== "thinking" && chunk.type !== "text") {
 				continue;

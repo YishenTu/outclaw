@@ -73,6 +73,7 @@ export interface ChatState {
 	appendText: (sessionKey: string, text: string) => void;
 	appendThinking: (sessionKey: string, text: string, blockId?: string) => void;
 	appendImage: (sessionKey: string, image: DisplayImage) => void;
+	commitStreamingMessage: (sessionKey: string) => void;
 	restoreStreamingState: (
 		sessionKey: string,
 		snapshot: {
@@ -352,6 +353,37 @@ export const useChatStore = create<ChatState>((set, get) => ({
 							: session.heartbeatStreamingImages,
 						isStreaming: true,
 						pendingPromptStart: false,
+					},
+				},
+			};
+		}),
+	commitStreamingMessage: (sessionKey) =>
+		set((state) => {
+			const session = getOrCreateSession(state.sessions, sessionKey);
+			const messages = finalizeSessionMessages(session);
+			return {
+				sessions: {
+					...state.sessions,
+					[sessionKey]: {
+						...session,
+						messages,
+						streamingText: "",
+						streamingThinking: "",
+						streamingThinkingBlocks: [],
+						streamingThinkingBlockId: undefined,
+						streamingSegments: [],
+						streamingImages: [],
+						heartbeatPending: false,
+						heartbeatStreamingText: "",
+						heartbeatStreamingThinking: "",
+						heartbeatStreamingThinkingBlocks: [],
+						heartbeatStreamingThinkingBlockId: undefined,
+						heartbeatStreamingSegments: [],
+						heartbeatStreamingImages: [],
+						isThinking: true,
+						isStreaming: true,
+						pendingPromptStart: false,
+						thinkingStartedAt: session.thinkingStartedAt ?? Date.now(),
 					},
 				},
 			};

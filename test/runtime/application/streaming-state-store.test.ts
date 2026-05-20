@@ -101,6 +101,49 @@ describe("StreamingStateStore", () => {
 		});
 	});
 
+	test("starts a fresh active snapshot after provider action boundaries", () => {
+		const store = new StreamingStateStore();
+		store.start("codex", "sdk-123");
+
+		store.recordEvent("codex", "sdk-123", {
+			type: "thinking",
+			text: "inspect files",
+			blockId: "reasoning-1:summary:0",
+		});
+		store.recordEvent("codex", "sdk-123", {
+			type: "text",
+			text: "I will inspect.",
+		});
+		store.recordEvent("codex", "sdk-123", {
+			type: "command_execution_started",
+			callId: "call_ls",
+			command: "ls",
+		});
+		store.recordEvent("codex", "sdk-123", {
+			type: "thinking",
+			text: "run tests",
+			blockId: "reasoning-1:summary:1",
+		});
+		store.recordEvent("codex", "sdk-123", {
+			type: "text",
+			text: "Done.",
+		});
+
+		expect(store.get("codex", "sdk-123")).toMatchObject({
+			thinking: "run tests",
+			thinkingBlocks: ["run tests"],
+			text: "Done.",
+			segments: [
+				{
+					type: "thinking",
+					text: "run tests",
+					blockId: "reasoning-1:summary:1",
+				},
+				{ type: "text", text: "Done." },
+			],
+		});
+	});
+
 	test("returns copies and ignores events for inactive sessions", () => {
 		const store = new StreamingStateStore();
 		store.recordEvent("claude", "missing", { type: "text", text: "ignored" });

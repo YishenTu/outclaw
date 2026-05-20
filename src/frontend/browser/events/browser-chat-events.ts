@@ -1,3 +1,4 @@
+import { isAssistantActionBoundaryEvent } from "../../../common/assistant-message-segments.ts";
 import type { ImageRef, ServerEvent } from "../../../common/protocol.ts";
 import { toObservedDisplayMessage } from "../chat/observed-prompt.ts";
 import {
@@ -225,6 +226,31 @@ export function applyBrowserChatEvent(
 				return true;
 			}
 			useContextUsageStore.getState().setUsage(sessionKey, event.usage);
+			return true;
+		}
+		case "command_execution_started":
+		case "command_execution_output":
+		case "command_execution_completed":
+		case "file_change_applied":
+		case "subagent_tool_started":
+		case "subagent_tool_completed":
+		case "web_search_started":
+		case "web_search_completed":
+		case "tool_call_started":
+		case "tool_call_completed": {
+			const agentId = options.getActiveAgentId();
+			if (!agentId || !isAssistantActionBoundaryEvent(event)) {
+				return true;
+			}
+			const sessionKey = routeActiveTurnEvent(
+				agentId,
+				event.sessionId,
+				options,
+			);
+			if (!sessionKey) {
+				return true;
+			}
+			useChatStore.getState().commitStreamingMessage(sessionKey);
 			return true;
 		}
 		case "done": {

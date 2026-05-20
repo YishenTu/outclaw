@@ -126,6 +126,35 @@ describe("runTelegramPrompt", () => {
 		]);
 	});
 
+	test("splits adjacent chunks across hidden action boundaries", async () => {
+		const ctx = createContext();
+
+		await runTelegramPrompt(ctx, {
+			prompt: "hello",
+			streamPrompt: () =>
+				(async function* () {
+					yield {
+						type: "thinking" as const,
+						text: "inspect files",
+						blockId: "reasoning-1:summary:0",
+					};
+					yield { type: "action_boundary" as const };
+					yield {
+						type: "thinking" as const,
+						text: "run tests",
+						blockId: "reasoning-1:summary:0",
+					};
+					yield { type: "text" as const, text: "Done." };
+				})(),
+		});
+
+		expect(ctx.sendMessage.mock.calls.map((call) => call[0])).toEqual([
+			"<blockquote expandable>inspect files</blockquote>",
+			"<blockquote expandable>run tests</blockquote>",
+			"Done.",
+		]);
+	});
+
 	test("does not send a message for image-only replies", async () => {
 		const ctx = createContext();
 

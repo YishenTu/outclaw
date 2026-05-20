@@ -4,6 +4,7 @@ import {
 	assistantMessageSegmentsNeedOrderedDisplay,
 	assistantTextSegment,
 	assistantThinkingSegment,
+	isAssistantActionBoundaryEvent,
 } from "../../../common/assistant-message-segments.ts";
 import { createDisplayCompactBoundaryMessage } from "../../../common/compact-boundary.ts";
 import type {
@@ -150,6 +151,9 @@ export function projectCodexChatDisplayMessages(
 				break;
 			}
 			default:
+				if (isAssistantActionBoundaryEvent(event)) {
+					flushAssistant();
+				}
 				// Tool calls, command execution, file changes, web search,
 				// session lifecycle, and unknown events do not appear in chat
 				// replay — those belong to the coding-session projection.
@@ -216,6 +220,8 @@ export function projectCodexChatTranscriptTurns(
 			assistantTimestamp = event.timestamp ?? assistantTimestamp;
 		} else if (event.type === "done") {
 			flushAssistant(event.timestamp);
+		} else if (isAssistantActionBoundaryEvent(event)) {
+			flushAssistant();
 		}
 	}
 	flushAssistant();

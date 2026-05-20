@@ -1,6 +1,7 @@
 import {
 	appendAssistantStreamEvent,
 	cloneAssistantMessageSegments,
+	isAssistantActionBoundaryEvent,
 } from "../../../common/assistant-message-segments.ts";
 import type {
 	AssistantMessageSegment,
@@ -65,6 +66,16 @@ export class StreamingStateStore {
 				kind: "managed",
 				path: event.path,
 				mediaType: event.mediaType ?? "image/png",
+			});
+			return;
+		}
+
+		if (isAssistantActionBoundaryEvent(event)) {
+			this.snapshots.set(streamingKey(providerId, sessionId), {
+				images: [],
+				text: "",
+				thinking: createThinkingBlockState(),
+				segments: [],
 			});
 		}
 	}
