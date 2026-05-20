@@ -12,6 +12,7 @@ import {
 	type ModelSelectMessage,
 	parseMessage,
 	type ServerEvent,
+	type TerminalClientMessage,
 } from "../../../common/protocol.ts";
 import {
 	isRuntimeSocketOpen,
@@ -20,6 +21,7 @@ import {
 	sendRuntimeCommand,
 	sendRuntimeModelSelect,
 	sendRuntimePrompt,
+	sendRuntimeTerminalMessage,
 } from "../../runtime-client/index.ts";
 import type { ComposerImageAttachment } from "../attachments/composer-images.ts";
 import { createBrowserSwitchDispatcher } from "../commands/browser-switch-dispatcher.ts";
@@ -76,6 +78,7 @@ export interface WebSocketContextValue {
 	sendPromptToAgent: (agent: AgentEntry, prompt: string) => boolean;
 	sendCommand: (command: string) => boolean;
 	sendModelSelect: (selection: Omit<ModelSelectMessage, "type">) => boolean;
+	sendTerminalMessage: (message: TerminalClientMessage) => boolean;
 	switchAgent: (agentName: string) => boolean;
 	switchSession: (agentName: string, session: SessionEntry) => boolean;
 	refreshSidebar: () => void;
@@ -91,6 +94,7 @@ const WebSocketContext = createContext<WebSocketContextValue>({
 	sendPromptToAgent: () => false,
 	sendCommand: () => false,
 	sendModelSelect: () => false,
+	sendTerminalMessage: () => false,
 	switchAgent: () => false,
 	switchSession: () => false,
 	refreshSidebar: () => {},
@@ -181,6 +185,24 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 
 			try {
 				sendRuntimeModelSelect(ws, selection);
+				return true;
+			} catch (error) {
+				useRuntimeStore.getState().setError(extractError(error));
+				return false;
+			}
+		},
+		[],
+	);
+
+	const sendTerminalMessage = useCallback(
+		(message: TerminalClientMessage): boolean => {
+			const ws = wsRef.current;
+			if (!isRuntimeSocketOpen(ws)) {
+				return false;
+			}
+
+			try {
+				sendRuntimeTerminalMessage(ws, message);
 				return true;
 			} catch (error) {
 				useRuntimeStore.getState().setError(extractError(error));
@@ -399,7 +421,13 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 		const lifecycle = createBrowserSocketLifecycle<WebSocket>({
 			applyEvent: handleServerEvent,
 			openSocket: () => openRuntimeSocket(buildBrowserRuntimeUrl(), "browser"),
-			onConnected: refreshSidebar,
+			onConnected: () => {
+				refreshSidebar();
+				const socket = wsRef.current;
+				if (isRuntimeSocketOpen(socket)) {
+					sendRuntimeTerminalMessage(socket, { type: "terminal_list" });
+				}
+			},
 			parseMessage: (data) => parseMessage(data) as ServerEvent,
 			setConnectionStatus: (status) => {
 				useRuntimeStore.getState().setConnectionStatus(status);
@@ -430,6 +458,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			sendPromptToAgent,
 			sendCommand,
 			sendModelSelect,
+			sendTerminalMessage,
 			switchAgent,
 			switchSession,
 			refreshSidebar,
@@ -440,6 +469,7 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 			connectionStatus,
 			sendCommand,
 			sendModelSelect,
+			sendTerminalMessage,
 			sendPrompt,
 			sendBrowserPrompt,
 			sendBrowserPromptToAgent,

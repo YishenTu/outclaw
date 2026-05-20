@@ -5,12 +5,14 @@ import {
 	type BrowserAgentsInvalidatedEvent,
 	type BrowserChatCodingLinksChangedEvent,
 	type BrowserSidebarInvalidatedEvent,
+	type BrowserTerminalTarget,
 	type CodingSessionStreamEvent,
 	extractError,
 	parseMessage,
 	serialize,
 } from "../../common/protocol.ts";
 import type { AgentRuntime } from "../application/create-agent-runtime.ts";
+import type { BrowserTerminalManager } from "../browser/terminal/manager.ts";
 import type { WsClient } from "../transport/client-hub.ts";
 import type { AgentRuntimeRegistry } from "./agent-runtime-registry.ts";
 import type { ClientAgentBinding } from "./client-agent-binding.ts";
@@ -24,6 +26,14 @@ interface SupervisorControllerOptions {
 	rememberBrowserClientAgentId?: (clientId: string, agentId: string) => void;
 	rememberInteractiveAgentId?: (agentId: string) => void;
 	registry: AgentRuntimeRegistry;
+	resolveTerminalCwd?: (target: BrowserTerminalTarget) => {
+		cwd?: string;
+		error?: string;
+	};
+	terminalManager?: Pick<
+		BrowserTerminalManager,
+		"attach" | "close" | "create" | "detachClient" | "input" | "list" | "resize"
+	>;
 	telegramRouting?: {
 		rememberAgentId(
 			botId: string,
@@ -35,11 +45,18 @@ interface SupervisorControllerOptions {
 
 interface IncomingMessage {
 	command?: string;
+	cols?: number;
 	cwd?: string;
+	data?: string;
 	fromAgentId?: string;
 	jobName?: string;
 	message?: string;
+	name?: string;
 	prompt?: string;
+	rows?: number;
+	scopeId?: string;
+	target?: unknown;
+	terminalId?: string;
 	to?: string;
 	type?: string;
 }
@@ -94,6 +111,7 @@ export class SupervisorController {
 	}
 
 	handleClose = (ws: WsClient) => {
+		this.options.terminalManager?.detachClient(ws);
 		if (ws.data.clientType === "control") {
 			return;
 		}
@@ -106,13 +124,17 @@ export class SupervisorController {
 			return;
 		}
 
+		const data = this.tryParseMessage(message);
+		if (this.handleTerminalMessage(ws, data)) {
+			return;
+		}
+
 		const runtime = this.options.bindings.getCurrentRuntime(ws);
 		if (!runtime) {
 			this.sendError(ws, "No agent runtime is bound to this client");
 			return;
 		}
 
-		const data = this.tryParseMessage(message);
 		if (data?.type === "command" && typeof data.command === "string") {
 			if (this.handleAgentCommand(ws, data.command, runtime)) {
 				return;
@@ -121,6 +143,128 @@ export class SupervisorController {
 
 		runtime.handleMessage(ws, message);
 	};
+
+	private handleTerminalMessage(
+		ws: WsClient,
+		data: IncomingMessage | undefined,
+	): boolean {
+		if (!data || !isTerminalMessageType(data.type)) {
+			return false;
+		}
+		if (!this.options.terminalManager) {
+			this.sendTerminalError(ws, "Browser terminal runtime is not configured");
+			return true;
+		}
+		if (ws.data.clientType !== "browser") {
+			this.sendTerminalError(
+				ws,
+				"Browser terminals are only available to browser clients",
+			);
+			return true;
+		}
+		const ownerId = ws.data.cookieClientId;
+		if (!ownerId) {
+			this.sendTerminalError(ws, "Browser terminal owner is not available");
+			return true;
+		}
+
+		if (data.type === "terminal_list") {
+			ws.send(
+				serialize({
+					type: "terminal_sessions",
+					terminals: this.options.terminalManager.list(ownerId),
+				}),
+			);
+			return true;
+		}
+
+		if (data.type === "terminal_create") {
+			if (!isTerminalCreateMessage(data)) {
+				this.sendTerminalError(ws, "Invalid terminal create request");
+				return true;
+			}
+			if (!this.options.resolveTerminalCwd) {
+				this.sendTerminalError(
+					ws,
+					"Browser terminal workspace resolver is not configured",
+					data.terminalId,
+				);
+				return true;
+			}
+			const target = this.options.resolveTerminalCwd(data.target);
+			if (!target.cwd) {
+				this.sendTerminalError(
+					ws,
+					target.error ?? "Terminal workspace is not available",
+					data.terminalId,
+				);
+				return true;
+			}
+			this.options.terminalManager.create({
+				client: ws,
+				...(data.cols !== undefined ? { cols: data.cols } : {}),
+				cwd: target.cwd,
+				name: data.name,
+				...(data.rows !== undefined ? { rows: data.rows } : {}),
+				scopeId: data.scopeId,
+				target: data.target,
+				terminalId: data.terminalId,
+			});
+			return true;
+		}
+
+		if (data.type === "terminal_attach") {
+			if (!isTerminalAttachMessage(data)) {
+				this.sendTerminalError(ws, "Invalid terminal attach request");
+				return true;
+			}
+			this.options.terminalManager.attach({
+				client: ws,
+				...(data.cols !== undefined ? { cols: data.cols } : {}),
+				...(data.rows !== undefined ? { rows: data.rows } : {}),
+				terminalId: data.terminalId,
+			});
+			return true;
+		}
+
+		if (data.type === "terminal_input") {
+			if (
+				typeof data.terminalId !== "string" ||
+				typeof data.data !== "string"
+			) {
+				this.sendTerminalError(ws, "Invalid terminal input request");
+				return true;
+			}
+			this.options.terminalManager.input(ownerId, data.terminalId, data.data);
+			return true;
+		}
+
+		if (data.type === "terminal_resize") {
+			if (
+				typeof data.terminalId !== "string" ||
+				typeof data.cols !== "number" ||
+				typeof data.rows !== "number"
+			) {
+				this.sendTerminalError(ws, "Invalid terminal resize request");
+				return true;
+			}
+			this.options.terminalManager.resize(
+				ownerId,
+				data.terminalId,
+				data.cols,
+				data.rows,
+			);
+			return true;
+		}
+
+		if (data.type === "terminal_close" && typeof data.terminalId === "string") {
+			this.options.terminalManager.close(ownerId, data.terminalId);
+			return true;
+		}
+
+		this.sendTerminalError(ws, "Invalid terminal request");
+		return true;
+	}
 
 	handleOpen = (ws: WsClient) => {
 		if (ws.data.clientType === "control") {
@@ -480,6 +624,20 @@ export class SupervisorController {
 		);
 	}
 
+	private sendTerminalError(
+		ws: WsClient,
+		message: string,
+		terminalId?: string,
+	) {
+		ws.send(
+			serialize({
+				type: "terminal_error",
+				message,
+				...(terminalId ? { terminalId } : {}),
+			}),
+		);
+	}
+
 	private addActiveAskEdge(fromAgentId: string, toAgentId: string) {
 		const targets =
 			this.activeAskEdges.get(fromAgentId) ?? new Map<string, number>();
@@ -663,4 +821,68 @@ export class SupervisorController {
 			return undefined;
 		}
 	}
+}
+
+function isTerminalMessageType(type: string | undefined): boolean {
+	return (
+		type === "terminal_list" ||
+		type === "terminal_create" ||
+		type === "terminal_attach" ||
+		type === "terminal_input" ||
+		type === "terminal_resize" ||
+		type === "terminal_close"
+	);
+}
+
+function isTerminalCreateMessage(
+	data: IncomingMessage,
+): data is IncomingMessage & {
+	name: string;
+	scopeId: string;
+	target: BrowserTerminalTarget;
+	terminalId: string;
+} {
+	return (
+		data.type === "terminal_create" &&
+		typeof data.terminalId === "string" &&
+		data.terminalId.trim() !== "" &&
+		typeof data.scopeId === "string" &&
+		data.scopeId.trim() !== "" &&
+		typeof data.name === "string" &&
+		data.name.trim() !== "" &&
+		isBrowserTerminalTarget(data.target)
+	);
+}
+
+function isTerminalAttachMessage(
+	data: IncomingMessage,
+): data is IncomingMessage & { terminalId: string } {
+	return (
+		data.type === "terminal_attach" &&
+		typeof data.terminalId === "string" &&
+		data.terminalId.trim() !== ""
+	);
+}
+
+function isBrowserTerminalTarget(
+	value: unknown,
+): value is BrowserTerminalTarget {
+	if (!value || typeof value !== "object") {
+		return false;
+	}
+	const record = value as Record<string, unknown>;
+	if (record.kind === "agent") {
+		return typeof record.agentId === "string" && record.agentId.trim() !== "";
+	}
+	if (record.kind === "coding") {
+		return (
+			typeof record.repositoryId === "string" &&
+			record.repositoryId.trim() !== "" &&
+			(record.providerId === undefined ||
+				typeof record.providerId === "string") &&
+			(record.sdkSessionId === undefined ||
+				typeof record.sdkSessionId === "string")
+		);
+	}
+	return false;
 }

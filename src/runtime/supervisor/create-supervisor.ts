@@ -1,7 +1,7 @@
 import type { RuntimeClientType } from "../../common/protocol.ts";
 import type { AgentRuntime } from "../application/create-agent-runtime.ts";
 import { createBrowserSidebarWatcher } from "../browser/sidebar/watcher.ts";
-import { TerminalRelay } from "../browser/terminal/relay.ts";
+import { BrowserTerminalManager } from "../browser/terminal/manager.ts";
 import type { CodingSessionEventRecorder } from "../coding/index.ts";
 import { AgentRuntimeRegistry } from "./agent-runtime-registry.ts";
 import {
@@ -16,7 +16,7 @@ import {
 	parseClientIdCookie,
 } from "./cookies.ts";
 import { SupervisorController } from "./supervisor-controller.ts";
-import { handleTerminalGatewayRequest } from "./terminal-gateway.ts";
+import { resolveBrowserTerminalCwd } from "./terminal-target.ts";
 import {
 	isRuntimeSocketPath,
 	isWebSocketUpgradeRequest,
@@ -27,9 +27,7 @@ import {
 interface SupervisorSocketData {
 	clientType: RuntimeClientType;
 	cookieClientId?: string;
-	socketType: "runtime" | "terminal";
 	requestedAgentName?: string;
-	terminalCwd?: string;
 	telegramBotId?: string;
 	telegramUserId?: number;
 }
@@ -91,6 +89,7 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		options.telegramRouting,
 		options.getBrowserClientAgentId,
 	);
+	const browserTerminalManager = new BrowserTerminalManager();
 	const controller = new SupervisorController({
 		bindings,
 		emitAgentEvents: options.emitAgentEvents,
@@ -100,6 +99,9 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		rememberBrowserClientAgentId: options.rememberBrowserClientAgentId,
 		rememberInteractiveAgentId: options.rememberInteractiveAgentId,
 		registry,
+		resolveTerminalCwd: (target) =>
+			resolveBrowserTerminalCwd(target, options.browserApi),
+		terminalManager: browserTerminalManager,
 		telegramRouting: options.telegramRouting,
 	});
 	for (const runtime of options.agents) {
@@ -138,8 +140,6 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 				...event,
 			}),
 	);
-	const terminalRelay = new TerminalRelay();
-
 	const server = createSupervisorServer({
 		hostname: options.hostname,
 		port: options.port,
@@ -170,15 +170,6 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 							controller.broadcastBrowserChatCodingLinksChanged(event),
 					}),
 					newCookieHeader,
-				);
-			}
-
-			if (url.pathname === "/terminal") {
-				return handleTerminalGatewayRequest(
-					req,
-					url,
-					server,
-					options.browserApi,
 				);
 			}
 
@@ -221,7 +212,6 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 				data: {
 					clientType,
 					cookieClientId,
-					socketType: "runtime",
 					requestedAgentName,
 					telegramBotId,
 					telegramUserId,
@@ -237,24 +227,12 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 		},
 		websocket: {
 			close(ws) {
-				if (ws.data.socketType === "terminal") {
-					terminalRelay.handleClose(ws);
-					return;
-				}
 				controller.handleClose(ws);
 			},
 			message(ws, message) {
-				if (ws.data.socketType === "terminal") {
-					terminalRelay.handleMessage(ws, message);
-					return;
-				}
 				controller.handleMessage(ws, message);
 			},
 			open(ws) {
-				if (ws.data.socketType === "terminal") {
-					terminalRelay.handleOpen(ws);
-					return;
-				}
 				controller.handleOpen(ws);
 			},
 		},
@@ -270,6 +248,7 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 				stopPromise = (async () => {
 					browserSidebarWatcher?.stop();
 					unsubscribeCodingEvents?.();
+					browserTerminalManager.stopAll();
 					await registry.stopAll();
 					server.stop();
 				})();
@@ -310,9 +289,9 @@ function isLikelyBrowserHttpRequest(req: Request, url: URL): boolean {
 	if (isWebSocketUpgradeRequest(req)) {
 		return false;
 	}
-	if (url.pathname.startsWith("/api/") || url.pathname === "/terminal") {
-		// API and terminal endpoints are reached by an already-loaded browser page,
-		// which already has its cookie set. No need to mint here.
+	if (url.pathname.startsWith("/api/")) {
+		// API endpoints are reached by an already-loaded browser page, which
+		// already has its cookie set. No need to mint here.
 		return false;
 	}
 	const accept = req.headers.get("accept") ?? "";

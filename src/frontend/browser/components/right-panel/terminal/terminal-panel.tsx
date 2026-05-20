@@ -5,6 +5,7 @@ import {
 	selectAgentTerminals,
 	useTerminalStore,
 } from "../../../stores/terminal.ts";
+import { createTerminalTarget } from "./terminal-target.ts";
 import { TerminalView } from "./terminal-view.tsx";
 
 interface TerminalPanelProps {
@@ -29,14 +30,18 @@ export function TerminalPanel({
 		selectActiveTerminalId(state, agentId),
 	);
 	const ensureTerminal = useTerminalStore((state) => state.ensureTerminal);
+	const runtimeTerminalsHydrated = useTerminalStore(
+		(state) => state.runtimeTerminalsHydrated,
+	);
+	const terminalCount = terminals.length;
 
 	useEffect(() => {
-		if (!agentId) {
+		if (!agentId || !runtimeTerminalsHydrated || terminalCount > 0) {
 			return;
 		}
 
 		ensureTerminal(agentId);
-	}, [agentId, ensureTerminal]);
+	}, [agentId, ensureTerminal, runtimeTerminalsHydrated, terminalCount]);
 
 	if (!agentId) {
 		return (
@@ -57,10 +62,15 @@ export function TerminalPanel({
 				<TerminalView
 					key={terminal.id}
 					active={active && terminal.id === activeTerminalId}
-					agentId={agentId}
-					providerId={providerId}
-					repositoryId={repositoryId}
-					sdkSessionId={sdkSessionId}
+					name={terminal.name}
+					runtimeState={terminal.runtimeState}
+					scopeId={agentId}
+					target={createTerminalTarget({
+						scopeId: agentId,
+						providerId,
+						repositoryId,
+						sdkSessionId,
+					})}
 					terminalId={terminal.id}
 				/>
 			))}

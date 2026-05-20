@@ -11,6 +11,7 @@ import {
 	codingSessionEventCacheKey,
 } from "../coding/coding-session-event-cache.ts";
 import { useCodingStore } from "../coding/coding-store.ts";
+import { publishTerminalRuntimeEvent } from "../components/right-panel/terminal/terminal-events.ts";
 import { fetchCodingSession } from "../lib/api.ts";
 import {
 	createBrowserSessionRef,
@@ -29,6 +30,7 @@ import { type SessionEntry, useSessionsStore } from "../stores/sessions.ts";
 import { useSlashCommandsStore } from "../stores/slash-commands.ts";
 import { makeCodingSessionCenterTab } from "../stores/tab-policy.ts";
 import { useTabsStore } from "../stores/tabs.ts";
+import { useTerminalStore } from "../stores/terminal.ts";
 import {
 	applyBrowserChatEvent,
 	type BrowserChatEventHandlerOptions,
@@ -469,6 +471,21 @@ export function handleBrowserServerEvent(
 			return;
 		case "browser_chat_coding_links_changed":
 			void openLinkedCodingSessionForActiveChat(event);
+			return;
+		case "terminal_sessions":
+			useTerminalStore.getState().applyRuntimeTerminals(event.terminals);
+			return;
+		case "terminal_created":
+			useTerminalStore.getState().markRuntimeTerminalCreated(event.terminal);
+			return;
+		case "terminal_attached":
+		case "terminal_output":
+		case "terminal_error":
+			publishTerminalRuntimeEvent(event);
+			return;
+		case "terminal_closed":
+			useTerminalStore.getState().markRuntimeTerminalClosed(event.terminalId);
+			publishTerminalRuntimeEvent(event);
 			return;
 		case "coding_session_event": {
 			appendCodingSessionCachedEvent(event);

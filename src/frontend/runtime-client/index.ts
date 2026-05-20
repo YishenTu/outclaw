@@ -4,6 +4,7 @@ import {
 	type ReplyContext,
 	type RuntimeClientType,
 	serialize,
+	type TerminalClientMessage,
 } from "../../common/protocol.ts";
 
 export interface RuntimeSocket {
@@ -109,6 +110,14 @@ export function sendRequestSkills(ws: WebSocket) {
 export function sendRequestFiles(ws: WebSocket) {
 	assertRuntimeSocketOpen(ws);
 	ws.send(serialize({ type: "request_files" }));
+}
+
+export function sendRuntimeTerminalMessage(
+	ws: WebSocket,
+	message: TerminalClientMessage,
+) {
+	assertRuntimeSocketOpen(ws);
+	ws.send(serialize(message));
 }
 
 export function sendRuntimeCommand(ws: WebSocket, command: string) {

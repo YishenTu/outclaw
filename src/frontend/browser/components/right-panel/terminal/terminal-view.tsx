@@ -1,19 +1,21 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useRef } from "react";
+import type { BrowserTerminalTarget } from "../../../../../common/protocol.ts";
+import { useWs } from "../../../contexts/websocket-context.tsx";
 import {
-	createTerminalSocketLifecycle,
-	type TerminalSocketLifecycle,
-} from "./terminal-socket-lifecycle.ts";
+	type BrowserTerminalRuntimeEvent,
+	subscribeTerminalRuntimeEvents,
+} from "./terminal-events.ts";
 
 interface TerminalViewProps {
 	active: boolean;
-	agentId?: string;
-	providerId?: string;
-	repositoryId?: string;
-	sdkSessionId?: string;
+	name: string;
 	onRunRequestDispatched?: (requestId: number) => void;
 	runRequest?: TerminalRunRequest | null;
+	runtimeState: "pending" | "ready";
+	scopeId: string;
+	target: BrowserTerminalTarget;
 	terminalId: string;
 }
 
@@ -26,62 +28,27 @@ export function toTerminalRunInput(command: string): string {
 	return `${command}\r`;
 }
 
-function buildTerminalUrl(params: {
-	agentId?: string;
-	providerId?: string;
-	repositoryId?: string;
-	sdkSessionId?: string;
-}): string {
-	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-	const url = new URL(`${protocol}//${window.location.host}/terminal`);
-	if (params.repositoryId) {
-		url.searchParams.set("repositoryId", params.repositoryId);
-		if (params.providerId) {
-			url.searchParams.set("providerId", params.providerId);
-		}
-		if (params.sdkSessionId) {
-			url.searchParams.set("sdkSessionId", params.sdkSessionId);
-		}
-	} else if (params.agentId) {
-		url.searchParams.set("agentId", params.agentId);
-	}
-	return url.toString();
-}
-
 export function TerminalView({
 	active,
-	agentId,
-	providerId,
-	repositoryId,
-	sdkSessionId,
+	name,
 	onRunRequestDispatched,
 	runRequest,
+	runtimeState,
+	scopeId,
+	target,
 	terminalId,
 }: TerminalViewProps) {
+	const { connected, sendTerminalMessage, ws } = useWs();
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
-	const socketLifecycleRef = useRef<TerminalSocketLifecycle<WebSocket> | null>(
-		null,
-	);
+	const attachedRef = useRef(false);
 	const activeRef = useRef(active);
 	const onRunRequestDispatchedRef = useRef(onRunRequestDispatched);
 	const pendingRunRequestRef = useRef<TerminalRunRequest | null>(null);
-	const connectionParamsRef = useRef({
-		agentId,
-		providerId,
-		repositoryId,
-		sdkSessionId,
-	});
-	connectionParamsRef.current = {
-		agentId,
-		providerId,
-		repositoryId,
-		sdkSessionId,
-	};
-	const connectionKey = repositoryId
-		? `repository:${repositoryId}:${providerId ?? ""}:${sdkSessionId ?? ""}`
-		: (agentId ?? "");
+	const requestedSocketRef = useRef<WebSocket | null>(null);
+	const sendTerminalInputRef = useRef<(input: string) => boolean>(() => false);
+	const sendResizeRef = useRef<() => void>(() => {});
 
 	useEffect(() => {
 		activeRef.current = active;
@@ -93,26 +60,55 @@ export function TerminalView({
 
 	const sendResize = useCallback(() => {
 		const terminal = terminalRef.current;
-		const socketLifecycle = socketLifecycleRef.current;
-		if (!terminal || !socketLifecycle) {
+		if (!terminal || !connected || !attachedRef.current) {
 			return;
 		}
 
-		socketLifecycle.send(
-			JSON.stringify({
-				type: "resize",
-				cols: terminal.cols,
-				rows: terminal.rows,
-			}),
-		);
-	}, []);
+		sendTerminalMessage({
+			type: "terminal_resize",
+			cols: terminal.cols,
+			rows: terminal.rows,
+			terminalId,
+		});
+	}, [connected, sendTerminalMessage, terminalId]);
 
-	const sendTerminalInput = useCallback((input: string): boolean => {
-		return socketLifecycleRef.current?.send(input) ?? false;
+	const sendTerminalInput = useCallback(
+		(input: string): boolean => {
+			if (!connected || !attachedRef.current) {
+				return false;
+			}
+			return sendTerminalMessage({
+				type: "terminal_input",
+				data: input,
+				terminalId,
+			});
+		},
+		[connected, sendTerminalMessage, terminalId],
+	);
+
+	useEffect(() => {
+		sendTerminalInputRef.current = sendTerminalInput;
+	}, [sendTerminalInput]);
+
+	useEffect(() => {
+		sendResizeRef.current = sendResize;
+	}, [sendResize]);
+
+	const dispatchPendingRunRequest = useCallback(() => {
+		const pendingRunRequest = pendingRunRequestRef.current;
+		if (
+			pendingRunRequest &&
+			sendTerminalInputRef.current(
+				toTerminalRunInput(pendingRunRequest.command),
+			)
+		) {
+			pendingRunRequestRef.current = null;
+			onRunRequestDispatchedRef.current?.(pendingRunRequest.id);
+		}
 	}, []);
 
 	useEffect(() => {
-		if (!containerRef.current || connectionKey === "") {
+		if (!containerRef.current || terminalId === "") {
 			return;
 		}
 
@@ -143,7 +139,7 @@ export function TerminalView({
 			}
 
 			fitAddon.fit();
-			sendResize();
+			sendResizeRef.current();
 		});
 		resizeObserver.observe(container);
 
@@ -152,63 +148,106 @@ export function TerminalView({
 		};
 		container.addEventListener("pointerdown", handlePointerDown);
 
-		let disconnected = false;
-		const socketLifecycle = createTerminalSocketLifecycle<WebSocket>({
-			isSocketOpen: (socket) => socket.readyState === WebSocket.OPEN,
-			onConnected: () => {
-				if (disconnected) {
-					terminal.writeln("\r\n[terminal reconnected]");
-				}
-				disconnected = false;
-				sendResize();
-				const pendingRunRequest = pendingRunRequestRef.current;
-				if (
-					pendingRunRequest &&
-					sendTerminalInput(toTerminalRunInput(pendingRunRequest.command))
-				) {
-					pendingRunRequestRef.current = null;
-					onRunRequestDispatchedRef.current?.(pendingRunRequest.id);
-				}
-			},
-			onData: (data) => {
-				terminal.write(data);
-			},
-			onDisconnected: () => {
-				if (disconnected) {
-					return;
-				}
-				disconnected = true;
-				terminal.writeln("\r\n[terminal disconnected; reconnecting]");
-			},
-			onError: () => {
-				if (!disconnected) {
-					terminal.writeln("\r\n[terminal error]");
-				}
-			},
-			openSocket: () =>
-				new WebSocket(buildTerminalUrl(connectionParamsRef.current)),
-			setCurrentSocket: () => {},
-		});
-		socketLifecycleRef.current = socketLifecycle;
-		socketLifecycle.start();
-
 		const disposable = terminal.onData((data) => {
-			sendTerminalInput(data);
+			sendTerminalInputRef.current(data);
 		});
 
 		return () => {
 			disposable.dispose();
-			socketLifecycle.stop();
 			container.removeEventListener("pointerdown", handlePointerDown);
-			if (socketLifecycleRef.current === socketLifecycle) {
-				socketLifecycleRef.current = null;
-			}
 			terminalRef.current = null;
 			fitAddonRef.current = null;
 			resizeObserver.disconnect();
 			terminal.dispose();
 		};
-	}, [connectionKey, sendResize, sendTerminalInput]);
+	}, [terminalId]);
+
+	useEffect(() => {
+		if (!connected) {
+			attachedRef.current = false;
+			requestedSocketRef.current = null;
+		}
+	}, [connected]);
+
+	useEffect(() => {
+		const terminal = terminalRef.current;
+		if (!connected || !ws || !terminal || !scopeId || !terminalId || !name) {
+			return;
+		}
+		if (requestedSocketRef.current === ws) {
+			return;
+		}
+
+		attachedRef.current = false;
+		const dimensions = {
+			cols: terminal.cols,
+			rows: terminal.rows,
+		};
+		const sent =
+			runtimeState === "ready"
+				? sendTerminalMessage({
+						type: "terminal_attach",
+						...dimensions,
+						terminalId,
+					})
+				: sendTerminalMessage({
+						type: "terminal_create",
+						...dimensions,
+						name,
+						scopeId,
+						target,
+						terminalId,
+					});
+		if (sent) {
+			requestedSocketRef.current = ws;
+		}
+	}, [
+		connected,
+		name,
+		runtimeState,
+		scopeId,
+		sendTerminalMessage,
+		target,
+		terminalId,
+		ws,
+	]);
+
+	useEffect(() => {
+		function handleTerminalRuntimeEvent(event: BrowserTerminalRuntimeEvent) {
+			const terminal = terminalRef.current;
+			if (!terminal) {
+				return;
+			}
+
+			if (event.type === "terminal_attached") {
+				attachedRef.current = true;
+				terminal.reset();
+				if (event.bufferedOutput.length > 0) {
+					terminal.write(event.bufferedOutput);
+				}
+				sendResizeRef.current();
+				dispatchPendingRunRequest();
+				return;
+			}
+			if (event.type === "terminal_output") {
+				terminal.write(event.data);
+				return;
+			}
+			if (event.type === "terminal_error") {
+				terminal.writeln(`\r\n[terminal error] ${event.message}`);
+				return;
+			}
+			if (event.type === "terminal_closed") {
+				attachedRef.current = false;
+				terminal.writeln("\r\n[terminal closed]");
+			}
+		}
+
+		return subscribeTerminalRuntimeEvents(
+			terminalId,
+			handleTerminalRuntimeEvent,
+		);
+	}, [dispatchPendingRunRequest, terminalId]);
 
 	useEffect(() => {
 		if (!runRequest) {
@@ -232,13 +271,13 @@ export function TerminalView({
 		const frameId = window.requestAnimationFrame(() => {
 			fitAddonRef.current?.fit();
 			terminalRef.current?.focus();
-			sendResize();
+			sendResizeRef.current();
 		});
 
 		return () => {
 			window.cancelAnimationFrame(frameId);
 		};
-	}, [active, sendResize]);
+	}, [active]);
 
 	return (
 		<div

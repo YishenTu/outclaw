@@ -1,5 +1,6 @@
 import { Play, TerminalSquare, X } from "lucide-react";
 import type { FormEvent } from "react";
+import { createTerminalTarget } from "./terminal-target.ts";
 import type { TerminalRunRequest } from "./terminal-view.tsx";
 import { TerminalView } from "./terminal-view.tsx";
 
@@ -155,12 +156,17 @@ export function TerminalRunPanel({
 			<TerminalView
 				key={`${agentId}:run`}
 				active={active}
-				agentId={agentId}
+				name="Run"
 				onRunRequestDispatched={onRunRequestDispatched}
-				providerId={providerId}
-				repositoryId={repositoryId}
 				runRequest={runRequest}
-				sdkSessionId={sdkSessionId}
+				runtimeState="pending"
+				scopeId={agentId}
+				target={createTerminalTarget({
+					scopeId: agentId,
+					providerId,
+					repositoryId,
+					sdkSessionId,
+				})}
 				terminalId={`${agentId}:run`}
 			/>
 		</div>

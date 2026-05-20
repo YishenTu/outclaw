@@ -15,6 +15,7 @@ describe("browser terminal store", () => {
 
 	beforeEach(() => {
 		store = createTerminalStore();
+		store.getState().applyRuntimeTerminals([]);
 	});
 
 	test("ensureTerminal creates the first terminal once per agent", () => {
@@ -30,6 +31,56 @@ describe("browser terminal store", () => {
 		);
 		expect(selectActiveTerminalTab(store.getState(), "agent-a")).toBe(
 			"terminal",
+		);
+	});
+
+	test("ensureTerminal waits for runtime terminal hydration before creating", () => {
+		const coldStore = createTerminalStore();
+
+		expect(coldStore.getState().ensureTerminal("agent-a")).toBe("");
+		expect(coldStore.getState().terminalsByAgent["agent-a"]).toBeUndefined();
+
+		const terminalId = coldStore.getState().ensureTerminal("agent-a");
+		expect(terminalId).toBe("");
+
+		coldStore.getState().applyRuntimeTerminals([]);
+		const hydratedTerminalId = coldStore.getState().ensureTerminal("agent-a");
+
+		expect(hydratedTerminalId).not.toBe("");
+		expect(
+			getTerminalNames(coldStore.getState().terminalsByAgent["agent-a"]),
+		).toEqual(["Terminal"]);
+	});
+
+	test("applyRuntimeTerminals restores shell terminals without listing run terminals", () => {
+		store.getState().applyRuntimeTerminals([
+			{
+				createdAt: 50,
+				id: "agent-a-terminal-existing",
+				name: "Terminal",
+				scopeId: "agent-a",
+				target: { kind: "agent", agentId: "agent-a" },
+			},
+			{
+				createdAt: 60,
+				id: "agent-a:run",
+				name: "Run",
+				scopeId: "agent-a",
+				target: { kind: "agent", agentId: "agent-a" },
+			},
+		]);
+
+		expect(store.getState().terminalsByAgent["agent-a"]).toEqual([
+			{
+				agentId: "agent-a",
+				createdAt: 50,
+				id: "agent-a-terminal-existing",
+				name: "Terminal",
+				runtimeState: "ready",
+			},
+		]);
+		expect(store.getState().activeTerminalIdByAgent["agent-a"]).toBe(
+			"agent-a-terminal-existing",
 		);
 	});
 

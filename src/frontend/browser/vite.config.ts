@@ -24,10 +24,6 @@ export default defineConfig({
 				target: "ws://localhost:4000",
 				ws: true,
 			},
-			"/terminal": {
-				target: "ws://localhost:4000",
-				ws: true,
-			},
 		},
 	},
 });

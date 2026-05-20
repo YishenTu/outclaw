@@ -20,6 +20,16 @@ function resetStore<TState>(store: {
 	store.setState(store.getInitialState(), true);
 }
 
+function terminalEntry(id: string, name: string, createdAt = 1) {
+	return {
+		agentId: "agent-a",
+		createdAt,
+		id,
+		name,
+		runtimeState: "ready" as const,
+	};
+}
+
 describe("browser tab strip active indicator", () => {
 	beforeEach(() => {
 		resetStore(useTabsStore);
@@ -101,14 +111,7 @@ describe("browser tab strip active indicator", () => {
 				onRunCommand={() => {}}
 				onSelectRun={() => {}}
 				onSelectTerminal={() => {}}
-				terminals={[
-					{
-						agentId: "agent-a",
-						id: "terminal-1",
-						name: "Terminal",
-						createdAt: 1,
-					},
-				]}
+				terminals={[terminalEntry("terminal-1", "Terminal")]}
 			/>,
 		);
 
@@ -130,14 +133,7 @@ describe("browser tab strip active indicator", () => {
 				onRunCommand={() => {}}
 				onSelectRun={() => {}}
 				onSelectTerminal={() => {}}
-				terminals={[
-					{
-						agentId: "agent-a",
-						id: "terminal-1",
-						name: "Terminal",
-						createdAt: 1,
-					},
-				]}
+				terminals={[terminalEntry("terminal-1", "Terminal")]}
 			/>,
 		);
 
@@ -158,14 +154,7 @@ describe("browser tab strip active indicator", () => {
 				onRunCommand={() => {}}
 				onSelectRun={() => {}}
 				onSelectTerminal={() => {}}
-				terminals={[
-					{
-						agentId: "agent-a",
-						id: "terminal-1",
-						name: "Build Shell",
-						createdAt: 1,
-					},
-				]}
+				terminals={[terminalEntry("terminal-1", "Build Shell")]}
 			/>,
 		);
 
@@ -189,14 +178,7 @@ describe("browser tab strip active indicator", () => {
 				onRunCommand={() => {}}
 				onSelectRun={() => {}}
 				onSelectTerminal={() => {}}
-				terminals={[
-					{
-						agentId: "agent-a",
-						id: "terminal-1",
-						name: "Terminal",
-						createdAt: 1,
-					},
-				]}
+				terminals={[terminalEntry("terminal-1", "Terminal")]}
 			/>,
 		);
 
@@ -243,18 +225,8 @@ describe("browser tab strip active indicator", () => {
 				onSelectRun={() => {}}
 				onSelectTerminal={() => {}}
 				terminals={[
-					{
-						agentId: "agent-a",
-						id: "terminal-1",
-						name: "Terminal",
-						createdAt: 1,
-					},
-					{
-						agentId: "agent-a",
-						id: "terminal-2",
-						name: "Terminal 2",
-						createdAt: 2,
-					},
+					terminalEntry("terminal-1", "Terminal"),
+					terminalEntry("terminal-2", "Terminal 2", 2),
 				]}
 			/>,
 		);

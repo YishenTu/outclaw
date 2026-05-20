@@ -39,6 +39,7 @@ import {
 	resolveTreeRefreshFailure,
 	shouldShowTreeLoading,
 } from "../components/right-panel/tree-refresh-policy.ts";
+import { useWs } from "../contexts/websocket-context.tsx";
 import {
 	fetchCodingRepositoryTree,
 	initGitRepo,
@@ -85,6 +86,7 @@ interface CodingRightPanelProps {
 }
 
 export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
+	const { sendTerminalMessage } = useWs();
 	const focusedRepositoryId = useCodingStore(
 		(state) => state.focusedRepositoryId,
 	);
@@ -697,7 +699,14 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 						}
 						onCloseTerminal={(terminalId) => {
 							if (terminalWorkspaceKey) {
-								closeTerminal(terminalWorkspaceKey, terminalId);
+								if (
+									sendTerminalMessage({
+										type: "terminal_close",
+										terminalId,
+									})
+								) {
+									closeTerminal(terminalWorkspaceKey, terminalId);
+								}
 							}
 						}}
 						onCreateTerminal={() => {

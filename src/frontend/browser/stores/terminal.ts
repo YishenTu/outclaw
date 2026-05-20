@@ -1,10 +1,12 @@
 import { create } from "zustand";
+import type { BrowserTerminalSummary } from "../../../common/protocol.ts";
 
 export interface BrowserTerminalEntry {
 	agentId: string;
 	createdAt: number;
 	id: string;
 	name: string;
+	runtimeState: "pending" | "ready";
 }
 
 export type BrowserTerminalTab = "run" | "terminal";
@@ -17,9 +19,11 @@ export interface BrowserTerminalState {
 	activeTerminalIdByAgent: Record<string, string | null>;
 	activeTerminalTabByAgent: Record<string, BrowserTerminalTab>;
 	nextTerminalNumberByAgent: Record<string, number>;
+	runtimeTerminalsHydrated: boolean;
 	runTerminalCommandByAgent: Record<string, string | null>;
 	terminalsByAgent: Record<string, BrowserTerminalEntry[]>;
 
+	applyRuntimeTerminals: (terminals: BrowserTerminalSummary[]) => void;
 	closeTerminal: (agentId: string, terminalId: string) => void;
 	createTerminal: (
 		agentId: string,
@@ -30,6 +34,8 @@ export interface BrowserTerminalState {
 		agentId: string,
 		options?: TerminalCreationOptions,
 	) => string;
+	markRuntimeTerminalClosed: (terminalId: string) => void;
+	markRuntimeTerminalCreated: (terminal: BrowserTerminalSummary) => void;
 	renameTerminal: (agentId: string, terminalId: string, name: string) => void;
 	setActiveRunTerminal: (agentId: string) => void;
 	setActiveTerminal: (agentId: string, terminalId: string) => void;
@@ -63,6 +69,7 @@ function createTerminalEntry(
 		createdAt: now,
 		id: `${agentId}-terminal-${terminalNumber}-${createTerminalIdSuffix(now)}`,
 		name,
+		runtimeState: "pending",
 	};
 }
 
@@ -125,8 +132,63 @@ export function createTerminalStore() {
 		activeTerminalIdByAgent: {},
 		activeTerminalTabByAgent: {},
 		nextTerminalNumberByAgent: {},
+		runtimeTerminalsHydrated: false,
 		runTerminalCommandByAgent: {},
 		terminalsByAgent: {},
+
+		applyRuntimeTerminals: (terminals) =>
+			set((state) => {
+				const runtimeEntries = groupRuntimeTerminals(terminals);
+				const scopeIds = new Set([
+					...Object.keys(state.terminalsByAgent),
+					...Object.keys(runtimeEntries),
+				]);
+				const nextTerminalsByAgent = { ...state.terminalsByAgent };
+				const nextActiveTerminalIdByAgent = {
+					...state.activeTerminalIdByAgent,
+				};
+				const nextActiveTerminalTabByAgent = {
+					...state.activeTerminalTabByAgent,
+				};
+
+				for (const scopeId of scopeIds) {
+					const pending = (state.terminalsByAgent[scopeId] ?? []).filter(
+						(terminal) => terminal.runtimeState === "pending",
+					);
+					const nextTerminals = [
+						...(runtimeEntries[scopeId] ?? []),
+						...pending.filter(
+							(pendingTerminal) =>
+								!(runtimeEntries[scopeId] ?? []).some(
+									(runtimeTerminal) =>
+										runtimeTerminal.id === pendingTerminal.id,
+								),
+						),
+					];
+					if (nextTerminals.length === 0) {
+						delete nextTerminalsByAgent[scopeId];
+						nextActiveTerminalIdByAgent[scopeId] = null;
+						continue;
+					}
+					nextTerminalsByAgent[scopeId] = nextTerminals;
+					const activeTerminalId = state.activeTerminalIdByAgent[scopeId];
+					if (
+						!activeTerminalId ||
+						!nextTerminals.some((terminal) => terminal.id === activeTerminalId)
+					) {
+						nextActiveTerminalIdByAgent[scopeId] = nextTerminals[0]?.id ?? null;
+					}
+					nextActiveTerminalTabByAgent[scopeId] =
+						state.activeTerminalTabByAgent[scopeId] ?? "terminal";
+				}
+
+				return {
+					activeTerminalIdByAgent: nextActiveTerminalIdByAgent,
+					activeTerminalTabByAgent: nextActiveTerminalTabByAgent,
+					runtimeTerminalsHydrated: true,
+					terminalsByAgent: nextTerminalsByAgent,
+				};
+			}),
 
 		closeTerminal: (agentId, terminalId) =>
 			set((state) => {
@@ -226,6 +288,9 @@ export function createTerminalStore() {
 		},
 
 		ensureTerminal: (agentId, options) => {
+			if (!get().runtimeTerminalsHydrated) {
+				return "";
+			}
 			const existingTerminalId = get().terminalsByAgent[agentId]?.[0]?.id;
 			if (existingTerminalId) {
 				if (
@@ -248,6 +313,66 @@ export function createTerminalStore() {
 
 			return get().createTerminal(agentId, options);
 		},
+
+		markRuntimeTerminalClosed: (terminalId) =>
+			set((state) => {
+				for (const [agentId, terminals] of Object.entries(
+					state.terminalsByAgent,
+				)) {
+					if (!terminals.some((terminal) => terminal.id === terminalId)) {
+						continue;
+					}
+					const nextTerminals = terminals.filter(
+						(terminal) => terminal.id !== terminalId,
+					);
+					return {
+						activeTerminalIdByAgent: {
+							...state.activeTerminalIdByAgent,
+							[agentId]:
+								state.activeTerminalIdByAgent[agentId] === terminalId
+									? (nextTerminals[0]?.id ?? null)
+									: (state.activeTerminalIdByAgent[agentId] ?? null),
+						},
+						terminalsByAgent: {
+							...state.terminalsByAgent,
+							[agentId]: nextTerminals,
+						},
+					};
+				}
+				return state;
+			}),
+
+		markRuntimeTerminalCreated: (terminal) =>
+			set((state) => {
+				if (isRunTerminalSummary(terminal)) {
+					return state;
+				}
+				const runtimeEntry = runtimeSummaryToTerminalEntry(terminal);
+				const terminals = state.terminalsByAgent[terminal.scopeId] ?? [];
+				const existing = terminals.some((entry) => entry.id === terminal.id);
+				const nextTerminals = existing
+					? terminals.map((entry) =>
+							entry.id === terminal.id ? runtimeEntry : entry,
+						)
+					: [...terminals, runtimeEntry];
+
+				return {
+					activeTerminalIdByAgent: {
+						...state.activeTerminalIdByAgent,
+						[terminal.scopeId]:
+							state.activeTerminalIdByAgent[terminal.scopeId] ?? terminal.id,
+					},
+					activeTerminalTabByAgent: {
+						...state.activeTerminalTabByAgent,
+						[terminal.scopeId]:
+							state.activeTerminalTabByAgent[terminal.scopeId] ?? "terminal",
+					},
+					terminalsByAgent: {
+						...state.terminalsByAgent,
+						[terminal.scopeId]: nextTerminals,
+					},
+				};
+			}),
 
 		executeRunTerminal: (agentId, command) =>
 			set((state) => ({
@@ -348,4 +473,35 @@ export function selectRunTerminalCommand(
 	agentId: string | null,
 ) {
 	return agentId ? (state.runTerminalCommandByAgent[agentId] ?? null) : null;
+}
+
+function groupRuntimeTerminals(
+	terminals: BrowserTerminalSummary[],
+): Record<string, BrowserTerminalEntry[]> {
+	const grouped: Record<string, BrowserTerminalEntry[]> = {};
+	for (const terminal of terminals) {
+		if (isRunTerminalSummary(terminal)) {
+			continue;
+		}
+		const entries = grouped[terminal.scopeId] ?? [];
+		entries.push(runtimeSummaryToTerminalEntry(terminal));
+		grouped[terminal.scopeId] = entries;
+	}
+	return grouped;
+}
+
+function runtimeSummaryToTerminalEntry(
+	terminal: BrowserTerminalSummary,
+): BrowserTerminalEntry {
+	return {
+		agentId: terminal.scopeId,
+		createdAt: terminal.createdAt,
+		id: terminal.id,
+		name: terminal.name,
+		runtimeState: "ready",
+	};
+}
+
+function isRunTerminalSummary(terminal: BrowserTerminalSummary): boolean {
+	return terminal.id === `${terminal.scopeId}:run`;
 }

@@ -116,11 +116,71 @@ export interface RequestFilesMessage {
 	type: "request_files";
 }
 
+export type BrowserTerminalTarget =
+	| {
+			kind: "agent";
+			agentId: string;
+	  }
+	| {
+			kind: "coding";
+			repositoryId: string;
+			providerId?: string;
+			sdkSessionId?: string;
+	  };
+
+export interface TerminalListMessage {
+	type: "terminal_list";
+}
+
+export interface TerminalCreateMessage {
+	type: "terminal_create";
+	cols?: number;
+	name: string;
+	rows?: number;
+	scopeId: string;
+	target: BrowserTerminalTarget;
+	terminalId: string;
+}
+
+export interface TerminalAttachMessage {
+	type: "terminal_attach";
+	cols?: number;
+	rows?: number;
+	terminalId: string;
+}
+
+export interface TerminalInputMessage {
+	type: "terminal_input";
+	data: string;
+	terminalId: string;
+}
+
+export interface TerminalResizeMessage {
+	type: "terminal_resize";
+	cols: number;
+	rows: number;
+	terminalId: string;
+}
+
+export interface TerminalCloseMessage {
+	type: "terminal_close";
+	terminalId: string;
+}
+
+export type TerminalClientMessage =
+	| TerminalListMessage
+	| TerminalCreateMessage
+	| TerminalAttachMessage
+	| TerminalInputMessage
+	| TerminalResizeMessage
+	| TerminalCloseMessage;
+
 export type ClientMessage =
 	| PromptMessage
 	| CommandMessage
 	| RequestSkillsMessage
 	| RequestFilesMessage
+	| TerminalClientMessage
 	| AskMessage
 	| SendMessage
 	| CronRunMessage
@@ -631,6 +691,47 @@ export interface BrowserChatCodingLinksChangedEvent {
 	chatSdkSessionId: string;
 	codingProviderId: string;
 	codingSdkSessionId: string;
+}
+
+export interface BrowserTerminalSummary {
+	createdAt: number;
+	id: string;
+	name: string;
+	scopeId: string;
+	target: BrowserTerminalTarget;
+}
+
+export interface TerminalSessionsEvent {
+	type: "terminal_sessions";
+	terminals: BrowserTerminalSummary[];
+}
+
+export interface TerminalCreatedEvent {
+	type: "terminal_created";
+	terminal: BrowserTerminalSummary;
+}
+
+export interface TerminalAttachedEvent {
+	type: "terminal_attached";
+	bufferedOutput: string;
+	terminalId: string;
+}
+
+export interface TerminalOutputEvent {
+	type: "terminal_output";
+	data: string;
+	terminalId: string;
+}
+
+export interface TerminalClosedEvent {
+	type: "terminal_closed";
+	terminalId: string;
+}
+
+export interface TerminalErrorEvent {
+	type: "terminal_error";
+	message: string;
+	terminalId?: string;
 }
 
 export interface SkillInfo {
@@ -1260,6 +1361,12 @@ export type ServerEvent =
 	| BrowserAgentsInvalidatedEvent
 	| BrowserAgentActiveSessionChangedEvent
 	| BrowserChatCodingLinksChangedEvent
+	| TerminalSessionsEvent
+	| TerminalCreatedEvent
+	| TerminalAttachedEvent
+	| TerminalOutputEvent
+	| TerminalClosedEvent
+	| TerminalErrorEvent
 	| CodingSessionStreamEvent
 	| SkillsUpdateEvent
 	| WorkspaceFilesUpdateEvent

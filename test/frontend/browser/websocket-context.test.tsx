@@ -210,6 +210,9 @@ describe("WebSocketProvider sidebar refresh", () => {
 		FakeWebSocket.instances[0]?.dispatch("open");
 		await flushUpdates();
 		expect(sidebarFetches).toBe(1);
+		expect(
+			FakeWebSocket.instances[0]?.sent.map((message) => JSON.parse(message)),
+		).toContainEqual({ type: "terminal_list" });
 
 		vi.advanceTimersByTime(15_000);
 		await flushUpdates();

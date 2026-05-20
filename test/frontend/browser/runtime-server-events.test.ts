@@ -5,6 +5,7 @@ import {
 	readCodingSessionCachedEvents,
 } from "../../../src/frontend/browser/coding/coding-session-event-cache.ts";
 import { useCodingStore } from "../../../src/frontend/browser/coding/coding-store.ts";
+import { subscribeTerminalRuntimeEvents } from "../../../src/frontend/browser/components/right-panel/terminal/terminal-events.ts";
 import {
 	applySidebarSummary,
 	formatSessionInfoSummary,
@@ -32,6 +33,7 @@ import { useSessionsStore } from "../../../src/frontend/browser/stores/sessions.
 import { useSlashCommandsStore } from "../../../src/frontend/browser/stores/slash-commands.ts";
 import { CHAT_TAB } from "../../../src/frontend/browser/stores/tab-policy.ts";
 import { useTabsStore } from "../../../src/frontend/browser/stores/tabs.ts";
+import { useTerminalStore } from "../../../src/frontend/browser/stores/terminal.ts";
 
 const USAGE: UsageInfo = {
 	inputTokens: 10,
@@ -64,6 +66,7 @@ function resetBrowserStores() {
 	resetStore(useRightPanelRefreshStore);
 	resetStore(useSlashCommandsStore);
 	resetStore(useTabsStore);
+	resetStore(useTerminalStore);
 	resetStore(useCodingStore);
 }
 
@@ -191,6 +194,78 @@ describe("browser runtime server events", () => {
 		expect(inferImageMediaTypeFromPath("plot.gif")).toBe("image/gif");
 		expect(inferImageMediaTypeFromPath("plot.webp")).toBe("image/webp");
 		expect(inferImageMediaTypeFromPath("plot.svg")).toBeUndefined();
+	});
+
+	test("hydrates runtime terminal sessions and routes terminal events", () => {
+		const { options } = createHandlerOptions();
+		const received: unknown[] = [];
+		const unsubscribe = subscribeTerminalRuntimeEvents(
+			"terminal-1",
+			(event) => {
+				received.push(event);
+			},
+		);
+
+		try {
+			handleBrowserServerEvent(
+				{
+					type: "terminal_sessions",
+					terminals: [
+						{
+							createdAt: 10,
+							id: "terminal-1",
+							name: "Terminal",
+							scopeId: "agent-a",
+							target: { kind: "agent", agentId: "agent-a" },
+						},
+					],
+				},
+				options,
+			);
+
+			expect(useTerminalStore.getState().terminalsByAgent["agent-a"]).toEqual([
+				{
+					agentId: "agent-a",
+					createdAt: 10,
+					id: "terminal-1",
+					name: "Terminal",
+					runtimeState: "ready",
+				},
+			]);
+
+			handleBrowserServerEvent(
+				{
+					type: "terminal_output",
+					data: "ready\n",
+					terminalId: "terminal-1",
+				},
+				options,
+			);
+			handleBrowserServerEvent(
+				{
+					type: "terminal_closed",
+					terminalId: "terminal-1",
+				},
+				options,
+			);
+
+			expect(received).toEqual([
+				{
+					type: "terminal_output",
+					data: "ready\n",
+					terminalId: "terminal-1",
+				},
+				{
+					type: "terminal_closed",
+					terminalId: "terminal-1",
+				},
+			]);
+			expect(useTerminalStore.getState().terminalsByAgent["agent-a"]).toEqual(
+				[],
+			);
+		} finally {
+			unsubscribe();
+		}
 	});
 
 	test("keeps sidebar store identity when a summary is unchanged", () => {

@@ -125,7 +125,7 @@ export function RightPanelUpperTabs({
 }
 
 export function RightPanel({ onCollapse }: RightPanelProps) {
-	const { sendCommand, sendPromptToAgent } = useWs();
+	const { sendCommand, sendPromptToAgent, sendTerminalMessage } = useWs();
 	const requestRestartAfterConfigSave = useCallback(
 		() => requestConfigRestart(sendCommand),
 		[sendCommand],
@@ -739,7 +739,14 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 						}
 						onCloseTerminal={(terminalId) => {
 							if (activeAgentId) {
-								closeTerminal(activeAgentId, terminalId);
+								if (
+									sendTerminalMessage({
+										type: "terminal_close",
+										terminalId,
+									})
+								) {
+									closeTerminal(activeAgentId, terminalId);
+								}
 							}
 						}}
 						onCreateTerminal={() => {
