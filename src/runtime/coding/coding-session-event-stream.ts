@@ -286,6 +286,7 @@ function buildCodingEventSignature(
 	const signature: CodingEventSignaturePart[] = [];
 	let text = "";
 	let thinking = "";
+	let thinkingBlockId: string | undefined;
 
 	const flushText = () => {
 		if (text !== "") {
@@ -297,6 +298,7 @@ function buildCodingEventSignature(
 		if (thinking !== "") {
 			signature.push({ type: "thinking", text: thinking });
 			thinking = "";
+			thinkingBlockId = undefined;
 		}
 	};
 
@@ -308,6 +310,11 @@ function buildCodingEventSignature(
 		}
 		if (event.type === "thinking") {
 			flushText();
+			const blockId = event.blockId;
+			if (thinking !== "" && thinkingBlockId !== blockId) {
+				flushThinking();
+			}
+			thinkingBlockId = blockId;
 			thinking += event.text;
 			continue;
 		}
@@ -394,5 +401,6 @@ function stableCodingSessionEventRecord(
 	delete record.sessionId;
 	delete record.timestamp;
 	delete record.usage;
+	delete record.blockId;
 	return record;
 }

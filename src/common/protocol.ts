@@ -153,6 +153,7 @@ export interface StatusEvent {
 export interface ThinkingEvent {
 	type: "thinking";
 	text: string;
+	blockId?: string;
 	sessionId?: string;
 	timestamp?: number;
 }

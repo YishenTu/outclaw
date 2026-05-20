@@ -1174,12 +1174,20 @@ class CodingTranscriptRenderer {
 	private readonly commandOutputSeen = new Set<string>();
 	private lastOutputEndedWithNewline = true;
 	private pendingThinking = "";
+	private pendingThinkingBlockId: string | undefined;
 	private wroteAny = false;
 
 	constructor(private readonly write: (chunk: string) => void) {}
 
 	render(event: CodingSessionEvent) {
 		if (event.type === "thinking") {
+			if (
+				this.pendingThinking !== "" &&
+				this.pendingThinkingBlockId !== event.blockId
+			) {
+				this.flushThinking();
+			}
+			this.pendingThinkingBlockId = event.blockId;
 			this.pendingThinking += event.text;
 			return;
 		}
@@ -1279,6 +1287,7 @@ class CodingTranscriptRenderer {
 	private flushThinking() {
 		const text = this.pendingThinking.trim();
 		this.pendingThinking = "";
+		this.pendingThinkingBlockId = undefined;
 		if (text) {
 			this.writeBlock(`[thinking] ${text}`);
 		}

@@ -71,7 +71,9 @@ export function createCodingTranscriptItems(
 ): TranscriptItem[] {
 	const groups: CodingEventGroup[] = [];
 	let currentText: { key: string; chunks: string[] } | undefined;
-	let currentThinking: { key: string; chunks: string[] } | undefined;
+	let currentThinking:
+		| { key: string; blockId?: string; chunks: string[] }
+		| undefined;
 	let currentTurnWorkStartIndex = 0;
 	const toolEntriesByCallId = new Map<string, ToolEntry>();
 
@@ -210,11 +212,17 @@ export function createCodingTranscriptItems(
 		if (type === "thinking") {
 			flushText();
 			const text = typeof event.text === "string" ? event.text : "";
+			const blockId =
+				typeof event.blockId === "string" ? event.blockId : undefined;
+			if (currentThinking && currentThinking.blockId !== blockId) {
+				flushThinking();
+			}
 			if (currentThinking) {
 				currentThinking.chunks.push(text);
 			} else {
 				currentThinking = {
 					key: `thinking-${item.sequence}`,
+					...(blockId ? { blockId } : {}),
 					chunks: [text],
 				};
 			}

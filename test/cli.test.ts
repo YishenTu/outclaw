@@ -2343,6 +2343,77 @@ describe("CLI", () => {
 		}
 	});
 
+	test("coding transcript splits adjacent provider thinking blocks", async () => {
+		const frame = (sequence: number, event: Record<string, unknown>): string =>
+			`id: ${sequence}\ndata: ${JSON.stringify({
+				providerId: "codex",
+				sdkSessionId: "thinking-block-session",
+				sequence,
+				event,
+				createdAt: sequence,
+			})}\n\n`;
+		const server = createTestServer({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url);
+				if (
+					url.pathname !==
+					"/api/coding/sessions/codex/thinking-block-session/events"
+				) {
+					return new Response("not found", { status: 404 });
+				}
+				return new Response(
+					[
+						frame(1, {
+							type: "thinking",
+							text: "inspect",
+							blockId: "reasoning-1:summary:0",
+							sessionId: "thinking-block-session",
+						}),
+						frame(2, {
+							type: "thinking",
+							text: " files",
+							blockId: "reasoning-1:summary:0",
+							sessionId: "thinking-block-session",
+						}),
+						frame(3, {
+							type: "thinking",
+							text: "run tests",
+							blockId: "reasoning-1:summary:1",
+							sessionId: "thinking-block-session",
+						}),
+						frame(4, {
+							type: "done",
+							sessionId: "thinking-block-session",
+							durationMs: 1200,
+						}),
+					].join(""),
+					{
+						headers: {
+							"content-type": "text/event-stream; charset=utf-8",
+						},
+					},
+				);
+			},
+		});
+		writeConfig(server.port as number);
+
+		try {
+			const result = await runCliAsyncWithTimeout(
+				["coding", "transcript", "codex/thinking-block-session"],
+				{ cwd: TEST_HOME, timeoutMs: 1000 },
+			);
+			expect(result.timedOut).toBe(false);
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr).toBe("");
+			expect(result.stdout).toContain("[thinking] inspect files\n");
+			expect(result.stdout).toContain("[thinking] run tests\n");
+			expect(result.stdout.match(/\[thinking\]/g)).toHaveLength(2);
+		} finally {
+			server.stop();
+		}
+	});
+
 	test("coding transcript defaults to the latest interaction turn", async () => {
 		const frame = (sequence: number, event: Record<string, unknown>): string =>
 			`id: ${sequence}\ndata: ${JSON.stringify({

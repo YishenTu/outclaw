@@ -190,9 +190,14 @@ export async function* normalizeCodexTurnNotifications(
 			case "item/reasoning/summaryTextDelta": {
 				const delta = readString(notification.params, "delta");
 				if (delta) {
+					const blockId = readReasoningDeltaBlockId(
+						notification.method,
+						notification.params,
+					);
 					yield {
 						type: "thinking",
 						text: delta,
+						...(blockId ? { blockId } : {}),
 						sessionId: options.sessionId,
 					};
 				}
@@ -363,6 +368,7 @@ export function normalizeCodexJsonlEvents(
 	const terminalCommandCallIds = new Map<string, string>();
 	const writeStdinParentCallIds = new Map<string, string>();
 	const runningCommandCallIds = new Set<string>();
+	let reasoningItemIndex = 0;
 
 	for (const parsedLine of parseCodexJsonlRows(content)) {
 		const row = asRecord(parsedLine);
@@ -421,11 +427,13 @@ export function normalizeCodexJsonlEvents(
 					break;
 				}
 				case "reasoning": {
-					const text = readReasoningText(payload);
-					if (text) {
+					const parts = readReasoningParts(payload, reasoningItemIndex);
+					reasoningItemIndex += 1;
+					for (const part of parts) {
 						events.push({
 							type: "thinking",
-							text,
+							text: part.text,
+							...(part.blockId ? { blockId: part.blockId } : {}),
 							sessionId: options.sessionId,
 							...(timestamp !== undefined ? { timestamp } : {}),
 						});
@@ -1232,12 +1240,83 @@ function isCodexTurnAbortedMessage(text: string): boolean {
 	);
 }
 
-function readReasoningText(item: Record<string, unknown>): string {
-	const contentText = readContentText(item.content);
-	if (contentText) {
-		return contentText;
+function readReasoningDeltaBlockId(
+	method: string,
+	params: unknown,
+): string | undefined {
+	const record = asRecord(params);
+	if (!record) {
+		return undefined;
 	}
-	return readContentText(item.summary);
+	const itemId = typeof record.itemId === "string" ? record.itemId : undefined;
+	if (!itemId) {
+		return undefined;
+	}
+	if (method === "item/reasoning/summaryTextDelta") {
+		const summaryIndex = readNonNegativeInteger(record.summaryIndex);
+		return `${itemId}:summary:${summaryIndex ?? 0}`;
+	}
+	if (method === "item/reasoning/textDelta") {
+		const contentIndex = readNonNegativeInteger(record.contentIndex);
+		return `${itemId}:content:${contentIndex ?? 0}`;
+	}
+	return undefined;
+}
+
+interface ReasoningPart {
+	text: string;
+	blockId?: string;
+}
+
+function readReasoningParts(
+	item: Record<string, unknown>,
+	reasoningItemIndex: number,
+): ReasoningPart[] {
+	const contentParts = readReasoningTextParts(
+		item.content,
+		`jsonl-reasoning-${reasoningItemIndex}:content`,
+	);
+	if (contentParts.length > 0) {
+		return contentParts;
+	}
+	return readReasoningTextParts(
+		item.summary,
+		`jsonl-reasoning-${reasoningItemIndex}:summary`,
+	);
+}
+
+function readReasoningTextParts(
+	value: unknown,
+	blockPrefix: string,
+): ReasoningPart[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	const parts: ReasoningPart[] = [];
+	for (let index = 0; index < value.length; index += 1) {
+		const entry = value[index];
+		const record = asRecord(entry);
+		const text =
+			typeof entry === "string"
+				? entry
+				: typeof record?.text === "string"
+					? record.text
+					: "";
+		if (!text) {
+			continue;
+		}
+		parts.push({
+			text,
+			blockId: `${blockPrefix}:${index}`,
+		});
+	}
+	return parts;
+}
+
+function readNonNegativeInteger(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isInteger(value) && value >= 0
+		? value
+		: undefined;
 }
 
 function readJsonlPatchApplyEnd(

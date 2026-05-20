@@ -135,6 +135,35 @@ describe("CodingEventView command grouping", () => {
 		expect(html).toContain("Thinking");
 	});
 
+	test("splits adjacent thinking deltas when the provider block changes", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, {
+				type: "thinking",
+				text: "inspect",
+				blockId: "reasoning-1:summary:0",
+				sessionId: "session-1",
+			}),
+			streamItem(2, {
+				type: "thinking",
+				text: " files",
+				blockId: "reasoning-1:summary:0",
+				sessionId: "session-1",
+			}),
+			streamItem(3, {
+				type: "thinking",
+				text: "run tests",
+				blockId: "reasoning-1:summary:1",
+				sessionId: "session-1",
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(occurrences(html, "Thinking")).toBe(2);
+		expect(html).toContain("inspect files");
+		expect(html).toContain("run tests");
+	});
+
 	test("renders user_prompt as a shared transcript user bubble", () => {
 		const events: CodingSessionEventStreamItem[] = [
 			streamItem(1, { type: "user_prompt", text: "fix the tests" }),

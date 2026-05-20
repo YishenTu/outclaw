@@ -463,6 +463,85 @@ describe("CodexAdapter", () => {
 		]);
 	});
 
+	test("preserves Codex reasoning summary indices as thinking block identity", async () => {
+		const client = new FakeCodexAppServerClient([
+			{
+				method: "item/reasoning/summaryTextDelta",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					itemId: "reasoning-1",
+					summaryIndex: 0,
+					delta: "inspect files",
+				},
+			},
+			{
+				method: "item/reasoning/summaryTextDelta",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					itemId: "reasoning-1",
+					summaryIndex: 0,
+					delta: " first",
+				},
+			},
+			{
+				method: "item/reasoning/summaryPartAdded",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					itemId: "reasoning-1",
+					summaryIndex: 1,
+				},
+			},
+			{
+				method: "item/reasoning/summaryTextDelta",
+				params: {
+					threadId: "codex-thread-123",
+					turnId: "turn-1",
+					itemId: "reasoning-1",
+					summaryIndex: 1,
+					delta: "then run tests",
+				},
+			},
+			{
+				method: "turn/completed",
+				params: {
+					threadId: "codex-thread-123",
+					turn: { id: "turn-1", durationMs: 20, status: "completed" },
+				},
+			},
+		]);
+		const adapter = new CodexAdapter({ client });
+
+		const events = await collectEvents(
+			adapter.run({ prompt: "fix it", cwd: "/work/repo" }),
+		);
+
+		expect(events).toEqual([
+			{ type: "session_initialized", sessionId: "codex-thread-123" },
+			{
+				type: "thinking",
+				text: "inspect files",
+				blockId: "reasoning-1:summary:0",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "thinking",
+				text: " first",
+				blockId: "reasoning-1:summary:0",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "thinking",
+				text: "then run tests",
+				blockId: "reasoning-1:summary:1",
+				sessionId: "codex-thread-123",
+			},
+			{ type: "done", sessionId: "codex-thread-123", durationMs: 20 },
+		]);
+	});
+
 	test("suppresses live event_msg user echoes while streaming assistant messages through the Facade contract", async () => {
 		const client = new FakeCodexAppServerClient([
 			{
@@ -1277,6 +1356,7 @@ describe("CodexAdapter", () => {
 			{
 				type: "thinking",
 				text: "inspect files",
+				blockId: "jsonl-reasoning-0:content:0",
 				sessionId: "codex-thread-123",
 			},
 			{
@@ -1321,6 +1401,55 @@ describe("CodexAdapter", () => {
 				type: "done",
 				sessionId: "codex-thread-123",
 				durationMs: 23624,
+			},
+		]);
+	});
+
+	test("preserves Codex JSONL reasoning summary entries as distinct thinking blocks", () => {
+		const jsonl = [
+			{
+				type: "response_item",
+				payload: {
+					type: "message",
+					role: "user",
+					content: [{ type: "input_text", text: "fix it" }],
+				},
+			},
+			{
+				type: "response_item",
+				payload: {
+					type: "reasoning",
+					summary: [
+						{ type: "summary_text", text: "inspect files" },
+						{ type: "summary_text", text: "run tests" },
+					],
+					content: [],
+					encrypted_content: null,
+				},
+			},
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n");
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-123" }),
+		).toEqual([
+			{
+				type: "user_prompt",
+				text: "fix it",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "thinking",
+				text: "inspect files",
+				blockId: "jsonl-reasoning-0:summary:0",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "thinking",
+				text: "run tests",
+				blockId: "jsonl-reasoning-0:summary:1",
+				sessionId: "codex-thread-123",
 			},
 		]);
 	});
@@ -2117,6 +2246,7 @@ describe("CodexAdapter", () => {
 				{
 					type: "thinking",
 					text: "check cwd",
+					blockId: "jsonl-reasoning-0:content:0",
 					sessionId: "codex-thread-123",
 				},
 				{
