@@ -20,6 +20,7 @@ import {
 	inlineChatImageSrc,
 } from "./message-render-projection.ts";
 import { ThinkingBlock } from "./thinking-block.tsx";
+import { TRANSCRIPT_VERTICAL_GAP_CLASS } from "./transcript-layout.ts";
 
 interface MessageProps {
 	message: DisplayMessage;
@@ -134,20 +135,18 @@ export function Message({
 	return (
 		<div className="flex flex-col items-start">
 			<div className="w-full text-dark-100">
-				{withSegmentKeys(segments).map(({ key, segment }) =>
-					segment.type === "thinking" ? (
-						<div className="mb-2" key={key}>
-							<ThinkingBlock content={segment.text} />
-						</div>
-					) : (
-						segment.text.trim() !== "" && (
-							<div className="px-3" key={key}>
-								<MarkdownContent content={segment.text} />
-							</div>
-						)
-					),
-				)}
-				<div className="flex flex-col gap-2">
+				<div className={clsx("flex flex-col", TRANSCRIPT_VERTICAL_GAP_CLASS)}>
+					{withSegmentKeys(segments).map(({ key, segment }) =>
+						segment.type === "thinking" ? (
+							<ThinkingBlock content={segment.text} key={key} />
+						) : (
+							segment.text.trim() !== "" && (
+								<div className="px-3" key={key}>
+									<MarkdownContent content={segment.text} />
+								</div>
+							)
+						),
+					)}
 					{message.images && message.images.length > 0 && (
 						<div className="px-3">
 							<div className={clsx("rounded-md bg-dark-900/40 px-2 py-2")}>

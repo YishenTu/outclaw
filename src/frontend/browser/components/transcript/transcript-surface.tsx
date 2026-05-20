@@ -138,7 +138,7 @@ export function TranscriptSurface({
 				}}
 				className="scrollbar-none h-full overflow-y-auto overflow-x-hidden overscroll-contain"
 			>
-				<div className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
+				<div className="mx-auto max-w-4xl p-4">
 					<TranscriptItemList items={items} emptyMessage={emptyMessage} />
 				</div>
 			</div>

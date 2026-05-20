@@ -184,4 +184,50 @@ describe("shared browser transcript display", () => {
 		expect(html).toContain("checking failures");
 		expect(html).toContain("All set.");
 	});
+
+	test("uses the same vertical rhythm for split and adjacent thinking blocks", () => {
+		const html = renderToStaticMarkup(
+			<TranscriptItemList
+				items={[
+					{
+						kind: "message",
+						key: "assistant-segments",
+						message: {
+							kind: "chat",
+							role: "assistant",
+							content: "",
+							segments: [
+								{
+									type: "thinking",
+									text: "inspect files",
+									blockId: "reasoning-1:summary:0",
+								},
+								{
+									type: "thinking",
+									text: "run tests",
+									blockId: "reasoning-1:summary:1",
+								},
+							],
+						},
+					},
+					{
+						kind: "thinking",
+						key: "split-thinking-1",
+						content: "read hidden action result",
+					},
+					{
+						kind: "thinking",
+						key: "split-thinking-2",
+						content: "continue planning",
+					},
+				]}
+			/>,
+		);
+
+		const verticalRhythmContainers =
+			html.match(/class="[^"]*flex[^"]*flex-col[^"]*gap-4[^"]*"/g) ?? [];
+		expect(verticalRhythmContainers.length).toBeGreaterThanOrEqual(2);
+		expect(html).not.toContain("mb-2");
+		expect(html.match(/Thinking/g)).toHaveLength(4);
+	});
 });

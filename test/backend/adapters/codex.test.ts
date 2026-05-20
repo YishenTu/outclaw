@@ -463,7 +463,7 @@ describe("CodexAdapter", () => {
 		]);
 	});
 
-	test("preserves Codex reasoning summary indices as thinking block identity", async () => {
+	test("keeps Codex reasoning summary parts in one thinking block", async () => {
 		const client = new FakeCodexAppServerClient([
 			{
 				method: "item/reasoning/summaryTextDelta",
@@ -523,19 +523,19 @@ describe("CodexAdapter", () => {
 			{
 				type: "thinking",
 				text: "inspect files",
-				blockId: "reasoning-1:summary:0",
+				blockId: "reasoning-1:summary",
 				sessionId: "codex-thread-123",
 			},
 			{
 				type: "thinking",
 				text: " first",
-				blockId: "reasoning-1:summary:0",
+				blockId: "reasoning-1:summary",
 				sessionId: "codex-thread-123",
 			},
 			{
 				type: "thinking",
-				text: "then run tests",
-				blockId: "reasoning-1:summary:1",
+				text: "\n\nthen run tests",
+				blockId: "reasoning-1:summary",
 				sessionId: "codex-thread-123",
 			},
 			{ type: "done", sessionId: "codex-thread-123", durationMs: 20 },
@@ -1356,7 +1356,7 @@ describe("CodexAdapter", () => {
 			{
 				type: "thinking",
 				text: "inspect files",
-				blockId: "jsonl-reasoning-0:content:0",
+				blockId: "jsonl-reasoning-0:content",
 				sessionId: "codex-thread-123",
 			},
 			{
@@ -1405,7 +1405,7 @@ describe("CodexAdapter", () => {
 		]);
 	});
 
-	test("preserves Codex JSONL reasoning summary entries as distinct thinking blocks", () => {
+	test("rehydrates Codex JSONL reasoning summary entries as one thinking block", () => {
 		const jsonl = [
 			{
 				type: "response_item",
@@ -1441,14 +1441,8 @@ describe("CodexAdapter", () => {
 			},
 			{
 				type: "thinking",
-				text: "inspect files",
-				blockId: "jsonl-reasoning-0:summary:0",
-				sessionId: "codex-thread-123",
-			},
-			{
-				type: "thinking",
-				text: "run tests",
-				blockId: "jsonl-reasoning-0:summary:1",
+				text: "inspect files\n\nrun tests",
+				blockId: "jsonl-reasoning-0:summary",
 				sessionId: "codex-thread-123",
 			},
 		]);
@@ -2246,7 +2240,7 @@ describe("CodexAdapter", () => {
 				{
 					type: "thinking",
 					text: "check cwd",
-					blockId: "jsonl-reasoning-0:content:0",
+					blockId: "jsonl-reasoning-0:content",
 					sessionId: "codex-thread-123",
 				},
 				{

@@ -43,12 +43,10 @@ export function CodingEventView({ events }: CodingEventViewProps) {
 	const items = useMemo(() => createCodingTranscriptItems(events), [events]);
 
 	return (
-		<div className="flex flex-col gap-4">
-			<TranscriptItemList
-				items={items}
-				emptyMessage="No turn output yet. Send a prompt to start."
-			/>
-		</div>
+		<TranscriptItemList
+			items={items}
+			emptyMessage="No turn output yet. Send a prompt to start."
+		/>
 	);
 }
 
@@ -448,7 +446,7 @@ function CompletedWorkDisclosure({
 				<span className="tabular-nums">{summary}</span>
 			</summary>
 			{renderBody && (
-				<div className="mt-2 flex flex-col gap-3">
+				<div className="mt-2">
 					{items.length > 0 ? (
 						<TranscriptItemList items={items} />
 					) : (

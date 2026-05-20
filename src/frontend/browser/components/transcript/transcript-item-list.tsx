@@ -1,27 +1,39 @@
+import { clsx } from "clsx";
 import { Message } from "./message.tsx";
 import { ThinkingBlock } from "./thinking-block.tsx";
 import { ThinkingIndicator } from "./thinking-indicator.tsx";
 import type { TranscriptItem } from "./transcript-items.ts";
+import { TRANSCRIPT_VERTICAL_GAP_CLASS } from "./transcript-layout.ts";
 
 interface TranscriptItemListProps {
+	className?: string;
 	emptyMessage?: string;
 	items: TranscriptItem[];
 }
 
 export function TranscriptItemList({
+	className,
 	emptyMessage,
 	items,
 }: TranscriptItemListProps) {
-	if (items.length === 0 && emptyMessage) {
-		return <div className="text-sm text-dark-400">{emptyMessage}</div>;
+	if (items.length === 0 && !emptyMessage) {
+		return null;
 	}
 
 	return (
-		<>
-			{items.map((item) => (
-				<TranscriptItemView key={item.key} item={item} />
-			))}
-		</>
+		<div
+			className={clsx(
+				"flex w-full flex-col",
+				TRANSCRIPT_VERTICAL_GAP_CLASS,
+				className,
+			)}
+		>
+			{items.length === 0 ? (
+				<div className="text-sm text-dark-400">{emptyMessage}</div>
+			) : (
+				items.map((item) => <TranscriptItemView key={item.key} item={item} />)
+			)}
+		</div>
 	);
 }
 

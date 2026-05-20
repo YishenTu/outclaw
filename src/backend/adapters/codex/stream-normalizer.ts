@@ -102,6 +102,7 @@ export async function* normalizeCodexTurnNotifications(
 	const finalAssistantMessageIds = new Set<string>();
 	const projection = new CodexToolCallProjectionState();
 	const completedCommands = new Set<string>();
+	const reasoningPartIndexes = new Map<string, number>();
 
 	for await (const notification of options.notifications) {
 		if (
@@ -190,14 +191,26 @@ export async function* normalizeCodexTurnNotifications(
 			case "item/reasoning/summaryTextDelta": {
 				const delta = readString(notification.params, "delta");
 				if (delta) {
-					const blockId = readReasoningDeltaBlockId(
+					const block = readReasoningDeltaBlock(
 						notification.method,
 						notification.params,
 					);
+					const previousPartIndex = block
+						? reasoningPartIndexes.get(block.blockId)
+						: undefined;
+					const text =
+						block &&
+						previousPartIndex !== undefined &&
+						previousPartIndex !== block.partIndex
+							? `\n\n${delta}`
+							: delta;
+					if (block) {
+						reasoningPartIndexes.set(block.blockId, block.partIndex);
+					}
 					yield {
 						type: "thinking",
-						text: delta,
-						...(blockId ? { blockId } : {}),
+						text,
+						...(block ? { blockId: block.blockId } : {}),
 						sessionId: options.sessionId,
 					};
 				}
@@ -1240,10 +1253,10 @@ function isCodexTurnAbortedMessage(text: string): boolean {
 	);
 }
 
-function readReasoningDeltaBlockId(
+function readReasoningDeltaBlock(
 	method: string,
 	params: unknown,
-): string | undefined {
+): { blockId: string; partIndex: number } | undefined {
 	const record = asRecord(params);
 	if (!record) {
 		return undefined;
@@ -1254,11 +1267,11 @@ function readReasoningDeltaBlockId(
 	}
 	if (method === "item/reasoning/summaryTextDelta") {
 		const summaryIndex = readNonNegativeInteger(record.summaryIndex);
-		return `${itemId}:summary:${summaryIndex ?? 0}`;
+		return { blockId: `${itemId}:summary`, partIndex: summaryIndex ?? 0 };
 	}
 	if (method === "item/reasoning/textDelta") {
 		const contentIndex = readNonNegativeInteger(record.contentIndex);
-		return `${itemId}:content:${contentIndex ?? 0}`;
+		return { blockId: `${itemId}:content`, partIndex: contentIndex ?? 0 };
 	}
 	return undefined;
 }
@@ -1292,7 +1305,7 @@ function readReasoningTextParts(
 	if (!Array.isArray(value)) {
 		return [];
 	}
-	const parts: ReasoningPart[] = [];
+	const texts: string[] = [];
 	for (let index = 0; index < value.length; index += 1) {
 		const entry = value[index];
 		const record = asRecord(entry);
@@ -1305,12 +1318,16 @@ function readReasoningTextParts(
 		if (!text) {
 			continue;
 		}
-		parts.push({
-			text,
-			blockId: `${blockPrefix}:${index}`,
-		});
+		texts.push(text);
 	}
-	return parts;
+	return texts.length > 0
+		? [
+				{
+					text: texts.join("\n\n"),
+					blockId: blockPrefix,
+				},
+			]
+		: [];
 }
 
 function readNonNegativeInteger(value: unknown): number | undefined {
