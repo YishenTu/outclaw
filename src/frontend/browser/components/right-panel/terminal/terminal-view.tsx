@@ -1,6 +1,10 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useRef } from "react";
+import {
+	createTerminalSocketLifecycle,
+	type TerminalSocketLifecycle,
+} from "./terminal-socket-lifecycle.ts";
 
 interface TerminalViewProps {
 	active: boolean;
@@ -57,7 +61,9 @@ export function TerminalView({
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const terminalRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
-	const socketRef = useRef<WebSocket | null>(null);
+	const socketLifecycleRef = useRef<TerminalSocketLifecycle<WebSocket> | null>(
+		null,
+	);
 	const activeRef = useRef(active);
 	const onRunRequestDispatchedRef = useRef(onRunRequestDispatched);
 	const pendingRunRequestRef = useRef<TerminalRunRequest | null>(null);
@@ -73,7 +79,9 @@ export function TerminalView({
 		repositoryId,
 		sdkSessionId,
 	};
-	const connectionKey = agentId ?? "";
+	const connectionKey = repositoryId
+		? `repository:${repositoryId}:${providerId ?? ""}:${sdkSessionId ?? ""}`
+		: (agentId ?? "");
 
 	useEffect(() => {
 		activeRef.current = active;
@@ -85,12 +93,12 @@ export function TerminalView({
 
 	const sendResize = useCallback(() => {
 		const terminal = terminalRef.current;
-		const socket = socketRef.current;
-		if (!terminal || !socket || socket.readyState !== WebSocket.OPEN) {
+		const socketLifecycle = socketLifecycleRef.current;
+		if (!terminal || !socketLifecycle) {
 			return;
 		}
 
-		socket.send(
+		socketLifecycle.send(
 			JSON.stringify({
 				type: "resize",
 				cols: terminal.cols,
@@ -100,13 +108,7 @@ export function TerminalView({
 	}, []);
 
 	const sendTerminalInput = useCallback((input: string): boolean => {
-		const socket = socketRef.current;
-		if (!socket || socket.readyState !== WebSocket.OPEN) {
-			return false;
-		}
-
-		socket.send(input);
-		return true;
+		return socketLifecycleRef.current?.send(input) ?? false;
 	}, []);
 
 	useEffect(() => {
@@ -150,40 +152,57 @@ export function TerminalView({
 		};
 		container.addEventListener("pointerdown", handlePointerDown);
 
-		const socket = new WebSocket(buildTerminalUrl(connectionParamsRef.current));
-		socketRef.current = socket;
-		socket.onopen = () => {
-			sendResize();
-			const pendingRunRequest = pendingRunRequestRef.current;
-			if (
-				pendingRunRequest &&
-				sendTerminalInput(toTerminalRunInput(pendingRunRequest.command))
-			) {
-				pendingRunRequestRef.current = null;
-				onRunRequestDispatchedRef.current?.(pendingRunRequest.id);
-			}
-		};
-		socket.onmessage = (event) => {
-			terminal.write(String(event.data));
-		};
-		socket.onclose = () => {
-			terminal.writeln("\r\n[terminal disconnected]");
-		};
-		socket.onerror = () => {
-			terminal.writeln("\r\n[terminal error]");
-		};
+		let disconnected = false;
+		const socketLifecycle = createTerminalSocketLifecycle<WebSocket>({
+			isSocketOpen: (socket) => socket.readyState === WebSocket.OPEN,
+			onConnected: () => {
+				if (disconnected) {
+					terminal.writeln("\r\n[terminal reconnected]");
+				}
+				disconnected = false;
+				sendResize();
+				const pendingRunRequest = pendingRunRequestRef.current;
+				if (
+					pendingRunRequest &&
+					sendTerminalInput(toTerminalRunInput(pendingRunRequest.command))
+				) {
+					pendingRunRequestRef.current = null;
+					onRunRequestDispatchedRef.current?.(pendingRunRequest.id);
+				}
+			},
+			onData: (data) => {
+				terminal.write(data);
+			},
+			onDisconnected: () => {
+				if (disconnected) {
+					return;
+				}
+				disconnected = true;
+				terminal.writeln("\r\n[terminal disconnected; reconnecting]");
+			},
+			onError: () => {
+				if (!disconnected) {
+					terminal.writeln("\r\n[terminal error]");
+				}
+			},
+			openSocket: () =>
+				new WebSocket(buildTerminalUrl(connectionParamsRef.current)),
+			setCurrentSocket: () => {},
+		});
+		socketLifecycleRef.current = socketLifecycle;
+		socketLifecycle.start();
 
 		const disposable = terminal.onData((data) => {
-			if (socket.readyState === WebSocket.OPEN) {
-				socket.send(data);
-			}
+			sendTerminalInput(data);
 		});
 
 		return () => {
 			disposable.dispose();
-			socket.close();
+			socketLifecycle.stop();
 			container.removeEventListener("pointerdown", handlePointerDown);
-			socketRef.current = null;
+			if (socketLifecycleRef.current === socketLifecycle) {
+				socketLifecycleRef.current = null;
+			}
 			terminalRef.current = null;
 			fitAddonRef.current = null;
 			resizeObserver.disconnect();
