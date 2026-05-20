@@ -1,7 +1,16 @@
 import { create } from "zustand";
+import {
+	appendAssistantMessageSegment,
+	assistantMessageSegmentsFromAggregates,
+	assistantMessageSegmentsNeedOrderedDisplay,
+	assistantTextSegment,
+	assistantThinkingSegment,
+	cloneAssistantMessageSegments,
+} from "../../../common/assistant-message-segments.ts";
 import { createDisplayCompactBoundaryMessage } from "../../../common/compact-boundary.ts";
 import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
 import type {
+	AssistantMessageSegment,
 	AssistantTurnMetadata,
 	DisplayChatMessage,
 	DisplayImage,
@@ -23,12 +32,14 @@ export interface ChatSession {
 	streamingThinking: string;
 	streamingThinkingBlocks: string[];
 	streamingThinkingBlockId?: string;
+	streamingSegments: AssistantMessageSegment[];
 	streamingImages: DisplayImage[];
 	heartbeatPending: boolean;
 	heartbeatStreamingText: string;
 	heartbeatStreamingThinking: string;
 	heartbeatStreamingThinkingBlocks: string[];
 	heartbeatStreamingThinkingBlockId?: string;
+	heartbeatStreamingSegments: AssistantMessageSegment[];
 	heartbeatStreamingImages: DisplayImage[];
 	isThinking: boolean;
 	isStreaming: boolean;
@@ -70,6 +81,7 @@ export interface ChatState {
 			thinking: string;
 			thinkingBlocks?: string[];
 			thinkingBlockId?: string;
+			segments?: AssistantMessageSegment[];
 		},
 	) => void;
 	setStreaming: (sessionKey: string, streaming: boolean) => void;
@@ -95,11 +107,13 @@ function createEmptySession(): ChatSession {
 		streamingText: "",
 		streamingThinking: "",
 		streamingThinkingBlocks: [],
+		streamingSegments: [],
 		streamingImages: [],
 		heartbeatPending: false,
 		heartbeatStreamingText: "",
 		heartbeatStreamingThinking: "",
 		heartbeatStreamingThinkingBlocks: [],
+		heartbeatStreamingSegments: [],
 		heartbeatStreamingImages: [],
 		isThinking: false,
 		isStreaming: false,
@@ -202,6 +216,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						streamingThinking: "",
 						streamingThinkingBlocks: [],
 						streamingThinkingBlockId: undefined,
+						streamingSegments: [],
 						streamingImages: [],
 						heartbeatPending:
 							preservePendingTurn &&
@@ -211,6 +226,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						heartbeatStreamingThinking: "",
 						heartbeatStreamingThinkingBlocks: [],
 						heartbeatStreamingThinkingBlockId: undefined,
+						heartbeatStreamingSegments: [],
 						heartbeatStreamingImages: [],
 						isThinking: preservePendingTurn ? session.isThinking : false,
 						isStreaming: preservePendingTurn ? session.isStreaming : false,
@@ -238,9 +254,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						streamingText: session.heartbeatPending
 							? session.streamingText
 							: `${session.streamingText}${text}`,
+						streamingSegments: session.heartbeatPending
+							? session.streamingSegments
+							: appendAssistantMessageSegment(
+									session.streamingSegments,
+									assistantTextSegment(text),
+								),
 						heartbeatStreamingText: session.heartbeatPending
 							? `${session.heartbeatStreamingText}${text}`
 							: session.heartbeatStreamingText,
+						heartbeatStreamingSegments: session.heartbeatPending
+							? appendAssistantMessageSegment(
+									session.heartbeatStreamingSegments,
+									assistantTextSegment(text),
+								)
+							: session.heartbeatStreamingSegments,
 						pendingPromptStart: false,
 						isStreaming: true,
 					},
@@ -280,6 +308,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						streamingThinkingBlockId: session.heartbeatPending
 							? session.streamingThinkingBlockId
 							: streamingThinking.currentBlockId,
+						streamingSegments: session.heartbeatPending
+							? session.streamingSegments
+							: appendAssistantMessageSegment(
+									session.streamingSegments,
+									assistantThinkingSegment(text, blockId),
+								),
 						heartbeatStreamingThinking: session.heartbeatPending
 							? heartbeatThinking.text
 							: session.heartbeatStreamingThinking,
@@ -289,6 +323,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						heartbeatStreamingThinkingBlockId: session.heartbeatPending
 							? heartbeatThinking.currentBlockId
 							: session.heartbeatStreamingThinkingBlockId,
+						heartbeatStreamingSegments: session.heartbeatPending
+							? appendAssistantMessageSegment(
+									session.heartbeatStreamingSegments,
+									assistantThinkingSegment(text, blockId),
+								)
+							: session.heartbeatStreamingSegments,
 						isThinking: true,
 						pendingPromptStart: false,
 						thinkingStartedAt: session.thinkingStartedAt ?? Date.now(),
@@ -327,6 +367,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				text: snapshot.thinking,
 				blocks: snapshot.thinkingBlocks,
 			});
+			const snapshotSegments = snapshot.segments
+				? cloneAssistantMessageSegments(snapshot.segments)
+				: assistantMessageSegmentsFromAggregates({
+						text: snapshot.text,
+						thinking: snapshot.thinking,
+						thinkingBlocks: snapshot.thinkingBlocks,
+						thinkingBlockId: snapshot.thinkingBlockId,
+					});
 			const heartbeatPending =
 				session.heartbeatPending || hasPendingHeartbeatIndicator(messages);
 			return {
@@ -343,6 +391,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						streamingThinkingBlockId: heartbeatPending
 							? undefined
 							: snapshot.thinkingBlockId,
+						streamingSegments: heartbeatPending ? [] : snapshotSegments,
 						streamingImages: heartbeatPending ? [] : snapshot.images,
 						heartbeatPending,
 						heartbeatStreamingText: heartbeatPending ? snapshot.text : "",
@@ -355,6 +404,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 						heartbeatStreamingThinkingBlockId: heartbeatPending
 							? snapshot.thinkingBlockId
 							: undefined,
+						heartbeatStreamingSegments: heartbeatPending
+							? snapshotSegments
+							: [],
 						heartbeatStreamingImages: heartbeatPending ? snapshot.images : [],
 						isThinking:
 							session.isThinking ||
@@ -464,6 +516,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				heartbeatStreamingThinkingBlockId: error
 					? undefined
 					: session.heartbeatStreamingThinkingBlockId,
+				heartbeatStreamingSegments: error
+					? []
+					: session.heartbeatStreamingSegments,
 				heartbeatStreamingImages: error ? [] : session.heartbeatStreamingImages,
 				thinkingStartedAt: error ? null : session.thinkingStartedAt,
 			};
@@ -485,12 +540,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				streamingThinking: "",
 				streamingThinkingBlocks: [],
 				streamingThinkingBlockId: undefined,
+				streamingSegments: [],
 				streamingImages: [],
 				heartbeatPending: false,
 				heartbeatStreamingText: "",
 				heartbeatStreamingThinking: "",
 				heartbeatStreamingThinkingBlocks: [],
 				heartbeatStreamingThinkingBlockId: undefined,
+				heartbeatStreamingSegments: [],
 				heartbeatStreamingImages: [],
 				isThinking: false,
 				isStreaming: false,
@@ -567,6 +624,7 @@ function finalizeSessionMessages(
 				content,
 				thinking: session.heartbeatStreamingThinking,
 				thinkingBlocks: session.heartbeatStreamingThinkingBlocks,
+				segments: session.heartbeatStreamingSegments,
 				images: session.heartbeatStreamingImages,
 				timestamp: options?.timestamp,
 				assistantTurn: {
@@ -587,6 +645,7 @@ function finalizeSessionMessages(
 					content: session.streamingText,
 					thinking: session.streamingThinking,
 					thinkingBlocks: session.streamingThinkingBlocks,
+					segments: session.streamingSegments,
 					images: session.streamingImages,
 					timestamp: options?.timestamp,
 					assistantTurn: createUserAssistantTurn(
@@ -602,6 +661,7 @@ function createAssistantMessage(params: {
 	content: string;
 	thinking: string;
 	thinkingBlocks: string[];
+	segments?: AssistantMessageSegment[];
 	images: DisplayImage[];
 	timestamp?: number;
 	assistantTurn?: AssistantTurnMetadata;
@@ -610,12 +670,16 @@ function createAssistantMessage(params: {
 		text: params.thinking,
 		blocks: params.thinkingBlocks,
 	});
+	const segments = assistantMessageSegmentsNeedOrderedDisplay(params.segments)
+		? cloneAssistantMessageSegments(params.segments)
+		: undefined;
 	return {
 		kind: "chat",
 		role: "assistant",
 		content: params.content,
 		...(params.thinking !== "" ? { thinking: params.thinking } : {}),
 		...(thinkingBlocks ? { thinkingBlocks } : {}),
+		...(segments ? { segments } : {}),
 		...(params.images.length > 0 ? { images: params.images } : {}),
 		...(params.timestamp !== undefined ? { timestamp: params.timestamp } : {}),
 		...(params.assistantTurn ? { assistantTurn: params.assistantTurn } : {}),
@@ -631,9 +695,11 @@ export function hasActiveChatTurn(session: ChatSession): boolean {
 		session.heartbeatPending ||
 		session.streamingText !== "" ||
 		session.streamingThinking !== "" ||
+		session.streamingSegments.length > 0 ||
 		session.streamingImages.length > 0 ||
 		session.heartbeatStreamingText !== "" ||
 		session.heartbeatStreamingThinking !== "" ||
+		session.heartbeatStreamingSegments.length > 0 ||
 		session.heartbeatStreamingImages.length > 0
 	);
 }

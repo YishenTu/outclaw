@@ -886,6 +886,14 @@ describe("browser runtime server events", () => {
 				text: "partial",
 				thinking: "plan",
 				thinkingBlockId: "reasoning-1:summary:0",
+				segments: [
+					{
+						type: "thinking",
+						text: "plan",
+						blockId: "reasoning-1:summary:0",
+					},
+					{ type: "text", text: "partial" },
+				],
 				images: [
 					{
 						kind: "managed",
@@ -927,6 +935,19 @@ describe("browser runtime server events", () => {
 			streamingText: "partial",
 			streamingThinking: "plan next",
 			streamingThinkingBlocks: ["plan next"],
+			streamingSegments: [
+				{
+					type: "thinking",
+					text: "plan",
+					blockId: "reasoning-1:summary:0",
+				},
+				{ type: "text", text: "partial" },
+				{
+					type: "thinking",
+					text: " next",
+					blockId: "reasoning-1:summary:0",
+				},
+			],
 			isStreaming: true,
 			isThinking: true,
 		});

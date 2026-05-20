@@ -6,12 +6,13 @@ import type {
 	HeartbeatResult,
 	ImageRef,
 	ReplyContext,
+	ServerEvent,
 	SessionInitializedEvent,
 	TranscriptTurn,
 } from "../../../common/protocol.ts";
 import { extractError } from "../../../common/protocol.ts";
 import type { SessionTag } from "../../persistence/session-store/session-store.ts";
-import type { RuntimeClientGateway } from "../gateway/runtime-client-gateway.ts";
+import type { WsClient } from "../../transport/client-hub.ts";
 import type { SessionService } from "../session-service.ts";
 import type {
 	RuntimePromptContext,
@@ -42,7 +43,7 @@ export interface PromptExecution {
 	prompt: string;
 	replyContext?: ReplyContext;
 	resumeSessionId?: string;
-	sender?: import("../../transport/client-hub.ts").WsClient;
+	sender?: WsClient;
 	source: PromptSource;
 	sessionTag?: SessionTag;
 	storedSessionSource?: string;
@@ -79,8 +80,15 @@ export interface PromptExecution {
 
 type ClientFacadeEvent = Exclude<FacadeEvent, SessionInitializedEvent>;
 
+export interface PromptClientGateway {
+	listBrowserTargets(exclude?: WsClient): WsClient[];
+	listInteractiveTargets(exclude?: WsClient): WsClient[];
+	send(ws: WsClient, event: ServerEvent): void;
+	sendMany(targets: Iterable<WsClient>, event: ServerEvent): void;
+}
+
 interface PromptDispatcherOptions {
-	clients: RuntimeClientGateway;
+	clients: PromptClientGateway;
 	deliverHeartbeatResult?: (
 		params: {
 			telegramChatId: number;

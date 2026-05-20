@@ -6,6 +6,7 @@ import {
 	replaceMentionToken,
 } from "../../../../../common/mention.ts";
 import type { WorkspaceFileEntry } from "../../../../../common/protocol.ts";
+import { formatMaybeProviderSessionRef } from "../../../../../common/provider-session-ref.ts";
 import {
 	type ComposerImageAttachment,
 	createComposerImageAttachment,
@@ -369,7 +370,7 @@ export function MessageInput({
 		if (runtimePopup.kind === "session") {
 			const session = runtimePopup.sessions[index];
 			const sessionRef = session
-				? `${session.providerId ?? ""}${session.providerId ? "/" : ""}${session.sdkSessionId}`
+				? formatMaybeProviderSessionRef(session)
 				: undefined;
 			if (sessionRef && sendCommand(`/session ${sessionRef}`)) {
 				closeRuntimePopup();

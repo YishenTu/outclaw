@@ -506,11 +506,23 @@ export interface DisplayChatMessage {
 	content: string;
 	thinking?: string;
 	thinkingBlocks?: string[];
+	segments?: AssistantMessageSegment[];
 	images?: DisplayImage[];
 	replyContext?: ReplyContext;
 	timestamp?: number;
 	assistantTurn?: AssistantTurnMetadata;
 }
+
+export type AssistantMessageSegment =
+	| {
+			type: "thinking";
+			text: string;
+			blockId?: string;
+	  }
+	| {
+			type: "text";
+			text: string;
+	  };
 
 export type AssistantTurnSource = "user" | "heartbeat" | "rollover";
 
@@ -579,6 +591,7 @@ export interface StreamingSyncEvent {
 	thinking: string;
 	thinkingBlocks?: string[];
 	thinkingBlockId?: string;
+	segments?: AssistantMessageSegment[];
 	images: DisplayImage[];
 }
 

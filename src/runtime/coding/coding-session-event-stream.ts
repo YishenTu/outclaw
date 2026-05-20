@@ -1,10 +1,13 @@
-import type { CodingSessionEvent } from "../../common/protocol.ts";
 import {
-	appendThinkingBlockDelta,
-	createThinkingBlockState,
-	effectiveThinkingBlocks,
-	type ThinkingBlockState,
-} from "../../common/thinking-blocks.ts";
+	appendAssistantMessageSegment,
+	assistantTextSegment,
+	assistantThinkingSegment,
+} from "../../common/assistant-message-segments.ts";
+import type {
+	AssistantMessageSegment,
+	CodingSessionEvent,
+} from "../../common/protocol.ts";
+import { formatProviderSessionRef } from "../../common/provider-session-ref.ts";
 import type {
 	CodingSessionEventRecorder,
 	StoredCodingSessionEvent,
@@ -145,7 +148,7 @@ async function readCodingSessionHistory(params: {
 		})
 	) {
 		throw new Error(
-			`Unknown coding session: ${params.providerId}/${params.sdkSessionId}`,
+			`Unknown coding session: ${formatProviderSessionRef(params)}`,
 		);
 	}
 	return params.history.readCodingSessionEvents({
@@ -290,41 +293,36 @@ function buildCodingEventSignature(
 	events: CodingSessionEvent[],
 ): CodingEventSignaturePart[] {
 	const signature: CodingEventSignaturePart[] = [];
-	let text = "";
-	let thinking: ThinkingBlockState = createThinkingBlockState();
+	let segments: AssistantMessageSegment[] = [];
 
-	const flushText = () => {
-		if (text !== "") {
-			signature.push({ type: "text", text });
-			text = "";
+	const flushSegments = () => {
+		for (const segment of segments) {
+			signature.push({ type: segment.type, text: segment.text });
 		}
-	};
-	const flushThinking = () => {
-		for (const block of effectiveThinkingBlocks(thinking)) {
-			signature.push({ type: "thinking", text: block });
-		}
-		thinking = createThinkingBlockState();
+		segments = [];
 	};
 
 	for (const event of events) {
 		if (event.type === "text") {
-			flushThinking();
-			text += event.text;
+			segments = appendAssistantMessageSegment(
+				segments,
+				assistantTextSegment(event.text),
+			);
 			continue;
 		}
 		if (event.type === "thinking") {
-			flushText();
-			thinking = appendThinkingBlockDelta(thinking, event);
+			segments = appendAssistantMessageSegment(
+				segments,
+				assistantThinkingSegment(event.text, event.blockId),
+			);
 			continue;
 		}
 
-		flushText();
-		flushThinking();
+		flushSegments();
 		signature.push({ type: "event", key: codingSessionEventKey(event) });
 	}
 
-	flushText();
-	flushThinking();
+	flushSegments();
 	return signature;
 }
 

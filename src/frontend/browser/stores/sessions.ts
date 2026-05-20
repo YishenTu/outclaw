@@ -1,5 +1,9 @@
 import { create } from "zustand";
 import type { SessionCursor } from "../../../common/protocol.ts";
+import {
+	providerSessionRefKey,
+	providerSessionRefsEqual,
+} from "../../../common/provider-session-ref.ts";
 
 export interface SessionRef {
 	agentId: string;
@@ -58,9 +62,7 @@ export interface SessionsState {
 
 function matchesSession(left: SessionRef, right: SessionRef): boolean {
 	return (
-		left.agentId === right.agentId &&
-		left.providerId === right.providerId &&
-		left.sdkSessionId === right.sdkSessionId
+		left.agentId === right.agentId && providerSessionRefsEqual(left, right)
 	);
 }
 
@@ -309,14 +311,9 @@ function mergeSessions(
 	incoming: SessionEntry[],
 ): SessionEntry[] {
 	const merged = [...current];
-	const seen = new Set(
-		current.map(
-			(session) =>
-				`${session.agentId}\u0000${session.providerId}\u0000${session.sdkSessionId}`,
-		),
-	);
+	const seen = new Set(current.map(sessionKey));
 	for (const session of incoming) {
-		const key = `${session.agentId}\u0000${session.providerId}\u0000${session.sdkSessionId}`;
+		const key = sessionKey(session);
 		if (seen.has(key)) {
 			continue;
 		}
@@ -356,5 +353,5 @@ function isAfterCursor(
 }
 
 function sessionKey(session: SessionRef): string {
-	return `${session.agentId}\u0000${session.providerId}\u0000${session.sdkSessionId}`;
+	return `${session.agentId}\u0000${providerSessionRefKey(session)}`;
 }

@@ -1,6 +1,13 @@
 import { readFile } from "node:fs/promises";
+import {
+	appendAssistantMessageSegment,
+	assistantMessageSegmentsNeedOrderedDisplay,
+	assistantTextSegment,
+	assistantThinkingSegment,
+} from "../../../common/assistant-message-segments.ts";
 import { createDisplayCompactBoundaryMessage } from "../../../common/compact-boundary.ts";
 import type {
+	AssistantMessageSegment,
 	CodingSessionEvent,
 	DisplayChatMessage,
 	DisplayMessage,
@@ -61,6 +68,7 @@ export function projectCodexChatDisplayMessages(
 	const messages: DisplayMessage[] = [];
 	const pendingThinking = new ThinkingBlockAccumulator();
 	let pendingAssistantText = "";
+	let pendingAssistantSegments: AssistantMessageSegment[] = [];
 	let pendingAssistantTimestamp: number | undefined;
 
 	const flushAssistant = (timestamp?: number) => {
@@ -74,6 +82,9 @@ export function projectCodexChatDisplayMessages(
 				content: pendingAssistantText,
 				...(thinking.text ? { thinking: thinking.text } : {}),
 				...(thinkingBlocks ? { thinkingBlocks } : {}),
+				...(assistantMessageSegmentsNeedOrderedDisplay(pendingAssistantSegments)
+					? { segments: pendingAssistantSegments }
+					: {}),
 				...(assistantTimestamp !== undefined
 					? { timestamp: assistantTimestamp }
 					: {}),
@@ -81,6 +92,7 @@ export function projectCodexChatDisplayMessages(
 			messages.push(message);
 		}
 		pendingAssistantText = "";
+		pendingAssistantSegments = [];
 		pendingThinking.clear();
 		pendingAssistantTimestamp = undefined;
 	};
@@ -110,12 +122,20 @@ export function projectCodexChatDisplayMessages(
 			}
 			case "text": {
 				pendingAssistantText += event.text;
+				pendingAssistantSegments = appendAssistantMessageSegment(
+					pendingAssistantSegments,
+					assistantTextSegment(event.text),
+				);
 				pendingAssistantTimestamp =
 					event.timestamp ?? pendingAssistantTimestamp;
 				break;
 			}
 			case "thinking": {
 				pendingThinking.append(event);
+				pendingAssistantSegments = appendAssistantMessageSegment(
+					pendingAssistantSegments,
+					assistantThinkingSegment(event.text, event.blockId),
+				);
 				pendingAssistantTimestamp =
 					event.timestamp ?? pendingAssistantTimestamp;
 				break;

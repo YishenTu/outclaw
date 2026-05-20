@@ -96,6 +96,36 @@ describe("runTelegramPrompt", () => {
 		expect(ctx.sendMessage.mock.calls[1]?.[0]).toBe("answer");
 	});
 
+	test("sends interleaved thinking and text chunks in stream order", async () => {
+		const ctx = createContext();
+
+		await runTelegramPrompt(ctx, {
+			prompt: "hello",
+			streamPrompt: () =>
+				(async function* () {
+					yield {
+						type: "thinking" as const,
+						text: "inspect files",
+						blockId: "reasoning-1:summary:0",
+					};
+					yield { type: "text" as const, text: "I found it." };
+					yield {
+						type: "thinking" as const,
+						text: "run tests",
+						blockId: "reasoning-1:summary:1",
+					};
+					yield { type: "text" as const, text: "Done." };
+				})(),
+		});
+
+		expect(ctx.sendMessage.mock.calls.map((call) => call[0])).toEqual([
+			"<blockquote expandable>inspect files</blockquote>",
+			"I found it.",
+			"<blockquote expandable>run tests</blockquote>",
+			"Done.",
+		]);
+	});
+
 	test("does not send a message for image-only replies", async () => {
 		const ctx = createContext();
 

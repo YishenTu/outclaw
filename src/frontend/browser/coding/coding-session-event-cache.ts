@@ -1,3 +1,4 @@
+import { formatProviderSessionRef } from "../../../common/provider-session-ref.ts";
 import type { CodingSessionEventStreamItem } from "../lib/api.ts";
 
 export interface CodingSessionEventCacheEntry {
@@ -17,7 +18,7 @@ export function codingSessionEventCacheKey(params: {
 	providerId: string;
 	sdkSessionId: string;
 }): string {
-	return `coding:${params.providerId}/${params.sdkSessionId}`;
+	return `coding:${formatProviderSessionRef(params)}`;
 }
 
 export function readCodingSessionCachedEvents(

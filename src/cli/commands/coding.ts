@@ -11,6 +11,7 @@ import type {
 	BrowserCodingSessionStatusResponse,
 	CodingSessionEvent,
 } from "../../common/protocol.ts";
+import { formatProviderSessionRef } from "../../common/provider-session-ref.ts";
 import {
 	effectiveThinkingBlocks,
 	ThinkingBlockAccumulator,
@@ -999,7 +1000,7 @@ function toCodingStatusJson(
 	result: BrowserCodingSessionStatusResponse,
 ): Record<string, unknown> {
 	return {
-		ref: result.ref ?? `${result.providerId}/${result.sdkSessionId}`,
+		ref: codingStatusRef(result),
 		state: result.state,
 		...(result.repo ? { repo: result.repo } : {}),
 		...(result.startedAt ? { started_at: result.startedAt } : {}),
@@ -1131,7 +1132,7 @@ function printRecentCodingList(statuses: BrowserCodingSessionStatusResponse[]) {
 	console.log("REF\tSTATE\tREPO\tLAST PROMPT");
 	for (const status of statuses) {
 		console.log(
-			`${status.ref ?? `${status.providerId}/${status.sdkSessionId}`}\t${status.state}\t${status.repo ?? ""}\t${truncateTableCell(status.lastPrompt ?? "", 60)}`,
+			`${codingStatusRef(status)}\t${status.state}\t${status.repo ?? ""}\t${truncateTableCell(status.lastPrompt ?? "", 60)}`,
 		);
 	}
 }
@@ -1152,10 +1153,18 @@ function printCodingListByRepository(
 		const sessions = byRepo.get(repository.rootCwd) ?? [];
 		for (const status of sessions) {
 			console.log(
-				`  ${status.ref ?? `${status.providerId}/${status.sdkSessionId}`}\t${status.state}\t${truncateTableCell(status.lastPrompt ?? "", 60)}`,
+				`  ${codingStatusRef(status)}\t${status.state}\t${truncateTableCell(status.lastPrompt ?? "", 60)}`,
 			);
 		}
 	}
+}
+
+function codingStatusRef(status: {
+	providerId: string;
+	ref?: string;
+	sdkSessionId: string;
+}): string {
+	return status.ref ?? formatProviderSessionRef(status);
 }
 
 function truncateTableCell(value: string, maxLength: number): string {
@@ -1339,7 +1348,7 @@ function exitWithCodingResult(
 		console.error(result.message);
 		process.exit(1);
 	}
-	console.log(`${result.providerId}/${result.sdkSessionId}`);
+	console.log(formatProviderSessionRef(result));
 	process.exit(0);
 }
 
@@ -1352,10 +1361,10 @@ function exitWithCodingCancelResult(
 	}
 	if (result.status === "already_terminal") {
 		console.log(
-			`session is already ${result.state}: ${result.providerId}/${result.sdkSessionId}`,
+			`session is already ${result.state}: ${formatProviderSessionRef(result)}`,
 		);
 		process.exit(0);
 	}
-	console.log(`${result.providerId}/${result.sdkSessionId}`);
+	console.log(formatProviderSessionRef(result));
 	process.exit(0);
 }

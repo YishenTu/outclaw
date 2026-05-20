@@ -1,3 +1,4 @@
+import { formatProviderSessionRef } from "../../../common/provider-session-ref.ts";
 import type { ComposerImageAttachment } from "../attachments/composer-images.ts";
 import type { AgentEntry } from "../stores/agents.ts";
 import type { SessionRef } from "../stores/sessions.ts";
@@ -110,9 +111,7 @@ export async function sendBrowserPromptToAgent({
 			runtimeProviderId,
 			runtimeSessionId,
 		) &&
-		!params.sendCommand(
-			`/session ${targetSession.providerId}/${targetSession.sdkSessionId}`,
-		)
+		!params.sendCommand(`/session ${formatProviderSessionRef(targetSession)}`)
 	) {
 		return false;
 	}

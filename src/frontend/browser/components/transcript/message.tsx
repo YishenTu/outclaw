@@ -1,9 +1,15 @@
 import { clsx } from "clsx";
 import { Heart } from "lucide-react";
+import {
+	assistantMessageSegmentsFromAggregates,
+	hasAssistantMessageSegments,
+} from "../../../../common/assistant-message-segments.ts";
 import { formatCompactBoundaryIndicator } from "../../../../common/compact-boundary.ts";
-import type { DisplayMessage } from "../../../../common/protocol.ts";
+import type {
+	AssistantMessageSegment,
+	DisplayMessage,
+} from "../../../../common/protocol.ts";
 import { QUEUED_PROMPT_LABEL } from "../../../../common/queued-prompt.ts";
-import { effectiveThinkingBlocks } from "../../../../common/thinking-blocks.ts";
 import { AssistantTurnUtilityBar } from "./assistant-turn-utility-bar.tsx";
 import { getImageThumbnailClassName } from "./image-thumbnail-styles.ts";
 import { MarkdownContent } from "./markdown-content.tsx";
@@ -117,25 +123,31 @@ export function Message({
 		);
 	}
 
-	const thinkingBlocks = effectiveThinkingBlocks({
-		text: message.thinking,
-		blocks: message.thinkingBlocks,
-	});
+	const segments = hasAssistantMessageSegments(message.segments)
+		? (message.segments ?? [])
+		: assistantMessageSegmentsFromAggregates({
+				text: message.content,
+				thinking: message.thinking ?? "",
+				thinkingBlocks: message.thinkingBlocks,
+			});
 
 	return (
 		<div className="flex flex-col items-start">
 			<div className="w-full text-dark-100">
-				{withThinkingBlockKeys(thinkingBlocks).map(({ key, block }) => (
-					<div className="mb-2" key={key}>
-						<ThinkingBlock content={block} />
-					</div>
-				))}
-				<div className="flex flex-col gap-2">
-					{message.content.trim() !== "" && (
-						<div className="px-3">
-							<MarkdownContent content={message.content} />
+				{withSegmentKeys(segments).map(({ key, segment }) =>
+					segment.type === "thinking" ? (
+						<div className="mb-2" key={key}>
+							<ThinkingBlock content={segment.text} />
 						</div>
-					)}
+					) : (
+						segment.text.trim() !== "" && (
+							<div className="px-3" key={key}>
+								<MarkdownContent content={segment.text} />
+							</div>
+						)
+					),
+				)}
+				<div className="flex flex-col gap-2">
 					{message.images && message.images.length > 0 && (
 						<div className="px-3">
 							<div className={clsx("rounded-md bg-dark-900/40 px-2 py-2")}>
@@ -156,17 +168,18 @@ export function Message({
 	);
 }
 
-function withThinkingBlockKeys(
-	blocks: string[],
-): Array<{ key: string; block: string }> {
+function withSegmentKeys(segments: readonly AssistantMessageSegment[]): Array<{
+	key: string;
+	segment: AssistantMessageSegment;
+}> {
 	const counts = new Map<string, number>();
-	return blocks.map((block) => {
-		const head = block.slice(0, 64);
+	return segments.map((segment) => {
+		const head = `${segment.type}:${segment.text.slice(0, 64)}`;
 		const seen = counts.get(head) ?? 0;
 		counts.set(head, seen + 1);
 		return {
 			key: seen === 0 ? head : `${head}#${seen}`,
-			block,
+			segment,
 		};
 	});
 }

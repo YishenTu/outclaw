@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { SessionCursor } from "../../common/protocol.ts";
+import type { ProviderSessionRef } from "../../common/provider-session-ref.ts";
 import type { SessionTag } from "../persistence/session-store/session-store.ts";
 import { ensureSessionStoreSchema } from "../persistence/session-store/session-store-schema.ts";
 import {
@@ -57,10 +58,7 @@ export interface CodingSessionListResult {
 	nextCursor?: SessionCursor;
 }
 
-export interface CodingSessionRef {
-	providerId: string;
-	sdkSessionId: string;
-}
+export type CodingSessionRef = ProviderSessionRef;
 
 export type CodingSessionRefResolution =
 	| {

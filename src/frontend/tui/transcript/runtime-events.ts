@@ -1,3 +1,7 @@
+import {
+	assistantMessageSegmentsFromAggregates,
+	hasAssistantMessageSegments,
+} from "../../../common/assistant-message-segments.ts";
 import { canonicalizePromptSlashCommand } from "../../../common/commands.ts";
 import { HEARTBEAT_DISPLAY_LABEL } from "../../../common/heartbeat-prompt.ts";
 import type {
@@ -5,7 +9,6 @@ import type {
 	ServerEvent,
 } from "../../../common/protocol.ts";
 import { ROLLOVER_DISPLAY_LABEL } from "../../../common/rollover-prompt.ts";
-import { effectiveThinkingBlocks } from "../../../common/thinking-blocks.ts";
 import { formatLivePrompt, formatReplyText, formatStatus } from "./format.ts";
 import type { TuiAction } from "./reducer.ts";
 import type { TuiMessage } from "./state.ts";
@@ -121,17 +124,29 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 					continue;
 				}
 				if (message.role === "assistant") {
-					const thinkingBlocks = effectiveThinkingBlocks({
-						text: message.thinking,
-						blocks: message.thinkingBlocks,
-					});
-					for (const thinking of thinkingBlocks) {
-						messages.push({
-							id: id++,
-							role: "thinking",
-							text: thinking,
-						});
+					const segments = hasAssistantMessageSegments(message.segments)
+						? (message.segments ?? [])
+						: assistantMessageSegmentsFromAggregates({
+								text: message.content,
+								thinking: message.thinking ?? "",
+								thinkingBlocks: message.thinkingBlocks,
+							});
+					for (const segment of segments) {
+						if (segment.type === "thinking") {
+							messages.push({
+								id: id++,
+								role: "thinking",
+								text: segment.text,
+							});
+						} else if (segment.text) {
+							messages.push({
+								id: id++,
+								role: "assistant",
+								text: segment.text,
+							});
+						}
 					}
+					continue;
 				}
 				const text = replayContent(message);
 				if (text) {

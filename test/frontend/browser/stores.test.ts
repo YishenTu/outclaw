@@ -674,6 +674,35 @@ describe("browser stores", () => {
 		]);
 	});
 
+	test("chat store preserves ordered streaming thinking and text segments", () => {
+		const sessionKey = "agent-a:codex:sdk-alpha";
+
+		useChatStore
+			.getState()
+			.appendThinking(sessionKey, "inspect files", "reasoning-1:summary:0");
+		useChatStore.getState().appendText(sessionKey, "I found it.");
+		useChatStore
+			.getState()
+			.appendThinking(sessionKey, "run tests", "reasoning-1:summary:1");
+		useChatStore.getState().appendText(sessionKey, "Done.");
+
+		const session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.streamingSegments).toEqual([
+			{
+				type: "thinking",
+				text: "inspect files",
+				blockId: "reasoning-1:summary:0",
+			},
+			{ type: "text", text: "I found it." },
+			{
+				type: "thinking",
+				text: "run tests",
+				blockId: "reasoning-1:summary:1",
+			},
+			{ type: "text", text: "Done." },
+		]);
+	});
+
 	test("chat store continues a restored provider thinking block after reload", () => {
 		const sessionKey = "agent-a:codex:sdk-alpha";
 
@@ -696,6 +725,48 @@ describe("browser stores", () => {
 		expect(session?.streamingThinkingBlocks).toEqual([
 			"inspect files",
 			"run tests",
+		]);
+	});
+
+	test("chat store restores ordered streaming segments after reload", () => {
+		const sessionKey = "agent-a:codex:sdk-alpha";
+
+		useChatStore.getState().restoreStreamingState(sessionKey, {
+			images: [],
+			text: "I found it.Done.",
+			thinking: "inspect filesrun tests",
+			thinkingBlocks: ["inspect files", "run tests"],
+			thinkingBlockId: "reasoning-1:summary:1",
+			segments: [
+				{
+					type: "thinking",
+					text: "inspect files",
+					blockId: "reasoning-1:summary:0",
+				},
+				{ type: "text", text: "I found it." },
+				{
+					type: "thinking",
+					text: "run tests",
+					blockId: "reasoning-1:summary:1",
+				},
+				{ type: "text", text: "Done." },
+			],
+		});
+
+		const session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.streamingSegments).toEqual([
+			{
+				type: "thinking",
+				text: "inspect files",
+				blockId: "reasoning-1:summary:0",
+			},
+			{ type: "text", text: "I found it." },
+			{
+				type: "thinking",
+				text: "run tests",
+				blockId: "reasoning-1:summary:1",
+			},
+			{ type: "text", text: "Done." },
 		]);
 	});
 

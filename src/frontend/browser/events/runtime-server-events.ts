@@ -6,7 +6,10 @@ import type {
 	UsageInfo,
 } from "../../../common/protocol.ts";
 import { formatStatusCompact } from "../../../common/status.ts";
-import { appendCodingSessionCachedEvent } from "../coding/coding-session-event-cache.ts";
+import {
+	appendCodingSessionCachedEvent,
+	codingSessionEventCacheKey,
+} from "../coding/coding-session-event-cache.ts";
 import { useCodingStore } from "../coding/coding-store.ts";
 import { fetchCodingSession } from "../lib/api.ts";
 import {
@@ -485,7 +488,7 @@ export function handleBrowserServerEvent(
 			if (usage) {
 				useContextUsageStore
 					.getState()
-					.setUsage(`coding:${event.providerId}/${event.sdkSessionId}`, usage);
+					.setUsage(codingSessionEventCacheKey(event), usage);
 			}
 			return;
 		}

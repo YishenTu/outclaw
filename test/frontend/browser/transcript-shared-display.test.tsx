@@ -98,6 +98,46 @@ describe("shared browser transcript display", () => {
 		]);
 	});
 
+	test("chat mode preserves ordered streaming thinking and text segments", () => {
+		const chatItems = createChatTranscriptItems({
+			sessionKey: "agent-a:codex:sdk-chat",
+			messages: [],
+			queuedPrompts: [],
+			streamingThinking: "inspect filesrun tests",
+			streamingThinkingBlocks: ["inspect files", "run tests"],
+			streamingText: "I found it.Done.",
+			streamingSegments: [
+				{
+					type: "thinking",
+					text: "inspect files",
+					blockId: "reasoning-1:summary:0",
+				},
+				{ type: "text", text: "I found it." },
+				{
+					type: "thinking",
+					text: "run tests",
+					blockId: "reasoning-1:summary:1",
+				},
+				{ type: "text", text: "Done." },
+			],
+			isStreaming: true,
+			isCompacting: false,
+			thinkingStartedAt: null,
+		});
+
+		expect(
+			chatItems
+				.filter((item) => item.kind === "thinking" || item.kind === "message")
+				.map((item) =>
+					item.kind === "thinking"
+						? item.content
+						: item.message.kind === "chat"
+							? item.message.content
+							: "",
+				),
+		).toEqual(["inspect files", "I found it.", "run tests", "Done."]);
+	});
+
 	test("only code mode emits tool transcript items", () => {
 		const chatItems = createChatTranscriptItems({
 			sessionKey: "agent-a:claude:sdk-chat",

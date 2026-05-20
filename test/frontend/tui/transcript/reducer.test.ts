@@ -367,6 +367,39 @@ describe("mapEventToActions", () => {
 		]);
 	});
 
+	test("history_replay preserves ordered assistant segments", () => {
+		const actions = mapEventToActions({
+			type: "history_replay",
+			sdkSessionId: "sdk-1",
+			messages: [
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "I found it.Done.",
+					thinking: "inspect filesrun tests",
+					thinkingBlocks: ["inspect files", "run tests"],
+					segments: [
+						{ type: "thinking", text: "inspect files" },
+						{ type: "text", text: "I found it." },
+						{ type: "thinking", text: "run tests" },
+						{ type: "text", text: "Done." },
+					],
+				},
+			],
+		});
+		expect(actions).toEqual([
+			{
+				type: "replay",
+				messages: [
+					{ id: 1, role: "thinking", text: "inspect files" },
+					{ id: 2, role: "assistant", text: "I found it." },
+					{ id: 3, role: "thinking", text: "run tests" },
+					{ id: 4, role: "assistant", text: "Done." },
+				],
+			},
+		]);
+	});
+
 	test("history_replay with user images", () => {
 		const actions = mapEventToActions({
 			type: "history_replay",
@@ -731,6 +764,39 @@ describe("applyAction", () => {
 		expect(state.messages).toEqual([
 			{ id: 1, role: "thinking", text: "reasoning" },
 			{ id: 2, role: "assistant", text: "answer" },
+		]);
+		expect(state.streaming).toBe("");
+		expect(state.streamingThinking).toBe("");
+		expect(state.running).toBe(false);
+	});
+
+	test("commit_streaming preserves interleaved thinking and text order", () => {
+		let state = initialTuiState();
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "inspect files",
+			blockId: "reasoning-1:summary:0",
+		});
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: "I found it.",
+		});
+		state = applyAction(state, {
+			type: "append_thinking",
+			text: "run tests",
+			blockId: "reasoning-1:summary:1",
+		});
+		state = applyAction(state, {
+			type: "append_streaming",
+			text: "Done.",
+		});
+		state = applyAction(state, { type: "commit_streaming" });
+
+		expect(state.messages).toEqual([
+			{ id: 1, role: "thinking", text: "inspect files" },
+			{ id: 2, role: "assistant", text: "I found it." },
+			{ id: 3, role: "thinking", text: "run tests" },
+			{ id: 4, role: "assistant", text: "Done." },
 		]);
 		expect(state.streaming).toBe("");
 		expect(state.streamingThinking).toBe("");

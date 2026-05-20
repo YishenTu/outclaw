@@ -13,7 +13,7 @@ import {
 } from "../../runtime-client/index.ts";
 
 export type StreamChunk =
-	| { type: "thinking"; text: string }
+	| { type: "thinking"; text: string; blockId?: string }
 	| { type: "text"; text: string }
 	| { type: "compacting_started" }
 	| { type: "compacting_finished" };
@@ -225,13 +225,20 @@ export function createTelegramBridge(url: string) {
 					message?: string;
 					path?: string;
 					caption?: string;
+					blockId?: string;
 				};
 				if (event.type === "compacting_started") {
 					enqueue({ type: "compacting_started" });
 				} else if (event.type === "compacting_finished") {
 					enqueue({ type: "compacting_finished" });
 				} else if (event.type === "thinking" && event.text) {
-					enqueue({ type: "thinking", text: event.text });
+					enqueue({
+						type: "thinking",
+						text: event.text,
+						...(typeof event.blockId === "string"
+							? { blockId: event.blockId }
+							: {}),
+					});
 				} else if (event.type === "text" && event.text) {
 					enqueue({ type: "text", text: event.text });
 				} else if (event.type === "image" && event.path) {

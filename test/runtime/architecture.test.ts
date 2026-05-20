@@ -49,4 +49,22 @@ describe("runtime architecture", () => {
 
 		expect(offenders).toEqual([]);
 	});
+
+	test("coding runtime does not depend on the chat runtime controller", async () => {
+		const offenders: string[] = [];
+
+		for await (const relativePath of new Bun.Glob(
+			"src/runtime/coding/**/*.ts",
+		).scan(REPO_ROOT)) {
+			const file = Bun.file(resolve(REPO_ROOT, relativePath));
+			const source = await file.text();
+			for (const specifier of collectStaticImports(source)) {
+				if (specifier.includes("create-runtime-controller")) {
+					offenders.push(`${relativePath}: ${specifier}`);
+				}
+			}
+		}
+
+		expect(offenders).toEqual([]);
+	});
 });

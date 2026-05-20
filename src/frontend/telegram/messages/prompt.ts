@@ -1,5 +1,11 @@
 import { InputFile } from "grammy";
+import {
+	assistantTextSegment,
+	assistantThinkingSegment,
+	canMergeAssistantMessageSegments,
+} from "../../../common/assistant-message-segments.ts";
 import type {
+	AssistantMessageSegment,
 	ImageEvent,
 	ImageRef,
 	ReplyContext,
@@ -57,12 +63,23 @@ interface DraftState {
 	lastSentHtml: string;
 }
 
+interface SegmentDraft {
+	segment: AssistantMessageSegment;
+	draft: DraftState;
+	finalized: boolean;
+}
+
 function createDraft(): DraftState {
 	return { accumulated: "", messageId: undefined, lastSentHtml: "" };
 }
 
 function wrapThinking(html: string): string {
 	return html ? `<blockquote expandable>${html}</blockquote>` : "";
+}
+
+function htmlForSegment(segment: AssistantMessageSegment): string {
+	const html = markdownToTelegramHtml(segment.text);
+	return segment.type === "thinking" ? wrapThinking(html) : html;
 }
 
 async function sendOrEdit(
@@ -148,8 +165,7 @@ export async function runTelegramPrompt(
 			options.replyContext,
 		);
 
-		const thinking = createDraft();
-		const response = createDraft();
+		const segmentDrafts: SegmentDraft[] = [];
 		let lastEditTime = 0;
 
 		for await (const chunk of stream) {
@@ -166,41 +182,73 @@ export async function runTelegramPrompt(
 				continue;
 			}
 
-			const isThinking = chunk.type === "thinking";
-			const draft = isThinking ? thinking : response;
-			draft.accumulated += chunk.text;
+			if (chunk.type !== "thinking" && chunk.type !== "text") {
+				continue;
+			}
+
+			const segment = streamChunkToSegment(chunk);
+			let current = segmentDrafts.at(-1);
+			if (
+				current &&
+				!canMergeAssistantMessageSegments(current.segment, segment)
+			) {
+				await finalizeSegmentDraft(ctx, current);
+				current = undefined;
+			}
+			if (!current) {
+				current = {
+					segment: { ...segment, text: "" },
+					draft: createDraft(),
+					finalized: false,
+				};
+				segmentDrafts.push(current);
+			}
+			current.segment = {
+				...segment,
+				text: current.segment.text + segment.text,
+			};
+			current.draft.accumulated = current.segment.text;
 
 			const now = Date.now();
 			if (now - lastEditTime < EDIT_THROTTLE_MS) continue;
 
-			const html = isThinking
-				? wrapThinking(markdownToTelegramHtml(draft.accumulated))
-				: markdownToTelegramHtml(draft.accumulated);
+			const html = htmlForSegment(current.segment);
 			if (!html) continue;
 
-			if (await sendOrEdit(ctx, draft, html)) {
+			if (await sendOrEdit(ctx, current.draft, html)) {
 				lastEditTime = Date.now();
 			}
 		}
 
-		// Finalize thinking bubble
-		if (thinking.accumulated) {
-			const html = wrapThinking(markdownToTelegramHtml(thinking.accumulated));
-			if (html) {
-				await finalizeDraft(ctx, thinking, html);
-			}
-		}
-
-		// Finalize response bubble
-		if (response.accumulated) {
-			const html = markdownToTelegramHtml(response.accumulated);
-			if (html) {
-				await finalizeDraft(ctx, response, html);
-			}
+		for (const segmentDraft of segmentDrafts) {
+			await finalizeSegmentDraft(ctx, segmentDraft);
 		}
 	} finally {
 		clearInterval(typingInterval);
 	}
+}
+
+function streamChunkToSegment(
+	chunk: Extract<StreamChunk, { type: "thinking" | "text" }>,
+): AssistantMessageSegment {
+	if (chunk.type === "text") {
+		return assistantTextSegment(chunk.text);
+	}
+	return assistantThinkingSegment(chunk.text, chunk.blockId);
+}
+
+async function finalizeSegmentDraft(
+	ctx: TelegramPromptContext,
+	segmentDraft: SegmentDraft,
+): Promise<void> {
+	if (segmentDraft.finalized) {
+		return;
+	}
+	const html = htmlForSegment(segmentDraft.segment);
+	if (html) {
+		await finalizeDraft(ctx, segmentDraft.draft, html);
+	}
+	segmentDraft.finalized = true;
 }
 
 async function sendImage(

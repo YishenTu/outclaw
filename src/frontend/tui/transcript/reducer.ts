@@ -1,9 +1,14 @@
+import {
+	assistantTextSegment,
+	assistantThinkingSegment,
+	startsNewAssistantMessageSegment,
+} from "../../../common/assistant-message-segments.ts";
 import { COMPACT_BOUNDARY_TEXT } from "../../../common/compact-boundary.ts";
 import { isHeartbeatNoopResult } from "../../../common/heartbeat-prompt.ts";
+import type { AssistantMessageSegment } from "../../../common/protocol.ts";
 import {
 	appendThinkingBlockDelta,
 	createThinkingBlockState,
-	startsNewThinkingBlock,
 } from "../../../common/thinking-blocks.ts";
 import type { SessionMenuData } from "../sessions/types.ts";
 import type { TuiMessage, TuiMessageRole, TuiState } from "./state.ts";
@@ -67,6 +72,53 @@ function flushStreamingBuffers(
 	return { messages, nextId };
 }
 
+function flushStreamingThinking(state: TuiState): TuiState {
+	if (!state.streamingThinking) {
+		return state;
+	}
+	const flushed = flushStreamingBuffers([...state.messages], state.nextId, {
+		...state,
+		streaming: "",
+	});
+	return {
+		...state,
+		activePrompt: undefined,
+		messages: flushed.messages,
+		streamingThinking: "",
+		streamingThinkingBlockId: undefined,
+		nextId: flushed.nextId,
+	};
+}
+
+function flushStreamingText(state: TuiState): TuiState {
+	if (!state.streaming) {
+		return state;
+	}
+	const flushed = flushStreamingBuffers([...state.messages], state.nextId, {
+		...state,
+		streamingThinking: "",
+		streamingThinkingBlockId: undefined,
+	});
+	return {
+		...state,
+		activePrompt: undefined,
+		messages: flushed.messages,
+		streaming: "",
+		nextId: flushed.nextId,
+	};
+}
+
+function streamingTextSegment(state: TuiState): AssistantMessageSegment {
+	return assistantTextSegment(state.streaming);
+}
+
+function streamingThinkingSegment(state: TuiState): AssistantMessageSegment {
+	return assistantThinkingSegment(
+		state.streamingThinking,
+		state.streamingThinkingBlockId,
+	);
+}
+
 function dropPendingHeartbeatIndicator(messages: TuiMessage[]): TuiMessage[] {
 	const lastMessage = messages.at(-1);
 	if (lastMessage?.variant === "heartbeat") {
@@ -98,54 +150,66 @@ function flushHeartbeatBuffers(state: TuiState): {
 
 export function applyAction(state: TuiState, action: TuiAction): TuiState {
 	switch (action.type) {
-		case "append_streaming":
+		case "append_streaming": {
+			const incoming = assistantTextSegment(action.text);
+			const baseState = state.heartbeatPending
+				? state
+				: startsNewAssistantMessageSegment(
+							streamingThinkingSegment(state),
+							incoming,
+						)
+					? flushStreamingThinking(state)
+					: state;
 			return {
-				...state,
-				streaming: state.heartbeatPending
-					? state.streaming
-					: state.streaming + action.text,
-				heartbeatStreaming: state.heartbeatPending
-					? state.heartbeatStreaming + action.text
-					: state.heartbeatStreaming,
+				...baseState,
+				streaming: baseState.heartbeatPending
+					? baseState.streaming
+					: baseState.streaming + action.text,
+				heartbeatStreaming: baseState.heartbeatPending
+					? baseState.heartbeatStreaming + action.text
+					: baseState.heartbeatStreaming,
 				pendingPromptStart: false,
 				running: true,
 			};
+		}
 		case "append_thinking": {
+			const incoming = assistantThinkingSegment(action.text, action.blockId);
+			const baseState =
+				state.heartbeatPending ||
+				!startsNewAssistantMessageSegment(streamingTextSegment(state), incoming)
+					? state
+					: flushStreamingText(state);
 			const streamingThinking = createThinkingBlockState({
-				text: state.streamingThinking,
-				blocks: state.streamingThinking === "" ? [] : [state.streamingThinking],
-				currentBlockId: state.streamingThinkingBlockId,
+				text: baseState.streamingThinking,
+				blocks:
+					baseState.streamingThinking === ""
+						? []
+						: [baseState.streamingThinking],
+				currentBlockId: baseState.streamingThinkingBlockId,
 			});
 			const heartbeatThinking = createThinkingBlockState({
-				text: state.heartbeatStreamingThinking,
+				text: baseState.heartbeatStreamingThinking,
 				blocks:
-					state.heartbeatStreamingThinking === ""
+					baseState.heartbeatStreamingThinking === ""
 						? []
-						: [state.heartbeatStreamingThinking],
-				currentBlockId: state.heartbeatStreamingThinkingBlockId,
+						: [baseState.heartbeatStreamingThinking],
+				currentBlockId: baseState.heartbeatStreamingThinkingBlockId,
 			});
 			if (
-				!state.heartbeatPending &&
-				startsNewThinkingBlock(streamingThinking, action)
+				!baseState.heartbeatPending &&
+				startsNewAssistantMessageSegment(
+					streamingThinkingSegment(baseState),
+					incoming,
+				)
 			) {
-				const messages = [...state.messages];
-				if (state.activePrompt) {
-					messages.push(state.activePrompt);
-				}
-				messages.push({
-					id: state.nextId,
-					role: "thinking",
-					text: state.streamingThinking,
-				});
+				const flushedState = flushStreamingThinking(baseState);
 				return {
-					...state,
+					...flushedState,
 					activePrompt: undefined,
-					messages,
 					streamingThinking: action.text,
 					streamingThinkingBlockId: action.blockId,
 					pendingPromptStart: false,
 					running: true,
-					nextId: state.nextId + 1,
 				};
 			}
 			const nextStreamingThinking = appendThinkingBlockDelta(
@@ -157,19 +221,19 @@ export function applyAction(state: TuiState, action: TuiAction): TuiState {
 				action,
 			);
 			return {
-				...state,
-				streamingThinking: state.heartbeatPending
-					? state.streamingThinking
+				...baseState,
+				streamingThinking: baseState.heartbeatPending
+					? baseState.streamingThinking
 					: nextStreamingThinking.text,
-				streamingThinkingBlockId: state.heartbeatPending
-					? state.streamingThinkingBlockId
+				streamingThinkingBlockId: baseState.heartbeatPending
+					? baseState.streamingThinkingBlockId
 					: nextStreamingThinking.currentBlockId,
-				heartbeatStreamingThinking: state.heartbeatPending
+				heartbeatStreamingThinking: baseState.heartbeatPending
 					? nextHeartbeatThinking.text
-					: state.heartbeatStreamingThinking,
-				heartbeatStreamingThinkingBlockId: state.heartbeatPending
+					: baseState.heartbeatStreamingThinking,
+				heartbeatStreamingThinkingBlockId: baseState.heartbeatPending
 					? nextHeartbeatThinking.currentBlockId
-					: state.heartbeatStreamingThinkingBlockId,
+					: baseState.heartbeatStreamingThinkingBlockId,
 				pendingPromptStart: false,
 				running: true,
 			};

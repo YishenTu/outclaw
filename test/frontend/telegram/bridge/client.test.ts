@@ -595,10 +595,18 @@ describe("Telegram bridge", () => {
 		await flushMicrotasks();
 
 		ws.dispatch("message", {
-			data: JSON.stringify({ type: "thinking", text: "let me think" }),
+			data: JSON.stringify({
+				type: "thinking",
+				text: "let me think",
+				blockId: "reasoning-1:summary:0",
+			}),
 		});
 		expect(await firstChunk).toEqual({
-			value: { type: "thinking", text: "let me think" },
+			value: {
+				type: "thinking",
+				text: "let me think",
+				blockId: "reasoning-1:summary:0",
+			},
 			done: false,
 		});
 

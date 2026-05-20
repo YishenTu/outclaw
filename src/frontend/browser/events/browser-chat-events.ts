@@ -89,6 +89,7 @@ export function applyBrowserChatEvent(
 				thinking: event.thinking,
 				thinkingBlocks: event.thinkingBlocks,
 				thinkingBlockId: event.thinkingBlockId,
+				segments: event.segments,
 			});
 			return true;
 		}

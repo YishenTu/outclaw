@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { CodingSessionEvent } from "../../../src/common/protocol.ts";
 import {
 	CodingEventView,
+	createCodingTranscriptItems,
 	isCodingTurnInFlight,
 } from "../../../src/frontend/browser/coding/coding-event-renderer.tsx";
 import type { CodingSessionEventStreamItem } from "../../../src/frontend/browser/lib/api.ts";
@@ -162,6 +163,28 @@ describe("CodingEventView command grouping", () => {
 		expect(occurrences(html, "Thinking")).toBe(2);
 		expect(html).toContain("inspect files");
 		expect(html).toContain("run tests");
+	});
+
+	test("starts a new transcript identity when the provider thinking block changes", () => {
+		const items = createCodingTranscriptItems([
+			streamItem(1, {
+				type: "thinking",
+				text: "inspect files",
+				blockId: "reasoning-1:summary:0",
+				sessionId: "session-1",
+			}),
+			streamItem(2, {
+				type: "thinking",
+				text: "run tests",
+				blockId: "reasoning-1:summary:1",
+				sessionId: "session-1",
+			}),
+		]);
+
+		expect(items.map((item) => item.key)).toEqual([
+			"thinking-1-0",
+			"thinking-2-0",
+		]);
 	});
 
 	test("renders user_prompt as a shared transcript user bubble", () => {

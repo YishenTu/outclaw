@@ -8,6 +8,7 @@ import {
 	useState,
 } from "react";
 import type { SessionCursor } from "../../../../common/protocol.ts";
+import { formatProviderSessionRef } from "../../../../common/provider-session-ref.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
 import type { AgentEntry, AgentReorderPosition } from "../../stores/agents.ts";
 import { useMobileNavStore } from "../../stores/mobile-nav.ts";
@@ -307,7 +308,7 @@ export function AgentItem({
 function formatSessionRef(
 	session: Pick<SessionEntry, "providerId" | "sdkSessionId">,
 ) {
-	return `${session.providerId}/${session.sdkSessionId}`;
+	return formatProviderSessionRef(session);
 }
 
 function LoadMoreButton({

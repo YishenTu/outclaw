@@ -4,6 +4,10 @@ import type {
 	BrowserCodingSessionPageResponse,
 	BrowserCodingSessionSummary,
 } from "../../../common/protocol.ts";
+import {
+	formatProviderSessionRef,
+	providerSessionRefKey,
+} from "../../../common/provider-session-ref.ts";
 import { fetchCodingSession, fetchCodingSessions } from "../lib/api.ts";
 import {
 	type CodingState,
@@ -188,13 +192,13 @@ async function refreshOpenTabDetails(
 		) {
 			continue;
 		}
-		const key = `${tab.providerId}\u0000${tab.sdkSessionId}`;
+		const key = providerSessionRefKey(tab);
 		if (seen.has(key)) {
 			continue;
 		}
 		seen.add(key);
 		await withRefreshWarning(
-			`Failed to refresh coding session ${tab.providerId}/${tab.sdkSessionId}`,
+			`Failed to refresh coding session ${formatProviderSessionRef(tab)}`,
 			warn,
 			async () => {
 				const session = await fetchSessionDetail(

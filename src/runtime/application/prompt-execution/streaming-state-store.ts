@@ -1,4 +1,12 @@
-import type { DisplayImage, FacadeEvent } from "../../../common/protocol.ts";
+import {
+	appendAssistantStreamEvent,
+	cloneAssistantMessageSegments,
+} from "../../../common/assistant-message-segments.ts";
+import type {
+	AssistantMessageSegment,
+	DisplayImage,
+	FacadeEvent,
+} from "../../../common/protocol.ts";
 import {
 	appendThinkingBlockDelta,
 	createThinkingBlockState,
@@ -12,12 +20,14 @@ export interface StreamingStateSnapshot {
 	thinking: string;
 	thinkingBlocks: string[];
 	thinkingBlockId?: string;
+	segments: AssistantMessageSegment[];
 }
 
 interface MutableStreamingStateSnapshot {
 	images: DisplayImage[];
 	text: string;
 	thinking: ThinkingBlockState;
+	segments: AssistantMessageSegment[];
 }
 
 export class StreamingStateStore {
@@ -28,6 +38,7 @@ export class StreamingStateStore {
 			images: [],
 			text: "",
 			thinking: createThinkingBlockState(),
+			segments: [],
 		});
 	}
 
@@ -39,11 +50,13 @@ export class StreamingStateStore {
 
 		if (event.type === "text") {
 			snapshot.text += event.text;
+			snapshot.segments = appendAssistantStreamEvent(snapshot.segments, event);
 			return;
 		}
 
 		if (event.type === "thinking") {
 			snapshot.thinking = appendThinkingBlockDelta(snapshot.thinking, event);
+			snapshot.segments = appendAssistantStreamEvent(snapshot.segments, event);
 			return;
 		}
 
@@ -71,6 +84,7 @@ export class StreamingStateStore {
 			text: snapshot.text,
 			thinking: thinking.text,
 			thinkingBlocks: thinking.blocks,
+			segments: cloneAssistantMessageSegments(snapshot.segments),
 			...(thinking.currentBlockId !== undefined
 				? { thinkingBlockId: thinking.currentBlockId }
 				: {}),

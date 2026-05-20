@@ -4,8 +4,13 @@ import {
 	extractError,
 	type FacadeEvent,
 } from "../../common/protocol.ts";
+import {
+	formatMaybeProviderSessionRef,
+	formatProviderSessionRef,
+	providerSessionRefKey,
+} from "../../common/provider-session-ref.ts";
 import type { PromptExecution } from "../application/prompt-execution/prompt-dispatcher.ts";
-import type { DetachedPromptStartResult } from "../application/runtime-controller.ts";
+import type { DetachedPromptStartResult } from "../application/prompt-execution/prompt-execution-runtime.ts";
 import type { CodingSessionEventRecorder } from "./coding-session-event-hub.ts";
 import type {
 	CodingSessionRecord,
@@ -268,14 +273,12 @@ export class CodingRuntime {
 		if (session.lifecycleStatus !== "open") {
 			return {
 				status: "rejected",
-				message: `Coding session is not open: ${params.providerId}/${params.sdkSessionId}`,
+				message: `Coding session is not open: ${formatProviderSessionRef(session)}`,
 			};
 		}
 		if (
 			session.runStatus === "running" ||
-			this.activeTurns.has(
-				activeTurnKey(session.providerId, session.sdkSessionId),
-			)
+			this.activeTurns.has(providerSessionRefKey(session))
 		) {
 			return await this.steerRunningSession(session, params.prompt);
 		}
@@ -365,7 +368,7 @@ export class CodingRuntime {
 		if (!this.options.steerActivePrompt) {
 			return {
 				status: "rejected",
-				message: `Coding provider cannot steer running sessions: ${session.providerId}/${session.sdkSessionId}`,
+				message: `Coding provider cannot steer running sessions: ${formatProviderSessionRef(session)}`,
 			};
 		}
 		this.recordEvent(session.sdkSessionId, {
@@ -407,13 +410,13 @@ export class CodingRuntime {
 			return target;
 		}
 
-		const key = activeTurnKey(target.providerId, target.sdkSessionId);
+		const key = providerSessionRefKey(target);
 		const activeTurn = this.activeTurns.get(key);
 		if (!activeTurn?.abort()) {
 			this.activeTurns.delete(key);
 			return {
 				status: "rejected",
-				message: `Coding session is not running: ${target.providerId}/${target.sdkSessionId}`,
+				message: `Coding session is not running: ${formatProviderSessionRef(target)}`,
 			};
 		}
 
@@ -448,7 +451,7 @@ export class CodingRuntime {
 			};
 		}
 
-		const key = activeTurnKey(session.providerId, session.sdkSessionId);
+		const key = providerSessionRefKey(session);
 		const activeTurn = this.activeTurns.get(key);
 		if (!activeTurn) {
 			const state = terminalStateForRunStatus(session.runStatus);
@@ -462,14 +465,14 @@ export class CodingRuntime {
 			}
 			return {
 				status: "rejected",
-				message: `Coding session is not running: ${session.providerId}/${session.sdkSessionId}`,
+				message: `Coding session is not running: ${formatProviderSessionRef(session)}`,
 			};
 		}
 		if (!activeTurn.abort()) {
 			this.activeTurns.delete(key);
 			return {
 				status: "rejected",
-				message: `Coding session is not running: ${session.providerId}/${session.sdkSessionId}`,
+				message: `Coding session is not running: ${formatProviderSessionRef(session)}`,
 			};
 		}
 
@@ -507,9 +510,7 @@ export class CodingRuntime {
 		}
 		return {
 			status: "rejected",
-			message: params.providerId
-				? `Unknown coding session: ${params.providerId}/${params.sdkSessionId}`
-				: `Unknown coding session: ${params.sdkSessionId}`,
+			message: `Unknown coding session: ${formatMaybeProviderSessionRef(params)}`,
 		};
 	}
 
@@ -601,17 +602,31 @@ export class CodingRuntime {
 	}
 
 	private trackActiveTurn(sessionId: string, abort: () => boolean) {
-		this.activeTurns.set(activeTurnKey(this.options.providerId, sessionId), {
-			abort,
-		});
+		this.activeTurns.set(
+			providerSessionRefKey({
+				providerId: this.options.providerId,
+				sdkSessionId: sessionId,
+			}),
+			{
+				abort,
+			},
+		);
 	}
 
 	private forgetActiveTurn(sessionId: string) {
-		this.activeTurns.delete(activeTurnKey(this.options.providerId, sessionId));
+		this.activeTurns.delete(
+			providerSessionRefKey({
+				providerId: this.options.providerId,
+				sdkSessionId: sessionId,
+			}),
+		);
 	}
 
 	private consumeCancelledTurn(sessionId: string): boolean {
-		const key = activeTurnKey(this.options.providerId, sessionId);
+		const key = providerSessionRefKey({
+			providerId: this.options.providerId,
+			sdkSessionId: sessionId,
+		});
 		if (!this.cancelledTurns.has(key)) {
 			return false;
 		}
@@ -695,10 +710,6 @@ function firstValue<T>(values: Iterable<T>): T | undefined {
 		return value;
 	}
 	return undefined;
-}
-
-function activeTurnKey(providerId: string, sdkSessionId: string): string {
-	return `${providerId}\0${sdkSessionId}`;
 }
 
 function terminalStateForRunStatus(

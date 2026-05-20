@@ -7,13 +7,10 @@ import type { WsClient } from "../transport/client-hub.ts";
 import type { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
 import type { RuntimeMessageRouter } from "./gateway/runtime-message-router.ts";
 import type { PromptExecution } from "./prompt-execution/prompt-dispatcher.ts";
+import type { DetachedPromptStartResult } from "./prompt-execution/prompt-execution-runtime.ts";
 import type { RuntimeCronBroadcaster } from "./runtime-cron-broadcaster.ts";
 import type { RuntimeExecutionCoordinator } from "./runtime-execution-coordinator.ts";
 import type { RuntimeState } from "./state/runtime-state.ts";
-
-export type DetachedPromptStartResult =
-	| { status: "accepted"; ocSessionId: string; abort: () => boolean }
-	| { status: "rejected"; message: string };
 
 interface RuntimeControllerOptions {
 	clients: RuntimeClientGateway;

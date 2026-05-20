@@ -1,4 +1,5 @@
 import { extractError } from "../../common/protocol.ts";
+import { providerSessionRefKey } from "../../common/provider-session-ref.ts";
 import {
 	type HeartbeatAttemptResult,
 	HeartbeatRuntimePolicy,
@@ -53,7 +54,7 @@ interface ExecutionLane {
 }
 
 function laneKeyForSession(providerId: string, sdkSessionId: string): string {
-	return `${providerId}:${sdkSessionId}`;
+	return `session:${providerSessionRefKey({ providerId, sdkSessionId })}`;
 }
 
 function laneKeyForPending(providerId: string, generation: number): string {

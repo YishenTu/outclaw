@@ -14,17 +14,15 @@ import type { WsClient } from "../transport/client-hub.ts";
 import { AutoTitleCoordinator } from "./auto-title.ts";
 import { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
 import { RuntimeMessageRouter } from "./gateway/runtime-message-router.ts";
-import { PromptDispatcher } from "./prompt-execution/prompt-dispatcher.ts";
+import { createPromptExecutionRuntime } from "./prompt-execution/prompt-execution-runtime.ts";
 import {
 	type PromptProviderResolver,
-	PromptRunner,
 	singleFacadeResolver,
 } from "./prompt-execution/prompt-runner.ts";
 import { StreamingStateStore } from "./prompt-execution/streaming-state-store.ts";
 import { RuntimeControlPlane } from "./runtime-control-plane.ts";
 import { RuntimeController } from "./runtime-controller.ts";
 import { RuntimeCronBroadcaster } from "./runtime-cron-broadcaster.ts";
-import { RuntimeExecutionCoordinator } from "./runtime-execution-coordinator.ts";
 import type { SessionService } from "./session-service.ts";
 import type { RuntimeState } from "./state/runtime-state.ts";
 
@@ -139,14 +137,12 @@ export function createRuntimeController(
 				...(snapshot.thinkingBlockId !== undefined
 					? { thinkingBlockId: snapshot.thinkingBlockId }
 					: {}),
+				...(snapshot.segments.length > 0
+					? { segments: snapshot.segments }
+					: {}),
 			};
 		},
 		getStatusEvent: () => getStatusEvent(),
-	});
-	const promptRunner = new PromptRunner({
-		cwd: options.cwd,
-		providers: providersForRunner,
-		promptHomeDir: options.promptHomeDir,
 	});
 	options.sessions.configureCallbacks({
 		onSessionRenamed: (event) => {
@@ -163,11 +159,19 @@ export function createRuntimeController(
 				sessions: options.sessions,
 			})
 		: undefined;
-	const promptDispatcher = new PromptDispatcher({
+	const promptExecution = createPromptExecutionRuntime({
+		autoTitle,
 		clients,
+		cwd: options.cwd,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
+		deliverRolloverNotice: options.deliverRolloverNotice,
+		onStatusChange: () => {
+			clients.broadcastStatus();
+			options.onExecutionStateChange?.();
+		},
 		onVisibleRunStarted: () => clients.broadcastStatus(),
-		promptRunner,
+		promptHomeDir: options.promptHomeDir,
+		providers: providersForRunner,
 		// Transcript refresh follows the run's provider, not the runtime's
 		// primary facade — a completed Codex chat run reads its transcript
 		// through the Codex adapter, never through Claude.
@@ -179,17 +183,8 @@ export function createRuntimeController(
 		state: options.state,
 		streamingState,
 	});
-	const execution = new RuntimeExecutionCoordinator({
-		autoTitle,
-		deliverRolloverNotice: options.deliverRolloverNotice,
-		onStatusChange: () => {
-			clients.broadcastStatus();
-			options.onExecutionStateChange?.();
-		},
-		promptDispatcher,
-		sessions: options.sessions,
-		state: options.state,
-	});
+	const execution = promptExecution.execution;
+	const promptDispatcher = promptExecution.promptDispatcher;
 	const controlPlane = new RuntimeControlPlane({
 		agentId: options.agentId,
 		clients,

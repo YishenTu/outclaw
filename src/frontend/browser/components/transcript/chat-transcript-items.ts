@@ -1,4 +1,9 @@
+import {
+	assistantMessageSegmentsFromAggregates,
+	hasAssistantMessageSegments,
+} from "../../../../common/assistant-message-segments.ts";
 import type {
+	AssistantMessageSegment,
 	DisplayChatMessage,
 	DisplayMessage,
 } from "../../../../common/protocol.ts";
@@ -20,6 +25,7 @@ interface ChatTranscriptItemsParams {
 	streamingText: string;
 	streamingThinking: string;
 	streamingThinkingBlocks?: string[];
+	streamingSegments?: AssistantMessageSegment[];
 	thinkingStartedAt: number | null;
 }
 
@@ -47,21 +53,28 @@ export function createChatTranscriptItems(
 		text: params.streamingThinking,
 		blocks: params.streamingThinkingBlocks,
 	});
-	for (const [index, block] of thinkingBlocks.entries()) {
-		items.push({
-			kind: "thinking",
-			key: `streaming-thinking-${index}`,
-			content: block,
-			scrollKey: `thinking:${block}`,
-		});
-	}
-
-	if (params.streamingText !== "") {
+	const segments = hasAssistantMessageSegments(params.streamingSegments)
+		? (params.streamingSegments ?? [])
+		: assistantMessageSegmentsFromAggregates({
+				text: params.streamingText,
+				thinking: params.streamingThinking,
+				thinkingBlocks: params.streamingThinkingBlocks,
+			});
+	for (const [index, segment] of segments.entries()) {
+		if (segment.type === "thinking") {
+			items.push({
+				kind: "thinking",
+				key: `streaming-thinking-${index}`,
+				content: segment.text,
+				scrollKey: `thinking:${segment.text}`,
+			});
+			continue;
+		}
 		items.push({
 			kind: "message",
-			key: "streaming-text",
-			message: assistantTranscriptMessage(params.streamingText),
-			scrollKey: `streaming-text:${params.streamingText}`,
+			key: `streaming-text-${index}`,
+			message: assistantTranscriptMessage(segment.text),
+			scrollKey: `streaming-text:${segment.text}`,
 		});
 	}
 

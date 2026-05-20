@@ -10,11 +10,12 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
-	appendThinkingBlockDelta,
-	createThinkingBlockState,
-	effectiveThinkingBlocks,
-	type ThinkingBlockState,
-} from "../../../common/thinking-blocks.ts";
+	appendAssistantMessageSegment,
+	assistantTextSegment,
+	assistantThinkingSegment,
+	startsNewAssistantMessageSegment,
+} from "../../../common/assistant-message-segments.ts";
+import type { AssistantMessageSegment } from "../../../common/protocol.ts";
 import { TranscriptItemList } from "../components/transcript/transcript-item-list.tsx";
 import {
 	assistantTranscriptMessage,
@@ -76,8 +77,9 @@ export function createCodingTranscriptItems(
 	events: CodingSessionEventStreamItem[],
 ): TranscriptItem[] {
 	const groups: CodingEventGroup[] = [];
-	let currentText: { key: string; chunks: string[] } | undefined;
-	let currentThinking: { key: string; state: ThinkingBlockState } | undefined;
+	let currentAssistant:
+		| { key: string; segments: AssistantMessageSegment[] }
+		| undefined;
 	let currentTurnWorkStartIndex = 0;
 	const toolEntriesByCallId = new Map<string, ToolEntry>();
 
@@ -138,42 +140,80 @@ export function createCodingTranscriptItems(
 		}
 	};
 
-	const flushText = () => {
-		if (!currentText) {
-			return;
+	const flushAssistant = (
+		footer?: TurnFooter,
+		showUtilityBar = false,
+	): boolean => {
+		if (!currentAssistant) {
+			return false;
 		}
-		const text = currentText.chunks.join("");
-		const key = currentText.key;
-		groups.push({
-			key,
-			toItem: () => ({
-				kind: "message",
-				key,
-				message: assistantTranscriptMessage(text),
-				scrollKey: `assistant:${text}`,
-			}),
-		});
-		currentText = undefined;
+		let pushed = false;
+		const { key: baseKey, segments } = currentAssistant;
+		for (const [index, segment] of segments.entries()) {
+			if (segment.text === "") {
+				continue;
+			}
+			const key = segment.type === "thinking" ? `${baseKey}-${index}` : baseKey;
+			if (segment.type === "thinking") {
+				groups.push({
+					key,
+					toItem: () => ({
+						kind: "thinking",
+						key,
+						content: segment.text,
+						scrollKey: `thinking:${segment.text}`,
+					}),
+				});
+			} else {
+				groups.push({
+					key,
+					toItem: () => ({
+						kind: "message",
+						key,
+						message: assistantTranscriptMessage(segment.text, footer),
+						scrollKey: footer
+							? `assistant-final:${segment.text}:${footer.timestamp}:${footer.durationMs ?? ""}`
+							: `assistant:${segment.text}`,
+						showUtilityBar,
+					}),
+				});
+			}
+			pushed = true;
+		}
+		currentAssistant = undefined;
+		return pushed;
 	};
 
-	const flushThinking = () => {
-		if (!currentThinking) {
+	const recordAssistantSegment = (
+		segment: AssistantMessageSegment,
+		sequence: number,
+	): void => {
+		if (segment.text === "") {
 			return;
 		}
-		const thinkingBlocks = effectiveThinkingBlocks(currentThinking.state);
-		for (const [index, text] of thinkingBlocks.entries()) {
-			const key = `${currentThinking.key}-${index}`;
-			groups.push({
-				key,
-				toItem: () => ({
-					kind: "thinking",
-					key,
-					content: text,
-					scrollKey: `thinking:${text}`,
-				}),
-			});
+		const currentSegment = currentAssistant?.segments.at(-1);
+		if (
+			currentSegment &&
+			startsNewAssistantMessageSegment(currentSegment, segment)
+		) {
+			flushAssistant();
 		}
-		currentThinking = undefined;
+		if (!currentAssistant) {
+			currentAssistant = {
+				key: `${segment.type}-${sequence}`,
+				segments: [],
+			};
+		}
+		currentAssistant.segments = appendAssistantMessageSegment(
+			currentAssistant.segments,
+			segment,
+		);
+	};
+
+	const flushAssistantWorkBeforeDone = () => {
+		if (currentAssistant?.segments.at(-1)?.type === "thinking") {
+			flushAssistant();
+		}
 	};
 
 	for (const item of events) {
@@ -181,8 +221,7 @@ export function createCodingTranscriptItems(
 		const type = event.type;
 
 		if (type === "user_prompt") {
-			flushText();
-			flushThinking();
+			flushAssistant();
 			const text = typeof event.text === "string" ? event.text : "";
 			groups.push({
 				key: `user-${item.sequence}`,
@@ -202,43 +241,24 @@ export function createCodingTranscriptItems(
 		}
 
 		if (type === "text") {
-			flushThinking();
 			const text = typeof event.text === "string" ? event.text : "";
-			if (currentText) {
-				currentText.chunks.push(text);
-			} else {
-				currentText = {
-					key: `text-${item.sequence}`,
-					chunks: [text],
-				};
-			}
+			recordAssistantSegment(assistantTextSegment(text), item.sequence);
 			continue;
 		}
 
 		if (type === "thinking") {
-			flushText();
 			const text = typeof event.text === "string" ? event.text : "";
 			const blockId =
 				typeof event.blockId === "string" ? event.blockId : undefined;
-			if (currentThinking) {
-				currentThinking.state = appendThinkingBlockDelta(
-					currentThinking.state,
-					{ text, blockId },
-				);
-			} else {
-				currentThinking = {
-					key: `thinking-${item.sequence}`,
-					state: appendThinkingBlockDelta(createThinkingBlockState(), {
-						text,
-						blockId,
-					}),
-				};
-			}
+			recordAssistantSegment(
+				assistantThinkingSegment(text, blockId),
+				item.sequence,
+			);
 			continue;
 		}
 
 		if (type === "done") {
-			flushThinking();
+			flushAssistantWorkBeforeDone();
 			const durationMs =
 				typeof event.durationMs === "number" ? event.durationMs : undefined;
 			const footer: TurnFooter = {
@@ -261,21 +281,7 @@ export function createCodingTranscriptItems(
 					}),
 				});
 			}
-			if (currentText) {
-				const text = currentText.chunks.join("");
-				const key = currentText.key;
-				groups.push({
-					key,
-					toItem: () => ({
-						kind: "message",
-						key,
-						message: assistantTranscriptMessage(text, footer),
-						scrollKey: `assistant-final:${text}:${footer.timestamp}:${durationMs ?? ""}`,
-						showUtilityBar: true,
-					}),
-				});
-				currentText = undefined;
-			} else {
+			if (!flushAssistant(footer, true)) {
 				groups.push({
 					key: `done-${item.sequence}`,
 					toItem: () => ({
@@ -292,8 +298,7 @@ export function createCodingTranscriptItems(
 		}
 
 		if (type === "turn_aborted") {
-			flushText();
-			flushThinking();
+			flushAssistant();
 			groups.push({
 				key: `turn-aborted-${item.sequence}`,
 				toItem: () => ({
@@ -314,8 +319,7 @@ export function createCodingTranscriptItems(
 			continue;
 		}
 
-		flushText();
-		flushThinking();
+		flushAssistant();
 
 		if (type === "command_execution_output") {
 			const callId =
@@ -396,8 +400,7 @@ export function createCodingTranscriptItems(
 		});
 	}
 
-	flushText();
-	flushThinking();
+	flushAssistant();
 
 	return groups.map((group) => group.toItem());
 }

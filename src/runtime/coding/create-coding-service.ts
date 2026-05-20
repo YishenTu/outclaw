@@ -6,7 +6,8 @@ import {
 	type ProviderModelInfo,
 	type ProviderSkillInfo,
 } from "../../common/protocol.ts";
-import { createRuntimeController } from "../application/create-runtime-controller.ts";
+import { createPromptExecutionRuntime } from "../application/prompt-execution/prompt-execution-runtime.ts";
+import { singleFacadeResolver } from "../application/prompt-execution/prompt-runner.ts";
 import { SessionService } from "../application/session-service.ts";
 import { RuntimeState } from "../application/state/runtime-state.ts";
 import type { SessionStore } from "../persistence/session-store/session-store.ts";
@@ -14,7 +15,6 @@ import type { CodingRepositoryStore } from "./coding-repository-store.ts";
 import { type CodingRuntime, createCodingRuntime } from "./coding-runtime.ts";
 import type { CodingSessionEventRecorder } from "./coding-session-event-hub.ts";
 import type { CodingSessionStore } from "./coding-session-store.ts";
-import { CODING_STORAGE_OWNER_ID } from "./coding-session-store.ts";
 
 interface CreateCodingServiceOptions {
 	facade: Facade;
@@ -64,9 +64,8 @@ export function createCodingService(
 ): CodingService {
 	const state = new RuntimeState(opts.facade.providerId, "coding");
 	const sessions = new SessionService(state, opts.sharedSessionStore);
-	const controller = createRuntimeController({
-		agentId: CODING_STORAGE_OWNER_ID,
-		facade: opts.facade,
+	const promptExecution = createPromptExecutionRuntime({
+		providers: singleFacadeResolver(opts.facade),
 		sessions,
 		state,
 	});
@@ -75,7 +74,7 @@ export function createCodingService(
 		codingRepositories: opts.repositories,
 		codingSessions: opts.sessions,
 		providerId: opts.facade.providerId,
-		runDetachedPrompt: controller.runDetachedPrompt.bind(controller),
+		runDetachedPrompt: promptExecution.runDetachedPrompt.bind(promptExecution),
 		...(opts.facade.steerCodingSession
 			? {
 					steerActivePrompt: async (params) => {
@@ -158,8 +157,8 @@ export function createCodingService(
 			if (!stopPromise) {
 				stopPromise = (async () => {
 					try {
-						controller.beginShutdown();
-						await controller.drain();
+						promptExecution.beginShutdown();
+						await promptExecution.drain();
 					} catch (err) {
 						// Swallow drain errors so repeated stop() calls and the wider
 						// daemon shutdown sequence never see a rejected promise. The

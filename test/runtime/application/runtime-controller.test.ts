@@ -2395,6 +2395,7 @@ describe("RuntimeController", () => {
 				sdkSessionId: "sdk-alpha",
 				text: "partial sdk-alpha",
 				thinking: "",
+				segments: [{ type: "text", text: "partial sdk-alpha" }],
 				images: [],
 			});
 

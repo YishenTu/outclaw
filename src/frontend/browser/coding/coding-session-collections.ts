@@ -1,18 +1,19 @@
 import type { BrowserCodingSessionSummary } from "../../../common/protocol.ts";
+import {
+	type ProviderSessionRef,
+	providerSessionRefKey,
+	providerSessionRefsEqual,
+} from "../../../common/provider-session-ref.ts";
 
-export interface CodingSessionRef {
-	providerId: string;
-	sdkSessionId: string;
-}
+export type CodingSessionRef = ProviderSessionRef;
 
 export function codingSessionRefKey(ref: CodingSessionRef): string {
-	return `${ref.providerId}\u0000${ref.sdkSessionId}`;
+	return providerSessionRefKey(ref);
 }
 
 export function matchesCodingSession(ref: CodingSessionRef) {
-	const key = codingSessionRefKey(ref);
 	return (session: CodingSessionRef): boolean =>
-		codingSessionRefKey(session) === key;
+		providerSessionRefsEqual(session, ref);
 }
 
 export function mergeCodingSessions(

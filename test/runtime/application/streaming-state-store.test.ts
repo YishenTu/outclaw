@@ -19,6 +19,10 @@ describe("StreamingStateStore", () => {
 			thinking: "plan ",
 			thinkingBlocks: ["plan "],
 			text: "hello world",
+			segments: [
+				{ type: "thinking", text: "plan " },
+				{ type: "text", text: "hello world" },
+			],
 			images: [
 				{
 					kind: "managed",
@@ -53,6 +57,47 @@ describe("StreamingStateStore", () => {
 			thinking: "inspect filesrun tests",
 			thinkingBlocks: ["inspect files", "run tests"],
 			thinkingBlockId: "reasoning-1:summary:1",
+		});
+	});
+
+	test("records ordered text and thinking segments in active snapshots", () => {
+		const store = new StreamingStateStore();
+		store.start("codex", "sdk-123");
+
+		store.recordEvent("codex", "sdk-123", {
+			type: "thinking",
+			text: "inspect files",
+			blockId: "reasoning-1:summary:0",
+		});
+		store.recordEvent("codex", "sdk-123", {
+			type: "text",
+			text: "I found it.",
+		});
+		store.recordEvent("codex", "sdk-123", {
+			type: "thinking",
+			text: "run tests",
+			blockId: "reasoning-1:summary:1",
+		});
+		store.recordEvent("codex", "sdk-123", {
+			type: "text",
+			text: "Done.",
+		});
+
+		expect(store.get("codex", "sdk-123")).toMatchObject({
+			segments: [
+				{
+					type: "thinking",
+					text: "inspect files",
+					blockId: "reasoning-1:summary:0",
+				},
+				{ type: "text", text: "I found it." },
+				{
+					type: "thinking",
+					text: "run tests",
+					blockId: "reasoning-1:summary:1",
+				},
+				{ type: "text", text: "Done." },
+			],
 		});
 	});
 

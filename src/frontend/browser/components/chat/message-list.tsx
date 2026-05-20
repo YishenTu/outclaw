@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
 import type {
+	AssistantMessageSegment,
 	DisplayChatMessage,
 	DisplayMessage,
 } from "../../../../common/protocol.ts";
@@ -13,6 +14,7 @@ interface MessageListProps {
 	streamingText: string;
 	streamingThinking: string;
 	streamingThinkingBlocks?: string[];
+	streamingSegments?: AssistantMessageSegment[];
 	isStreaming: boolean;
 	isCompacting: boolean;
 	thinkingStartedAt: number | null;
@@ -25,6 +27,7 @@ export const MessageList = memo(function MessageList({
 	streamingText,
 	streamingThinking,
 	streamingThinkingBlocks,
+	streamingSegments,
 	isStreaming,
 	isCompacting,
 	thinkingStartedAt,
@@ -38,6 +41,7 @@ export const MessageList = memo(function MessageList({
 				streamingText,
 				streamingThinking,
 				streamingThinkingBlocks,
+				streamingSegments,
 				isStreaming,
 				isCompacting,
 				thinkingStartedAt,
@@ -49,6 +53,7 @@ export const MessageList = memo(function MessageList({
 			streamingText,
 			streamingThinking,
 			streamingThinkingBlocks,
+			streamingSegments,
 			isStreaming,
 			isCompacting,
 			thinkingStartedAt,

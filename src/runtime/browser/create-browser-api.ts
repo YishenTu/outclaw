@@ -60,6 +60,7 @@ import type {
 	TranscriptTurn,
 	WorkspaceFileEntry,
 } from "../../common/protocol.ts";
+import { formatProviderSessionRef } from "../../common/provider-session-ref.ts";
 import type {
 	ChatCodingLinkStore,
 	CodingCloner,
@@ -69,6 +70,7 @@ import type {
 	CodingSessionDetail,
 	CodingSessionEventRecorder,
 	CodingSessionStore,
+	OpenCodingSessionEventStreamParams,
 	StoredCodingSessionEvent,
 } from "../coding/index.ts";
 import {
@@ -500,7 +502,10 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 		});
 		if (!resolution || resolution.status === "not_found") {
 			throw new Error(
-				`Unknown coding session: ${params.providerId}/${params.sdkSessionId}`,
+				unknownCodingSessionMessage({
+					providerId: params.providerId,
+					sdkSessionId: params.sdkSessionId,
+				}),
 			);
 		}
 		if (resolution.status === "ambiguous") {
@@ -847,7 +852,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			);
 			if (!session) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			const events = await readCodingSessionBootstrapEvents(options, {
@@ -870,7 +875,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			);
 			if (!session) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			const base = toBrowserCodingSessionStatusBase(session, options);
@@ -920,13 +925,13 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const store = options.codingSessions;
 			if (!store) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			const session = store.getDetail(providerId, sdkSessionId);
 			if (!session) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			await options.coding?.archiveSession?.({ providerId, sdkSessionId });
@@ -934,7 +939,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const archived = store.getDetail(providerId, sdkSessionId);
 			if (!archived) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			return {
@@ -946,13 +951,13 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const store = options.codingSessions;
 			if (!store) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			const session = store.getDetail(providerId, sdkSessionId);
 			if (!session) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			await options.coding?.trashSession?.({ providerId, sdkSessionId });
@@ -960,7 +965,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const trashed = store.getDetail(providerId, sdkSessionId);
 			if (!trashed) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			return {
@@ -972,13 +977,13 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const store = options.codingSessions;
 			if (!store) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			const session = store.getDetail(providerId, sdkSessionId);
 			if (!session) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			store.delete(providerId, sdkSessionId);
@@ -992,13 +997,13 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const store = options.codingSessions;
 			if (!store) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			const session = store.getDetail(providerId, sdkSessionId);
 			if (!session) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			await options.coding?.restoreSession?.({ providerId, sdkSessionId });
@@ -1006,7 +1011,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const restored = store.getDetail(providerId, sdkSessionId);
 			if (!restored) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			return {
@@ -1018,7 +1023,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const store = options.codingSessions;
 			if (!store) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			const trimmed = title.trim();
@@ -1028,7 +1033,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const session = store.getDetail(providerId, sdkSessionId);
 			if (!session) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			await options.coding?.renameSession?.({
@@ -1040,7 +1045,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			const renamed = store.getDetail(providerId, sdkSessionId);
 			if (!renamed) {
 				throw new Error(
-					`Unknown coding session: ${providerId}/${sdkSessionId}`,
+					unknownCodingSessionMessage({ providerId, sdkSessionId }),
 				);
 			}
 			return toBrowserCodingSessionSummary(renamed);
@@ -1099,24 +1104,7 @@ export function createBrowserApi(options: CreateBrowserApiOptions): BrowserApi {
 			if (!options.coding && !options.codingEvents) {
 				return emptyAsyncIterable();
 			}
-			return openRuntimeCodingSessionEventStream({
-				history: options.coding?.rehydrateSessionEvents
-					? {
-							readCodingSessionEvents: (target) =>
-								options.coding?.rehydrateSessionEvents?.(target) ??
-								Promise.resolve([]),
-						}
-					: undefined,
-				liveEvents: options.codingEvents,
-				sessions: options.codingSessions
-					? {
-							hasCodingSession: (target) =>
-								!!options.codingSessions?.getDetail(
-									target.providerId,
-									target.sdkSessionId,
-								),
-						}
-					: undefined,
+			return openBrowserCodingSessionEventStream(options, {
 				...params,
 				follow: params.follow ?? true,
 			});
@@ -1569,30 +1557,54 @@ async function readCodingSessionBootstrapEvents(
 	target: { providerId: string; sdkSessionId: string },
 ): Promise<BrowserCodingSessionEvent[]> {
 	const events: BrowserCodingSessionEvent[] = [];
-	for await (const item of openRuntimeCodingSessionEventStream({
-		history: options.coding?.rehydrateSessionEvents
-			? {
-					readCodingSessionEvents: (params) =>
-						options.coding?.rehydrateSessionEvents?.(params) ??
-						Promise.resolve([]),
-				}
-			: undefined,
-		liveEvents: options.codingEvents,
-		sessions: options.codingSessions
-			? {
-					hasCodingSession: (params) =>
-						!!options.codingSessions?.getDetail(
-							params.providerId,
-							params.sdkSessionId,
-						),
-				}
-			: undefined,
+	for await (const item of openBrowserCodingSessionEventStream(options, {
 		...target,
 		follow: false,
 	})) {
 		events.push(item);
 	}
 	return events;
+}
+
+type BrowserCodingSessionEventStreamParams = Omit<
+	OpenCodingSessionEventStreamParams,
+	"history" | "liveEvents" | "sessions"
+>;
+
+function openBrowserCodingSessionEventStream(
+	options: Pick<
+		CreateBrowserApiOptions,
+		"coding" | "codingEvents" | "codingSessions"
+	>,
+	params: BrowserCodingSessionEventStreamParams,
+): AsyncIterable<StoredCodingSessionEvent> {
+	return openRuntimeCodingSessionEventStream({
+		history: options.coding?.rehydrateSessionEvents
+			? {
+					readCodingSessionEvents: (target) =>
+						options.coding?.rehydrateSessionEvents?.(target) ??
+						Promise.resolve([]),
+				}
+			: undefined,
+		liveEvents: options.codingEvents,
+		sessions: options.codingSessions
+			? {
+					hasCodingSession: (target) =>
+						!!options.codingSessions?.getDetail(
+							target.providerId,
+							target.sdkSessionId,
+						),
+				}
+			: undefined,
+		...params,
+	});
+}
+
+function unknownCodingSessionMessage(ref: {
+	providerId: string;
+	sdkSessionId: string;
+}): string {
+	return `Unknown coding session: ${formatProviderSessionRef(ref)}`;
 }
 
 function extractLatestAssistantResponse(events: CodingSessionEvent[]): string {
@@ -1635,7 +1647,7 @@ function toBrowserCodingSessionStatusBase(
 		? options.codingRepositories?.get(session.repositoryId)?.rootCwd
 		: undefined;
 	return {
-		ref: `${session.providerId}/${session.sdkSessionId}`,
+		ref: formatProviderSessionRef(session),
 		repo: repositoryRoot ?? session.cwd,
 		startedAt: new Date(session.createdAt).toISOString(),
 		lastEventAt: new Date(session.lastActive).toISOString(),

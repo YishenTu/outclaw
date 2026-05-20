@@ -1,3 +1,4 @@
+import { formatProviderSessionRef } from "../../../common/provider-session-ref.ts";
 import type { SessionEntry } from "../stores/sessions.ts";
 
 interface BrowserSwitchDispatcherParams {
@@ -30,5 +31,5 @@ export function createBrowserSwitchDispatcher({
 }
 
 function formatSessionRef(session: SessionEntry): string {
-	return `${session.providerId}/${session.sdkSessionId}`;
+	return formatProviderSessionRef(session);
 }

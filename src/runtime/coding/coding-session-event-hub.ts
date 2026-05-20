@@ -1,4 +1,5 @@
 import type { CodingSessionEvent } from "../../common/protocol.ts";
+import { providerSessionRefKey } from "../../common/provider-session-ref.ts";
 
 export interface StoredCodingSessionEvent {
 	providerId: string;
@@ -54,7 +55,7 @@ export class CodingSessionEventHub implements CodingSessionEventRecorder {
 		event: CodingSessionEvent;
 		timestamp?: number;
 	}): StoredCodingSessionEvent {
-		const key = subscriberKey(params.providerId, params.sdkSessionId);
+		const key = providerSessionRefKey(params);
 		const sequence = (this.nextSequenceBySession.get(key) ?? 0) + 1;
 		this.nextSequenceBySession.set(key, sequence);
 		const stored: StoredCodingSessionEvent = {
@@ -73,18 +74,14 @@ export class CodingSessionEventHub implements CodingSessionEventRecorder {
 		providerId: string;
 		sdkSessionId: string;
 	}): StoredCodingSessionEvent[] {
-		return [
-			...(this.eventsBySession.get(
-				subscriberKey(target.providerId, target.sdkSessionId),
-			) ?? []),
-		];
+		return [...(this.eventsBySession.get(providerSessionRefKey(target)) ?? [])];
 	}
 
 	subscribe(
 		target: { providerId: string; sdkSessionId: string },
 		handler: CodingSessionEventSubscriber,
 	): () => void {
-		const key = subscriberKey(target.providerId, target.sdkSessionId);
+		const key = providerSessionRefKey(target);
 		let bucket = this.subscribers.get(key);
 		if (!bucket) {
 			bucket = new Set();
@@ -133,9 +130,7 @@ export class CodingSessionEventHub implements CodingSessionEventRecorder {
 		for (const handler of [...this.allSubscribers]) {
 			handler(stored);
 		}
-		const bucket = this.subscribers.get(
-			subscriberKey(stored.providerId, stored.sdkSessionId),
-		);
+		const bucket = this.subscribers.get(providerSessionRefKey(stored));
 		if (!bucket || bucket.size === 0) {
 			return;
 		}
@@ -143,8 +138,4 @@ export class CodingSessionEventHub implements CodingSessionEventRecorder {
 			handler(stored);
 		}
 	}
-}
-
-function subscriberKey(providerId: string, sdkSessionId: string): string {
-	return `${providerId}\u0000${sdkSessionId}`;
 }
