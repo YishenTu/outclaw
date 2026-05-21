@@ -4,6 +4,7 @@ import {
 	createTerminalStore,
 	selectActiveTerminalTab,
 	selectRunTerminalCommand,
+	selectRunTerminalRuntimeState,
 } from "../../../src/frontend/browser/stores/terminal.ts";
 
 function getTerminalNames(entries: BrowserTerminalEntry[] | undefined) {
@@ -82,6 +83,27 @@ describe("browser terminal store", () => {
 		expect(store.getState().activeTerminalIdByAgent["agent-a"]).toBe(
 			"agent-a-terminal-existing",
 		);
+		expect(selectRunTerminalRuntimeState(store.getState(), "agent-a")).toBe(
+			"ready",
+		);
+	});
+
+	test("terminal session hydration clears stale ready run terminal state", () => {
+		store.getState().applyRuntimeTerminals([
+			{
+				createdAt: 60,
+				id: "agent-a:run",
+				name: "Run",
+				scopeId: "agent-a",
+				target: { kind: "agent", agentId: "agent-a" },
+			},
+		]);
+
+		store.getState().applyRuntimeTerminals([]);
+
+		expect(
+			selectRunTerminalRuntimeState(store.getState(), "agent-a"),
+		).toBeNull();
 	});
 
 	test("run tab selection does not replace the selected terminal", () => {
@@ -107,6 +129,9 @@ describe("browser terminal store", () => {
 		);
 		expect(selectRunTerminalCommand(store.getState(), "agent-a")).toBe(
 			"bun test",
+		);
+		expect(selectRunTerminalRuntimeState(store.getState(), "agent-a")).toBe(
+			"pending",
 		);
 	});
 

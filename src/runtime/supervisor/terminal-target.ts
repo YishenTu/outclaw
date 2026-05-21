@@ -4,7 +4,7 @@ import type { BrowserApi } from "./browser-api-router.ts";
 export function resolveBrowserTerminalCwd(
 	target: BrowserTerminalTarget,
 	browserApi: BrowserApi | undefined,
-): { cwd?: string; error?: string } {
+): { cwd?: string; error?: string; scopeId?: string } {
 	if (!browserApi) {
 		return { error: "Browser terminal API is not configured" };
 	}
@@ -15,13 +15,13 @@ export function resolveBrowserTerminalCwd(
 				...(target.sdkSessionId ? { sdkSessionId: target.sdkSessionId } : {}),
 			});
 			return cwd
-				? { cwd }
+				? { cwd, scopeId: cwd }
 				: { error: "Coding repository terminal workspace is not available" };
 		}
 
 		const cwd = browserApi.getAgentTerminalCwd(target.agentId);
 		return cwd
-			? { cwd }
+			? { cwd, scopeId: target.agentId }
 			: { error: "Agent terminal workspace is not available" };
 	} catch (error) {
 		return { error: formatError(error) };

@@ -1,5 +1,6 @@
 import { Play, TerminalSquare, X } from "lucide-react";
 import type { FormEvent } from "react";
+import type { BrowserTerminalRuntimeState } from "../../../stores/terminal.ts";
 import { createTerminalTarget } from "./terminal-target.ts";
 import type { TerminalRunRequest } from "./terminal-view.tsx";
 import { TerminalView } from "./terminal-view.tsx";
@@ -24,6 +25,7 @@ interface TerminalRunPanelProps {
 	providerId?: string;
 	repositoryId?: string;
 	runRequest: TerminalRunRequest | null;
+	runTerminalRuntimeState?: BrowserTerminalRuntimeState | null;
 	saving: boolean;
 	sdkSessionId?: string;
 }
@@ -44,6 +46,7 @@ export function TerminalRunPanel({
 	providerId,
 	repositoryId,
 	runRequest,
+	runTerminalRuntimeState,
 	saving,
 	sdkSessionId,
 }: TerminalRunPanelProps) {
@@ -55,10 +58,11 @@ export function TerminalRunPanel({
 	const hasConfiguredCommand = configuredCommand.length > 0;
 	const canSave = draftCommand.trim().length > 0 && !saving;
 	const shouldShowCommandForm = !hasConfiguredCommand || editingCommand;
+	const hasRestoredRunTerminal = runTerminalRuntimeState === "ready";
 	const shouldRenderTerminal =
-		hasConfiguredCommand &&
 		!editingCommand &&
-		executedCommand === configuredCommand;
+		(hasRestoredRunTerminal ||
+			(hasConfiguredCommand && executedCommand === configuredCommand));
 
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -159,7 +163,7 @@ export function TerminalRunPanel({
 				name="Run"
 				onRunRequestDispatched={onRunRequestDispatched}
 				runRequest={runRequest}
-				runtimeState="pending"
+				runtimeState={runTerminalRuntimeState ?? "pending"}
 				scopeId={agentId}
 				target={createTerminalTarget({
 					scopeId: agentId,

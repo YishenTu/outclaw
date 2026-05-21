@@ -29,6 +29,7 @@ interface SupervisorControllerOptions {
 	resolveTerminalCwd?: (target: BrowserTerminalTarget) => {
 		cwd?: string;
 		error?: string;
+		scopeId?: string;
 	};
 	terminalManager?: Pick<
 		BrowserTerminalManager,
@@ -200,13 +201,22 @@ export class SupervisorController {
 				);
 				return true;
 			}
+			const scopeId = target.scopeId ?? data.scopeId;
+			if (scopeId !== data.scopeId) {
+				this.sendTerminalError(
+					ws,
+					"Terminal scope does not match target",
+					data.terminalId,
+				);
+				return true;
+			}
 			this.options.terminalManager.create({
 				client: ws,
 				...(data.cols !== undefined ? { cols: data.cols } : {}),
 				cwd: target.cwd,
 				name: data.name,
 				...(data.rows !== undefined ? { rows: data.rows } : {}),
-				scopeId: data.scopeId,
+				scopeId,
 				target: data.target,
 				terminalId: data.terminalId,
 			});

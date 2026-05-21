@@ -35,6 +35,7 @@ import {
 	selectActiveTerminalTab,
 	selectAgentTerminals,
 	selectRunTerminalCommand,
+	selectRunTerminalRuntimeState,
 	useTerminalStore,
 } from "../../stores/terminal.ts";
 import { CronPanel } from "./cron-panel.tsx";
@@ -179,6 +180,9 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 	);
 	const runTerminalCommand = useTerminalStore((state) =>
 		selectRunTerminalCommand(state, activeAgentId),
+	);
+	const runTerminalRuntimeState = useTerminalStore((state) =>
+		selectRunTerminalRuntimeState(state, activeAgentId),
 	);
 	const createTerminal = useTerminalStore((state) => state.createTerminal);
 	const closeTerminal = useTerminalStore((state) => state.closeTerminal);
@@ -800,6 +804,7 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 									? (runRequestsByAgent[activeAgentId] ?? null)
 									: null
 							}
+							runTerminalRuntimeState={runTerminalRuntimeState}
 							saving={runCommand.saving}
 						/>
 						<div

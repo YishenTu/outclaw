@@ -138,4 +138,65 @@ describe("BrowserTerminalManager", () => {
 			terminalId: "terminal-1",
 		});
 	});
+
+	test("keeps buffering output when the attached client send fails", () => {
+		const terminalResize = mock(() => {});
+		let onData:
+			| ((terminal: Bun.Terminal, data: Uint8Array) => void)
+			| undefined;
+		const manager = new BrowserTerminalManager({
+			createTerminal: mock((options) => {
+				onData = options.data;
+				return {
+					close: mock(() => {}),
+					resize: terminalResize,
+					write: mock(() => {}),
+				} as unknown as Bun.Terminal;
+			}),
+			spawn: mock(() => ({
+				exited: new Promise<number>(() => {}),
+				kill: mock(() => {}),
+			})) as unknown as typeof Bun.spawn,
+		});
+		const sent: unknown[] = [];
+		let failSend = false;
+		const client = {
+			data: {
+				clientType: "browser" as const,
+				cookieClientId: "browser-1",
+			},
+			send: mock((message: string) => {
+				if (failSend) {
+					throw new Error("socket closed");
+				}
+				sent.push(JSON.parse(message));
+			}),
+		};
+
+		manager.create({
+			client,
+			cwd: "/tmp/agent",
+			name: "Terminal",
+			scopeId: "agent-a",
+			target: { kind: "agent", agentId: "agent-a" },
+			terminalId: "terminal-1",
+		});
+		failSend = true;
+
+		expect(() =>
+			onData?.({} as Bun.Terminal, new TextEncoder().encode("still running")),
+		).not.toThrow();
+
+		const next = createClient();
+		manager.attach({
+			client: next.client,
+			terminalId: "terminal-1",
+		});
+
+		expect(next.sent).toContainEqual({
+			type: "terminal_attached",
+			bufferedOutput: "still running",
+			terminalId: "terminal-1",
+		});
+	});
 });

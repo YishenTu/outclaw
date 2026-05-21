@@ -55,6 +55,7 @@ import {
 	selectActiveTerminalTab,
 	selectAgentTerminals,
 	selectRunTerminalCommand,
+	selectRunTerminalRuntimeState,
 	useTerminalStore,
 } from "../stores/terminal.ts";
 import {
@@ -160,6 +161,9 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 	);
 	const runTerminalCommand = useTerminalStore((state) =>
 		selectRunTerminalCommand(state, terminalWorkspaceKey),
+	);
+	const runTerminalRuntimeState = useTerminalStore((state) =>
+		selectRunTerminalRuntimeState(state, terminalWorkspaceKey),
 	);
 	const createTerminal = useTerminalStore((state) => state.createTerminal);
 	const closeTerminal = useTerminalStore((state) => state.closeTerminal);
@@ -759,6 +763,7 @@ export function CodingRightPanel({ onCollapse }: CodingRightPanelProps) {
 								runRequest={
 									runRequestsByWorkspace[workspaceTarget.workspaceKey] ?? null
 								}
+								runTerminalRuntimeState={runTerminalRuntimeState}
 								saving={runCommand.saving}
 								sdkSessionId={workspaceTarget.sdkSessionId}
 							/>

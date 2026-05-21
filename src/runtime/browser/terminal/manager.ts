@@ -397,11 +397,14 @@ export class BrowserTerminalManager {
 		if (!session.attachedClient) {
 			return;
 		}
-		this.send(session.attachedClient, {
+		const sent = this.send(session.attachedClient, {
 			type: "terminal_output",
 			data,
 			terminalId: session.summary.id,
 		});
+		if (!sent) {
+			session.attachedClient = null;
+		}
 	}
 
 	private stopSession(ownerId: string, session: TerminalSession) {
@@ -447,8 +450,18 @@ export class BrowserTerminalManager {
 		}
 	}
 
-	private send(client: TerminalClient, event: ServerEvent) {
-		client.send(serialize(event));
+	private send(client: TerminalClient, event: ServerEvent): boolean {
+		const readyState = (client as TerminalClient & { readyState?: number })
+			.readyState;
+		if (readyState !== undefined && readyState !== WebSocket.OPEN) {
+			return false;
+		}
+		try {
+			client.send(serialize(event));
+			return true;
+		} catch {
+			return false;
+		}
 	}
 }
 

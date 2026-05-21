@@ -157,6 +157,29 @@ describe("TerminalRunPanel", () => {
 		expect(html).not.toContain('aria-label="Run command"');
 	});
 
+	test("renders a restored runtime run terminal after reconnect", () => {
+		const html = renderToStaticMarkup(
+			<TerminalRunPanel
+				active={true}
+				agentId="agent-a"
+				command="bun test"
+				draftCommand="bun test"
+				error={null}
+				executedCommand={null}
+				onDraftCommandChange={() => {}}
+				onRun={() => {}}
+				onSave={() => {}}
+				onRunRequestDispatched={() => {}}
+				runRequest={null}
+				runTerminalRuntimeState="ready"
+				saving={false}
+			/>,
+		);
+
+		expect(html).toContain("browser-terminal-shell");
+		expect(html).not.toContain('aria-label="Run saved command"');
+	});
+
 	test("returns to setup when the command is removed after execution", () => {
 		const html = renderToStaticMarkup(
 			<TerminalRunPanel
