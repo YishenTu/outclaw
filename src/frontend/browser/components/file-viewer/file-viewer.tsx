@@ -188,7 +188,7 @@ export function FilePreviewHeader({
 }: FilePreviewHeaderProps) {
 	return (
 		<div className="h-8 shrink-0 border-b border-dark-800 px-6">
-			<div className="mx-auto flex h-full max-w-5xl items-center gap-4">
+			<div className="flex h-full max-w-5xl items-center gap-4">
 				<div className="min-w-0 flex-1 truncate font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
 					{path}
 				</div>

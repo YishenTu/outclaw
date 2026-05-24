@@ -85,7 +85,7 @@ function LinkedCodingSessionShell({
 	return (
 		<div className="flex h-full flex-col bg-dark-950">
 			<div className="h-8 shrink-0 border-b border-dark-800 px-6">
-				<div className="mx-auto flex h-full max-w-4xl items-center gap-4">
+				<div className="flex h-full max-w-4xl items-center gap-4">
 					<div className="min-w-0 font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
 						<span className="truncate text-parchment">Code</span>
 						<span className="px-2 text-dark-700">/</span>

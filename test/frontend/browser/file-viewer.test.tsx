@@ -402,6 +402,22 @@ describe("FileViewer", () => {
 		expect(html).toContain("border-b border-brand pb-0.5 text-dark-50");
 	});
 
+	test("anchors the subheader content to the panel padding", () => {
+		const html = renderToStaticMarkup(
+			<FilePreviewHeader
+				path="agents/john-doe/AGENTS.md"
+				mode="rendered"
+				availableModes={["rendered"]}
+				onSelectMode={() => {}}
+			/>,
+		);
+
+		expect(html).toContain('class="flex h-full max-w-5xl items-center gap-4"');
+		expect(html).not.toContain(
+			'class="mx-auto flex h-full max-w-5xl items-center gap-4"',
+		);
+	});
+
 	test("omits unavailable preview tabs", () => {
 		const html = renderToStaticMarkup(
 			<FilePreviewHeader

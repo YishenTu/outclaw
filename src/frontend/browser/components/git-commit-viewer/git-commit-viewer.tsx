@@ -61,7 +61,7 @@ export function GitCommitViewer({
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-dark-950">
 			<div className="h-8 shrink-0 border-b border-dark-800 px-6">
-				<div className="mx-auto flex h-full max-w-5xl items-center gap-4">
+				<div className="flex h-full max-w-5xl items-center gap-4">
 					<div className="min-w-0 truncate font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
 						Commit / {shortSha(sha)} {title}
 					</div>

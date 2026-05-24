@@ -124,6 +124,51 @@ describe("coding session event cache", () => {
 		]);
 	});
 
+	test("drops a stale incomplete live prefix when provider hydration has completed history", () => {
+		const key = codingSessionEventCacheKey({
+			providerId: "codex",
+			sdkSessionId: "session-1",
+		});
+
+		appendCodingSessionCachedEvent(
+			streamItem(1, { type: "session_initialized", sessionId: "session-1" }),
+		);
+		appendCodingSessionCachedEvent(
+			streamItem(2, { type: "user_prompt", text: "fix it" }),
+		);
+		appendCodingSessionCachedEvent(
+			streamItem(3, { type: "text", text: "working" }),
+		);
+
+		hydrateCodingSessionCachedEvents(key, [
+			streamItem(1, {
+				type: "user_prompt",
+				text: "fix it",
+				timestamp: 100,
+			}),
+			streamItem(2, {
+				type: "text",
+				text: "working",
+				timestamp: 101,
+			}),
+			streamItem(3, { type: "done", sessionId: "session-1", durationMs: 100 }),
+			streamItem(4, { type: "user_prompt", text: "you are done, right?" }),
+			streamItem(5, { type: "text", text: "yes", timestamp: 110 }),
+			streamItem(6, { type: "done", sessionId: "session-1", durationMs: 10 }),
+		]);
+
+		expect(
+			readCodingSessionCachedEvents(key).map((item) => item.event),
+		).toEqual([
+			{ type: "user_prompt", text: "fix it", timestamp: 100 },
+			{ type: "text", text: "working", timestamp: 101 },
+			{ type: "done", sessionId: "session-1", durationMs: 100 },
+			{ type: "user_prompt", text: "you are done, right?" },
+			{ type: "text", text: "yes", timestamp: 110 },
+			{ type: "done", sessionId: "session-1", durationMs: 10 },
+		]);
+	});
+
 	test("appends live websocket events after hydrated history when live sequence restarts", () => {
 		const key = codingSessionEventCacheKey({
 			providerId: "codex",

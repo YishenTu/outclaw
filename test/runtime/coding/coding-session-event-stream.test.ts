@@ -146,6 +146,78 @@ describe("openCodingSessionEventStream", () => {
 		}
 	});
 
+	test("prefers completed provider history over a stale incomplete live snapshot", async () => {
+		const liveEvents = new CodingSessionEventHub();
+		liveEvents.append({
+			providerId: "codex",
+			sdkSessionId: "s1",
+			event: { type: "session_initialized", sessionId: "s1" },
+			timestamp: 10,
+		});
+		liveEvents.append({
+			providerId: "codex",
+			sdkSessionId: "s1",
+			event: { type: "user_prompt", text: "fix it", sessionId: "s1" },
+			timestamp: 11,
+		});
+		liveEvents.append({
+			providerId: "codex",
+			sdkSessionId: "s1",
+			event: { type: "text", text: "working", sessionId: "s1" },
+			timestamp: 12,
+		});
+
+		const iterator = openCodingSessionEventStream({
+			history: {
+				readCodingSessionEvents: async () => [
+					{ type: "user_prompt", text: "fix it", sessionId: "s1" },
+					{ type: "text", text: "working", sessionId: "s1", timestamp: 12 },
+					{ type: "done", sessionId: "s1", durationMs: 100 },
+					{
+						type: "user_prompt",
+						text: "you are done, right?",
+						sessionId: "s1",
+					},
+					{ type: "text", text: "yes", sessionId: "s1", timestamp: 20 },
+					{ type: "done", sessionId: "s1", durationMs: 10 },
+				],
+			},
+			liveEvents,
+			providerId: "codex",
+			sdkSessionId: "s1",
+			follow: false,
+		})[Symbol.asyncIterator]();
+
+		try {
+			const emitted: CodingSessionEvent[] = [];
+			for (let index = 0; index < 6; index += 1) {
+				const next = await nextOrTimeout(iterator);
+				if (next.value) {
+					emitted.push(next.value.event);
+				}
+			}
+
+			expect(emitted).toEqual([
+				{ type: "user_prompt", text: "fix it", sessionId: "s1" },
+				{ type: "text", text: "working", sessionId: "s1", timestamp: 12 },
+				{ type: "done", sessionId: "s1", durationMs: 100 },
+				{
+					type: "user_prompt",
+					text: "you are done, right?",
+					sessionId: "s1",
+				},
+				{ type: "text", text: "yes", sessionId: "s1", timestamp: 20 },
+				{ type: "done", sessionId: "s1", durationMs: 10 },
+			]);
+			expect(await iterator.next()).toEqual({
+				done: true,
+				value: undefined,
+			});
+		} finally {
+			liveEvents.close();
+		}
+	});
+
 	test("can hydrate history and live snapshot without following future events", async () => {
 		const liveEvents = new CodingSessionEventHub();
 		liveEvents.append({

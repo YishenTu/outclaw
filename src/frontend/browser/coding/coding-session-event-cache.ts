@@ -1,3 +1,4 @@
+import { countCodingSessionLivePrefixCoveredByHistory } from "../../../common/coding-session-event-merge.ts";
 import { formatProviderSessionRef } from "../../../common/provider-session-ref.ts";
 import type { CodingSessionEventStreamItem } from "../lib/api.ts";
 
@@ -205,7 +206,11 @@ function mergeCodingSessionHydration(
 		hydrationEntry.events.map((item) => codingSessionEventItemKey(item)),
 	);
 	let mergedEvents = hydrationEntry.events;
-	for (const item of currentEvents) {
+	const currentSuffixStart = countCodingSessionLivePrefixCoveredByHistory(
+		hydrationEntry.events.map((item) => item.event),
+		currentEvents.map((item) => item.event),
+	);
+	for (const item of currentEvents.slice(currentSuffixStart)) {
 		const itemKey = codingSessionEventItemKey(item);
 		if (seen.has(itemKey)) {
 			continue;
