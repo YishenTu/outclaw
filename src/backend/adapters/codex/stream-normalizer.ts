@@ -824,8 +824,7 @@ function isNotificationForTurn(
 		return completedTurnId !== undefined && turnIds.has(completedTurnId);
 	}
 
-	const notificationTurnId =
-		typeof params.turnId === "string" ? params.turnId : undefined;
+	const notificationTurnId = readNotificationTurnId(params);
 	return notificationTurnId !== undefined && turnIds.has(notificationTurnId);
 }
 
@@ -842,7 +841,8 @@ function isCurrentNotificationTurn(
 
 function readNotificationTurnId(params: unknown): string | undefined {
 	const record = asRecord(params);
-	return typeof record?.turnId === "string" ? record.turnId : undefined;
+	const turnId = record?.turnId ?? record?.turn_id;
+	return typeof turnId === "string" ? turnId : undefined;
 }
 
 function readEventPayloadTurnId(

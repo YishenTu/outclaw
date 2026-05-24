@@ -3,7 +3,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CodexAdapter } from "../../../src/backend/adapters/codex/index.ts";
-import { normalizeCodexJsonlEvents } from "../../../src/backend/adapters/codex/stream-normalizer.ts";
+import {
+	normalizeCodexJsonlEvents,
+	normalizeCodexTurnNotifications,
+} from "../../../src/backend/adapters/codex/stream-normalizer.ts";
 import type {
 	CodexAppServerClient,
 	CodexServerNotification,
@@ -205,6 +208,12 @@ async function collectEvents(
 		collected.push(event);
 	}
 	return collected;
+}
+
+async function* codexNotifications(
+	notifications: CodexServerNotification[],
+): AsyncIterable<CodexServerNotification> {
+	yield* notifications;
 }
 
 async function waitForRequest(
@@ -605,6 +614,50 @@ describe("CodexAdapter", () => {
 			{
 				type: "text",
 				text: "I’ll list the directory. Files: a.ts, b.ts",
+				sessionId: "codex-thread-123",
+			},
+			{
+				type: "done",
+				sessionId: "codex-thread-123",
+				durationMs: 31,
+			},
+		]);
+	});
+
+	test("normalizes live event_msg terminal events with snake-case turn ids", async () => {
+		const events = await collectEvents(
+			normalizeCodexTurnNotifications({
+				notifications: codexNotifications([
+					{
+						method: "event_msg",
+						params: {
+							threadId: "codex-thread-123",
+							turn_id: "turn-1",
+							type: "agent_message",
+							message: "Done.",
+						},
+					},
+					{
+						method: "event_msg",
+						params: {
+							threadId: "codex-thread-123",
+							turn_id: "turn-1",
+							type: "task_complete",
+							duration_ms: 31,
+						},
+					},
+				]),
+				threadId: "codex-thread-123",
+				turnIds: new Set(["turn-1"]),
+				sessionId: "codex-thread-123",
+				startedAtMs: 0,
+			}),
+		);
+
+		expect(events).toEqual([
+			{
+				type: "text",
+				text: "Done.",
 				sessionId: "codex-thread-123",
 			},
 			{
