@@ -183,6 +183,46 @@ describe("useCodingStore", () => {
 		});
 	});
 
+	test("updateSessionRunStatus keeps repository lists ordered by last active time", () => {
+		useCodingStore.setState({
+			sessionsByRepository: {
+				"repo-a": [
+					makeSession({
+						providerId: "codex",
+						sdkSessionId: "session-newer",
+						runStatus: "idle",
+						lastActive: 40,
+					}),
+					makeSession({
+						providerId: "codex",
+						sdkSessionId: "session-running",
+						runStatus: "running",
+						lastActive: 10,
+					}),
+					makeSession({
+						providerId: "codex",
+						sdkSessionId: "session-older",
+						runStatus: "idle",
+						lastActive: 5,
+					}),
+				],
+			},
+		});
+
+		useCodingStore
+			.getState()
+			.updateSessionRunStatus("codex", "session-running", {
+				runStatus: "idle",
+				lastActive: 50,
+			});
+
+		expect(
+			useCodingStore
+				.getState()
+				.sessionsByRepository["repo-a"]?.map((entry) => entry.sdkSessionId),
+		).toEqual(["session-running", "session-newer", "session-older"]);
+	});
+
 	test("setRepositorySessions is silent when a refresh returns the same loaded page", () => {
 		const sessions = [
 			makeSession({

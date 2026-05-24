@@ -16,6 +16,7 @@ import {
 	mergeCodingSessions,
 	removeCodingSession,
 	renameCodingSession as renameCodingSessionInList,
+	sortCodingSessionsByLastActive,
 	upsertCodingSession,
 } from "./coding-session-collections.ts";
 
@@ -465,7 +466,7 @@ function updateSessionListRunStatus(
 				: {}),
 		};
 	});
-	return changed ? next : sessions;
+	return changed ? sortCodingSessionsByLastActive(next) : sessions;
 }
 
 function updateSessionMapsRunStatus(

@@ -37,7 +37,30 @@ export function upsertCodingSession(
 	existing: BrowserCodingSessionSummary[],
 	session: BrowserCodingSessionSummary,
 ): BrowserCodingSessionSummary[] {
-	return [session, ...removeCodingSession(existing, session)];
+	const matches = matchesCodingSession(session);
+	let replaced = false;
+	const sessions = existing.map((candidate) => {
+		if (!matches(candidate)) {
+			return candidate;
+		}
+		replaced = true;
+		return session;
+	});
+	return sortCodingSessionsByLastActive(
+		replaced ? sessions : [session, ...existing],
+	);
+}
+
+export function sortCodingSessionsByLastActive(
+	sessions: BrowserCodingSessionSummary[],
+): BrowserCodingSessionSummary[] {
+	return sessions
+		.map((session, index) => ({ index, session }))
+		.sort((left, right) => {
+			const activeDelta = right.session.lastActive - left.session.lastActive;
+			return activeDelta === 0 ? left.index - right.index : activeDelta;
+		})
+		.map((entry) => entry.session);
 }
 
 export function removeCodingSession<T extends CodingSessionRef>(

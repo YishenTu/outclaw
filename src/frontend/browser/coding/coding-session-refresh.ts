@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type {
 	BrowserCodingSessionDetail,
 	BrowserCodingSessionPageResponse,
@@ -9,6 +9,7 @@ import {
 	providerSessionRefKey,
 } from "../../../common/provider-session-ref.ts";
 import { fetchCodingSession, fetchCodingSessions } from "../lib/api.ts";
+import { sortCodingSessionsByLastActive } from "./coding-session-collections.ts";
 import {
 	type CodingState,
 	isCodingDiffTab,
@@ -28,6 +29,8 @@ type FetchCodingSessionPage = (params: {
 	repositoryId?: string;
 }) => Promise<BrowserCodingSessionPageResponse>;
 
+export type CodingSessionReconciliationMode = "full" | "running";
+
 type FetchCodingSessionDetail = (
 	providerId: string,
 	sdkSessionId: string,
@@ -40,6 +43,7 @@ type CodingSessionRefreshStore = Pick<
 	| "sessionsByRepository"
 	| "moveSessionToArchive"
 	| "moveSessionToTrash"
+	| "nextCursorByRepository"
 	| "removeArchivedSession"
 	| "removeSession"
 	| "removeTrashedSession"
@@ -55,6 +59,7 @@ interface RefreshLoadedCodingSessionStateOptions {
 	store: CodingSessionRefreshStore;
 	fetchSessionDetail?: FetchCodingSessionDetail;
 	fetchSessionPage?: FetchCodingSessionPage;
+	mode?: CodingSessionReconciliationMode;
 	warn?: (message: string, error: unknown) => void;
 }
 
@@ -62,8 +67,13 @@ export async function refreshLoadedCodingSessionState({
 	store,
 	fetchSessionDetail = fetchCodingSession,
 	fetchSessionPage = fetchCodingSessions,
+	mode = "full",
 	warn = console.warn,
 }: RefreshLoadedCodingSessionStateOptions): Promise<void> {
+	if (mode === "running") {
+		await refreshRunningSessionDetails(store, fetchSessionDetail, warn);
+		return;
+	}
 	await refreshLoadedSessionPages(store, fetchSessionPage, warn);
 	await refreshOpenTabDetails(store, fetchSessionDetail, warn);
 }
@@ -74,6 +84,8 @@ export function useCodingSessionReconciliationPolling(enabled: boolean) {
 	// happened in Codex while the user was away gets reconciled as soon as
 	// they're looking. A manual Refresh button in the Archive Center handles
 	// the rest.
+	const hasRunFullReconciliationRef = useRef(false);
+
 	useEffect(() => {
 		if (!enabled || typeof window === "undefined") {
 			return;
@@ -93,8 +105,11 @@ export function useCodingSessionReconciliationPolling(enabled: boolean) {
 			if (cancelled || inFlight || !canRefreshNow()) {
 				return;
 			}
+			const mode = hasRunFullReconciliationRef.current ? "running" : "full";
+			hasRunFullReconciliationRef.current = true;
 			inFlight = true;
 			void refreshLoadedCodingSessionState({
+				mode,
 				store: useCodingStore.getState(),
 			})
 				.catch((error) => {
@@ -123,6 +138,12 @@ export function useCodingSessionReconciliationPolling(enabled: boolean) {
 			}
 		};
 	}, [enabled]);
+}
+
+interface RunningCodingSessionRef {
+	providerId: string;
+	repositoryId: string;
+	sdkSessionId: string;
 }
 
 async function refreshLoadedSessionPages(
@@ -178,6 +199,75 @@ async function refreshLoadedSessionPages(
 	}
 }
 
+async function refreshRunningSessionDetails(
+	store: CodingSessionRefreshStore,
+	fetchSessionDetail: FetchCodingSessionDetail,
+	warn: (message: string, error: unknown) => void,
+) {
+	const runningSessions = collectRunningSessionRefs(store);
+	for (const sessionRef of runningSessions) {
+		await withRefreshWarning(
+			`Failed to refresh running coding session ${formatProviderSessionRef(
+				sessionRef,
+			)}`,
+			warn,
+			async () => {
+				const session = await fetchSessionDetail(
+					sessionRef.providerId,
+					sessionRef.sdkSessionId,
+				);
+				syncSessionDetail(store, session, sessionRef.repositoryId);
+			},
+		);
+	}
+}
+
+function collectRunningSessionRefs(
+	store: Pick<
+		CodingSessionRefreshStore,
+		"searchByRepository" | "sessionsByRepository"
+	>,
+): RunningCodingSessionRef[] {
+	const seen = new Set<string>();
+	const runningSessions: RunningCodingSessionRef[] = [];
+
+	function remember(
+		session: BrowserCodingSessionSummary,
+		fallbackRepositoryId: string,
+	) {
+		if (session.runStatus !== "running") {
+			return;
+		}
+		const repositoryId = session.repositoryId ?? fallbackRepositoryId;
+		const key = providerSessionRefKey(session);
+		if (seen.has(key)) {
+			return;
+		}
+		seen.add(key);
+		runningSessions.push({
+			providerId: session.providerId,
+			repositoryId,
+			sdkSessionId: session.sdkSessionId,
+		});
+	}
+
+	for (const [repositoryId, sessions] of Object.entries(
+		store.sessionsByRepository,
+	)) {
+		for (const session of sessions) {
+			remember(session, repositoryId);
+		}
+	}
+	for (const [repositoryId, search] of Object.entries(
+		store.searchByRepository,
+	)) {
+		for (const session of search.sessions) {
+			remember(session, repositoryId);
+		}
+	}
+	return runningSessions;
+}
+
 async function refreshOpenTabDetails(
 	store: CodingSessionRefreshStore,
 	fetchSessionDetail: FetchCodingSessionDetail,
@@ -229,8 +319,98 @@ function syncSessionDetail(
 
 	store.removeArchivedSession(session.providerId, session.sdkSessionId);
 	store.removeTrashedSession(session.providerId, session.sdkSessionId);
-	store.upsertSession(repositoryId, session);
+	if (!replaceLoadedSessionDetail(store, repositoryId, session)) {
+		store.upsertSession(repositoryId, session);
+	}
 	updateTabTitles(store, [session]);
+}
+
+function replaceLoadedSessionDetail(
+	store: Pick<
+		CodingSessionRefreshStore,
+		| "nextCursorByRepository"
+		| "searchByRepository"
+		| "sessionsByRepository"
+		| "setRepositorySearchResults"
+		| "setRepositorySessions"
+	>,
+	repositoryId: string,
+	session: BrowserCodingSessionSummary,
+): boolean {
+	const replacedRepositorySession = replaceRepositorySession(
+		store,
+		repositoryId,
+		session,
+	);
+	const replacedSearchSession = replaceRepositorySearchSession(
+		store,
+		repositoryId,
+		session,
+	);
+	return replacedRepositorySession || replacedSearchSession;
+}
+
+function replaceRepositorySession(
+	store: Pick<
+		CodingSessionRefreshStore,
+		"nextCursorByRepository" | "sessionsByRepository" | "setRepositorySessions"
+	>,
+	repositoryId: string,
+	session: BrowserCodingSessionSummary,
+): boolean {
+	const sessions = store.sessionsByRepository[repositoryId];
+	if (!sessions) {
+		return false;
+	}
+	let replaced = false;
+	const nextSessions = sessions.map((candidate) => {
+		if (providerSessionRefKey(candidate) !== providerSessionRefKey(session)) {
+			return candidate;
+		}
+		replaced = true;
+		return session;
+	});
+	if (!replaced) {
+		return false;
+	}
+	store.setRepositorySessions(
+		repositoryId,
+		sortCodingSessionsByLastActive(nextSessions),
+		store.nextCursorByRepository[repositoryId],
+	);
+	return true;
+}
+
+function replaceRepositorySearchSession(
+	store: Pick<
+		CodingSessionRefreshStore,
+		"searchByRepository" | "setRepositorySearchResults"
+	>,
+	repositoryId: string,
+	session: BrowserCodingSessionSummary,
+): boolean {
+	const search = store.searchByRepository[repositoryId];
+	if (!search) {
+		return false;
+	}
+	let replaced = false;
+	const sessions = search.sessions.map((candidate) => {
+		if (providerSessionRefKey(candidate) !== providerSessionRefKey(session)) {
+			return candidate;
+		}
+		replaced = true;
+		return session;
+	});
+	if (!replaced) {
+		return false;
+	}
+	store.setRepositorySearchResults(
+		repositoryId,
+		search.query,
+		sessions,
+		search.nextCursor,
+	);
+	return true;
 }
 
 function updateTabTitles(

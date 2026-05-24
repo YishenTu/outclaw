@@ -30,6 +30,7 @@ import {
 	readCodingSessionCachedEvents,
 	subscribeCodingSessionCachedEvents,
 } from "./coding-session-event-cache.ts";
+import { shouldHydrateCodingSessionEvents } from "./coding-session-hydration.ts";
 import { buildCodingSkillCommands } from "./coding-skill-commands.ts";
 import { useCodingStore } from "./coding-store.ts";
 
@@ -376,13 +377,25 @@ export function ActiveSessionPanel({
 		const syncEvents = () => {
 			setEvents(readCodingSessionCachedEvents(usageSessionKey));
 		};
-		syncEvents();
+		const cachedEvents = readCodingSessionCachedEvents(usageSessionKey);
+		setEvents(cachedEvents);
 		setStreamError(undefined);
 		let active = true;
 		const unsubscribe = subscribeCodingSessionCachedEvents(
 			usageSessionKey,
 			syncEvents,
 		);
+		if (
+			!shouldHydrateCodingSessionEvents({
+				cachedEventCount: cachedEvents.length,
+				runStatus: session.runStatus,
+			})
+		) {
+			return () => {
+				active = false;
+				unsubscribe();
+			};
+		}
 		void fetchCodingSession(session.providerId, session.sdkSessionId)
 			.then((detail) => {
 				if (!active || !detail.events) {
@@ -408,7 +421,12 @@ export function ActiveSessionPanel({
 			active = false;
 			unsubscribe();
 		};
-	}, [session.providerId, session.sdkSessionId, usageSessionKey]);
+	}, [
+		session.providerId,
+		session.runStatus,
+		session.sdkSessionId,
+		usageSessionKey,
+	]);
 
 	const onSend = useCallback(
 		async ({ text }: { text: string }): Promise<boolean> => {

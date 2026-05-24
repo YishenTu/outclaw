@@ -143,6 +143,230 @@ describe("coding session refresh", () => {
 		expect(state.openTabs[0]?.title).toBe("Renamed elsewhere");
 	});
 
+	test("running-only reconciliation refreshes only mutable session details from memory", async () => {
+		const detailRequests: Array<{ providerId: string; sdkSessionId: string }> =
+			[];
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: { providerId: "codex", sdkSessionId: "session-1" },
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-1",
+					repositoryId: "repo-a",
+					title: "Running title",
+				},
+				{
+					providerId: "codex",
+					sdkSessionId: "session-2",
+					repositoryId: "repo-a",
+					title: "Idle title",
+				},
+			],
+			sessionsByRepository: {
+				"repo-a": [
+					session({
+						sdkSessionId: "session-1",
+						title: "Running title",
+						runStatus: "running",
+					}),
+					session({
+						sdkSessionId: "session-2",
+						title: "Idle title",
+						runStatus: "idle",
+					}),
+				],
+			},
+			searchByRepository: {
+				"repo-a": {
+					query: "running",
+					sessions: [
+						session({
+							sdkSessionId: "session-1",
+							title: "Duplicate running search hit",
+							runStatus: "running",
+						}),
+					],
+				},
+			},
+		});
+
+		await refreshLoadedCodingSessionState({
+			mode: "running",
+			store: useCodingStore.getState(),
+			fetchSessionDetail: async (providerId, sdkSessionId) => {
+				detailRequests.push({ providerId, sdkSessionId });
+				return session({
+					providerId,
+					sdkSessionId,
+					title: "Finished title",
+					runStatus: "idle",
+					lastActive: 300,
+				});
+			},
+			fetchSessionPage: async () => {
+				throw new Error("running-only refresh should not reload pages");
+			},
+			warn: () => {},
+		});
+
+		expect(detailRequests).toEqual([
+			{ providerId: "codex", sdkSessionId: "session-1" },
+		]);
+		const state = useCodingStore.getState();
+		expect(state.sessionsByRepository["repo-a"]?.[0]).toMatchObject({
+			sdkSessionId: "session-1",
+			title: "Finished title",
+			runStatus: "idle",
+			lastActive: 300,
+		});
+		expect(state.sessionsByRepository["repo-a"]?.[1]).toMatchObject({
+			sdkSessionId: "session-2",
+			title: "Idle title",
+			runStatus: "idle",
+		});
+		expect(state.openTabs.map((tab) => tab.title)).toEqual([
+			"Finished title",
+			"Idle title",
+		]);
+	});
+
+	test("running-only reconciliation preserves the loaded session list order", async () => {
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: { providerId: "codex", sdkSessionId: "session-1" },
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-1",
+					repositoryId: "repo-a",
+					title: "Running title",
+				},
+				{
+					providerId: "codex",
+					sdkSessionId: "session-2",
+					repositoryId: "repo-a",
+					title: "Idle title",
+				},
+			],
+			sessionsByRepository: {
+				"repo-a": [
+					session({
+						sdkSessionId: "session-2",
+						title: "Idle title",
+						lastActive: 400,
+						runStatus: "idle",
+					}),
+					session({
+						sdkSessionId: "session-1",
+						title: "Running title",
+						runStatus: "running",
+					}),
+				],
+			},
+		});
+
+		await refreshLoadedCodingSessionState({
+			mode: "running",
+			store: useCodingStore.getState(),
+			fetchSessionDetail: async () =>
+				session({
+					sdkSessionId: "session-1",
+					title: "Finished title",
+					runStatus: "idle",
+					lastActive: 300,
+				}),
+			fetchSessionPage: async () => {
+				throw new Error("running-only refresh should not reload pages");
+			},
+			warn: () => {},
+		});
+
+		const sessions = useCodingStore.getState().sessionsByRepository["repo-a"];
+		expect(sessions?.map((entry) => entry.sdkSessionId)).toEqual([
+			"session-2",
+			"session-1",
+		]);
+		expect(sessions?.[1]).toMatchObject({
+			sdkSessionId: "session-1",
+			title: "Finished title",
+			runStatus: "idle",
+			lastActive: 300,
+		});
+	});
+
+	test("full reconciliation preserves last-active ordering with multiple open tabs", async () => {
+		useCodingStore.setState({
+			focusedRepositoryId: "repo-a",
+			focusedSession: { providerId: "codex", sdkSessionId: "session-1" },
+			openTabs: [
+				{
+					providerId: "codex",
+					sdkSessionId: "session-2",
+					repositoryId: "repo-a",
+					title: "Newest tab",
+				},
+				{
+					providerId: "codex",
+					sdkSessionId: "session-1",
+					repositoryId: "repo-a",
+					title: "Older tab",
+				},
+			],
+			sessionsByRepository: {
+				"repo-a": [
+					session({
+						sdkSessionId: "session-2",
+						title: "Newest",
+						lastActive: 400,
+					}),
+					session({
+						sdkSessionId: "session-1",
+						title: "Older",
+						lastActive: 100,
+					}),
+				],
+			},
+		});
+
+		await refreshLoadedCodingSessionState({
+			store: useCodingStore.getState(),
+			fetchSessionDetail: async (_providerId, sdkSessionId) =>
+				sdkSessionId === "session-2"
+					? session({
+							sdkSessionId: "session-2",
+							title: "Newest detail",
+							lastActive: 400,
+						})
+					: session({
+							sdkSessionId: "session-1",
+							title: "Older detail",
+							lastActive: 100,
+						}),
+			fetchSessionPage: async () => ({
+				sessions: [
+					session({
+						sdkSessionId: "session-2",
+						title: "Newest",
+						lastActive: 400,
+					}),
+					session({
+						sdkSessionId: "session-1",
+						title: "Older",
+						lastActive: 100,
+					}),
+				],
+			}),
+			warn: () => {},
+		});
+
+		expect(
+			useCodingStore
+				.getState()
+				.sessionsByRepository["repo-a"]?.map((entry) => entry.sdkSessionId),
+		).toEqual(["session-2", "session-1"]);
+	});
+
 	test("does not refresh archived pages during reconcile polling", async () => {
 		const requests: Array<Parameters<FetchCodingSessionPage>[0]> = [];
 		useCodingStore.getState().setArchivedSessions([], undefined);
