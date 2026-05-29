@@ -62,6 +62,7 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 				stderr: logFile,
 				stdin: "ignore",
 				env: { ...process.env },
+				detached: true,
 			});
 			child.unref();
 
@@ -105,9 +106,16 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 
 			if (result.status === "timeout") {
 				console.error(
-					`Warning: daemon (pid ${result.pid}) did not exit within 5s`,
+					`Warning: daemon (pid ${result.pid}) did not exit after SIGTERM and SIGKILL`,
 				);
 				process.exit(1);
+			}
+
+			if (result.status === "killed") {
+				console.log(
+					`Daemon force-stopped after graceful shutdown timed out (pid ${result.pid})`,
+				);
+				return;
 			}
 
 			console.log(`Daemon stopped (pid ${result.pid})`);
@@ -170,10 +178,9 @@ export function createDaemonCommands(options: DaemonCommandOptions) {
 			});
 		},
 
-		restart() {
-			return this.stop().then(() => {
-				void this.start();
-			});
+		async restart() {
+			await this.stop();
+			await this.start();
 		},
 	};
 }

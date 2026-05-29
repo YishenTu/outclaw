@@ -5,6 +5,7 @@ import type {
 	UsageInfo,
 	WorkspaceFileEntry,
 } from "../../../common/protocol.ts";
+import { CenterPanelBreadcrumb } from "../components/center/center-panel-breadcrumb.tsx";
 import { MessageInput } from "../components/chat/composer/message-input.tsx";
 import type { TranscriptItem } from "../components/transcript/transcript-items.ts";
 import { TranscriptSurface } from "../components/transcript/transcript-surface.tsx";
@@ -97,15 +98,7 @@ function HeaderBar({
 	return (
 		<div className="h-8 shrink-0 border-b border-dark-800 px-6">
 			<div className="flex h-full max-w-4xl items-center gap-4">
-				{(leading || title) && (
-					<div className="min-w-0 font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-						{leading && (
-							<span className="truncate text-parchment">{leading}</span>
-						)}
-						{leading && title && <span className="px-2 text-dark-700">/</span>}
-						{title && <span className="truncate">{title}</span>}
-					</div>
-				)}
+				<CenterPanelBreadcrumb leading={leading} title={title} />
 			</div>
 		</div>
 	);

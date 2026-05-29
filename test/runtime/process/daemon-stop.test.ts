@@ -90,6 +90,7 @@ describe("stopDaemon", () => {
 
 	test("keeps the PID file when the daemon does not exit before the timeout", async () => {
 		let removed = false;
+		const signals: Array<[number, NodeJS.Signals | 0]> = [];
 		const result = await stopDaemon(
 			{
 				read: () => 123,
@@ -99,13 +100,50 @@ describe("stopDaemon", () => {
 				isRunning: () => true,
 			},
 			{
-				kill: () => undefined,
+				kill: (pid, signal) => {
+					signals.push([pid, signal]);
+				},
 				waitForExit: async () => false,
 			},
 		);
 
 		expect(result).toEqual({ status: "timeout", pid: 123 });
 		expect(removed).toBe(false);
+		expect(signals).toEqual([
+			[123, "SIGTERM"],
+			[123, "SIGKILL"],
+		]);
+	});
+
+	test("force-kills and removes the PID file when graceful stop times out", async () => {
+		let removed = false;
+		const signals: Array<[number, NodeJS.Signals | 0]> = [];
+		let waits = 0;
+		const result = await stopDaemon(
+			{
+				read: () => 789,
+				remove: () => {
+					removed = true;
+				},
+				isRunning: () => true,
+			},
+			{
+				kill: (pid, signal) => {
+					signals.push([pid, signal]);
+				},
+				waitForExit: async () => {
+					waits += 1;
+					return waits === 2;
+				},
+			},
+		);
+
+		expect(result).toEqual({ status: "killed", pid: 789 });
+		expect(removed).toBe(true);
+		expect(signals).toEqual([
+			[789, "SIGTERM"],
+			[789, "SIGKILL"],
+		]);
 	});
 
 	test("removes the PID file after the daemon exits cleanly", async () => {

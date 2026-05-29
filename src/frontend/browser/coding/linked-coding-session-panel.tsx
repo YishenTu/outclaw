@@ -3,6 +3,7 @@ import type {
 	BrowserCodingRepositorySummary,
 	BrowserCodingSessionSummary,
 } from "../../../common/protocol.ts";
+import { CenterPanelBreadcrumb } from "../components/center/center-panel-breadcrumb.tsx";
 import { fetchCodingRepository, fetchCodingSession } from "../lib/api.ts";
 import { ActiveSessionPanel } from "./coding-session-view.tsx";
 
@@ -86,11 +87,7 @@ function LinkedCodingSessionShell({
 		<div className="flex h-full flex-col bg-dark-950">
 			<div className="h-8 shrink-0 border-b border-dark-800 px-6">
 				<div className="flex h-full max-w-4xl items-center gap-4">
-					<div className="min-w-0 font-mono-ui text-[11px] uppercase tracking-[0.16em] text-dark-500">
-						<span className="truncate text-parchment">Code</span>
-						<span className="px-2 text-dark-700">/</span>
-						<span className="truncate">{title}</span>
-					</div>
+					<CenterPanelBreadcrumb leading="Code" title={title} />
 				</div>
 			</div>
 			<div className="flex flex-1 items-center justify-center px-6">

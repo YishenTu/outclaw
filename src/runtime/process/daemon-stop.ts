@@ -15,13 +15,16 @@ interface WaitForProcessExitOptions {
 
 interface StopDaemonOptions {
 	kill?: SignalProcess;
-	waitForExit?: (pid: number) => Promise<boolean>;
+	waitForExit?: (pid: number, phase: "graceful" | "force") => Promise<boolean>;
 }
 
 export type StopDaemonResult =
 	| { status: "not_running"; pid?: number }
 	| { status: "stopped"; pid: number }
+	| { status: "killed"; pid: number }
 	| { status: "timeout"; pid: number };
+
+const FORCE_KILL_WAIT_MS = 1000;
 
 export async function waitForProcessExit(
 	pid: number,
@@ -65,12 +68,23 @@ export async function stopDaemon(
 
 	const waitForExit =
 		options.waitForExit ??
-		((targetPid: number) => waitForProcessExit(targetPid));
-	const exited = await waitForExit(pid);
-	if (!exited) {
-		return { status: "timeout", pid };
+		((targetPid: number, phase: "graceful" | "force") =>
+			waitForProcessExit(targetPid, {
+				kill,
+				timeoutMs: phase === "force" ? FORCE_KILL_WAIT_MS : undefined,
+			}));
+	const exited = await waitForExit(pid, "graceful");
+	if (exited) {
+		pidStore.remove();
+		return { status: "stopped", pid };
 	}
 
-	pidStore.remove();
-	return { status: "stopped", pid };
+	kill(pid, "SIGKILL");
+	const killed = await waitForExit(pid, "force");
+	if (killed) {
+		pidStore.remove();
+		return { status: "killed", pid };
+	}
+
+	return { status: "timeout", pid };
 }
