@@ -404,6 +404,7 @@ export function normalizeCodexJsonlEvents(
 						events.push({
 							type: "turn_aborted",
 							sessionId: options.sessionId,
+							...(timestamp !== undefined ? { timestamp } : {}),
 						});
 						break;
 					}
@@ -624,6 +625,13 @@ export function normalizeCodexJsonlEvents(
 
 		if (rowType === "event_msg") {
 			switch (payloadType) {
+				case "context_compacted": {
+					events.push({
+						type: "compacting_finished",
+						sessionId: options.sessionId,
+					});
+					break;
+				}
 				case "task_complete": {
 					recordJsonlDone(
 						events,

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { CodingSessionEvent } from "../../../src/common/protocol.ts";
 import { createCodingTranscriptItems } from "../../../src/frontend/browser/coding/coding-event-renderer.tsx";
 import { createChatTranscriptItems } from "../../../src/frontend/browser/components/transcript/chat-transcript-items.ts";
+import { createLiveAssistantStreamTranscriptItems } from "../../../src/frontend/browser/components/transcript/live-transcript-stream.ts";
 import { TranscriptItemList } from "../../../src/frontend/browser/components/transcript/transcript-item-list.tsx";
 import type { CodingSessionEventStreamItem } from "../../../src/frontend/browser/lib/api.ts";
 // @ts-expect-error react-dom is installed in the browser workspace.
@@ -21,6 +22,34 @@ function streamItem(
 }
 
 describe("shared browser transcript display", () => {
+	test("shared live stream module projects ordered assistant stream items", () => {
+		const items = createLiveAssistantStreamTranscriptItems({
+			isCompacting: false,
+			isStreaming: true,
+			streamingSegments: [
+				{
+					type: "thinking",
+					text: "inspect files",
+					blockId: "reasoning-1:summary:0",
+				},
+				{ type: "text", text: "I found it." },
+			],
+			streamingText: "I found it.",
+			streamingThinking: "inspect files",
+			thinkingStartedAt: 123,
+		});
+
+		expect(items.map((item) => item.kind)).toEqual([
+			"thinking",
+			"message",
+			"activity",
+		]);
+		expect(items.at(-1)).toMatchObject({
+			kind: "activity",
+			startedAt: 123,
+		});
+	});
+
 	test("chat and code mode project normal conversation output into shared transcript items", () => {
 		const chatItems = createChatTranscriptItems({
 			sessionKey: "agent-a:claude:sdk-chat",

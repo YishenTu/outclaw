@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	BrowserCodingRepositorySummary,
 	BrowserCodingSessionSummary,
@@ -21,8 +21,9 @@ import {
 import { useContextUsageStore } from "../stores/context-usage.ts";
 import type { CommandEntry } from "../stores/slash-commands.ts";
 import {
-	createCodingTranscriptItems,
+	type CodingTranscriptProjection,
 	isCodingTurnInFlight,
+	projectCodingTranscriptEvents,
 } from "./coding-event-renderer.tsx";
 import { CodingModelSelector } from "./coding-model-selector.tsx";
 import {
@@ -487,8 +488,16 @@ export function ActiveSessionPanel({
 	const turnInFlight = useMemo(() => isCodingTurnInFlight(events), [events]);
 	const isRunning =
 		turnInFlight || (events.length === 0 && session.runStatus === "running");
+	const transcriptProjectionRef = useRef<
+		CodingTranscriptProjection | undefined
+	>(undefined);
 	const transcriptItems = useMemo((): TranscriptItem[] => {
-		const items = createCodingTranscriptItems(events);
+		const projection = projectCodingTranscriptEvents(
+			transcriptProjectionRef.current,
+			events,
+		);
+		transcriptProjectionRef.current = projection;
+		const items = [...projection.items];
 		if (isRunning) {
 			items.push({
 				kind: "activity",

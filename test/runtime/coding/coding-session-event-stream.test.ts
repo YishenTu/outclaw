@@ -218,6 +218,81 @@ describe("openCodingSessionEventStream", () => {
 		}
 	});
 
+	test("uses provider timestamps as createdAt for hydrated history events", async () => {
+		const initialPromptAt = Date.parse("2026-05-29T01:00:00.000Z");
+		const workAt = Date.parse("2026-05-29T01:00:01.200Z");
+		const abortAt = Date.parse("2026-05-29T01:00:04.300Z");
+		const steerPromptAt = Date.parse("2026-05-29T01:00:04.500Z");
+		const finalTextAt = Date.parse("2026-05-29T01:00:06.000Z");
+		const doneAt = Date.parse("2026-05-29T01:00:06.200Z");
+		const iterator = openCodingSessionEventStream({
+			history: {
+				readCodingSessionEvents: async () => [
+					{
+						type: "user_prompt",
+						text: "initial prompt",
+						sessionId: "s1",
+						timestamp: initialPromptAt,
+					},
+					{
+						type: "thinking",
+						text: "checking",
+						sessionId: "s1",
+						timestamp: workAt,
+					},
+					{
+						type: "turn_aborted",
+						sessionId: "s1",
+						timestamp: abortAt,
+					},
+					{
+						type: "user_prompt",
+						text: "steer prompt",
+						sessionId: "s1",
+						timestamp: steerPromptAt,
+					},
+					{
+						type: "text",
+						text: "Final response",
+						sessionId: "s1",
+						timestamp: finalTextAt,
+					},
+					{
+						type: "done",
+						sessionId: "s1",
+						durationMs: 1700,
+						timestamp: doneAt,
+					},
+				],
+			},
+			providerId: "codex",
+			sdkSessionId: "s1",
+			follow: false,
+		})[Symbol.asyncIterator]();
+
+		const emitted = [
+			(await nextOrTimeout(iterator)).value,
+			(await nextOrTimeout(iterator)).value,
+			(await nextOrTimeout(iterator)).value,
+			(await nextOrTimeout(iterator)).value,
+			(await nextOrTimeout(iterator)).value,
+			(await nextOrTimeout(iterator)).value,
+		];
+
+		expect(emitted.map((event) => event?.createdAt)).toEqual([
+			initialPromptAt,
+			workAt,
+			abortAt,
+			steerPromptAt,
+			finalTextAt,
+			doneAt,
+		]);
+		expect(await iterator.next()).toEqual({
+			done: true,
+			value: undefined,
+		});
+	});
+
 	test("can hydrate history and live snapshot without following future events", async () => {
 		const liveEvents = new CodingSessionEventHub();
 		liveEvents.append({

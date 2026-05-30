@@ -4,7 +4,9 @@ import {
 	CodingEventView,
 	createCodingTranscriptItems,
 	isCodingTurnInFlight,
+	projectCodingTranscriptEvents,
 } from "../../../src/frontend/browser/coding/coding-event-renderer.tsx";
+import { TranscriptItemList } from "../../../src/frontend/browser/components/transcript/transcript-item-list.tsx";
 import type { CodingSessionEventStreamItem } from "../../../src/frontend/browser/lib/api.ts";
 // @ts-expect-error react-dom is installed in the browser workspace.
 import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules/react-dom/server.browser.js";
@@ -12,13 +14,14 @@ import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules
 function streamItem(
 	sequence: number,
 	event: unknown,
+	createdAt = sequence,
 ): CodingSessionEventStreamItem {
 	return {
 		providerId: "codex",
 		sdkSessionId: "session-1",
 		sequence,
 		event: event as CodingSessionEvent,
-		createdAt: sequence,
+		createdAt,
 	};
 }
 
@@ -200,21 +203,283 @@ describe("CodingEventView command grouping", () => {
 		expect(html).toContain("on it");
 	});
 
-	test("renders turn_aborted with the shared interrupt indicator", () => {
+	test("collapses interrupted turn work instead of showing a raw abort row", () => {
 		const events: CodingSessionEventStreamItem[] = [
-			streamItem(1, { type: "user_prompt", text: "fix the spinner" }),
+			streamItem(1, { type: "user_prompt", text: "fix the spinner" }, 1000),
 			streamItem(2, {
-				type: "turn_aborted",
+				type: "thinking",
+				text: "checking layout",
 				sessionId: "session-1",
+			}),
+			streamItem(
+				3,
+				{
+					type: "turn_aborted",
+					sessionId: "session-1",
+				},
+				2600,
+			),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(html).toContain("Works for 2s");
+		expect(html).toContain("checking layout");
+		expect(html).not.toContain("Request interrupted by user");
+		expect(html).not.toContain("&lt;turn_aborted&gt;");
+	});
+
+	test("collapses interrupted and steered work between prompts before the final response", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, { type: "user_prompt", text: "initial prompt" }, 1000),
+			streamItem(2, {
+				type: "thinking",
+				text: "initial thinking",
+				sessionId: "session-1",
+			}),
+			streamItem(3, {
+				type: "command_execution_started",
+				callId: "call-1",
+				command: "bun test",
+				sessionId: "session-1",
+			}),
+			streamItem(4, {
+				type: "compacting_started",
+				sessionId: "session-1",
+			}),
+			streamItem(5, {
+				type: "compacting_finished",
+				sessionId: "session-1",
+			}),
+			streamItem(
+				6,
+				{
+					type: "turn_aborted",
+					sessionId: "session-1",
+				},
+				2800,
+			),
+			streamItem(7, { type: "user_prompt", text: "steer prompt" }, 3000),
+			streamItem(8, {
+				type: "text",
+				text: "I will inspect first.",
+				sessionId: "session-1",
+			}),
+			streamItem(9, {
+				type: "command_execution_started",
+				callId: "call-2",
+				command: "bun lint",
+				sessionId: "session-1",
+			}),
+			streamItem(10, {
+				type: "command_execution_completed",
+				callId: "call-2",
+				exitCode: 0,
+				output: "lint passed",
+				sessionId: "session-1",
+			}),
+			streamItem(11, {
+				type: "text",
+				text: "Final response.",
+				sessionId: "session-1",
+			}),
+			streamItem(12, {
+				type: "done",
+				sessionId: "session-1",
+				durationMs: 1700,
+			}),
+		];
+
+		const items = createCodingTranscriptItems(events);
+
+		expect(items.map((item) => item.kind)).toEqual([
+			"message",
+			"tool",
+			"message",
+			"tool",
+			"message",
+		]);
+		const html = renderToStaticMarkup(<TranscriptItemList items={items} />);
+		const initialIndex = html.indexOf("initial prompt");
+		const firstWorkIndex = html.indexOf("Works for 2s");
+		const steerIndex = html.indexOf("steer prompt");
+		const secondWorkIndex = html.indexOf("Works for 2s", firstWorkIndex + 1);
+		const finalIndex = html.indexOf("Final response.");
+
+		expect(initialIndex).toBeGreaterThan(-1);
+		expect(firstWorkIndex).toBeGreaterThan(initialIndex);
+		expect(steerIndex).toBeGreaterThan(firstWorkIndex);
+		expect(secondWorkIndex).toBeGreaterThan(steerIndex);
+		expect(finalIndex).toBeGreaterThan(secondWorkIndex);
+		expect(html).toContain("initial thinking");
+		expect(html).toContain("bun test");
+		expect(html).toContain("~ context compacted ~");
+		expect(html).toContain("I will inspect first.");
+		expect(html).toContain("bun lint");
+		expect(html).toContain("lint passed");
+		expect(html).not.toContain("Request interrupted by user");
+		expect(html).not.toContain("Compacting...");
+	});
+
+	test("calculates interrupted replay work duration from provider timestamps", () => {
+		const initialPromptAt = Date.parse("2026-05-29T01:00:00.000Z");
+		const abortAt = Date.parse("2026-05-29T01:00:04.100Z");
+		const steerPromptAt = Date.parse("2026-05-29T01:00:04.500Z");
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(
+				1,
+				{
+					type: "user_prompt",
+					text: "initial prompt",
+					timestamp: initialPromptAt,
+				},
+				1,
+			),
+			streamItem(
+				2,
+				{
+					type: "thinking",
+					text: "initial thinking",
+					sessionId: "session-1",
+					timestamp: Date.parse("2026-05-29T01:00:01.200Z"),
+				},
+				2,
+			),
+			streamItem(
+				3,
+				{
+					type: "turn_aborted",
+					sessionId: "session-1",
+					timestamp: abortAt,
+				},
+				3,
+			),
+			streamItem(
+				4,
+				{
+					type: "user_prompt",
+					text: "steer prompt",
+					timestamp: steerPromptAt,
+				},
+				4,
+			),
+			streamItem(5, {
+				type: "text",
+				text: "Final response.",
+				sessionId: "session-1",
+			}),
+			streamItem(6, {
+				type: "done",
+				sessionId: "session-1",
+				durationMs: 1700,
 			}),
 		];
 
 		const html = renderToStaticMarkup(<CodingEventView events={events} />);
 
-		expect(html).toContain("Request interrupted by user");
-		expect(html).toContain("font-mono-ui");
-		expect(html).toContain("uppercase");
-		expect(html).not.toContain("&lt;turn_aborted&gt;");
+		expect(html).toContain("Works for 4s");
+		expect(html).toContain("Works for 2s");
+		expect(html).not.toContain("Works for 0s");
+	});
+
+	test("collapses prior work when a steer prompt arrives without an explicit abort event", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, { type: "user_prompt", text: "initial prompt" }, 1000),
+			streamItem(2, {
+				type: "thinking",
+				text: "initial thinking",
+				sessionId: "session-1",
+			}),
+			streamItem(3, { type: "user_prompt", text: "steer prompt" }, 2500),
+			streamItem(4, {
+				type: "text",
+				text: "Final response.",
+				sessionId: "session-1",
+			}),
+			streamItem(5, {
+				type: "done",
+				sessionId: "session-1",
+				durationMs: 1000,
+			}),
+		];
+
+		const items = createCodingTranscriptItems(events);
+
+		expect(items.map((item) => item.kind)).toEqual([
+			"message",
+			"tool",
+			"message",
+			"tool",
+			"message",
+		]);
+		const html = renderToStaticMarkup(<TranscriptItemList items={items} />);
+		expect(html).toContain("initial thinking");
+		expect(occurrences(html, "Works for")).toBe(2);
+	});
+
+	test("collapses live compaction when the compaction turn is interrupted", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, { type: "user_prompt", text: "/compact" }, 1000),
+			streamItem(2, {
+				type: "compacting_started",
+				sessionId: "session-1",
+			}),
+			streamItem(
+				3,
+				{
+					type: "turn_aborted",
+					sessionId: "session-1",
+				},
+				2300,
+			),
+		];
+
+		expect(
+			createCodingTranscriptItems(events).map((item) => item.kind),
+		).toEqual(["message", "tool"]);
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(html).toContain("Works for 1s");
+		expect(html).not.toContain("Request interrupted by user");
+	});
+
+	test("keeps provider errors as terminal turn boundaries before later prompts", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, { type: "user_prompt", text: "first" }, 1000),
+			streamItem(2, {
+				type: "command_execution_started",
+				callId: "call-1",
+				command: "bun test",
+				sessionId: "session-1",
+			}),
+			streamItem(
+				3,
+				{
+					type: "error",
+					message: "provider failed",
+					sessionId: "session-1",
+				},
+				2600,
+			),
+			streamItem(4, { type: "user_prompt", text: "second" }, 4000),
+		];
+
+		const items = createCodingTranscriptItems(events);
+
+		expect(items.map((item) => item.key)).toEqual([
+			"user-1",
+			"completed-work-3",
+			"error-3",
+			"user-4",
+		]);
+		const html = renderToStaticMarkup(<TranscriptItemList items={items} />);
+		const workIndex = html.indexOf("Works for 2s");
+		const errorIndex = html.indexOf("provider failed");
+		const secondPromptIndex = html.indexOf("second");
+
+		expect(workIndex).toBeGreaterThan(-1);
+		expect(errorIndex).toBeGreaterThan(workIndex);
+		expect(secondPromptIndex).toBeGreaterThan(errorIndex);
 	});
 
 	test("wraps a command in a collapsible details element with command in summary", () => {
@@ -321,6 +586,41 @@ describe("CodingEventView command grouping", () => {
 		expect(occurrences(html, "bun test")).toBe(2);
 		expect(html).toContain("running tests");
 		expect(html).not.toContain("Event: command_execution_output");
+	});
+
+	test("updates an existing transcript projection from appended code events", () => {
+		const firstEvents = [
+			streamItem(1, { type: "user_prompt", text: "run tests" }),
+			streamItem(2, {
+				type: "command_execution_started",
+				callId: "call-1",
+				command: "bun test",
+				sessionId: "session-1",
+			}),
+			streamItem(3, {
+				type: "command_execution_output",
+				callId: "call-1",
+				output: "first\n",
+				sessionId: "session-1",
+			}),
+		];
+		const first = projectCodingTranscriptEvents(undefined, firstEvents);
+		const second = projectCodingTranscriptEvents(first, [
+			...firstEvents,
+			streamItem(4, {
+				type: "command_execution_output",
+				callId: "call-1",
+				output: "second\n",
+				sessionId: "session-1",
+			}),
+		]);
+
+		expect(second.reusedPreviousProjection).toBe(true);
+		const html = renderToStaticMarkup(
+			<TranscriptItemList items={second.items} />,
+		);
+		expect(html).toContain("first");
+		expect(html).toContain("second");
 	});
 
 	test("hides scrollbars inside expanded tool bodies", () => {
@@ -741,6 +1041,49 @@ describe("CodingEventView command grouping", () => {
 		expect(html).not.toContain("inputTokens");
 	});
 
+	test("renders live compaction as the shared activity spinner", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, { type: "user_prompt", text: "/compact" }),
+			streamItem(2, {
+				type: "compacting_started",
+				sessionId: "session-1",
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(html).toContain("Compacting...");
+		expect(html).not.toContain("Event: compacting_started");
+		expect(html).not.toContain("compacting_started");
+	});
+
+	test("renders completed compaction as the shared compact indicator", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, { type: "user_prompt", text: "/compact" }),
+			streamItem(2, {
+				type: "compacting_started",
+				sessionId: "session-1",
+			}),
+			streamItem(3, {
+				type: "compacting_finished",
+				sessionId: "session-1",
+			}),
+			streamItem(4, {
+				type: "done",
+				sessionId: "session-1",
+				durationMs: 42,
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(html).toContain("~ context compacted ~");
+		expect(html).not.toContain("Compacting...");
+		expect(html).not.toContain("Event: compacting_finished");
+		expect(html).not.toContain("Works for");
+		expect(html).not.toContain("Copy final result");
+	});
+
 	test("renders a file change inside a collapsible details element", () => {
 		const events: CodingSessionEventStreamItem[] = [
 			streamItem(1, {
@@ -815,6 +1158,32 @@ describe("CodingEventView command grouping", () => {
 		expect(html).toContain("I will inspect first.");
 		expect(html).toContain("bun test");
 		expect(html).toContain("all tests passed");
+	});
+
+	test("keeps late tool completion state inside the completed-work disclosure", () => {
+		const events: CodingSessionEventStreamItem[] = [
+			streamItem(1, { type: "user_prompt", text: "fix it" }),
+			streamItem(2, {
+				type: "command_execution_started",
+				callId: "call-1",
+				command: "bun test",
+				sessionId: "s",
+			}),
+			streamItem(3, { type: "done", sessionId: "s", durationMs: 1200 }),
+			streamItem(4, {
+				type: "command_execution_completed",
+				callId: "call-1",
+				exitCode: 0,
+				output: "all tests passed",
+				sessionId: "s",
+			}),
+		];
+
+		const html = renderToStaticMarkup(<CodingEventView events={events} />);
+
+		expect(html).toContain("Works for 1s");
+		expect(html).toContain("all tests passed");
+		expect(html).not.toContain("running…");
 	});
 
 	test("keeps in-flight turn output expanded without a completed-work header", () => {

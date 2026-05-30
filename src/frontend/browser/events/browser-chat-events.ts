@@ -1,6 +1,6 @@
-import { isAssistantActionBoundaryEvent } from "../../../common/assistant-message-segments.ts";
 import type { ImageRef, ServerEvent } from "../../../common/protocol.ts";
 import { toObservedDisplayMessage } from "../chat/observed-prompt.ts";
+import { isLiveTranscriptActionBoundaryEvent } from "../components/transcript/live-transcript-stream.ts";
 import {
 	createBrowserSessionRef,
 	createSessionKey,
@@ -239,7 +239,7 @@ export function applyBrowserChatEvent(
 		case "tool_call_started":
 		case "tool_call_completed": {
 			const agentId = options.getActiveAgentId();
-			if (!agentId || !isAssistantActionBoundaryEvent(event)) {
+			if (!agentId || !isLiveTranscriptActionBoundaryEvent(event)) {
 				return true;
 			}
 			const sessionKey = routeActiveTurnEvent(

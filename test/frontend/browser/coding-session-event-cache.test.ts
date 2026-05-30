@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { CodingSessionEvent } from "../../../src/common/protocol.ts";
 import {
 	appendCodingSessionCachedEvent,
+	appendCodingSessionCachedEvents,
 	appendCodingSessionEventBatch,
 	type CodingSessionEventCache,
 	clearCodingSessionEventCache,
@@ -52,6 +53,34 @@ describe("coding session event cache", () => {
 			{ type: "text", text: "hi" },
 		]);
 		expect(notifications).toBe(2);
+
+		unsubscribe();
+	});
+
+	test("applies a websocket coding event batch with one subscriber notification", () => {
+		const key = codingSessionEventCacheKey({
+			providerId: "codex",
+			sdkSessionId: "session-1",
+		});
+		let notifications = 0;
+		const unsubscribe = subscribeCodingSessionCachedEvents(key, () => {
+			notifications += 1;
+		});
+
+		appendCodingSessionCachedEvents([
+			streamItem(1, { type: "user_prompt", text: "go" }),
+			streamItem(2, { type: "text", text: "hel" }),
+			streamItem(3, { type: "text", text: "lo" }),
+		]);
+
+		expect(
+			readCodingSessionCachedEvents(key).map((item) => item.event),
+		).toEqual([
+			{ type: "user_prompt", text: "go" },
+			{ type: "text", text: "hel" },
+			{ type: "text", text: "lo" },
+		]);
+		expect(notifications).toBe(1);
 
 		unsubscribe();
 	});

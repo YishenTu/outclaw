@@ -1458,6 +1458,29 @@ describe("CodexAdapter", () => {
 		]);
 	});
 
+	test("rehydrates Codex JSONL context_compacted events as compact boundaries", () => {
+		const jsonl = [
+			{
+				timestamp: "2026-05-29T07:54:28.251Z",
+				type: "event_msg",
+				payload: {
+					type: "context_compacted",
+				},
+			},
+		]
+			.map((row) => JSON.stringify(row))
+			.join("\n");
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-compact" }),
+		).toEqual([
+			{
+				type: "compacting_finished",
+				sessionId: "codex-thread-compact",
+			},
+		]);
+	});
+
 	test("rehydrates Codex JSONL reasoning summary entries as one thinking block", () => {
 		const jsonl = [
 			{
@@ -2197,8 +2220,11 @@ describe("CodexAdapter", () => {
 	});
 
 	test("normalizes JSONL turn_aborted markers as terminal abort events", () => {
+		const promptTimestamp = Date.parse("2026-05-29T01:00:00.000Z");
+		const abortTimestamp = Date.parse("2026-05-29T01:00:04.500Z");
 		const jsonl = [
 			{
+				timestamp: "2026-05-29T01:00:00.000Z",
 				type: "response_item",
 				payload: {
 					type: "message",
@@ -2207,6 +2233,7 @@ describe("CodexAdapter", () => {
 				},
 			},
 			{
+				timestamp: "2026-05-29T01:00:04.500Z",
 				type: "response_item",
 				payload: {
 					type: "message",
@@ -2234,10 +2261,12 @@ describe("CodexAdapter", () => {
 				type: "user_prompt",
 				text: "fix the spinner",
 				sessionId: "codex-thread-abort",
+				timestamp: promptTimestamp,
 			},
 			{
 				type: "turn_aborted",
 				sessionId: "codex-thread-abort",
+				timestamp: abortTimestamp,
 			},
 		]);
 	});

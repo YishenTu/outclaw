@@ -83,7 +83,10 @@ export async function* openCodingSessionEventStream(
 				sdkSessionId: params.sdkSessionId,
 				sequence: nextSequence,
 				event: seed.event,
-				createdAt: seed.createdAt ?? historyCreatedAt + nextSequence - 1,
+				createdAt:
+					seed.createdAt ??
+					readCodingSessionEventTimestamp(seed.event) ??
+					historyCreatedAt + nextSequence - 1,
 			});
 			nextSequence += 1;
 			if (stored.sequence > sinceSequence) {
@@ -225,6 +228,15 @@ function toStoredCodingSessionEvent(params: {
 		event: params.event,
 		createdAt: params.createdAt,
 	};
+}
+
+function readCodingSessionEventTimestamp(
+	event: CodingSessionEvent,
+): number | undefined {
+	const timestamp = "timestamp" in event ? event.timestamp : undefined;
+	return typeof timestamp === "number" && Number.isFinite(timestamp)
+		? timestamp
+		: undefined;
 }
 
 function countHistoryLiveEventOverlap(

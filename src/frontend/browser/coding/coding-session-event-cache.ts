@@ -53,14 +53,43 @@ export function subscribeCodingSessionCachedEvents(
 export function appendCodingSessionCachedEvent(
 	item: CodingSessionEventStreamItem,
 ): CodingSessionEventCacheEntry {
-	const key = codingSessionEventCacheKey(item);
+	return appendCodingSessionCachedEvents([
+		item,
+	])[0] as CodingSessionEventCacheEntry;
+}
+
+export function appendCodingSessionCachedEvents(
+	items: CodingSessionEventStreamItem[],
+): CodingSessionEventCacheEntry[] {
+	const entries: CodingSessionEventCacheEntry[] = [];
+	const batches = new Map<string, CodingSessionEventStreamItem[]>();
+	for (const item of items) {
+		const key = codingSessionEventCacheKey(item);
+		const batch = batches.get(key);
+		if (batch) {
+			batch.push(item);
+		} else {
+			batches.set(key, [item]);
+		}
+	}
+	for (const [key, batch] of batches) {
+		const entry = appendCodingSessionCachedEventBatch(key, batch);
+		entries.push(entry);
+	}
+	return entries;
+}
+
+function appendCodingSessionCachedEventBatch(
+	key: string,
+	items: CodingSessionEventStreamItem[],
+): CodingSessionEventCacheEntry {
 	const cached = codingSessionEventCache.get(key);
 	const currentEvents = readCodingSessionCachedEvents(key);
 	const entry = appendCodingSessionEventBatch(
 		codingSessionEventCache,
 		key,
 		currentEvents,
-		[item],
+		items,
 		{
 			liveSource: true,
 			sequenceCursor:
@@ -126,8 +155,10 @@ export function appendCodingSessionEventBatch(
 		if (shouldOmitFromCachedTranscript(item.event)) {
 			continue;
 		}
-		nextEvents =
-			nextEvents === baseEvents ? [...baseEvents, item] : [...nextEvents, item];
+		if (nextEvents === baseEvents) {
+			nextEvents = [...baseEvents];
+		}
+		nextEvents.push(item);
 	}
 
 	const entry = {

@@ -1,16 +1,11 @@
-import {
-	assistantMessageSegmentsFromAggregates,
-	hasAssistantMessageSegments,
-} from "../../../../common/assistant-message-segments.ts";
 import type {
 	AssistantMessageSegment,
 	DisplayChatMessage,
 	DisplayMessage,
 } from "../../../../common/protocol.ts";
-import { effectiveThinkingBlocks } from "../../../../common/thinking-blocks.ts";
+import { createLiveAssistantStreamTranscriptItems } from "./live-transcript-stream.ts";
 import { shouldShowAssistantUtilityBar } from "./message-render-projection.ts";
 import {
-	assistantTranscriptMessage,
 	displayMessageKey,
 	displayMessageRenderKey,
 	type TranscriptItem,
@@ -49,52 +44,17 @@ export function createChatTranscriptItems(
 		});
 	}
 
-	const thinkingBlocks = effectiveThinkingBlocks({
-		text: params.streamingThinking,
-		blocks: params.streamingThinkingBlocks,
-	});
-	const segments = hasAssistantMessageSegments(params.streamingSegments)
-		? (params.streamingSegments ?? [])
-		: assistantMessageSegmentsFromAggregates({
-				text: params.streamingText,
-				thinking: params.streamingThinking,
-				thinkingBlocks: params.streamingThinkingBlocks,
-			});
-	for (const [index, segment] of segments.entries()) {
-		if (segment.type === "thinking") {
-			items.push({
-				kind: "thinking",
-				key: `streaming-thinking-${index}`,
-				content: segment.text,
-				scrollKey: `thinking:${segment.text}`,
-			});
-			continue;
-		}
-		items.push({
-			kind: "message",
-			key: `streaming-text-${index}`,
-			message: assistantTranscriptMessage(segment.text),
-			scrollKey: `streaming-text:${segment.text}`,
-		});
-	}
-
-	if (params.isStreaming || params.isCompacting) {
-		const hasAssistantOutput =
-			thinkingBlocks.length > 0 || params.streamingText !== "";
-		items.push({
-			kind: "activity",
-			key: "streaming-activity",
-			startedAt: params.thinkingStartedAt,
+	items.push(
+		...createLiveAssistantStreamTranscriptItems({
 			isCompacting: params.isCompacting,
-			isWorking: hasAssistantOutput,
-			scrollKey: [
-				"activity",
-				params.isStreaming ? "streaming" : "idle",
-				params.isCompacting ? "compacting" : "not-compacting",
-				hasAssistantOutput ? "working" : "thinking",
-			].join(":"),
-		});
-	}
+			isStreaming: params.isStreaming,
+			streamingSegments: params.streamingSegments,
+			streamingText: params.streamingText,
+			streamingThinking: params.streamingThinking,
+			streamingThinkingBlocks: params.streamingThinkingBlocks,
+			thinkingStartedAt: params.thinkingStartedAt,
+		}),
+	);
 
 	for (const [index, message] of queuedPrompts.entries()) {
 		items.push({

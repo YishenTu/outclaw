@@ -10,33 +10,20 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
-	appendAssistantMessageSegment,
-	assistantTextSegment,
-	assistantThinkingSegment,
-	startsNewAssistantMessageSegment,
-} from "../../../common/assistant-message-segments.ts";
-import type { AssistantMessageSegment } from "../../../common/protocol.ts";
+	type LiveTranscriptEventLike,
+	type LiveTranscriptEventProjection,
+	type LiveTranscriptItemGroup,
+	LiveTranscriptStreamProjector,
+	projectLiveTranscriptStreamEvents,
+} from "../components/transcript/live-transcript-stream.ts";
 import { TranscriptItemList } from "../components/transcript/transcript-item-list.tsx";
-import {
-	assistantTranscriptMessage,
-	type TranscriptItem,
-} from "../components/transcript/transcript-items.ts";
+import type { TranscriptItem } from "../components/transcript/transcript-items.ts";
 import type { CodingSessionEventStreamItem } from "../lib/api.ts";
 
-type FacadeLike = { type?: string; [key: string]: unknown };
-
-interface CodingEventGroup {
-	key: string;
-	toItem: () => TranscriptItem;
-}
+type FacadeLike = LiveTranscriptEventLike;
 
 interface CodingEventViewProps {
 	events: CodingSessionEventStreamItem[];
-}
-
-interface TurnFooter {
-	durationMs?: number;
-	timestamp: number;
 }
 
 export function CodingEventView({ events }: CodingEventViewProps) {
@@ -74,333 +61,232 @@ export function isCodingTurnInFlight(
 export function createCodingTranscriptItems(
 	events: CodingSessionEventStreamItem[],
 ): TranscriptItem[] {
-	const groups: CodingEventGroup[] = [];
-	let currentAssistant:
-		| { key: string; segments: AssistantMessageSegment[] }
-		| undefined;
-	let currentTurnWorkStartIndex = 0;
-	const toolEntriesByCallId = new Map<string, ToolEntry>();
+	return projectCodingTranscriptEvents(undefined, events).items;
+}
 
-	const recordToolEvent = (
-		callId: string,
-		category: ToolCategory,
+export type CodingTranscriptProjection =
+	LiveTranscriptEventProjection<CodingSessionEventStreamItem>;
+
+export function projectCodingTranscriptEvents(
+	previous: CodingTranscriptProjection | undefined,
+	events: CodingSessionEventStreamItem[],
+): CodingTranscriptProjection {
+	return projectLiveTranscriptStreamEvents(
+		previous,
+		events,
+		createCodingTranscriptProjector,
+	);
+}
+
+function createCodingTranscriptProjector(): LiveTranscriptStreamProjector<CodingSessionEventStreamItem> {
+	const toolProjector = new CodingToolEventProjector();
+	return new LiveTranscriptStreamProjector<CodingSessionEventStreamItem>({
+		createCompletedWorkItem: ({ durationMs, items, sequence }) => ({
+			kind: "tool",
+			key: `completed-work-${sequence}`,
+			node: <CompletedWorkDisclosure durationMs={durationMs} items={items} />,
+			scrollKey: `completed-work:${sequence}:${durationMs ?? ""}`,
+		}),
+		renderActionEvent: (item, event) =>
+			toolProjector.renderActionEvent(item, event),
+		renderErrorEvent: renderCodingErrorEvent,
+		renderUnknownEvent: renderUnknownCodingEvent,
+	});
+}
+
+class CodingToolEventProjector {
+	private readonly toolEntriesByCallId = new Map<string, ToolEntry>();
+
+	renderActionEvent(
+		item: CodingSessionEventStreamItem,
 		event: FacadeLike,
-		isStart: boolean,
-		sequence: number,
-	): void => {
-		let entry = toolEntriesByCallId.get(callId);
-		const isNew = entry === undefined;
-		if (!entry) {
-			entry = { callId, category, sequence };
-			toolEntriesByCallId.set(callId, entry);
-		}
-		if (isStart) entry.started = event;
-		else entry.completed = event;
-		if (isNew) {
-			// Capture the entry once; later events for the same callId mutate it
-			// in place so the render closure picks up the final state.
-			const captured = entry;
-			groups.push({
-				key: `tool-${callId}`,
-				toItem: () => ({
-					kind: "tool",
-					key: `tool-${callId}`,
-					node: renderToolEntry(captured),
-					scrollKey: `tool:${callId}:${toolEntryScrollKey(captured)}`,
-				}),
-			});
-		}
-	};
-
-	const recordCommandOutput = (
-		callId: string,
-		output: string,
-		sequence: number,
-	): void => {
-		let entry = toolEntriesByCallId.get(callId);
-		const isNew = entry === undefined;
-		if (!entry) {
-			entry = { callId, category: "command", sequence };
-			toolEntriesByCallId.set(callId, entry);
-		}
-		entry.outputs = [...(entry.outputs ?? []), output];
-		if (isNew) {
-			const captured = entry;
-			groups.push({
-				key: `tool-${callId}`,
-				toItem: () => ({
-					kind: "tool",
-					key: `tool-${callId}`,
-					node: renderToolEntry(captured),
-					scrollKey: `tool:${callId}:${toolEntryScrollKey(captured)}`,
-				}),
-			});
-		}
-	};
-
-	const flushAssistant = (
-		footer?: TurnFooter,
-		showUtilityBar = false,
-	): boolean => {
-		if (!currentAssistant) {
-			return false;
-		}
-		let pushed = false;
-		const { key: baseKey, segments } = currentAssistant;
-		for (const [index, segment] of segments.entries()) {
-			if (segment.text === "") {
-				continue;
-			}
-			const key = segment.type === "thinking" ? `${baseKey}-${index}` : baseKey;
-			if (segment.type === "thinking") {
-				groups.push({
-					key,
-					toItem: () => ({
-						kind: "thinking",
-						key,
-						content: segment.text,
-						scrollKey: `thinking:${segment.text}`,
-					}),
-				});
-			} else {
-				groups.push({
-					key,
-					toItem: () => ({
-						kind: "message",
-						key,
-						message: assistantTranscriptMessage(segment.text, footer),
-						scrollKey: footer
-							? `assistant-final:${segment.text}:${footer.timestamp}:${footer.durationMs ?? ""}`
-							: `assistant:${segment.text}`,
-						showUtilityBar,
-					}),
-				});
-			}
-			pushed = true;
-		}
-		currentAssistant = undefined;
-		return pushed;
-	};
-
-	const recordAssistantSegment = (
-		segment: AssistantMessageSegment,
-		sequence: number,
-	): void => {
-		if (segment.text === "") {
-			return;
-		}
-		const currentSegment = currentAssistant?.segments.at(-1);
-		if (
-			currentSegment &&
-			startsNewAssistantMessageSegment(currentSegment, segment)
-		) {
-			flushAssistant();
-		}
-		if (!currentAssistant) {
-			currentAssistant = {
-				key: `${segment.type}-${sequence}`,
-				segments: [],
-			};
-		}
-		currentAssistant.segments = appendAssistantMessageSegment(
-			currentAssistant.segments,
-			segment,
-		);
-	};
-
-	const flushAssistantWorkBeforeDone = () => {
-		if (currentAssistant?.segments.at(-1)?.type === "thinking") {
-			flushAssistant();
-		}
-	};
-
-	for (const item of events) {
-		const event = item.event as FacadeLike;
-		const type = event.type;
-
-		if (type === "user_prompt") {
-			flushAssistant();
-			const text = typeof event.text === "string" ? event.text : "";
-			groups.push({
-				key: `user-${item.sequence}`,
-				toItem: () => ({
-					kind: "message",
-					key: `user-${item.sequence}`,
-					message: {
-						kind: "chat",
-						role: "user",
-						content: text,
-					},
-					scrollKey: `user:${text}`,
-				}),
-			});
-			currentTurnWorkStartIndex = groups.length;
-			continue;
-		}
-
-		if (type === "text") {
-			const text = typeof event.text === "string" ? event.text : "";
-			recordAssistantSegment(assistantTextSegment(text), item.sequence);
-			continue;
-		}
-
-		if (type === "thinking") {
-			const text = typeof event.text === "string" ? event.text : "";
-			const blockId =
-				typeof event.blockId === "string" ? event.blockId : undefined;
-			recordAssistantSegment(
-				assistantThinkingSegment(text, blockId),
-				item.sequence,
-			);
-			continue;
-		}
-
-		if (type === "done") {
-			flushAssistantWorkBeforeDone();
-			const durationMs =
-				typeof event.durationMs === "number" ? event.durationMs : undefined;
-			const footer: TurnFooter = {
-				timestamp: item.createdAt,
-			};
-			const workGroups = groups.slice(currentTurnWorkStartIndex);
-			if (workGroups.length > 0 || durationMs !== undefined) {
-				groups.splice(currentTurnWorkStartIndex, workGroups.length, {
-					key: `completed-work-${item.sequence}`,
-					toItem: () => ({
-						kind: "tool",
-						key: `completed-work-${item.sequence}`,
-						node: (
-							<CompletedWorkDisclosure
-								durationMs={durationMs}
-								items={workGroups.map((group) => group.toItem())}
-							/>
-						),
-						scrollKey: `completed-work:${item.sequence}:${durationMs ?? ""}`,
-					}),
-				});
-			}
-			if (!flushAssistant(footer, true)) {
-				groups.push({
-					key: `done-${item.sequence}`,
-					toItem: () => ({
-						kind: "message",
-						key: `done-${item.sequence}`,
-						message: assistantTranscriptMessage("", footer),
-						scrollKey: `assistant-final:${footer.timestamp}:${durationMs ?? ""}`,
-						showUtilityBar: true,
-					}),
-				});
-			}
-			currentTurnWorkStartIndex = groups.length;
-			continue;
-		}
-
-		if (type === "turn_aborted") {
-			flushAssistant();
-			groups.push({
-				key: `turn-aborted-${item.sequence}`,
-				toItem: () => ({
-					kind: "message",
-					key: `turn-aborted-${item.sequence}`,
-					message: {
-						kind: "system",
-						event: "status",
-						text: "Request interrupted by user",
-					},
-				}),
-			});
-			currentTurnWorkStartIndex = groups.length;
-			continue;
-		}
-
-		if (type === "usage_updated" || type === "image") {
-			continue;
-		}
-
-		flushAssistant();
-
-		if (type === "command_execution_output") {
-			const callId =
-				typeof event.callId === "string" ? event.callId : String(item.sequence);
+	): LiveTranscriptItemGroup | false | undefined {
+		if (event.type === "command_execution_output") {
+			const callId = readCallId(event, item.sequence);
 			const output = typeof event.output === "string" ? event.output : "";
-			recordCommandOutput(callId, output, item.sequence);
-			continue;
+			return this.recordCommandOutput(callId, output, item.sequence);
 		}
 
-		const toolCategory = toolCategoryFor(type);
+		const toolCategory = toolCategoryFor(event.type);
 		if (toolCategory) {
-			const callId =
-				typeof event.callId === "string" ? event.callId : String(item.sequence);
-			recordToolEvent(
-				callId,
+			return this.recordToolEvent(
+				readCallId(event, item.sequence),
 				toolCategory.category,
 				event,
 				toolCategory.isStart,
 				item.sequence,
 			);
-			continue;
 		}
 
-		if (type === "file_change_applied") {
-			groups.push({
+		if (event.type === "file_change_applied") {
+			return {
 				key: `patch-${item.sequence}`,
 				toItem: () => ({
 					kind: "tool",
 					key: `patch-${item.sequence}`,
 					node: renderFileChange(event),
-					scrollKey: `patch-${item.sequence}:${JSON.stringify(event)}`,
+					scrollKey: `patch-${item.sequence}:${compactEventScrollKey(event)}`,
 				}),
-			});
-			continue;
+			};
 		}
 
-		if (type === "session_initialized") {
-			continue;
-		}
-
-		if (type === "error") {
-			const message =
-				typeof event.message === "string" ? event.message : "Unknown error";
-			groups.push({
-				key: `error-${item.sequence}`,
-				toItem: () => ({
-					kind: "tool",
-					key: `error-${item.sequence}`,
-					node: (
-						<div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
-							{message}
-						</div>
-					),
-					scrollKey: `error:${message}`,
-				}),
-			});
-			continue;
-		}
-
-		// Fallback for unrecognized event types: render JSON.
-		groups.push({
-			key: `raw-${item.sequence}`,
-			toItem: () => ({
-				kind: "tool",
-				key: `raw-${item.sequence}`,
-				node: (
-					<details className="rounded-md border border-dark-800 bg-dark-900/20 px-3 py-2 text-xs text-dark-400">
-						<summary className="cursor-pointer text-dark-300">
-							Event: {type ?? "unknown"}
-						</summary>
-						<pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[11px] leading-4 text-dark-400">
-							{JSON.stringify(event, null, 2)}
-						</pre>
-					</details>
-				),
-				scrollKey: `raw:${JSON.stringify(event)}`,
-			}),
-		});
+		return undefined;
 	}
 
-	flushAssistant();
+	private recordToolEvent(
+		callId: string,
+		category: ToolCategory,
+		event: FacadeLike,
+		isStart: boolean,
+		sequence: number,
+	): LiveTranscriptItemGroup | false {
+		const { entry, isNew } = this.readOrCreateToolEntry(
+			callId,
+			category,
+			sequence,
+		);
+		if (isStart) entry.started = event;
+		else entry.completed = event;
+		entry.version += 1;
+		return isNew ? (entry.group as LiveTranscriptItemGroup) : false;
+	}
 
-	return groups.map((group) => group.toItem());
+	private recordCommandOutput(
+		callId: string,
+		output: string,
+		sequence: number,
+	): LiveTranscriptItemGroup | false {
+		const { entry, isNew } = this.readOrCreateToolEntry(
+			callId,
+			"command",
+			sequence,
+		);
+		entry.output = `${entry.output ?? ""}${output}`;
+		entry.version += 1;
+		return isNew ? (entry.group as LiveTranscriptItemGroup) : false;
+	}
+
+	private readOrCreateToolEntry(
+		callId: string,
+		category: ToolCategory,
+		sequence: number,
+	): { entry: ToolEntry; isNew: boolean } {
+		let entry = this.toolEntriesByCallId.get(callId);
+		if (entry) {
+			return { entry, isNew: false };
+		}
+		entry = { callId, category, sequence, version: 0 };
+		entry.group = {
+			key: `tool-${callId}`,
+			toItem: () => ({
+				kind: "tool",
+				key: `tool-${callId}`,
+				node: renderToolEntry(entry),
+				scrollKey: `tool:${callId}:${toolEntryScrollKey(entry)}`,
+			}),
+		};
+		this.toolEntriesByCallId.set(callId, entry);
+		return { entry, isNew: true };
+	}
+}
+
+function renderCodingErrorEvent(
+	item: CodingSessionEventStreamItem,
+	event: FacadeLike,
+): LiveTranscriptItemGroup {
+	const message =
+		typeof event.message === "string" ? event.message : "Unknown error";
+	return {
+		key: `error-${item.sequence}`,
+		toItem: () => ({
+			kind: "tool",
+			key: `error-${item.sequence}`,
+			node: (
+				<div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+					{message}
+				</div>
+			),
+			scrollKey: `error:${message}`,
+		}),
+	};
+}
+
+function renderUnknownCodingEvent(
+	item: CodingSessionEventStreamItem,
+	event: FacadeLike,
+): LiveTranscriptItemGroup {
+	const type = event.type;
+	return {
+		key: `raw-${item.sequence}`,
+		toItem: () => ({
+			kind: "tool",
+			key: `raw-${item.sequence}`,
+			node: (
+				<details className="rounded-md border border-dark-800 bg-dark-900/20 px-3 py-2 text-xs text-dark-400">
+					<summary className="cursor-pointer text-dark-300">
+						Event: {type ?? "unknown"}
+					</summary>
+					<pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[11px] leading-4 text-dark-400">
+						{JSON.stringify(event, null, 2)}
+					</pre>
+				</details>
+			),
+			scrollKey: `raw:${compactEventScrollKey(event)}`,
+		}),
+	};
+}
+
+function readCallId(event: FacadeLike, fallback: number): string {
+	return typeof event.callId === "string" ? event.callId : String(fallback);
+}
+
+function compactEventScrollKey(event: FacadeLike | undefined): string {
+	if (!event) {
+		return "";
+	}
+	const compact: Record<string, unknown> = {};
+	for (const key of [
+		"type",
+		"callId",
+		"command",
+		"exitCode",
+		"status",
+		"toolKind",
+		"query",
+		"queries",
+		"sessionId",
+	]) {
+		const value = event[key];
+		if (value !== undefined) {
+			compact[key] = value;
+		}
+	}
+	if (typeof event.output === "string") {
+		compact.outputLength = event.output.length;
+	}
+	const details = readToolDetails(event.details);
+	if (details.length > 0) {
+		compact.details = details.map((detail) => ({
+			label: detail.label,
+			valueLength: detail.value.length,
+			valuePrefix: detail.value.slice(0, 64),
+		}));
+	}
+	if (Array.isArray(event.changes)) {
+		compact.changes = event.changes.map((change) => {
+			const record =
+				change && typeof change === "object"
+					? (change as Record<string, unknown>)
+					: {};
+			const diff = typeof record.diff === "string" ? record.diff : "";
+			return {
+				kind: record.kind,
+				path: record.path,
+				diffLength: diff.length,
+			};
+		});
+	}
+	return JSON.stringify(compact);
 }
 
 const COMMAND_OUTPUT_MAX_LINES = 20;
@@ -413,15 +299,18 @@ interface ToolEntry {
 	category: ToolCategory;
 	started?: FacadeLike;
 	completed?: FacadeLike;
-	outputs?: string[];
+	group?: LiveTranscriptItemGroup;
+	output?: string;
 	sequence: number;
+	version: number;
 }
 
 function toolEntryScrollKey(entry: ToolEntry): string {
 	return JSON.stringify({
-		completed: entry.completed,
-		outputs: entry.outputs,
-		started: entry.started,
+		completed: compactEventScrollKey(entry.completed),
+		outputLength: entry.output?.length ?? 0,
+		started: compactEventScrollKey(entry.started),
+		version: entry.version,
 	});
 }
 
@@ -662,7 +551,7 @@ function renderCommand(entry: ToolEntry): React.ReactNode {
 		(entry.completed?.command as string | undefined) ??
 		"<unknown command>";
 	const exitCode = entry.completed?.exitCode as number | undefined;
-	const streamedOutput = entry.outputs?.join("") ?? "";
+	const streamedOutput = entry.output ?? "";
 	const output =
 		typeof entry.completed?.output === "string"
 			? (entry.completed?.output as string)
@@ -1274,11 +1163,11 @@ function renderCommandTranscript(
 			</div>
 		);
 	}
-	const lines = output.split("\n");
-	const truncated = lines.length > COMMAND_OUTPUT_MAX_LINES;
-	const visible = withStableKeys(
-		truncated ? lines.slice(0, COMMAND_OUTPUT_MAX_LINES) : lines,
+	const { lines, truncated } = readCommandOutputPreview(
+		output,
+		COMMAND_OUTPUT_MAX_LINES,
 	);
+	const visible = withStableKeys(lines);
 	return (
 		<div className="scrollbar-none max-h-72 overflow-auto">
 			<div className="whitespace-pre-wrap break-words">{prompt}</div>
@@ -1288,12 +1177,35 @@ function renderCommandTranscript(
 				</div>
 			))}
 			{truncated && (
-				<div className="mt-1 italic text-dark-500">
-					… {lines.length - COMMAND_OUTPUT_MAX_LINES} more lines
-				</div>
+				<div className="mt-1 italic text-dark-500">… more output</div>
 			)}
 		</div>
 	);
+}
+
+function readCommandOutputPreview(
+	output: string,
+	maxLines: number,
+): { lines: string[]; truncated: boolean } {
+	const lines: string[] = [];
+	let lineStart = 0;
+	for (let index = 0; index < output.length; index += 1) {
+		if (output.charCodeAt(index) !== 10) {
+			continue;
+		}
+		lines.push(output.slice(lineStart, index));
+		lineStart = index + 1;
+		if (lines.length === maxLines) {
+			return {
+				lines,
+				truncated: lineStart < output.length,
+			};
+		}
+	}
+	if (lines.length < maxLines) {
+		lines.push(output.slice(lineStart));
+	}
+	return { lines, truncated: false };
 }
 
 interface FileChangeEntry {

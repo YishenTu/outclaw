@@ -1415,6 +1415,7 @@ export interface CodingUserPromptEvent {
 export interface TurnAbortedEvent {
 	type: "turn_aborted";
 	sessionId?: string;
+	timestamp?: number;
 }
 
 export type CodingSessionEvent =
