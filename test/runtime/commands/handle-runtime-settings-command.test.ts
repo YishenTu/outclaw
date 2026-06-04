@@ -190,6 +190,37 @@ describe("handleRuntimeSettingsCommand", () => {
 			});
 		});
 
+		test("accepts provider-local model ids that contain slashes", async () => {
+			let selection:
+				| {
+						model: string;
+						providerId: string;
+				  }
+				| undefined;
+			const { run } = setup({
+				modelProviderResolver: createModelProviderResolver([
+					{
+						providerId: "pi",
+						listModels: async () => [
+							providerModel("anthropic/claude-sonnet-4-5"),
+						],
+					},
+				]),
+				selectProviderModel: (nextSelection) => {
+					selection = nextSelection;
+				},
+			});
+
+			await expect(run("/model anthropic/claude-sonnet-4-5")).resolves.toBe(
+				true,
+			);
+
+			expect(selection).toEqual({
+				providerId: "pi",
+				model: "anthropic/claude-sonnet-4-5",
+			});
+		});
+
 		test("broadcasts refreshed runtime status with recalculated usage after a catalog model switch", async () => {
 			const { observer, run, state } = setup({
 				modelProviderResolver: catalogResolver(),

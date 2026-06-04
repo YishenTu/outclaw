@@ -126,11 +126,18 @@ describe("createBrowserApi", () => {
 			title: "Codex session",
 			model: "gpt-5.5",
 		});
+		store.upsert({
+			providerId: "pi",
+			sdkSessionId: "same-sdk-id",
+			title: "Pi session",
+			model: "anthropic/claude-sonnet-4-5",
+		});
 		store.setActiveSessionId("claude", "same-sdk-id");
 		store.setActiveSessionId("codex", "same-sdk-id");
+		store.setActiveSessionId("pi", "same-sdk-id");
 		store.setBlankChatModelSelection({
-			providerId: "codex",
-			model: "gpt-5.5",
+			providerId: "pi",
+			model: "anthropic/claude-sonnet-4-5",
 			effort: "medium",
 		});
 
@@ -152,17 +159,17 @@ describe("createBrowserApi", () => {
 
 		expect(api.getAgentActiveSession("agent-railly")).toEqual({
 			activeSession: {
-				providerId: "codex",
+				providerId: "pi",
 				sdkSessionId: "same-sdk-id",
 			},
 			blankSelection: {
-				providerId: "codex",
-				model: "gpt-5.5",
+				providerId: "pi",
+				model: "anthropic/claude-sonnet-4-5",
 				effort: "medium",
 			},
 		});
 		expect(api.listAgents().agents[0]?.activeSession).toEqual({
-			providerId: "codex",
+			providerId: "pi",
 			sdkSessionId: "same-sdk-id",
 		});
 		expect(api.listAgents().agents[0]?.sessions).toEqual(
@@ -177,6 +184,11 @@ describe("createBrowserApi", () => {
 					sdkSessionId: "same-sdk-id",
 					title: "Codex session",
 				}),
+				expect.objectContaining({
+					providerId: "pi",
+					sdkSessionId: "same-sdk-id",
+					title: "Pi session",
+				}),
 			]),
 		);
 		await expect(
@@ -185,6 +197,7 @@ describe("createBrowserApi", () => {
 			sessions: expect.arrayContaining([
 				expect.objectContaining({ providerId: "claude" }),
 				expect.objectContaining({ providerId: "codex" }),
+				expect.objectContaining({ providerId: "pi" }),
 			]),
 		});
 
@@ -256,6 +269,24 @@ describe("createBrowserApi", () => {
 								];
 							},
 						},
+						{
+							providerId: "pi",
+							displayName: "Pi",
+							async listModels() {
+								return [
+									{
+										id: "anthropic/claude-sonnet-4-5",
+										model: "claude-sonnet-4-5",
+										displayName: "Claude Sonnet 4.5",
+										description: "Pi model",
+										isDefault: false,
+										defaultReasoningEffort: "medium",
+										supportedReasoningEfforts: ["low", "medium", "high"],
+										serviceTiers: [],
+									},
+								];
+							},
+						},
 					],
 				],
 			]),
@@ -283,6 +314,11 @@ describe("createBrowserApi", () => {
 							description: "Fast",
 						},
 					],
+				}),
+				expect.objectContaining({
+					providerId: "pi",
+					providerDisplayName: "Pi",
+					model: "claude-sonnet-4-5",
 				}),
 			],
 		});
@@ -567,10 +603,10 @@ describe("createBrowserApi", () => {
 		const links = new ChatCodingLinkStore(dbPath);
 
 		chatStore.upsert({
-			providerId: "claude",
+			providerId: "pi",
 			sdkSessionId: "chat-session",
 			title: "Build the tool",
-			model: "opus",
+			model: "anthropic/claude-sonnet-4-5",
 			tag: "chat",
 			timestamp: 100,
 		});
@@ -616,7 +652,7 @@ describe("createBrowserApi", () => {
 
 		api.linkChatCodingSession({
 			chatAgentId: "agent-railly",
-			chatProviderId: "claude",
+			chatProviderId: "pi",
 			chatSdkSessionId: "chat-session",
 			codingProviderId: "codex",
 			codingSdkSessionId: "code-1",
@@ -624,7 +660,7 @@ describe("createBrowserApi", () => {
 		});
 		api.linkChatCodingSession({
 			chatAgentId: "agent-railly",
-			chatProviderId: "claude",
+			chatProviderId: "pi",
 			chatSdkSessionId: "chat-session",
 			codingProviderId: "codex",
 			codingSdkSessionId: "code-2",
@@ -633,7 +669,7 @@ describe("createBrowserApi", () => {
 
 		const result = await api.listChatCodingSessions({
 			agentId: "agent-railly",
-			providerId: "claude",
+			providerId: "pi",
 			sdkSessionId: "chat-session",
 		});
 		expect(result.sessions.map((session) => session.sdkSessionId)).toEqual([

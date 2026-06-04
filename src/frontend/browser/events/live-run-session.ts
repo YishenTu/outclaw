@@ -91,8 +91,7 @@ export function routeLiveRunSessionKey(params: {
 }): string {
 	const observedSessionKey = resolveObservedSessionKey(params);
 	if (observedSessionKey) {
-		params.router.pin(observedSessionKey);
-		return observedSessionKey;
+		return params.router.route(observedSessionKey);
 	}
 
 	return params.router.route(params.fallbackSessionKey);

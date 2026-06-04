@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type {
 	Facade,
 	FacadeEvent,
+	PromptProvider,
 	RunParams,
 } from "../../../src/common/protocol.ts";
 import { runFacadePrompt } from "../../../src/runtime/application/prompt-execution/facade-runner.ts";
@@ -21,6 +22,21 @@ function createFacade(
 	events: FacadeEvent[],
 	onRun: (params: RunParams) => void,
 ): Facade {
+	return {
+		providerId: "mock",
+		async *run(params) {
+			onRun(params);
+			for (const event of events) {
+				yield event;
+			}
+		},
+	};
+}
+
+function createPromptProvider(
+	events: FacadeEvent[],
+	onRun: (params: RunParams) => void,
+): PromptProvider {
 	return {
 		providerId: "mock",
 		async *run(params) {
@@ -84,6 +100,7 @@ describe("runFacadePrompt", () => {
 			},
 			abortController: expect.any(AbortController),
 			cwd: "/workspace/project",
+			resourceHomeDir: promptHomeDir,
 			model: "claude-opus",
 			effort: "medium",
 			sessionId: "oc-session",
@@ -125,5 +142,22 @@ describe("runFacadePrompt", () => {
 		expect(capturedParams[0]?.resume).toBe("resume-session");
 		expect(capturedParams[0]?.sessionId).toBeUndefined();
 		expect(capturedParams[0]?.sessionEnv).toBeUndefined();
+	});
+
+	test("accepts a prompt provider without catalog or history roles", async () => {
+		const capturedParams: RunParams[] = [];
+
+		await runFacadePrompt({
+			emit: () => {},
+			facade: createPromptProvider(
+				[{ type: "done", sessionId: "prompt-session", durationMs: 1 }],
+				(params) => capturedParams.push(params),
+			),
+			ocSessionId: "oc-session",
+			prompt: "Run through the prompt provider role",
+		});
+
+		expect(capturedParams).toHaveLength(1);
+		expect(capturedParams[0]?.sessionId).toBe("oc-session");
 	});
 });

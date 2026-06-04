@@ -12,6 +12,7 @@ import {
 	resolveCurrentEffort,
 	resolveFastServiceTier,
 } from "../../../src/frontend/browser/components/chat/model-selector.tsx";
+import { SELECTOR_DROPDOWN_MENU_CLASS_NAME } from "../../../src/frontend/browser/components/chat/model-selector-controls.tsx";
 import { FileTree } from "../../../src/frontend/browser/components/right-panel/file-tree.tsx";
 import { GitCommitHistory } from "../../../src/frontend/browser/components/right-panel/git/git-commit-history.tsx";
 // @ts-expect-error react-dom is installed in the browser workspace.
@@ -118,6 +119,12 @@ describe("browser component helpers", () => {
 		expect(menuHtml).toContain("&gt;beta");
 		expect(menuHtml).toContain("bg-dark-800 text-dark-100");
 		expect(menuHtml).toContain("text-dark-300 hover:bg-dark-800/70");
+	});
+
+	test("constrains selector dropdown menus to a scrollable fixed height", () => {
+		expect(SELECTOR_DROPDOWN_MENU_CLASS_NAME).toContain("max-h-[18rem]");
+		expect(SELECTOR_DROPDOWN_MENU_CLASS_NAME).toContain("overflow-y-auto");
+		expect(SELECTOR_DROPDOWN_MENU_CLASS_NAME).toContain("overflow-x-hidden");
 	});
 
 	test("renders the Pierre file tree host for browser tree entries", () => {

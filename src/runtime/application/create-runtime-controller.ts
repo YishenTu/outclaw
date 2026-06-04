@@ -1,4 +1,5 @@
 import type {
+	ChatHistoryReader,
 	Facade,
 	FrontendNotice,
 	HeartbeatResult,
@@ -25,6 +26,10 @@ import { RuntimeController } from "./runtime-controller.ts";
 import { RuntimeCronBroadcaster } from "./runtime-cron-broadcaster.ts";
 import type { SessionService } from "./session-service.ts";
 import type { RuntimeState } from "./state/runtime-state.ts";
+
+export interface ChatHistoryReaderResolver {
+	getHistoryReader(providerId: string): ChatHistoryReader;
+}
 
 interface CreateRuntimeControllerOptions {
 	agentId?: string;
@@ -54,6 +59,7 @@ interface CreateRuntimeControllerOptions {
 	 * back to a single-facade resolver bound to `facade`.
 	 */
 	providers?: PromptProviderResolver;
+	historyReaders?: ChatHistoryReaderResolver;
 	modelProviderResolver?: ModelProviderResolver;
 	getFrontendNotice?: () => FrontendNotice | undefined;
 	listSkills?: () => Promise<SkillInfo[]>;
@@ -75,6 +81,8 @@ export function createRuntimeController(
 	const streamingState = new StreamingStateStore();
 	const providersForRunner =
 		options.providers ?? singleFacadeResolver(options.facade);
+	const historyReaders =
+		options.historyReaders ?? singleHistoryReaderResolver(options.facade);
 	const modelProviderResolver =
 		options.modelProviderResolver ??
 		staticModelProviderResolver(options.facade.providerId);
@@ -85,7 +93,7 @@ export function createRuntimeController(
 		facade: options.facade,
 		resolveFacadeForProvider: (providerId) => {
 			try {
-				return providersForRunner.getFacade(providerId);
+				return historyReaders.getHistoryReader(providerId);
 			} catch {
 				return undefined;
 			}
@@ -104,7 +112,7 @@ export function createRuntimeController(
 				return undefined;
 			}
 			try {
-				return providersForRunner.getFacade(resolvedProviderId);
+				return historyReaders.getHistoryReader(resolvedProviderId);
 			} catch {
 				return undefined;
 			}
@@ -176,8 +184,8 @@ export function createRuntimeController(
 		// primary facade — a completed Codex chat run reads its transcript
 		// through the Codex adapter, never through Claude.
 		readTranscript: (sessionId, context) => {
-			const facade = providersForRunner.getFacade(context.providerId);
-			return facade.readTranscript?.(sessionId);
+			const historyReader = historyReaders.getHistoryReader(context.providerId);
+			return historyReader.readTranscript?.(sessionId);
 		},
 		sessions: options.sessions,
 		state: options.state,
@@ -228,4 +236,14 @@ export function createRuntimeController(
 	});
 	getStatusEvent = () => controller.getStatusEvent();
 	return controller;
+}
+
+function singleHistoryReaderResolver(
+	historyReader: ChatHistoryReader,
+): ChatHistoryReaderResolver {
+	return {
+		getHistoryReader(_providerId: string): ChatHistoryReader {
+			return historyReader;
+		},
+	};
 }

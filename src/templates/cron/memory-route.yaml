@@ -1,6 +1,6 @@
 name: memory-route
 schedule: "17 5 * * *"
-model: opus
+model: openai-codex/gpt-5.5
 effort: high
 enabled: true
 prompt: |

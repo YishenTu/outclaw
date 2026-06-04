@@ -45,13 +45,15 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 				"Cron job requires an explicit `model` field — the runtime cannot infer the provider without it.",
 			);
 		}
-		const providerId =
-			await options.modelProviderResolver.resolveProviderIdForModel(model);
-		if (!providerId) {
+		const selection =
+			await options.modelProviderResolver.resolveModelSelection(model);
+		if (!selection) {
 			throw new Error(
 				`Cron job model ${model} does not resolve to a known provider`,
 			);
 		}
+		const providerId = selection.providerId;
+		const providerModel = selection.model.model;
 		const facade = options.providers.getFacade(providerId);
 		const sessionId = randomUUID();
 
@@ -74,7 +76,7 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 				}
 			},
 			facade,
-			model,
+			model: providerModel,
 			ocSessionId: sessionId,
 			prompt,
 			promptHomeDir: options.promptHomeDir,

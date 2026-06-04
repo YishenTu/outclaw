@@ -1,6 +1,6 @@
 import type {
+	ChatHistoryReader,
 	DisplayMessage,
-	Facade,
 	RuntimeStatusEvent,
 	SkillInfo,
 	StreamingSyncEvent,
@@ -22,8 +22,10 @@ interface RuntimeClientGatewayOptions {
 	 * `resolveFacadeForSession` so a Codex chat session's history is read
 	 * by the Codex adapter, not Claude.
 	 */
-	facade: Facade;
-	resolveFacadeForProvider?: (providerId: string) => Facade | undefined;
+	facade: ChatHistoryReader;
+	resolveFacadeForProvider?: (
+		providerId: string,
+	) => ChatHistoryReader | undefined;
 	/**
 	 * Resolve the facade that owns a given persisted chat session. Returns
 	 * undefined when the runtime has no record of the session — callers
@@ -33,7 +35,7 @@ interface RuntimeClientGatewayOptions {
 	resolveFacadeForSession?: (
 		providerId: string | undefined,
 		sessionId: string,
-	) => Facade | undefined;
+	) => ChatHistoryReader | undefined;
 	getStreamingSyncEvent?: (
 		providerId: string | undefined,
 		sessionId: string,
@@ -208,7 +210,7 @@ function statusSessionRef(
 }
 
 async function readReplayMessages(
-	facade: Facade,
+	facade: ChatHistoryReader,
 	sessionId: string,
 ): Promise<DisplayMessage[] | undefined> {
 	const messages = facade.readReplay
@@ -231,7 +233,7 @@ function safeInvoke<T>(invoke: () => Promise<T> | T): Promise<T> {
 }
 
 async function readReplayTranscript(
-	facade: Facade,
+	facade: ChatHistoryReader,
 	sessionId: string,
 ): Promise<TranscriptTurn[] | undefined> {
 	if (!facade.readTranscript) {

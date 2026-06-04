@@ -1,4 +1,4 @@
-import type { Facade } from "../../common/protocol.ts";
+import type { PromptProvider } from "../../common/protocol.ts";
 import type { ModelProviderResolver } from "../model-provider-resolver.ts";
 import type { PromptProviderResolver } from "./prompt-execution/prompt-runner.ts";
 import type { SessionService } from "./session-service.ts";
@@ -190,23 +190,26 @@ class AutoTitleAttempt {
 		let failed = false;
 
 		try {
-			const providerId =
-				await this.options.modelProviderResolver.resolveProviderIdForModel(
+			const selection =
+				await this.options.modelProviderResolver.resolveModelSelection(
 					this.options.model,
 				);
-			if (!providerId) {
+			if (!selection) {
 				throw new Error(
 					`Auto-title model ${this.options.model} does not resolve to a known provider`,
 				);
 			}
-			const facade: Facade = this.options.providers.getFacade(providerId);
+			const providerId = selection.providerId;
+			const providerModel = selection.model.model;
+			const facade: PromptProvider =
+				this.options.providers.getFacade(providerId);
 			for await (const event of facade.run({
 				abortController: this.abortController,
 				cwd: this.options.cwd,
 				effort: "low",
 				ephemeral: true,
 				executionMode: "read_only",
-				model: this.options.model,
+				model: providerModel,
 				prompt: buildAutoTitlePrompt(this.options.prompt),
 				stream: false,
 				instructionPolicy: {

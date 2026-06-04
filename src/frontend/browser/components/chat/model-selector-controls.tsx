@@ -21,6 +21,9 @@ export interface SelectorDropdownItem {
 	groupLabel?: string;
 }
 
+export const SELECTOR_DROPDOWN_MENU_CLASS_NAME =
+	"absolute bottom-full left-0 z-50 mb-2 max-h-[18rem] overflow-x-hidden overflow-y-auto rounded-[16px] border border-dark-800 bg-dark-900 p-1 shadow-lg";
+
 interface SelectorDropdownProps {
 	label: string;
 	labelIcon?: ReactNode;
@@ -73,7 +76,7 @@ export function SelectorDropdown({
 			</button>
 			{open && items.length > 0 && (
 				<div
-					className={`absolute bottom-full left-0 z-50 mb-2 overflow-hidden rounded-[16px] border border-dark-800 bg-dark-900 p-1 shadow-lg ${minWidthClassName}`}
+					className={`${SELECTOR_DROPDOWN_MENU_CLASS_NAME} ${minWidthClassName}`}
 				>
 					{items.map((item, index) => {
 						const previousGroup = items[index - 1]?.groupLabel;

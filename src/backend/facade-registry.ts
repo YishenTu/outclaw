@@ -1,6 +1,7 @@
 import type { Facade } from "../common/protocol.ts";
 import { ClaudeAdapter } from "./adapters/claude/index.ts";
 import { CodexAdapter } from "./adapters/codex/index.ts";
+import { PiAdapter } from "./adapters/pi/index.ts";
 
 export function createFacadeForProvider(
 	providerId: string,
@@ -10,6 +11,8 @@ export function createFacadeForProvider(
 			return new ClaudeAdapter();
 		case "codex":
 			return new CodexAdapter();
+		case "pi":
+			return new PiAdapter();
 		default:
 			return undefined;
 	}

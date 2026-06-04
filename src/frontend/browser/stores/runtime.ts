@@ -50,6 +50,7 @@ export interface BrowserRuntimeState {
 	updateFromStatus: (event: RuntimeStatusEvent) => void;
 	setAgentName: (name: string | null) => void;
 	setSessionTitle: (title: string | null) => void;
+	setProvider: (providerId: string) => void;
 	setModel: (model: string) => void;
 	setEffort: (effort: string) => void;
 	setServiceTier: (serviceTier: string | null) => void;
@@ -127,6 +128,7 @@ export const useRuntimeStore = create<BrowserRuntimeState>((set) => ({
 		}),
 	setAgentName: (agentName) => set({ agentName }),
 	setSessionTitle: (sessionTitle) => set({ sessionTitle }),
+	setProvider: (providerId) => set({ providerId }),
 	setModel: (model) => set({ model }),
 	setEffort: (effort) => set({ effort }),
 	setServiceTier: (serviceTier) => set({ serviceTier }),

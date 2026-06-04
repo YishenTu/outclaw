@@ -11,6 +11,7 @@ import { join } from "node:path";
 import type {
 	Facade,
 	FacadeEvent,
+	ProviderModelInfo,
 	RunParams,
 	ServerEvent,
 } from "../../../src/common/protocol.ts";
@@ -113,6 +114,37 @@ class ProviderSessionFacade implements Facade {
 			durationMs: 1,
 		};
 	}
+}
+
+class CatalogProviderSessionFacade extends ProviderSessionFacade {
+	constructor(
+		providerId: string,
+		sessionId: string,
+		private readonly models: ProviderModelInfo[],
+	) {
+		super(providerId, sessionId);
+	}
+
+	async listModels(): Promise<ProviderModelInfo[]> {
+		return this.models;
+	}
+}
+
+function providerModel(
+	id: string,
+	overrides: Partial<ProviderModelInfo> = {},
+): ProviderModelInfo {
+	return {
+		id,
+		model: id,
+		displayName: id,
+		description: id,
+		isDefault: false,
+		defaultReasoningEffort: "medium",
+		supportedReasoningEfforts: ["low", "medium", "high"],
+		serviceTiers: [],
+		...overrides,
+	};
 }
 
 const TEST_DB = join(import.meta.dir, ".tmp-create-agent-runtime.sqlite");
@@ -612,5 +644,75 @@ description: Review the current changes.
 		codingStore.close();
 		codingRepositories.close();
 		codingEvents.close();
+	});
+
+	test("selecting a Pi chat model starts and persists a pi session", async () => {
+		const claudeFacade = new CatalogProviderSessionFacade(
+			"claude",
+			"claude-chat",
+			[providerModel("sonnet", { isDefault: true })],
+		);
+		const piFacade = new CatalogProviderSessionFacade("pi", "pi-chat-789", [
+			providerModel("anthropic/claude-sonnet-4-5", {
+				model: "claude-sonnet-4-5",
+				displayName: "Claude Sonnet 4.5",
+			}),
+		]);
+		const store = new SessionStore(TEST_DB, {
+			agentId: "agent-railly",
+			journalMode: "DELETE",
+		});
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: claudeFacade,
+			providers: [
+				{ providerId: "claude", displayName: "Claude", facade: claudeFacade },
+				{ providerId: "pi", displayName: "Pi", facade: piFacade },
+			],
+			defaultProviderId: "claude",
+			defaultModel: "sonnet",
+			store,
+		});
+		const ws = mockWs();
+
+		expect(runtime.getStatusEvent().providerId).toBe("claude");
+		runtime.handleOpen(ws);
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({
+				type: "model_select",
+				providerId: "pi",
+				model: "anthropic/claude-sonnet-4-5",
+				effort: "medium",
+			}),
+		);
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "prompt", prompt: "chat with Pi" }),
+		);
+		await waitForDone(ws);
+
+		expect(claudeFacade.seenParams).toEqual([]);
+		expect(piFacade.seenParams).toHaveLength(1);
+		expect(piFacade.seenParams[0]).toMatchObject({
+			model: "anthropic/claude-sonnet-4-5",
+			effort: "medium",
+			prompt: "chat with Pi",
+		});
+		expect(runtime.getStatusEvent()).toMatchObject({
+			providerId: "pi",
+			sessionId: "pi-chat-789",
+		});
+		expect(store.get("pi", "pi-chat-789")).toMatchObject({
+			providerId: "pi",
+			sdkSessionId: "pi-chat-789",
+			model: "anthropic/claude-sonnet-4-5",
+			source: "tui",
+			tag: "chat",
+		});
+
+		await runtime.stop();
+		store.close();
 	});
 });

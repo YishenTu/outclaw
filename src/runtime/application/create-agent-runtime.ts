@@ -1,5 +1,6 @@
 import type { EffortLevel } from "../../common/commands.ts";
 import type {
+	ChatHistoryReader,
 	Facade,
 	FrontendNotice,
 	HeartbeatResult,
@@ -24,7 +25,10 @@ import type { SessionStore } from "../persistence/session-store/session-store.ts
 import { RolloverScheduler } from "../rollover/scheduler.ts";
 import { listAgentSkills } from "../skills/list-agent-skills.ts";
 import type { WsClient } from "../transport/client-hub.ts";
-import { createRuntimeController } from "./create-runtime-controller.ts";
+import {
+	type ChatHistoryReaderResolver,
+	createRuntimeController,
+} from "./create-runtime-controller.ts";
 import {
 	type PromptProviderResolver,
 	singleFacadeResolver,
@@ -172,6 +176,7 @@ export function createAgentRuntime(
 ): AgentRuntime {
 	const facade = options.facade;
 	const providerResolver = buildProviderResolver(options);
+	const historyReaderResolver = buildHistoryReaderResolver(options);
 	const modelProviderResolver = buildModelProviderResolver(options);
 	let activeSessionChanged:
 		| ((event: {
@@ -210,6 +215,7 @@ export function createAgentRuntime(
 		cwd: options.cwd,
 		facade,
 		providers: providerResolver,
+		historyReaders: historyReaderResolver,
 		modelProviderResolver,
 		getFrontendNotice: options.getFrontendNotice,
 		listSkills: promptHomeDir
@@ -398,6 +404,38 @@ function buildProviderResolver(
 				);
 			}
 			return found;
+		},
+	};
+}
+
+function buildHistoryReaderResolver(
+	options: CreateAgentRuntimeOptions,
+): ChatHistoryReaderResolver {
+	if (!options.providers || options.providers.length === 0) {
+		return singleHistoryReaderResolver(options.facade);
+	}
+	const byId = new Map(
+		options.providers.map((provider) => [provider.providerId, provider.facade]),
+	);
+	return {
+		getHistoryReader(providerId: string) {
+			const found = byId.get(providerId);
+			if (!found) {
+				throw new Error(
+					`Provider ${providerId} is not configured in this runtime`,
+				);
+			}
+			return found;
+		},
+	};
+}
+
+function singleHistoryReaderResolver(
+	historyReader: ChatHistoryReader,
+): ChatHistoryReaderResolver {
+	return {
+		getHistoryReader(_providerId: string): ChatHistoryReader {
+			return historyReader;
 		},
 	};
 }

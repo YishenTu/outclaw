@@ -1,7 +1,8 @@
 import {
+	type CodingProvider,
 	type CodingSessionEvent,
 	extractError,
-	type Facade,
+	type ProviderCatalog,
 	type ProviderCodingSessionUpdate,
 	type ProviderModelInfo,
 	type ProviderSkillInfo,
@@ -17,7 +18,7 @@ import type { CodingSessionEventRecorder } from "./coding-session-event-hub.ts";
 import type { CodingSessionStore } from "./coding-session-store.ts";
 
 interface CreateCodingServiceOptions {
-	facade: Facade;
+	facade: CodingProvider & ProviderCatalog;
 	repositories: CodingRepositoryStore;
 	sessions: CodingSessionStore;
 	events: CodingSessionEventRecorder;

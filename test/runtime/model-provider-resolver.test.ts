@@ -52,6 +52,38 @@ describe("model provider resolver", () => {
 		).resolves.toBe("claude");
 	});
 
+	test("resolves exact catalog model values before provider-qualified parsing", async () => {
+		const resolver = createModelProviderResolver([
+			{
+				providerId: "pi",
+				listModels: async () => [model("anthropic/claude-sonnet-4-5")],
+			},
+		]);
+
+		await expect(
+			resolver.resolveModelSelection("anthropic/claude-sonnet-4-5"),
+		).resolves.toEqual({
+			providerId: "pi",
+			model: model("anthropic/claude-sonnet-4-5"),
+		});
+	});
+
+	test("normalizes provider-qualified selections to provider-local catalog values", async () => {
+		const resolver = createModelProviderResolver([
+			{
+				providerId: "pi",
+				listModels: async () => [model("anthropic/claude-sonnet-4-5")],
+			},
+		]);
+
+		await expect(
+			resolver.resolveModelSelection("pi/anthropic/claude-sonnet-4-5"),
+		).resolves.toEqual({
+			providerId: "pi",
+			model: model("anthropic/claude-sonnet-4-5"),
+		});
+	});
+
 	test("does not infer providers from model name prefixes", async () => {
 		const resolver = createModelProviderResolver([
 			{

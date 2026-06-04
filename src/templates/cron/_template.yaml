@@ -18,7 +18,7 @@
 #
 # OPTIONAL fields:
 #   enabled   — false to disable without deleting (default: true)
-#   model     — opus | sonnet | haiku (default: the agent's current model)
+#   model     — openai-codex/gpt-5.5 | gpt-5.4-mini (default: the agent's current model)
 #   effort    — low | medium | high | xhigh | max (default: runtime config)
 #   timezone  — UTC offset for the schedule: "UTC", "UTC+8", "UTC-7"
 #               (default: daemon's local timezone — leave this field OUT
@@ -37,7 +37,7 @@ schedule: "0 9 * * 1"
 # For one-time jobs, replace schedule with:
 # runAt: "2026-04-29T09:00:00+08:00"
 enabled: true
-# model: opus
+# model: openai-codex/gpt-5.5
 # effort: medium
 # timezone: UTC
 prompt: |

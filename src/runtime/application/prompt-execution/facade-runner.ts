@@ -1,8 +1,8 @@
 import type { EffortLevel } from "../../../common/commands.ts";
 import type {
-	Facade,
 	FacadeEvent,
 	ImageRef,
+	PromptProvider,
 	ReplyContext,
 	RuntimeInstructionPolicy,
 } from "../../../common/protocol.ts";
@@ -17,7 +17,7 @@ export interface FacadePromptRun {
 	cwd?: string;
 	effort?: EffortLevel;
 	emit: (event: FacadeEvent) => void;
-	facade: Facade;
+	facade: PromptProvider;
 	images?: ImageRef[];
 	includeSystemPrompt?: boolean;
 	model?: string;
@@ -55,6 +55,7 @@ export async function runFacadePrompt(options: FacadePromptRun): Promise<void> {
 			resume: options.resume,
 			sessionId: options.resume ? undefined : options.ocSessionId,
 			cwd: options.cwd,
+			resourceHomeDir: options.promptHomeDir,
 			model: options.model,
 			effort: options.effort,
 			serviceTier: options.serviceTier,

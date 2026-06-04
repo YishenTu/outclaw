@@ -192,6 +192,44 @@ describe("createCronAgentRunner", () => {
 		});
 	});
 
+	test("normalizes provider-qualified cron models before running the facade", async () => {
+		const promptHomeDir = createPromptHome({});
+		promptHomes.push(promptHomeDir);
+
+		const piCalls: RunParams[] = [];
+		const piFacade = createFacade(
+			[
+				{ type: "text", text: "pi ran" },
+				{ type: "done", sessionId: "pi-cron", durationMs: 1 },
+			],
+			(params) => piCalls.push(params),
+		);
+		const runCronAgent = createCronAgentRunner({
+			providers: { getFacade: () => piFacade },
+			modelProviderResolver: createModelProviderResolver([
+				{
+					providerId: "pi",
+					listModels: async () => [model("anthropic/claude-sonnet-4-5")],
+				},
+			]),
+			promptHomeDir,
+			cwd: "/workspace/project",
+		});
+
+		const result = await runCronAgent(
+			"Run with Pi",
+			"pi/anthropic/claude-sonnet-4-5",
+		);
+
+		expect(piCalls).toHaveLength(1);
+		expect(piCalls[0]?.model).toBe("anthropic/claude-sonnet-4-5");
+		expect(result).toEqual({
+			providerId: "pi",
+			sessionId: "pi-cron",
+			text: "pi ran",
+		});
+	});
+
 	test("rejects unknown provider models instead of inferring from prefixes", async () => {
 		const promptHomeDir = createPromptHome({});
 		promptHomes.push(promptHomeDir);

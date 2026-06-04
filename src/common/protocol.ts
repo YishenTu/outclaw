@@ -1488,6 +1488,13 @@ export interface RunParams {
 	 */
 	sessionId?: string;
 	cwd?: string;
+	/**
+	 * Outclaw-owned resource root for the active agent. This is distinct from
+	 * `cwd`: callers may run a prompt from a different working directory, while
+	 * provider adapters still need a stable place to load agent-local resources
+	 * such as skills.
+	 */
+	resourceHomeDir?: string;
 	model?: string;
 	effort?: string;
 	/**
@@ -1510,11 +1517,27 @@ export interface RunParams {
 	sessionEnv?: Record<string, string>;
 }
 
-export interface Facade {
+export interface PromptProvider {
+	providerId: string;
+	run(params: RunParams): AsyncIterable<FacadeEvent>;
+	dispose?(): Promise<void> | void;
+}
+
+export interface ChatHistoryReader {
+	providerId: string;
+	readHistory?(sessionId: string): Promise<DisplayMessage[]>;
+	readReplay?(sessionId: string): Promise<DisplayMessage[]>;
+	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;
+}
+
+export interface ProviderCatalog {
 	providerId: string;
 	prepareWorkspace?(promptHomeDir: string): void;
 	workspaceMetadata?(promptHomeDir: string): ProviderWorkspaceMetadata;
-	run(params: RunParams): AsyncIterable<FacadeEvent>;
+	listModels?(): Promise<ProviderModelInfo[]>;
+}
+
+export interface CodingProvider extends PromptProvider {
 	/**
 	 * Provider-owned same-turn steering for an active coding session. Runtime
 	 * decides when a coding session should be steered; adapters own the
@@ -1540,9 +1563,6 @@ export interface Facade {
 	subscribeCodingSessionUpdates?(
 		handler: (update: ProviderCodingSessionUpdate) => void,
 	): () => void;
-	readHistory?(sessionId: string): Promise<DisplayMessage[]>;
-	readReplay?(sessionId: string): Promise<DisplayMessage[]>;
-	readTranscript?(sessionId: string): Promise<TranscriptTurn[]>;
 	/**
 	 * Provider-owned rehydration hook for coding-session history. Adapters
 	 * project provider-native persisted artifacts into the same coding-session
@@ -1559,15 +1579,13 @@ export interface Facade {
 		cwd: string;
 		forceReload?: boolean;
 	}): Promise<ProviderSkillInfo[]>;
-	/**
-	 * List provider-side models the runtime can offer to the user. Coding
-	 * mode uses this to populate the model picker so users can pick a Codex
-	 * model and a matching reasoning effort without the runtime hardcoding
-	 * the catalog.
-	 */
-	listModels?(): Promise<ProviderModelInfo[]>;
-	dispose?(): Promise<void> | void;
 }
+
+export interface Facade
+	extends PromptProvider,
+		ChatHistoryReader,
+		ProviderCatalog,
+		CodingProvider {}
 
 export interface ProviderWorkspaceMetadata {
 	ignoredGitPaths?: string[];

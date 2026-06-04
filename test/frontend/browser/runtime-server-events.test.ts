@@ -6,6 +6,7 @@ import {
 } from "../../../src/frontend/browser/coding/coding-session-event-cache.ts";
 import { useCodingStore } from "../../../src/frontend/browser/coding/coding-store.ts";
 import { subscribeTerminalRuntimeEvents } from "../../../src/frontend/browser/components/right-panel/terminal/terminal-events.ts";
+import { createBrowserLiveRunBridge } from "../../../src/frontend/browser/events/browser-live-run-bridge.ts";
 import {
 	applySidebarSummary,
 	formatSessionInfoSummary,
@@ -17,6 +18,7 @@ import {
 import {
 	createBrowserSessionRef,
 	resolveComposerSessionKey,
+	resolveCurrentBrowserSessionKey,
 } from "../../../src/frontend/browser/sessions/session.ts";
 import { useAgentFilesStore } from "../../../src/frontend/browser/stores/agent-files.ts";
 import { useAgentsStore } from "../../../src/frontend/browser/stores/agents.ts";
@@ -98,6 +100,17 @@ function createHandlerOptions(overrides: Record<string, unknown> = {}) {
 			...overrides,
 		},
 	};
+}
+
+function getDisplayedRuntimeSessionKey(agentId: string): string {
+	const runtime = useRuntimeStore.getState();
+	return resolveCurrentBrowserSessionKey({
+		agentId,
+		activeSession:
+			useSessionsStore.getState().activeSessionByAgent[agentId] ?? null,
+		providerId: runtime.providerId,
+		runtimeSessionId: runtime.sessionId,
+	});
 }
 
 describe("browser runtime server events", () => {
@@ -194,6 +207,24 @@ describe("browser runtime server events", () => {
 		expect(inferImageMediaTypeFromPath("plot.gif")).toBe("image/gif");
 		expect(inferImageMediaTypeFromPath("plot.webp")).toBe("image/webp");
 		expect(inferImageMediaTypeFromPath("plot.svg")).toBeUndefined();
+	});
+
+	test("applies provider from model changes before the next status event", () => {
+		const { options } = createHandlerOptions();
+
+		handleBrowserServerEvent(
+			{
+				type: "model_changed",
+				providerId: "pi",
+				model: "anthropic/claude-sonnet-4-5",
+			},
+			options,
+		);
+
+		expect(useRuntimeStore.getState()).toMatchObject({
+			providerId: "pi",
+			model: "anthropic/claude-sonnet-4-5",
+		});
 	});
 
 	test("hydrates runtime terminal sessions and routes terminal events", () => {
@@ -1106,6 +1137,95 @@ describe("browser runtime server events", () => {
 		expect(calls).toEqual([
 			"live:bind:agent-railly:mock:__pending__->agent-railly:mock:sdk-auto-main",
 		]);
+	});
+
+	test("keeps first provider events with the pending browser prompt until status binds", () => {
+		setSystemTime(new Date("2026-04-27T00:00:00.000Z"));
+		useAgentsStore
+			.getState()
+			.setAgents([{ agentId: "agent-railly", name: "railly" }]);
+		useAgentsStore.getState().setActiveAgent("agent-railly");
+		useRuntimeStore.getState().updateFromStatus({
+			type: "runtime_status",
+			agentName: "railly",
+			providerId: "pi",
+			model: "anthropic/claude-sonnet-4-5",
+			effort: "medium",
+			running: true,
+		});
+		const pendingSessionKey = "agent-railly:pi:__pending__";
+		const finalSessionKey = "agent-railly:pi:pi-session";
+		const bridge = createBrowserLiveRunBridge({
+			getCurrentSessionKey: getDisplayedRuntimeSessionKey,
+			getProviderId: () => useRuntimeStore.getState().providerId,
+		});
+		const { options } = createHandlerOptions({
+			bindLiveRunSession: bridge.bindLiveRunSession,
+			clearLiveRunSessions: bridge.clearLiveRunSessions,
+			completeLiveRunSession: bridge.completeLiveRunSession,
+			getCurrentSessionKey: getDisplayedRuntimeSessionKey,
+			pinObservedSessionKey: bridge.pinObservedSessionKey,
+			routeObservedSessionKey: bridge.routeObservedSessionKey,
+		});
+
+		handleBrowserServerEvent(
+			{
+				type: "user_prompt",
+				prompt: "new task",
+				source: "browser",
+			},
+			options,
+		);
+		handleBrowserServerEvent(
+			{ type: "text", text: "answer", sessionId: "pi-session" },
+			options,
+		);
+
+		expect(useChatStore.getState().getSession(pendingSessionKey)).toMatchObject(
+			{
+				messages: [
+					{
+						kind: "chat",
+						role: "user",
+						content: "new task",
+					},
+				],
+				streamingText: "answer",
+				isStreaming: true,
+				isThinking: true,
+			},
+		);
+		expect(useChatStore.getState().getSession(finalSessionKey)).toBeUndefined();
+
+		handleBrowserServerEvent(
+			{
+				type: "runtime_status",
+				agentName: "railly",
+				providerId: "pi",
+				model: "anthropic/claude-sonnet-4-5",
+				effort: "medium",
+				running: true,
+				sessionId: "pi-session",
+				sessionTitle: "Generated title",
+			},
+			options,
+		);
+
+		expect(
+			useChatStore.getState().getSession(pendingSessionKey),
+		).toBeUndefined();
+		expect(useChatStore.getState().getSession(finalSessionKey)).toMatchObject({
+			messages: [
+				{
+					kind: "chat",
+					role: "user",
+					content: "new task",
+				},
+			],
+			streamingText: "answer",
+			isStreaming: true,
+			isThinking: true,
+		});
 	});
 
 	test("keeps a bound running chat when a later status omits the session id", () => {

@@ -1,6 +1,6 @@
 name: soul-evolve
 schedule: "47 6 * * 0"
-model: opus
+model: openai-codex/gpt-5.5
 effort: xhigh
 enabled: true
 prompt: |

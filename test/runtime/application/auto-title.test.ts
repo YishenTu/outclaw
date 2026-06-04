@@ -217,4 +217,55 @@ describe("AutoTitleCoordinator", () => {
 		expect(codexCalls[0]?.model).toBe("gpt-5.5");
 		expect(appliedTitles).toEqual(["Codex Title"]);
 	});
+
+	test("normalizes provider-qualified title models before running the facade", async () => {
+		const piCalls: RunParams[] = [];
+		const piFacade: Facade = {
+			providerId: "pi",
+			listModels: async () => [model("anthropic/claude-sonnet-4-5")],
+			async *run(params: RunParams): AsyncIterable<FacadeEvent> {
+				piCalls.push(params);
+				yield { type: "text", text: "Pi Title" };
+				yield { type: "done", sessionId: "pi-title", durationMs: 1 };
+			},
+		};
+		const appliedTitles: string[] = [];
+		const sessions = {
+			canPersistSessions: true,
+			applyAutoTitle(params: { title: string }) {
+				appliedTitles.push(params.title);
+				return true;
+			},
+		} as Pick<SessionService, "applyAutoTitle" | "canPersistSessions">;
+		const coordinator = new AutoTitleCoordinator({
+			providers: { getFacade: () => piFacade },
+			modelProviderResolver: createModelProviderResolver([
+				{ providerId: "pi", listModels: piFacade.listModels },
+			]),
+			model: "pi/anthropic/claude-sonnet-4-5",
+			sessions: sessions as SessionService,
+		});
+		const context: RuntimePromptContext = {
+			effort: DEFAULT_EFFORT,
+			fallbackSessionTitle: "Pending",
+			generation: 0,
+			model: "sonnet",
+			ocSessionId: "oc-title-pi",
+			providerId: "claude",
+			resolvedModel: "sonnet",
+			sessionSource: "tui",
+		};
+
+		coordinator.start({
+			context,
+			prompt: "Investigate Pi title routing",
+			source: "tui",
+		});
+		coordinator.resolveSession("oc-title-pi", "sdk-pi-title");
+		await coordinator.drain();
+
+		expect(piCalls).toHaveLength(1);
+		expect(piCalls[0]?.model).toBe("anthropic/claude-sonnet-4-5");
+		expect(appliedTitles).toEqual(["Pi Title"]);
+	});
 });

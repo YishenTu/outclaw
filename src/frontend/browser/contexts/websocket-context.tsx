@@ -185,6 +185,13 @@ export function WebSocketProvider({ children, value }: WebSocketProviderProps) {
 
 			try {
 				sendRuntimeModelSelect(ws, selection);
+				const runtime = useRuntimeStore.getState();
+				runtime.setProvider(selection.providerId);
+				runtime.setModel(selection.model);
+				if (selection.effort !== undefined) {
+					runtime.setEffort(selection.effort);
+				}
+				runtime.setServiceTier(selection.serviceTier ?? null);
 				return true;
 			} catch (error) {
 				useRuntimeStore.getState().setError(extractError(error));

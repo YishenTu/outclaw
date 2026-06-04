@@ -62,4 +62,29 @@ describe("memory template contract", () => {
 			"Observations are a short-term scratch buffer",
 		);
 	});
+
+	test("pins memory cron templates to Pi model ids", () => {
+		const template = readTemplate("cron/_template.yaml");
+		const maintenanceTemplatePaths = [
+			"cron/memory-distill.yaml",
+			"cron/memory-route.yaml",
+			"cron/memory-synthesize.yaml",
+			"cron/soul-evolve.yaml",
+		];
+
+		expect(template).toContain(
+			"#   model     — openai-codex/gpt-5.5 | gpt-5.4-mini",
+		);
+		expect(template).toContain("# model: openai-codex/gpt-5.5");
+		expect(template).not.toContain("opus | sonnet | haiku");
+
+		for (const templatePath of maintenanceTemplatePaths) {
+			const cronTemplate = readTemplate(templatePath);
+
+			expect(cronTemplate).toContain("model: openai-codex/gpt-5.5");
+			expect(cronTemplate).not.toContain("model: opus");
+			expect(cronTemplate).not.toContain("model: sonnet");
+			expect(cronTemplate).not.toContain("model: haiku");
+		}
+	});
 });

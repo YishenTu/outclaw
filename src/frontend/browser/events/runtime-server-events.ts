@@ -419,9 +419,15 @@ export function handleBrowserServerEvent(
 			return;
 		}
 		case "model_changed":
+			if (event.providerId) {
+				useRuntimeStore.getState().setProvider(event.providerId);
+			}
 			useRuntimeStore.getState().setModel(event.model);
 			return;
 		case "effort_changed":
+			if (event.providerId) {
+				useRuntimeStore.getState().setProvider(event.providerId);
+			}
 			useRuntimeStore.getState().setEffort(event.effort);
 			return;
 		case "skills_update":

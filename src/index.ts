@@ -3,6 +3,7 @@ import { basename, join, relative, sep } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude/index.ts";
 import { DEFAULT_CLAUDE_MODEL } from "./backend/adapters/claude/models.ts";
 import { CodexAdapter } from "./backend/adapters/codex/index.ts";
+import { PiAdapter } from "./backend/adapters/pi/index.ts";
 import { createOutclawLayout } from "./common/layout.ts";
 import type {
 	Facade,
@@ -112,6 +113,7 @@ function startMultiAgentDaemon(
 	// the topology choice is just an adapter-process choice — sharing avoids
 	// launching multiple app-server processes.
 	const codexAdapter = new CodexAdapter();
+	const piAdapter = new PiAdapter();
 	const codingFacade = codexAdapter;
 	const codingService = createCodingService({
 		facade: codingFacade,
@@ -145,6 +147,7 @@ function startMultiAgentDaemon(
 		// the first Codex Chat thread for the workspace — that path is
 		// async and the daemon entry is sync.
 		codexAdapter.prepareWorkspace(agent.promptHomeDir);
+		piAdapter.prepareWorkspace(agent.promptHomeDir);
 		transcriptReadersByAgent.set(
 			agent.agentId,
 			async (providerId, sessionId) => {
@@ -153,6 +156,9 @@ function startMultiAgentDaemon(
 				}
 				if (providerId === "codex") {
 					return await codexAdapter.readTranscript(sessionId);
+				}
+				if (providerId === "pi") {
+					return await piAdapter.readTranscript(sessionId);
 				}
 				return undefined;
 			},
@@ -168,10 +174,15 @@ function startMultiAgentDaemon(
 				displayName: "Codex",
 				listModels: () => codexAdapter.listModels(),
 			},
+			{
+				providerId: "pi",
+				displayName: "Pi",
+				listModels: () => piAdapter.listModels(),
+			},
 		]);
 		const workspaceMetadata = collectProviderWorkspaceMetadata(
 			agent.promptHomeDir,
-			[facade, codexAdapter],
+			[facade, codexAdapter, piAdapter],
 		);
 		workspaceMetadataByAgent.set(agent.agentId, workspaceMetadata);
 
@@ -186,6 +197,7 @@ function startMultiAgentDaemon(
 			providers: [
 				{ providerId: "claude", displayName: "Claude", facade },
 				{ providerId: "codex", displayName: "Codex", facade: codexAdapter },
+				{ providerId: "pi", displayName: "Pi", facade: piAdapter },
 			],
 			workspaceIgnoredNames: workspaceMetadata.ignoredWorkspaceNames,
 			defaultProviderId: "claude",
@@ -360,6 +372,7 @@ function startMultiAgentDaemon(
 			botManager.stop();
 			await codingService.stop();
 			await codingFacade.dispose();
+			await piAdapter.dispose();
 			codingEvents.close();
 			chatCodingLinks.close();
 			codingSessions.close();

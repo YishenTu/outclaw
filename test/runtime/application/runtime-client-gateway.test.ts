@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import type {
+	ChatHistoryReader,
 	Facade,
 	RuntimeStatusEvent,
 	ServerEvent,
@@ -33,6 +34,15 @@ function createFacade(overrides: Partial<Facade> = {}): Facade {
 	return {
 		providerId: "mock",
 		async *run() {},
+		...overrides,
+	};
+}
+
+function createHistoryReader(
+	overrides: Partial<ChatHistoryReader> = {},
+): ChatHistoryReader {
+	return {
+		providerId: "history",
 		...overrides,
 	};
 }
@@ -206,6 +216,43 @@ describe("RuntimeClientGateway", () => {
 					kind: "chat",
 					role: "user",
 					content: "past question",
+				},
+			],
+		});
+	});
+
+	test("handleOpen can replay history without a prompt execution role", async () => {
+		const gateway = new RuntimeClientGateway({
+			facade: createHistoryReader({
+				async readHistory() {
+					return [
+						{
+							kind: "chat" as const,
+							role: "assistant" as const,
+							content: "history only",
+						},
+					];
+				},
+			}),
+			getStatusEvent: () => ({
+				...createStatusEvent(),
+				sessionId: "sdk-123",
+			}),
+		});
+		const ws = mockWs();
+
+		gateway.handleOpen(ws);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(ws.events()).toContainEqual({
+			type: "history_replay",
+			providerId: "history",
+			sdkSessionId: "sdk-123",
+			messages: [
+				{
+					kind: "chat",
+					role: "assistant",
+					content: "history only",
 				},
 			],
 		});

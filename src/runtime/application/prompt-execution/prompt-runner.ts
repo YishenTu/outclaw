@@ -1,8 +1,8 @@
 import type { EffortLevel } from "../../../common/commands.ts";
 import type {
-	Facade,
 	FacadeEvent,
 	ImageRef,
+	PromptProvider,
 	ReplyContext,
 } from "../../../common/protocol.ts";
 import { runFacadePrompt } from "./facade-runner.ts";
@@ -23,7 +23,7 @@ export interface PromptRunnerTask {
  * or per-provider instances. Constructed from the runtime provider set.
  */
 export interface PromptProviderResolver {
-	getFacade(providerId: string): Facade;
+	getFacade(providerId: string): PromptProvider;
 }
 
 interface PromptRunnerOptions {
@@ -77,9 +77,11 @@ export class PromptRunner {
  * provider-aware routing actually matters; in production composition that
  * is `buildProviderResolver` in `create-agent-runtime.ts`.
  */
-export function singleFacadeResolver(facade: Facade): PromptProviderResolver {
+export function singleFacadeResolver(
+	facade: PromptProvider,
+): PromptProviderResolver {
 	return {
-		getFacade(_providerId: string): Facade {
+		getFacade(_providerId: string): PromptProvider {
 			return facade;
 		},
 	};

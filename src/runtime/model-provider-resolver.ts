@@ -59,7 +59,18 @@ export function createModelProviderResolver(
 
 			catalogPromise ??= loadCatalog(providers);
 			const catalog = await catalogPromise;
-			const providerQualified = parseProviderQualifiedModel(requested);
+			const exactMatches = catalog.filter((entry) =>
+				modelMatches(entry.model, requested),
+			);
+			if (exactMatches.length > 0) {
+				return selectUniqueModel(requested, exactMatches);
+			}
+
+			const providerIds = new Set(catalog.map((entry) => entry.providerId));
+			const providerQualified = parseProviderQualifiedModel(
+				requested,
+				providerIds,
+			);
 			const matches = catalog.filter((entry) => {
 				if (
 					providerQualified &&
@@ -69,21 +80,7 @@ export function createModelProviderResolver(
 				}
 				return modelMatches(entry.model, providerQualified?.model ?? requested);
 			});
-			const providerIds = [
-				...new Set(matches.map((entry) => entry.providerId)),
-			];
-			if (matches.length === 0) {
-				return undefined;
-			}
-			if (providerIds.length > 1) {
-				throw new Error(
-					`Model ${requested} resolves to multiple providers: ${providerIds.join(", ")}`,
-				);
-			}
-			const selected = matches[0];
-			return selected
-				? { providerId: selected.providerId, model: selected.model }
-				: undefined;
+			return selectUniqueModel(requested, matches);
 		},
 		async listModelSelections() {
 			catalogPromise ??= loadCatalog(providers);
@@ -112,20 +109,44 @@ async function loadCatalog(
 	return catalogs.flat();
 }
 
+function selectUniqueModel(
+	requested: string,
+	matches: ModelCatalogEntry[],
+): ResolvedProviderModel | undefined {
+	if (matches.length === 0) {
+		return undefined;
+	}
+	const providerIds = [...new Set(matches.map((entry) => entry.providerId))];
+	if (providerIds.length > 1) {
+		throw new Error(
+			`Model ${requested} resolves to multiple providers: ${providerIds.join(", ")}`,
+		);
+	}
+	const selected = matches[0];
+	return selected
+		? { providerId: selected.providerId, model: selected.model }
+		: undefined;
+}
+
 function modelMatches(entry: ProviderModelInfo, requested: string): boolean {
 	return entry.model === requested || entry.id === requested;
 }
 
 function parseProviderQualifiedModel(
 	value: string,
+	configuredProviderIds: ReadonlySet<string>,
 ): { providerId: string; model: string } | undefined {
 	const separator = value.indexOf("/");
 	if (separator <= 0 || separator === value.length - 1) {
 		return undefined;
 	}
+	const providerId = value.slice(0, separator);
+	if (!configuredProviderIds.has(providerId)) {
+		return undefined;
+	}
 
 	return {
-		providerId: value.slice(0, separator),
+		providerId,
 		model: value.slice(separator + 1),
 	};
 }

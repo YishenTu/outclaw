@@ -9,7 +9,11 @@ import {
 } from "bun:test";
 import { PassThrough } from "node:stream";
 import { render, Text } from "ink";
-import { WebSocketProvider } from "../../../src/frontend/browser/contexts/websocket-context.tsx";
+import { useEffect } from "react";
+import {
+	useWs,
+	WebSocketProvider,
+} from "../../../src/frontend/browser/contexts/websocket-context.tsx";
 import { useRuntimeStore } from "../../../src/frontend/browser/stores/runtime.ts";
 
 class FakeWebSocket {
@@ -218,6 +222,68 @@ describe("WebSocketProvider sidebar refresh", () => {
 		await flushUpdates();
 
 		expect(sidebarFetches).toBe(1);
+		app.unmount();
+	});
+
+	test("applies model selections locally after sending them", async () => {
+		globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+			const path = resolveFetchPath(input);
+			if (path === "/api/agents") {
+				return Response.json({
+					activeAgentId: "agent-railly",
+					agents: [],
+				});
+			}
+			if (path === "/api/latency") {
+				return Response.json({ ok: true });
+			}
+			throw new Error(`Unexpected fetch: ${path}`);
+		}) as unknown as typeof fetch;
+		function ModelSelectProbe() {
+			const { connected, sendModelSelect } = useWs();
+			useEffect(() => {
+				if (connected) {
+					sendModelSelect({
+						providerId: "pi",
+						model: "anthropic/claude-sonnet-4-5",
+						effort: "medium",
+						serviceTier: "priority",
+					});
+				}
+			}, [connected, sendModelSelect]);
+			return <Text>selector</Text>;
+		}
+
+		const app = render(
+			<WebSocketProvider>
+				<ModelSelectProbe />
+			</WebSocketProvider>,
+			{
+				stdout: createOutputStream(),
+				stderr: createOutputStream(),
+			},
+		);
+
+		await flushUpdates();
+		FakeWebSocket.instances[0]?.dispatch("open");
+		await flushUpdates();
+
+		expect(
+			FakeWebSocket.instances[0]?.sent.map((message) => JSON.parse(message)),
+		).toContainEqual({
+			type: "model_select",
+			providerId: "pi",
+			model: "anthropic/claude-sonnet-4-5",
+			effort: "medium",
+			serviceTier: "priority",
+		});
+		expect(useRuntimeStore.getState()).toMatchObject({
+			providerId: "pi",
+			model: "anthropic/claude-sonnet-4-5",
+			effort: "medium",
+			serviceTier: "priority",
+		});
+
 		app.unmount();
 	});
 });
