@@ -14,23 +14,27 @@ import {
 	projectPiTranscriptTurns,
 } from "./history.ts";
 import { projectPiModels } from "./models.ts";
-import { ensurePiAgentWorkspace } from "./setup.ts";
+import { ensurePiAgentWorkspace, ensurePiProfile } from "./setup.ts";
 import { normalizePiStreamEvent } from "./stream-normalizer.ts";
 import type { PiDriver, PiDriverRunParams } from "./types.ts";
 
 interface PiAdapterOptions {
 	driver?: PiDriver;
+	setupProfile?: () => void;
 }
 
 export class PiAdapter implements Facade {
 	readonly providerId = "pi";
 	private readonly driver: PiDriver;
+	private readonly setupProfile: () => void;
 
 	constructor(options: PiAdapterOptions = {}) {
 		this.driver = options.driver ?? createPiDriver();
+		this.setupProfile = options.setupProfile ?? (() => ensurePiProfile());
 	}
 
 	prepareWorkspace(promptHomeDir: string): void {
+		this.setupProfile();
 		ensurePiAgentWorkspace(promptHomeDir);
 	}
 
@@ -107,6 +111,9 @@ function mapRunParams(params: RunParams): PiDriverRunParams {
 		...(params.ephemeral !== undefined ? { ephemeral: params.ephemeral } : {}),
 		...(params.sessionEnv !== undefined
 			? { sessionEnv: params.sessionEnv }
+			: {}),
+		...(params.nativeToolHost !== undefined
+			? { nativeToolHost: params.nativeToolHost }
 			: {}),
 		...(params.abortController !== undefined
 			? { abortSignal: params.abortController.signal }

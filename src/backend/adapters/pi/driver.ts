@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { DEFAULT_EFFORT, type EffortLevel } from "../../../common/commands.ts";
+import { OUTCLAW_NATIVE_TOOL_CATALOG } from "../../../common/native-tools.ts";
 import {
 	type AssistantMessageSegment,
 	type DisplayImage,
@@ -9,6 +10,7 @@ import {
 	type UsageInfo,
 } from "../../../common/protocol.ts";
 import { calculateUsagePercentage } from "../../../common/usage.ts";
+import { createOutclawNativePiTools } from "./native-tool-definitions.ts";
 import {
 	ensurePiProfile,
 	getPiProfilePaths,
@@ -49,6 +51,12 @@ type SdkPromptOptions = NonNullable<
 type SdkImageContent = NonNullable<SdkPromptOptions["images"]>[number];
 
 const PI_AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
+const PI_READ_ONLY_BUILTIN_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
+const READ_ONLY_OUTCLAW_NATIVE_TOOL_NAMES = OUTCLAW_NATIVE_TOOL_CATALOG.filter(
+	(tool) =>
+		hasReadOnlySafetyClass(tool.safetyClasses) ||
+		tool.modes.some((mode) => hasReadOnlySafetyClass(mode.safetyClasses)),
+).map((tool) => tool.name);
 
 interface PiDriverOptions {
 	paths?: PiProfilePaths;
@@ -119,9 +127,7 @@ class PiDriverImpl implements PiDriver {
 					: undefined,
 		});
 		await resourceLoader.reload();
-		const customTools = params.sessionEnv
-			? [createSessionEnvBashTool(sdk, cwd, params.sessionEnv)]
-			: undefined;
+		const customTools = createCustomTools(sdk, cwd, params);
 		const { session, modelFallbackMessage } = await sdk.createAgentSession({
 			cwd,
 			agentDir: this.paths.agentDir,
@@ -135,7 +141,7 @@ class PiDriverImpl implements PiDriver {
 			settingsManager,
 			sessionManager,
 			...(customTools ? { customTools } : {}),
-			...(params.readOnly ? { tools: ["read", "grep", "find", "ls"] } : {}),
+			...(params.readOnly ? { tools: readOnlyToolAllowlist(params) } : {}),
 		});
 		if (modelFallbackMessage) {
 			session.dispose();
@@ -296,6 +302,32 @@ class PiDriverImpl implements PiDriver {
 		}
 		return found;
 	}
+}
+
+function readOnlyToolAllowlist(params: PiDriverRunParams): string[] {
+	return [
+		...PI_READ_ONLY_BUILTIN_TOOL_NAMES,
+		...(params.nativeToolHost ? READ_ONLY_OUTCLAW_NATIVE_TOOL_NAMES : []),
+	];
+}
+
+function hasReadOnlySafetyClass(safetyClasses: readonly string[]): boolean {
+	return safetyClasses.includes("read-only");
+}
+
+function createCustomTools(
+	sdk: PiSdkModule,
+	cwd: string,
+	params: PiDriverRunParams,
+): SdkCustomTool[] | undefined {
+	const customTools: SdkCustomTool[] = [];
+	if (params.sessionEnv) {
+		customTools.push(createSessionEnvBashTool(sdk, cwd, params.sessionEnv));
+	}
+	if (params.nativeToolHost) {
+		customTools.push(...createOutclawNativePiTools(sdk, params.nativeToolHost));
+	}
+	return customTools.length > 0 ? customTools : undefined;
 }
 
 function configurePiSdkEnvironment(paths: PiProfilePaths): void {

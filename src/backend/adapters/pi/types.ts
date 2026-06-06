@@ -1,3 +1,4 @@
+import type { OutclawNativeToolHost } from "../../../common/native-tools.ts";
 import type {
 	AssistantMessageSegment,
 	DisplayImage,
@@ -29,6 +30,7 @@ export interface PiDriverRunParams {
 	readOnly?: boolean;
 	ephemeral?: boolean;
 	sessionEnv?: Record<string, string>;
+	nativeToolHost?: OutclawNativeToolHost;
 	abortSignal?: AbortSignal;
 }
 

@@ -5,4 +5,4 @@
 
 ## Session Reflection
 
-Reflect on what happened in this session. If anything is worth keeping, capture it through `oc note` so it lands in today's daily memory (`daily-memories/YYYY-MM-DD.md`).
+Reflect on what happened in this session. If anything is worth keeping, capture it through `outclaw_memory_note` so it lands in today's daily memory (`daily-memories/YYYY-MM-DD.md`).

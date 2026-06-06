@@ -3,6 +3,24 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPiDriver } from "../../../src/backend/adapters/pi/driver.ts";
+import {
+	OUTCLAW_NATIVE_TOOL_CATALOG,
+	type OutclawNativeToolHost,
+} from "../../../src/common/native-tools.ts";
+
+interface CapturedPiTool {
+	description: string;
+	name: string;
+	parameters: unknown;
+	promptGuidelines?: string[];
+	execute(
+		toolCallId: string,
+		params: unknown,
+		signal?: AbortSignal,
+		onUpdate?: unknown,
+		ctx?: unknown,
+	): Promise<unknown>;
+}
 
 describe("Pi driver", () => {
 	test("loads runtime resources without injecting Pi-only oc guidance", async () => {
@@ -368,7 +386,7 @@ describe("Pi driver", () => {
 		try {
 			await drainRun(
 				driver.run({
-					prompt: "Use oc note",
+					prompt: "Use the session environment",
 					instructionMode: "provider_default",
 					model: "anthropic/claude-sonnet-4-5",
 					sessionEnv: {
@@ -383,6 +401,243 @@ describe("Pi driver", () => {
 				OC_MEMORY_ROOT: "/tmp/outclaw-memory",
 				OC_SESSION_ID: "oc-session-1",
 			});
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("registers native Outclaw tools with the Pi SDK when a host is supplied", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const session = new ImmediateSession();
+		const captured: {
+			customTools?: CapturedPiTool[];
+		} = {};
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () => createNativeToolSdk(session, captured),
+		});
+
+		try {
+			await drainRun(
+				driver.run({
+					prompt: "Use native Outclaw tools",
+					instructionMode: "provider_default",
+					model: "anthropic/claude-sonnet-4-5",
+					nativeToolHost: testNativeToolHost(),
+				}),
+			);
+
+			expect(captured.customTools?.map((tool) => tool.name)).toEqual(
+				OUTCLAW_NATIVE_TOOL_CATALOG.map((tool) => tool.name),
+			);
+			expect(captured.customTools?.map((tool) => tool.description)).toEqual(
+				OUTCLAW_NATIVE_TOOL_CATALOG.map((tool) => tool.description),
+			);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("keeps read-only native Outclaw tools active in read-only Pi sessions", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const session = new ImmediateSession();
+		const captured: {
+			customTools?: CapturedPiTool[];
+			tools?: string[];
+		} = {};
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () => createNativeToolSdk(session, captured),
+		});
+
+		try {
+			await drainRun(
+				driver.run({
+					prompt: "Use read-only native Outclaw tools",
+					instructionMode: "provider_default",
+					model: "anthropic/claude-sonnet-4-5",
+					nativeToolHost: testNativeToolHost(),
+					readOnly: true,
+				}),
+			);
+
+			expect(captured.tools).toEqual([
+				"read",
+				"grep",
+				"find",
+				"ls",
+				"outclaw_peer_message",
+				"outclaw_recall",
+				"outclaw_schema",
+				"outclaw_cron",
+				"outclaw_coding",
+			]);
+			expect(captured.tools).not.toContain("outclaw_memory_note");
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("registers OpenAI-compatible schemas for native Outclaw tools", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const session = new ImmediateSession();
+		const captured: { customTools?: CapturedPiTool[] } = {};
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () => createNativeToolSdk(session, captured),
+		});
+
+		try {
+			await drainRun(
+				driver.run({
+					prompt: "Use native Outclaw tools",
+					instructionMode: "provider_default",
+					model: "anthropic/claude-sonnet-4-5",
+					nativeToolHost: testNativeToolHost(),
+				}),
+			);
+
+			const schemas = new Map(
+				captured.customTools?.map((tool) => [tool.name, tool.parameters]) ?? [],
+			);
+
+			expect(schemas.get("outclaw_memory_note")).toMatchObject({
+				type: "object",
+				additionalProperties: false,
+				required: ["text"],
+				properties: {
+					text: { type: "string" },
+					salience: {
+						type: "string",
+						enum: [
+							"correction",
+							"confirmation",
+							"decision",
+							"surprise",
+							"routine",
+						],
+					},
+					title: { type: "string" },
+					tags: { type: "array", items: { type: "string" } },
+				},
+			});
+			for (const schema of schemas.values()) {
+				expect(forbiddenOpenAiTopLevelSchemaKeywords(schema)).toEqual([]);
+			}
+			expect(nativeModeNames(schemas.get("outclaw_coding"))).toEqual([
+				"list",
+				"start",
+				"resume",
+				"status",
+				"transcript",
+				"cancel",
+			]);
+			expect(nativeModeProperties(schemas.get("outclaw_coding"))).toMatchObject(
+				{
+					repository: { type: "string" },
+					includeArchived: { type: "boolean" },
+					limit: { type: "number" },
+					target: { type: "string" },
+					prompt: { type: "string" },
+					sessionRef: { type: "string" },
+				},
+			);
+			expect(nativeRequiredFields(schemas.get("outclaw_coding"))).toEqual([
+				"mode",
+			]);
+			expect(nativeRequiredFields(schemas.get("outclaw_cron"))).toEqual([
+				"mode",
+			]);
+			expect(nativeModeProperties(schemas.get("outclaw_cron"))).toMatchObject({
+				jobName: { type: "string" },
+				sinceEpochMs: { type: "number" },
+				limit: { type: "number" },
+			});
+			expect(
+				nativeModeProperties(schemas.get("outclaw_peer_message")),
+			).toHaveProperty("timeoutSeconds");
+			expect(nativeRequiredFields(schemas.get("outclaw_peer_message"))).toEqual(
+				["mode"],
+			);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("native Outclaw Pi tool calls validate params before calling the host", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const session = new ImmediateSession();
+		const captured: { customTools?: CapturedPiTool[] } = {};
+		const notes: unknown[] = [];
+		const host = {
+			...testNativeToolHost(),
+			memoryNote: async (params) => {
+				notes.push(params);
+				return {
+					ok: true,
+					data: {
+						path: "/memory/daily.md",
+						timestamp: 1234,
+					},
+				} as const;
+			},
+		} satisfies OutclawNativeToolHost;
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () => createNativeToolSdk(session, captured),
+		});
+
+		try {
+			await drainRun(
+				driver.run({
+					prompt: "Write memory",
+					instructionMode: "provider_default",
+					model: "anthropic/claude-sonnet-4-5",
+					nativeToolHost: host,
+				}),
+			);
+
+			const tool = captured.customTools?.find(
+				(candidate) => candidate.name === "outclaw_memory_note",
+			);
+			if (!tool) {
+				throw new Error("outclaw_memory_note tool was not registered");
+			}
+			const okResult = {
+				ok: true,
+				data: {
+					path: "/memory/daily.md",
+					timestamp: 1234,
+				},
+			};
+			await expect(
+				tool.execute("call-1", { text: "Remember native tools" }),
+			).resolves.toEqual({
+				content: [{ type: "text", text: JSON.stringify(okResult) }],
+				details: okResult,
+			});
+			await expect(tool.execute("call-2", { text: "" })).resolves.toEqual({
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({
+							ok: false,
+							error: {
+								code: "validation_error",
+								message: "text is required",
+							},
+						}),
+					},
+				],
+				details: {
+					ok: false,
+					error: {
+						code: "validation_error",
+						message: "text is required",
+					},
+				},
+			});
+			expect(notes).toEqual([{ text: "Remember native tools" }]);
 		} finally {
 			rmSync(homeDir, { recursive: true, force: true });
 		}
@@ -1132,7 +1387,7 @@ function createSessionEnvSdk(
 			parameters: {},
 			execute: async () => {
 				captured.env = options.spawnHook({
-					command: "oc note",
+					command: "printenv OC_SESSION_ID",
 					cwd: "/workspace",
 					env: { PATH: "/usr/bin" },
 				}).env;
@@ -1148,6 +1403,134 @@ function createSessionEnvSdk(
 			return { session };
 		},
 	} as never;
+}
+
+function createNativeToolSdk(
+	session: ImmediateSession,
+	captured: {
+		customTools?: CapturedPiTool[];
+		tools?: string[];
+	},
+) {
+	return {
+		SessionManager: {
+			create: () => ({ getSessionId: () => session.sessionId }),
+			open: () => ({ getSessionId: () => session.sessionId }),
+			listAll: async () => [{ id: session.sessionId, path: "/session" }],
+		},
+		AuthStorage: { create: () => ({}) },
+		ModelRegistry: {
+			inMemory: () => ({
+				getAll: () => [sdkModel("anthropic", "claude-sonnet-4-5")],
+				getAvailable: () => [],
+			}),
+		},
+		SettingsManager: { inMemory: () => ({}) },
+		DefaultResourceLoader: ReloadableResourceLoader,
+		defineTool: (definition: CapturedPiTool) => definition,
+		createAgentSession: async (options: {
+			customTools?: CapturedPiTool[];
+			tools?: string[];
+		}) => {
+			captured.customTools = options.customTools;
+			captured.tools = options.tools;
+			return { session };
+		},
+	} as never;
+}
+
+function nativeModeNames(schema: unknown): string[] {
+	const mode = nativeModeProperties(schema).mode;
+	if (!isRecord(mode) || !Array.isArray(mode.enum)) {
+		throw new Error("Native tool mode schema is missing mode enum");
+	}
+	return mode.enum.filter(
+		(value): value is string => typeof value === "string",
+	);
+}
+
+function nativeModeProperties(schema: unknown): Record<string, unknown> {
+	if (!isRecord(schema) || !isRecord(schema.properties)) {
+		throw new Error("Native tool schema is missing properties");
+	}
+	return schema.properties;
+}
+
+function nativeRequiredFields(schema: unknown): string[] {
+	if (!isRecord(schema) || !Array.isArray(schema.required)) {
+		throw new Error("Native tool schema is missing required fields");
+	}
+	return schema.required.filter(
+		(value): value is string => typeof value === "string",
+	);
+}
+
+function forbiddenOpenAiTopLevelSchemaKeywords(schema: unknown): string[] {
+	if (!isRecord(schema)) {
+		return ["non_object_schema"];
+	}
+	return ["oneOf", "anyOf", "allOf", "enum", "not"].filter(
+		(keyword) => keyword in schema,
+	);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function testNativeToolHost(): OutclawNativeToolHost {
+	return {
+		context: {
+			agentId: "agent-default",
+			agentName: "Default",
+			source: "browser",
+			readOnly: false,
+		},
+		peerMessage: async () => ({
+			ok: true,
+			data: {
+				mode: "send",
+				targetAgent: "Builder",
+				accepted: true,
+			},
+		}),
+		memoryNote: async () => ({
+			ok: true,
+			data: {
+				path: "/memory/daily.md",
+				timestamp: 1234,
+			},
+		}),
+		recall: async () => ({
+			ok: true,
+			data: {
+				mode: "sessions",
+				sessions: [],
+			},
+		}),
+		schema: async () => ({
+			ok: true,
+			data: {
+				mode: "all",
+				schemas: [],
+			},
+		}),
+		cron: async () => ({
+			ok: true,
+			data: {
+				mode: "failed_status",
+				failures: [],
+			},
+		}),
+		coding: async () => ({
+			ok: true,
+			data: {
+				mode: "status",
+				sessionRef: "codex/code-thread-1",
+				status: "idle",
+			},
+		}),
+	};
 }
 
 class ReloadableResourceLoader {

@@ -15,7 +15,10 @@ import type { WsClient } from "../transport/client-hub.ts";
 import { AutoTitleCoordinator } from "./auto-title.ts";
 import { RuntimeClientGateway } from "./gateway/runtime-client-gateway.ts";
 import { RuntimeMessageRouter } from "./gateway/runtime-message-router.ts";
-import { createPromptExecutionRuntime } from "./prompt-execution/prompt-execution-runtime.ts";
+import {
+	createPromptExecutionRuntime,
+	type PromptExecutionRuntimeOptions,
+} from "./prompt-execution/prompt-execution-runtime.ts";
 import {
 	type PromptProviderResolver,
 	singleFacadeResolver,
@@ -37,6 +40,7 @@ interface CreateRuntimeControllerOptions {
 		model: string;
 	};
 	canSendToClient?: (ws: WsClient) => boolean;
+	createNativeToolHost?: PromptExecutionRuntimeOptions["createNativeToolHost"];
 	cwd?: string;
 	deliverCronResult?: (params: {
 		jobName: string;
@@ -170,6 +174,7 @@ export function createRuntimeController(
 	const promptExecution = createPromptExecutionRuntime({
 		autoTitle,
 		clients,
+		createNativeToolHost: options.createNativeToolHost,
 		cwd: options.cwd,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
 		deliverRolloverNotice: options.deliverRolloverNotice,

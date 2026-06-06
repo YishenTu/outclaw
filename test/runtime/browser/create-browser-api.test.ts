@@ -5870,8 +5870,8 @@ describe("createBrowserApi", () => {
 
 		symlinkSync("../skills", join(claudeDir, "skills"));
 		symlinkSync("../skills", join(codexDir, "skills"));
-		mkdirSync(join(skillsDir, "oc"), { recursive: true });
-		writeFileSync(join(skillsDir, "oc", "SKILL.md"), "name: oc\n");
+		mkdirSync(join(skillsDir, "demo"), { recursive: true });
+		writeFileSync(join(skillsDir, "demo", "SKILL.md"), "name: demo\n");
 
 		const api = createBrowserApi({
 			agents: [
@@ -5896,7 +5896,7 @@ describe("createBrowserApi", () => {
 		}
 		expect(status.files).toEqual([
 			expect.objectContaining({
-				path: "agents/railly/skills/oc/SKILL.md",
+				path: "agents/railly/skills/demo/SKILL.md",
 			}),
 		]);
 		expect(status.files).not.toEqual(

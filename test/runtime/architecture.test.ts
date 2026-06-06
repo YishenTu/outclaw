@@ -67,4 +67,27 @@ describe("runtime architecture", () => {
 
 		expect(offenders).toEqual([]);
 	});
+
+	test("native tool modules do not import CLI command implementations", async () => {
+		const offenders: string[] = [];
+		const scopes = [
+			"src/common/native-tools.ts",
+			"src/runtime/native-tools/**/*.ts",
+			"src/backend/adapters/pi/extensions/**/*.ts",
+		];
+
+		for (const scope of scopes) {
+			for await (const relativePath of new Bun.Glob(scope).scan(REPO_ROOT)) {
+				const file = Bun.file(resolve(REPO_ROOT, relativePath));
+				const source = await file.text();
+				for (const specifier of collectStaticImports(source)) {
+					if (specifier.includes("/cli/commands/")) {
+						offenders.push(`${relativePath}: ${specifier}`);
+					}
+				}
+			}
+		}
+
+		expect(offenders).toEqual([]);
+	});
 });

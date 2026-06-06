@@ -67,6 +67,44 @@ export class SupervisorController {
 
 	constructor(private readonly options: SupervisorControllerOptions) {}
 
+	async askAgent(params: {
+		fromAgentId: string;
+		to: string;
+		message: string;
+	}): Promise<string> {
+		const sender = this.options.registry.getById(params.fromAgentId);
+		if (!sender) {
+			throw new Error("Unknown sender agent");
+		}
+
+		const target = this.options.registry.getByName(params.to);
+		if (!target) {
+			throw new Error(`agent "${params.to}" not found`);
+		}
+
+		if (sender.agentId === target.agentId) {
+			throw new Error("cannot ask self");
+		}
+
+		const askCycle = this.findAskCycle(sender, target);
+		if (askCycle) {
+			throw new Error(
+				`cannot ask ${target.name} because it would create a peer ask cycle (${askCycle.join(" -> ")}); answer the peer request directly in your current response`,
+			);
+		}
+
+		this.addActiveAskEdge(sender.agentId, target.agentId);
+		try {
+			return await target.askFromAgent({
+				fromAgentId: sender.agentId,
+				fromAgentName: sender.name,
+				message: params.message,
+			});
+		} finally {
+			this.removeActiveAskEdge(sender.agentId, target.agentId);
+		}
+	}
+
 	broadcastBrowserSidebarInvalidated(event: BrowserSidebarInvalidatedEvent) {
 		for (const client of this.options.bindings.listBoundClientsByTypes([
 			"browser",
@@ -329,37 +367,10 @@ export class SupervisorController {
 			return;
 		}
 
-		const sender = this.options.registry.getById(data.fromAgentId);
-		if (!sender) {
-			this.sendAskError(ws, "Unknown sender agent");
-			return;
-		}
-
-		const target = this.options.registry.getByName(data.to);
-		if (!target) {
-			this.sendAskError(ws, `agent "${data.to}" not found`);
-			return;
-		}
-
-		if (sender.agentId === target.agentId) {
-			this.sendAskError(ws, "cannot ask self");
-			return;
-		}
-
-		const askCycle = this.findAskCycle(sender, target);
-		if (askCycle) {
-			this.sendAskError(
-				ws,
-				`cannot ask ${target.name} because it would create a peer ask cycle (${askCycle.join(" -> ")}); answer the peer request directly in your current response`,
-			);
-			return;
-		}
-
-		this.addActiveAskEdge(sender.agentId, target.agentId);
 		try {
-			const text = await target.askFromAgent({
-				fromAgentId: sender.agentId,
-				fromAgentName: sender.name,
+			const text = await this.askAgent({
+				fromAgentId: data.fromAgentId,
+				to: data.to,
 				message: data.message,
 			});
 			ws.send(
@@ -370,8 +381,6 @@ export class SupervisorController {
 			);
 		} catch (error) {
 			this.sendAskError(ws, extractError(error));
-		} finally {
-			this.removeActiveAskEdge(sender.agentId, target.agentId);
 		}
 	}
 

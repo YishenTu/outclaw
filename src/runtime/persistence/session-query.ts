@@ -29,6 +29,7 @@ interface SessionQueryResolveOptions {
 
 interface SessionQuerySearchOptions {
 	agentId?: string;
+	cursor?: SessionCursor;
 	limit?: number;
 	query: string;
 	tag: SessionTag;
@@ -254,6 +255,19 @@ export class SessionQuery {
 		if (options.agentId) {
 			conditions.push("s.agent_id = $agentId");
 			params.$agentId = options.agentId;
+		}
+		if (options.cursor) {
+			conditions.push(
+				`(
+					s.last_active < $cursorLastActive
+					OR (
+						s.last_active = $cursorLastActive
+						AND s.sdk_session_id > $cursorSessionId
+					)
+				)`,
+			);
+			params.$cursorLastActive = options.cursor.lastActive;
+			params.$cursorSessionId = options.cursor.sdkSessionId;
 		}
 		if (options.limit !== undefined) {
 			params.$limit = options.limit;

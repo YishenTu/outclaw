@@ -43,7 +43,7 @@ export class RuntimeControlPlane {
 			this.handleRestart(ws);
 			return;
 		}
-		if (cmd === "/new" || shouldAbortActiveRun(cmd)) {
+		if (shouldAbortActiveRun(cmd)) {
 			this.options.execution.abortActiveRun();
 		}
 		void handleRuntimeCommand({

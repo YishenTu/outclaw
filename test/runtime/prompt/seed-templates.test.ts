@@ -206,9 +206,6 @@ describe("seedTemplates", () => {
 				"schemas/_template.md",
 				"schemas/index.md",
 				"skills/actionbook/SKILL.md",
-				"skills/oc/SKILL.md",
-				"skills/oc/references/daemon-operations.md",
-				"skills/oc/references/session-lookup.md",
 				"skills/skill-creator/SKILL.md",
 				"skills/voice-mode/SKILL.md",
 				"skills/voice-mode/scripts/errors.mjs",
@@ -227,10 +224,10 @@ describe("seedTemplates", () => {
 				"~/.outclaw/agents/railly/",
 			);
 			expect(readFileSync(join(agentTarget, "AGENTS.md"), "utf-8")).toContain(
-				"For a sync ask, answer directly in the current response; do not use `oc agent ask` to reply to the sender.",
+				"`outclaw_recall` — find prior chat or cron sessions",
 			);
 			expect(readFileSync(join(agentTarget, "AGENTS.md"), "utf-8")).toContain(
-				"For an async send, no caller is waiting, so use normal judgment about whether to send a follow-up reply with `oc agent ask` or `oc agent send`.",
+				"`outclaw_peer_message` — list peers, ask a peer, or send an async peer message",
 			);
 			expect(
 				readFileSync(join(agentTarget, "AGENTS.md"), "utf-8"),
@@ -238,6 +235,7 @@ describe("seedTemplates", () => {
 			expect(
 				readFileSync(join(agentTarget, "AGENTS.md"), "utf-8"),
 			).not.toContain("The sender is not waiting for this response.");
+			expect(existsSync(join(agentTarget, "skills", "oc"))).toBe(false);
 			expect(result.seeded).not.toContain("MEMORY.md");
 			expect(result.seeded).toContain(
 				"skills/voice-mode/scripts/transcribe.mjs",

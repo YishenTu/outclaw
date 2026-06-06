@@ -3,7 +3,8 @@ import type {
 	BrowserTerminalSummary,
 	ServerEvent,
 } from "../../../src/common/protocol.ts";
-import type { AgentRuntimeRegistry } from "../../../src/runtime/supervisor/agent-runtime-registry.ts";
+import type { AgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
+import { AgentRuntimeRegistry } from "../../../src/runtime/supervisor/agent-runtime-registry.ts";
 import type { ClientAgentBinding } from "../../../src/runtime/supervisor/client-agent-binding.ts";
 import { SupervisorController } from "../../../src/runtime/supervisor/supervisor-controller.ts";
 import type { WsClient } from "../../../src/runtime/transport/client-hub.ts";
@@ -69,3 +70,74 @@ describe("SupervisorController browser terminals", () => {
 		});
 	});
 });
+
+describe("SupervisorController guarded peer asks", () => {
+	test("rejects native peer asks that would create an active ask cycle", async () => {
+		let releaseFirstAsk: ((value: string) => void) | undefined;
+		const railly = createRuntime("agent-railly", "railly", async () => "back");
+		const mimi = createRuntime("agent-mimi", "mimi", () => {
+			return new Promise<string>((resolve) => {
+				releaseFirstAsk = resolve;
+			});
+		});
+		const controller = new SupervisorController({
+			bindings: {} as ClientAgentBinding,
+			registry: new AgentRuntimeRegistry([railly, mimi]),
+		});
+
+		const pending = controller.askAgent({
+			fromAgentId: "agent-railly",
+			to: "mimi",
+			message: "first",
+		});
+
+		await expect(
+			controller.askAgent({
+				fromAgentId: "agent-mimi",
+				to: "railly",
+				message: "cycle",
+			}),
+		).rejects.toThrow(
+			"cannot ask railly because it would create a peer ask cycle (railly -> mimi -> railly); answer the peer request directly in your current response",
+		);
+
+		releaseFirstAsk?.("done");
+		await expect(pending).resolves.toBe("done");
+	});
+});
+
+function createRuntime(
+	agentId: string,
+	name: string,
+	askFromAgent: AgentRuntime["askFromAgent"],
+): AgentRuntime {
+	return {
+		agentId,
+		askFromAgent,
+		sendFromAgent: () => true,
+		currentModel: "model",
+		broadcastRuntimeStatus: () => {},
+		getStatusEvent: () => ({
+			type: "runtime_status",
+			agentId,
+			agentName: name,
+			model: "model",
+			effort: "medium",
+			running: false,
+		}),
+		handleClose: () => {},
+		handleMessage: () => {},
+		handleOpen: () => {},
+		name,
+		providerId: "pi",
+		coding: {} as AgentRuntime["coding"],
+		getActiveSessionId: () => undefined,
+		runCronJob: ({ jobName }) => ({ status: "unavailable", jobName }),
+		setActiveSessionChangedHandler: () => {},
+		setCronResultHandler: () => {},
+		setHeartbeatResultHandler: () => {},
+		setSessionCatalogChangedHandler: () => {},
+		setRolloverNoticeHandler: () => {},
+		stop: async () => {},
+	};
+}

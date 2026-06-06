@@ -242,6 +242,9 @@ export function createSupervisor(options: CreateSupervisorOptions) {
 	let stopPromise: Promise<void> | undefined;
 
 	return {
+		askAgent: controller.askAgent.bind(controller),
+		broadcastBrowserChatCodingLinksChanged:
+			controller.broadcastBrowserChatCodingLinksChanged.bind(controller),
 		port: server.port as number,
 		stop() {
 			if (!stopPromise) {

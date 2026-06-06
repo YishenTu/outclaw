@@ -1,13 +1,6 @@
 #!/usr/bin/env bun
-import { agentCommand } from "./cli/commands/agent.ts";
-import { codingCommand } from "./cli/commands/coding.ts";
-import { configCommand } from "./cli/commands/config.ts";
-import { cronCommand } from "./cli/commands/cron.ts";
 import { createDaemonCommands } from "./cli/commands/daemon.ts";
-import { noteCommand } from "./cli/commands/note.ts";
 import { onboardCommand } from "./cli/commands/onboard.ts";
-import { schemaCommand } from "./cli/commands/schema.ts";
-import { sessionCommand } from "./cli/commands/session.ts";
 import {
 	isHelpFlag,
 	printOnboardUsage,
@@ -75,44 +68,6 @@ switch (command) {
 			cliEntry: layout.cliEntry,
 			homeDir: layout.homeDir,
 			templatesDir: layout.templatesDir,
-		});
-		break;
-	case "agent":
-		await agentCommand({
-			argv,
-			homeDir: layout.homeDir,
-			templatesDir: layout.templatesDir,
-			tui: daemon.tui,
-		});
-		break;
-	case "config":
-		configCommand({
-			argv,
-			homeDir: layout.homeDir,
-		});
-		break;
-	case "coding":
-		await codingCommand({
-			argv,
-			homeDir: layout.homeDir,
-		});
-		break;
-	case "session":
-		await sessionCommand(argv);
-		break;
-	case "cron":
-		await cronCommand({
-			argv,
-			homeDir: layout.homeDir,
-		});
-		break;
-	case "note":
-		await noteCommand({ argv });
-		break;
-	case "schema":
-		await schemaCommand({
-			argv,
-			homeDir: layout.homeDir,
 		});
 		break;
 	case "dev":

@@ -1,3 +1,5 @@
+import type { OutclawNativeToolHost } from "./native-tools.ts";
+
 // --- Client → Server messages ---
 
 export type ImageMediaType =
@@ -1515,6 +1517,7 @@ export interface RunParams {
 	 * (e.g. the Claude SDK's `env` option).
 	 */
 	sessionEnv?: Record<string, string>;
+	nativeToolHost?: OutclawNativeToolHost;
 }
 
 export interface PromptProvider {

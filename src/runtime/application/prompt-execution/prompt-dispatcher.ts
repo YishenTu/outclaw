@@ -1,4 +1,5 @@
 import type { EffortLevel } from "../../../common/commands.ts";
+import type { OutclawNativeToolHost } from "../../../common/native-tools.ts";
 import type {
 	DisplayImage,
 	DoneEvent,
@@ -89,6 +90,11 @@ export interface PromptClientGateway {
 
 interface PromptDispatcherOptions {
 	clients: PromptClientGateway;
+	createNativeToolHost?: (params: {
+		context: RuntimePromptContext & { resumeSessionId?: string };
+		readOnly: boolean;
+		task: PromptExecution;
+	}) => OutclawNativeToolHost | undefined;
 	deliverHeartbeatResult?: (
 		params: {
 			telegramChatId: number;
@@ -255,6 +261,11 @@ export class PromptDispatcher {
 				effort: runEffort,
 				emit,
 				model: runModel,
+				nativeToolHost: this.options.createNativeToolHost?.({
+					context,
+					readOnly: false,
+					task,
+				}),
 				ocSessionId: context.ocSessionId,
 				providerId: context.providerId,
 				resume: context.resumeSessionId,

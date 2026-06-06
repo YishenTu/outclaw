@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { EffortLevel } from "../../common/commands.ts";
+import type {
+	OutclawNativeToolContext,
+	OutclawNativeToolHost,
+} from "../../common/native-tools.ts";
+import { formatProviderSessionRef } from "../../common/provider-session-ref.ts";
 import { runFacadePrompt } from "../application/prompt-execution/facade-runner.ts";
 import type { PromptProviderResolver } from "../application/prompt-execution/prompt-runner.ts";
 import type { ModelProviderResolver } from "../model-provider-resolver.ts";
@@ -22,6 +27,8 @@ export class CronAgentRunError extends Error {
 }
 
 interface RunCronAgentOptions {
+	agentId?: string;
+	agentName?: string;
 	/**
 	 * Provider resolver used to look up the cron facade by the provider id
 	 * resolved from the job's `model` field. Cron jobs do not have a separate
@@ -32,6 +39,9 @@ interface RunCronAgentOptions {
 	modelProviderResolver: ModelProviderResolver;
 	promptHomeDir: string;
 	cwd: string;
+	createNativeToolHost?: (
+		context: OutclawNativeToolContext,
+	) => OutclawNativeToolHost | undefined;
 }
 
 export function createCronAgentRunner(options: RunCronAgentOptions) {
@@ -56,6 +66,19 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 		const providerModel = selection.model.model;
 		const facade = options.providers.getFacade(providerId);
 		const sessionId = randomUUID();
+		const nativeToolHost =
+			options.createNativeToolHost && options.agentId && options.agentName
+				? options.createNativeToolHost({
+						agentId: options.agentId,
+						agentName: options.agentName,
+						providerSessionRef: formatProviderSessionRef({
+							providerId,
+							sdkSessionId: sessionId,
+						}),
+						source: "cron",
+						readOnly: false,
+					})
+				: undefined;
 
 		let resultText = "";
 		let completedSessionId: string | undefined;
@@ -77,6 +100,7 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 			},
 			facade,
 			model: providerModel,
+			nativeToolHost,
 			ocSessionId: sessionId,
 			prompt,
 			promptHomeDir: options.promptHomeDir,

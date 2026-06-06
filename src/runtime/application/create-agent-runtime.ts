@@ -1,11 +1,16 @@
 import type { EffortLevel } from "../../common/commands.ts";
 import type {
+	OutclawNativeToolContext,
+	OutclawNativeToolHost,
+} from "../../common/native-tools.ts";
+import type {
 	ChatHistoryReader,
 	Facade,
 	FrontendNotice,
 	HeartbeatResult,
 	RuntimeStatusEvent,
 } from "../../common/protocol.ts";
+import { formatProviderSessionRef } from "../../common/provider-session-ref.ts";
 import { listWorkspaceFiles } from "../browser/files/list-workspace-files.ts";
 import { type CodingRuntime, createCodingRuntime } from "../coding/index.ts";
 import type { Config } from "../config/index.ts";
@@ -88,6 +93,9 @@ interface CreateAgentRuntimeOptions {
 	getFrontendNotice?: () => FrontendNotice | undefined;
 	heartbeat?: Config["heartbeat"];
 	name: string;
+	nativeToolHostFactory?: (
+		context: OutclawNativeToolContext,
+	) => OutclawNativeToolHost | undefined;
 	promptHomeDir?: string;
 	rollover?: {
 		idleMinutes: number;
@@ -212,6 +220,19 @@ export function createAgentRuntime(
 		agentId: options.agentId,
 		autoTitle: options.autoTitle,
 		canSendToClient: options.canSendToClient,
+		createNativeToolHost: options.nativeToolHostFactory
+			? ({ context, readOnly, task }) =>
+					options.nativeToolHostFactory?.({
+						agentId: options.agentId,
+						agentName: options.name,
+						providerSessionRef: formatProviderSessionRef({
+							providerId: context.providerId,
+							sdkSessionId: context.resumeSessionId ?? context.ocSessionId,
+						}),
+						source: task.source,
+						readOnly,
+					})
+			: undefined,
 		cwd: options.cwd,
 		facade,
 		providers: providerResolver,
@@ -282,10 +303,13 @@ export function createAgentRuntime(
 			? new CronScheduler({
 					cronDir: options.cronDir,
 					runAgent: createCronAgentRunner({
+						agentId: options.agentId,
+						agentName: options.name,
 						providers: providerResolver,
 						modelProviderResolver,
 						promptHomeDir: options.promptHomeDir,
 						cwd: options.cwd ?? process.cwd(),
+						createNativeToolHost: options.nativeToolHostFactory,
 					}),
 					onResult: (event) => controller.broadcastCronResult(event),
 					getDefaultEffort: () => state.defaultEffort,

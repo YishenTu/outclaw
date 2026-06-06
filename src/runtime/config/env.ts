@@ -7,16 +7,47 @@ export function loadSharedEnv(homeDir: string): void {
 
 	const content = readFileSync(envPath, "utf-8");
 	for (const line of content.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed || trimmed.startsWith("#")) continue;
-		const eqIdx = trimmed.indexOf("=");
-		if (eqIdx === -1) continue;
-		const key = trimmed.slice(0, eqIdx).trim();
-		const value = trimmed.slice(eqIdx + 1).trim();
-		if (!process.env[key]) {
-			process.env[key] = value;
+		const entry = parseEnvLine(line);
+		if (!entry) continue;
+		if (!process.env[entry.key]) {
+			process.env[entry.key] = entry.value;
 		}
 	}
+}
+
+function parseEnvLine(
+	line: string,
+): { key: string; value: string } | undefined {
+	const trimmed = line.trim();
+	if (!trimmed || trimmed.startsWith("#")) return undefined;
+	const match = trimmed.match(
+		/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/,
+	);
+	if (!match) return undefined;
+	const [, key, rawValue] = match;
+	if (!key || rawValue === undefined) return undefined;
+	return { key, value: parseEnvValue(rawValue) };
+}
+
+function parseEnvValue(rawValue: string): string {
+	let value = rawValue.trim();
+	const quote = value[0];
+	if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
+		value = value.slice(1, -1);
+		if (quote === '"') {
+			value = value
+				.replace(/\\n/g, "\n")
+				.replace(/\\r/g, "\r")
+				.replace(/\\t/g, "\t")
+				.replace(/\\"/g, '"')
+				.replace(/\\\\/g, "\\");
+		}
+		return value;
+	}
+
+	const inlineComment = value.search(/\s+#/);
+	if (inlineComment >= 0) value = value.slice(0, inlineComment).trim();
+	return value;
 }
 
 export function resolveEnvString(value: string): string {

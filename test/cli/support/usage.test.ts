@@ -1,59 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
-	formatAgentAskUsage,
-	formatAgentConfigUsage,
-	formatAgentCreateUsage,
-	formatAgentListUsage,
-	formatAgentRemoveUsage,
-	formatAgentRenameUsage,
-	formatAgentSendUsage,
-	formatAgentUsage,
-	formatCodingResumeUsage,
-	formatCodingStartUsage,
-	formatCodingStatusUsage,
-	formatCodingTranscriptUsage,
-	formatCodingUsage,
-	formatConfigRuntimeUsage,
-	formatConfigSecureUsage,
-	formatConfigUsage,
-	formatCronRunUsage,
-	formatCronStatusUsage,
-	formatCronUsage,
 	formatOnboardUsage,
-	formatSchemaStatusUsage,
-	formatSchemaUsage,
-	formatSessionListUsage,
-	formatSessionSearchUsage,
-	formatSessionTranscriptUsage,
-	formatSessionUsage,
 	formatStartUsage,
 	formatUsage,
 	hasHelpFlag,
 	isHelpFlag,
-	printAgentAskUsage,
-	printAgentConfigUsage,
-	printAgentCreateUsage,
-	printAgentListUsage,
-	printAgentRemoveUsage,
-	printAgentRenameUsage,
-	printAgentSendUsage,
-	printAgentUsage,
-	printCodingStatusUsage,
-	printCodingTranscriptUsage,
-	printCodingUsage,
-	printConfigRuntimeUsage,
-	printConfigSecureUsage,
-	printConfigUsage,
-	printCronRunUsage,
-	printCronStatusUsage,
-	printCronUsage,
 	printOnboardUsage,
-	printSchemaStatusUsage,
-	printSchemaUsage,
-	printSessionListUsage,
-	printSessionSearchUsage,
-	printSessionTranscriptUsage,
-	printSessionUsage,
 	printStartUsage,
 	printUsage,
 } from "../../../src/cli/support/usage.ts";
@@ -76,135 +28,38 @@ describe("CLI usage text", () => {
 		expect(isHelpFlag("--help")).toBe(true);
 		expect(isHelpFlag("help")).toBe(false);
 		expect(isHelpFlag(undefined)).toBe(false);
-		expect(hasHelpFlag(["agent", "--help"])).toBe(true);
-		expect(hasHelpFlag(["agent", "list"])).toBe(false);
+		expect(hasHelpFlag(["start", "--help"])).toBe(true);
+		expect(hasHelpFlag(["start"])).toBe(false);
 	});
 
-	test("formats every command usage with its command contract", () => {
-		const cases: Array<[string, string[]]> = [
-			[
-				formatUsage(),
-				[
-					"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build|agent|config|coding|session|cron|note|schema>",
-					"oc build && oc start",
-				],
-			],
-			[
-				formatStartUsage(),
-				["Usage: oc start [--lan] [--host HOST]", "oc restart --host"],
-			],
-			[
-				formatOnboardUsage(),
-				["Usage: oc onboard", "interactive agent onboarding TUI"],
-			],
-			[
-				formatAgentUsage(),
-				[
-					"Usage: oc agent <list|create|config|rename|remove|ask|send|name>",
-					"<name>",
-				],
-			],
-			[formatAgentListUsage(), ["Usage: oc agent list", "Lists configured"]],
-			[
-				formatAgentCreateUsage(),
-				["Usage: oc agent create <name>", "~/.outclaw/agents/<name>"],
-			],
-			[
-				formatAgentConfigUsage(),
-				["Usage: oc agent config <name>", "Omitted flags are preserved"],
-			],
-			[
-				formatAgentRenameUsage(),
-				["Usage: oc agent rename <old-name> <new-name>", "keeps its agent id"],
-			],
-			[
-				formatAgentRemoveUsage(),
-				["Usage: oc agent remove <name>", "Removes an agent workspace"],
-			],
-			[
-				formatAgentAskUsage(),
-				["Usage: oc agent ask --to <target>", "current agent workspace"],
-			],
-			[
-				formatAgentSendUsage(),
-				["Usage: oc agent send --to <target>", "without waiting"],
-			],
-			[
-				formatConfigUsage(),
-				["Usage: oc config <runtime|secure>", "move hardcoded telegram config"],
-			],
-			[
-				formatConfigRuntimeUsage(),
-				["Usage: oc config runtime", "Use --host 0.0.0.0"],
-			],
-			[
-				formatConfigSecureUsage(),
-				["Usage: oc config secure", "telegram secrets"],
-			],
-			[
-				formatCodingUsage(),
-				[
-					"Usage: oc coding <repo-id-or-path|provider/session>",
-					"registered coding repositories",
-				],
-			],
-			[
-				formatCodingStartUsage(),
-				["Usage: oc coding start", "provider/session"],
-			],
-			[
-				formatCodingResumeUsage(),
-				["Usage: oc coding resume", "steers the active turn"],
-			],
-			[
-				formatCodingTranscriptUsage(),
-				["Usage: oc coding transcript", "latest interaction turn"],
-			],
-			[
-				formatCodingStatusUsage(),
-				["Usage: oc coding status", "final assistant response"],
-			],
-			[formatCronUsage(), ["Usage: oc cron <run|status>", "failed cron runs"]],
-			[
-				formatCronRunUsage(),
-				["Usage: oc cron run <cron-name>", "prints nothing"],
-			],
-			[
-				formatCronStatusUsage(),
-				["Usage: oc cron status --failed", "Default since: 7d"],
-			],
-			[
-				formatSchemaUsage(),
-				["Usage: oc schema <status|stale>", "list stale and broken schemas"],
-			],
-			[
-				formatSchemaStatusUsage(),
-				["Usage: oc schema status", "compares last_observation_at"],
-			],
-			[
-				formatSessionUsage(),
-				["Usage: oc session <list|search|transcript>", "scope results"],
-			],
-			[
-				formatSessionListUsage(),
-				["Usage: oc session list", "Default limit: 20"],
-			],
-			[
-				formatSessionSearchUsage(),
-				["Usage: oc session search", "No default limit"],
-			],
-			[
-				formatSessionTranscriptUsage(),
-				["Usage: oc session transcript", "unique prefix"],
-			],
-		];
+	test("formats the operator-only command contract", () => {
+		const usage = formatUsage();
 
-		for (const [usage, expectedSnippets] of cases) {
-			expect(usage.endsWith("\n")).toBe(false);
-			for (const snippet of expectedSnippets) {
-				expect(usage).toContain(snippet);
-			}
+		expect(usage).toContain(
+			"Usage: oc <start|stop|restart|status|tui|browser|onboard|dev|build>",
+		);
+		expect(usage).toContain("oc build && oc start");
+		expect(usage).toContain("command help: oc <command> -h");
+		for (const removed of [
+			"oc agent",
+			"oc config",
+			"oc coding",
+			"oc session",
+			"oc cron",
+			"oc note",
+			"oc schema",
+		]) {
+			expect(usage).not.toContain(removed);
 		}
+	});
+
+	test("formats retained command help", () => {
+		expect(formatStartUsage()).toContain(
+			"Usage: oc start [--lan] [--host HOST]",
+		);
+		expect(formatStartUsage()).toContain("oc restart --host");
+		expect(formatOnboardUsage()).toContain("Usage: oc onboard");
+		expect(formatOnboardUsage()).toContain("interactive agent onboarding TUI");
 	});
 
 	test("print helpers write their corresponding formatted usage text", () => {
@@ -212,29 +67,6 @@ describe("CLI usage text", () => {
 			[printUsage, formatUsage],
 			[printStartUsage, formatStartUsage],
 			[printOnboardUsage, formatOnboardUsage],
-			[printAgentUsage, formatAgentUsage],
-			[printAgentListUsage, formatAgentListUsage],
-			[printAgentCreateUsage, formatAgentCreateUsage],
-			[printAgentConfigUsage, formatAgentConfigUsage],
-			[printAgentRenameUsage, formatAgentRenameUsage],
-			[printAgentRemoveUsage, formatAgentRemoveUsage],
-			[printAgentAskUsage, formatAgentAskUsage],
-			[printAgentSendUsage, formatAgentSendUsage],
-			[printConfigUsage, formatConfigUsage],
-			[printConfigRuntimeUsage, formatConfigRuntimeUsage],
-			[printConfigSecureUsage, formatConfigSecureUsage],
-			[printCodingUsage, formatCodingUsage],
-			[printCodingStatusUsage, formatCodingStatusUsage],
-			[printCodingTranscriptUsage, formatCodingTranscriptUsage],
-			[printCronUsage, formatCronUsage],
-			[printCronRunUsage, formatCronRunUsage],
-			[printCronStatusUsage, formatCronStatusUsage],
-			[printSchemaUsage, formatSchemaUsage],
-			[printSchemaStatusUsage, formatSchemaStatusUsage],
-			[printSessionUsage, formatSessionUsage],
-			[printSessionListUsage, formatSessionListUsage],
-			[printSessionSearchUsage, formatSessionSearchUsage],
-			[printSessionTranscriptUsage, formatSessionTranscriptUsage],
 		];
 
 		for (const [print, format] of cases) {

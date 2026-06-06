@@ -1,4 +1,5 @@
 import type { EffortLevel } from "../../../common/commands.ts";
+import type { OutclawNativeToolHost } from "../../../common/native-tools.ts";
 import type {
 	FacadeEvent,
 	ImageRef,
@@ -21,6 +22,7 @@ export interface FacadePromptRun {
 	images?: ImageRef[];
 	includeSystemPrompt?: boolean;
 	model?: string;
+	nativeToolHost?: OutclawNativeToolHost;
 	ocSessionId: string;
 	prompt: string;
 	promptHomeDir?: string;
@@ -57,6 +59,7 @@ export async function runFacadePrompt(options: FacadePromptRun): Promise<void> {
 			cwd: options.cwd,
 			resourceHomeDir: options.promptHomeDir,
 			model: options.model,
+			nativeToolHost: options.nativeToolHost,
 			effort: options.effort,
 			serviceTier: options.serviceTier,
 			stream: options.stream,

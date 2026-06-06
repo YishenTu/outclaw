@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { OutclawNativeToolHost } from "../../../src/common/native-tools.ts";
 import type {
 	Facade,
 	FacadeEvent,
@@ -110,6 +111,29 @@ describe("PromptRunner OC_SESSION_ID stability", () => {
 		});
 
 		expect(captured[0]).toBeUndefined();
+	});
+
+	test("forwards native tool hosts to the facade run", async () => {
+		const captured: RunParams[] = [];
+		const facade = createFacade(
+			[[{ type: "done", sessionId: "sdk", durationMs: 1 }]],
+			(params) => captured.push(params),
+		);
+		const runner = new PromptRunner({
+			providers: singleFacadeResolver(facade),
+		});
+		const nativeToolHost = {} as OutclawNativeToolHost;
+
+		await runner.run({
+			abortController: new AbortController(),
+			emit: () => {},
+			nativeToolHost,
+			ocSessionId: "oc-session",
+			providerId: "pi",
+			task: { prompt: "hi" },
+		});
+
+		expect(captured[0]?.nativeToolHost).toBe(nativeToolHost);
 	});
 
 	test("routes the prompt to the facade matching the context providerId", async () => {

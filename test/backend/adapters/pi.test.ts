@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	existsSync,
 	lstatSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -9,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createOutclawPiExtensionBundleBanner } from "../../../src/backend/adapters/pi/extension-bundle.ts";
 import { PiAdapter } from "../../../src/backend/adapters/pi/index.ts";
 import {
 	ensurePiProfile,
@@ -20,6 +22,7 @@ import type {
 	PiDriverRunParams,
 	PiDriverSession,
 } from "../../../src/backend/adapters/pi/types.ts";
+import type { OutclawNativeToolHost } from "../../../src/common/native-tools.ts";
 import { buildPromptWithReplyContext } from "../../../src/common/reply-context.ts";
 
 class MockPiDriver implements PiDriver {
@@ -64,6 +67,47 @@ class MockPiDriver implements PiDriver {
 	async dispose() {
 		this.disposed = true;
 	}
+}
+
+function writeTestPiExtensionSources(sourceDir: string): void {
+	writeFileSync(
+		join(sourceDir, "outclaw-extension.ts"),
+		[
+			'import registerWebTools from "./web-tools.ts";',
+			'import registerDefaultTools from "./default-tools.ts";',
+			'import registerOutclawTools from "./outclaw-tools.ts";',
+			"export default function registerOutclawExtension(pi: unknown) {",
+			"\tregisterWebTools(pi);",
+			"\tregisterDefaultTools(pi);",
+			"\tregisterOutclawTools(pi);",
+			"}",
+			"",
+		].join("\n"),
+	);
+	writeFileSync(
+		join(sourceDir, "web-tools.ts"),
+		"export default function registerWebTools() {}\n",
+	);
+	writeFileSync(
+		join(sourceDir, "default-tools.ts"),
+		"export default function registerDefaultTools() {}\n",
+	);
+	writeFileSync(
+		join(sourceDir, "outclaw-tools.ts"),
+		"export default function registerOutclawTools() {}\n",
+	);
+}
+
+function writeTestOutclawExtensionBundle(
+	sourceDir: string,
+	targetFile: string,
+	body: string,
+): void {
+	mkdirSync(join(targetFile, ".."), { recursive: true });
+	writeFileSync(
+		targetFile,
+		`${createOutclawPiExtensionBundleBanner(sourceDir)}${body}`,
+	);
 }
 
 describe("PiAdapter", () => {
@@ -241,6 +285,27 @@ describe("PiAdapter", () => {
 				prompt: "Describe",
 				images: [{ path: "/tmp/image.png", mediaType: "image/png" }],
 				instructionMode: "provider_default",
+			},
+		]);
+	});
+
+	test("passes native tool hosts through to the driver", async () => {
+		const driver = new MockPiDriver();
+		const adapter = new PiAdapter({ driver });
+		const nativeToolHost = {} as OutclawNativeToolHost;
+
+		for await (const _event of adapter.run({
+			prompt: "Hi",
+			nativeToolHost,
+		})) {
+			// drain
+		}
+
+		expect(driver.runParams).toEqual([
+			{
+				prompt: "Hi",
+				instructionMode: "provider_default",
+				nativeToolHost,
 			},
 		]);
 	});
@@ -519,7 +584,7 @@ describe("PiAdapter", () => {
 		}
 	});
 
-	test("sets up the Outclaw extension package manifest without dropping dependencies", () => {
+	test("sets up the Outclaw extension package manifest without dropping custom entries", () => {
 		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-home-"));
 		try {
 			const paths = getPiProfilePaths(homeDir);
@@ -530,6 +595,7 @@ describe("PiAdapter", () => {
 				`${JSON.stringify(
 					{
 						dependencies: {
+							custom: "^1.0.0",
 							jsdom: "^29.1.1",
 						},
 						pi: {
@@ -546,14 +612,11 @@ describe("PiAdapter", () => {
 
 			const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 			expect(packageJson.dependencies).toEqual({
+				custom: "^1.0.0",
 				jsdom: "^29.1.1",
 			});
 			expect(packageJson.pi).toEqual({
-				extensions: [
-					"./web-tools.ts",
-					"./default-tools.ts",
-					"./custom-tool.ts",
-				],
+				extensions: ["./outclaw/index.js", "./custom-tool.ts"],
 				skills: ["./skills"],
 			});
 		} finally {
@@ -561,12 +624,263 @@ describe("PiAdapter", () => {
 		}
 	});
 
+	test("rejects malformed Pi extension manifests before building extensions", () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-home-"));
+		const sourceDir = mkdtempSync(join(tmpdir(), "outclaw-pi-extensions-"));
+		try {
+			const paths = getPiProfilePaths(homeDir);
+			writeTestPiExtensionSources(sourceDir);
+			mkdirSync(paths.extensionDir, { recursive: true });
+			const packageJsonPath = join(paths.extensionDir, "package.json");
+			writeFileSync(packageJsonPath, "{ not json\n");
+			let buildCount = 0;
+
+			expect(() =>
+				ensurePiProfile(paths, {
+					extensionSourceDir: sourceDir,
+					buildOutclawExtensionBundle: ({ targetFile }) => {
+						buildCount += 1;
+						writeTestOutclawExtensionBundle(
+							sourceDir,
+							targetFile,
+							"web_search web_fetch outclaw_peer_message\n",
+						);
+					},
+				}),
+			).toThrow(/Invalid Pi extension manifest/);
+			expect(buildCount).toBe(0);
+			expect(readFileSync(packageJsonPath, "utf8")).toBe("{ not json\n");
+			expect(existsSync(join(paths.extensionDir, "outclaw", "index.js"))).toBe(
+				false,
+			);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+			rmSync(sourceDir, { recursive: true, force: true });
+		}
+	});
+
+	test("syncs the repo-owned Pi extension package into the Pi profile", () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-home-"));
+		try {
+			const paths = getPiProfilePaths(homeDir);
+			mkdirSync(paths.extensionDir, { recursive: true });
+			writeFileSync(join(paths.extensionDir, "web-tools.ts"), "legacy");
+			writeFileSync(join(paths.extensionDir, "web-tools.js"), "legacy");
+			writeFileSync(join(paths.extensionDir, "default-tools.ts"), "legacy");
+			writeFileSync(join(paths.extensionDir, "outclaw-tools.ts"), "legacy");
+			writeFileSync(join(paths.extensionDir, "package-lock.json"), "{}\n");
+			mkdirSync(join(paths.extensionDir, "node_modules"), { recursive: true });
+
+			ensurePiProfile(paths);
+
+			const packageJson = JSON.parse(
+				readFileSync(join(paths.extensionDir, "package.json"), "utf8"),
+			);
+			expect(packageJson.dependencies).toBeUndefined();
+			expect(packageJson.pi.extensions).toEqual(["./outclaw/index.js"]);
+			for (const entry of packageJson.pi.extensions) {
+				expect(existsSync(join(paths.extensionDir, entry.slice(2)))).toBe(true);
+			}
+			expect(existsSync(join(paths.extensionDir, "web-tools.ts"))).toBe(false);
+			expect(existsSync(join(paths.extensionDir, "web-tools.js"))).toBe(false);
+			expect(existsSync(join(paths.extensionDir, "default-tools.ts"))).toBe(
+				false,
+			);
+			expect(existsSync(join(paths.extensionDir, "outclaw-tools.ts"))).toBe(
+				false,
+			);
+			expect(existsSync(join(paths.extensionDir, "package-lock.json"))).toBe(
+				false,
+			);
+			expect(existsSync(join(paths.extensionDir, "node_modules"))).toBe(false);
+			const webToolsBundle = readFileSync(
+				join(paths.extensionDir, "outclaw", "index.js"),
+				"utf8",
+			);
+			expect(webToolsBundle).toContain("outclaw_peer_message");
+			expect(webToolsBundle).toContain("web_search");
+			expect(webToolsBundle).toContain("web_fetch");
+			expect(webToolsBundle).not.toContain("web_context");
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("generates the profile Outclaw extension bundle without mutating repo sources", () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-home-"));
+		const sourceDir = mkdtempSync(join(tmpdir(), "outclaw-pi-extensions-"));
+		try {
+			const paths = getPiProfilePaths(homeDir);
+			writeTestPiExtensionSources(sourceDir);
+			let buildCount = 0;
+
+			ensurePiProfile(paths, {
+				extensionSourceDir: sourceDir,
+				buildOutclawExtensionBundle: ({ extensionSourceDir, targetFile }) => {
+					buildCount += 1;
+					writeTestOutclawExtensionBundle(
+						extensionSourceDir,
+						targetFile,
+						"export default function registerOutclawExtension() {} web_search web_fetch outclaw_peer_message\n",
+					);
+				},
+			});
+
+			expect(buildCount).toBe(1);
+			expect(existsSync(join(sourceDir, "web-tools.js"))).toBe(false);
+			expect(existsSync(join(paths.extensionDir, "outclaw", "index.js"))).toBe(
+				true,
+			);
+			expect(
+				readFileSync(join(paths.extensionDir, "outclaw", "index.js"), "utf8"),
+			).toContain("registerOutclawExtension");
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+			rmSync(sourceDir, { recursive: true, force: true });
+		}
+	});
+
+	test("regenerates a stale profile Outclaw extension bundle before seeding", () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-home-"));
+		const sourceDir = mkdtempSync(join(tmpdir(), "outclaw-pi-extensions-"));
+		try {
+			const paths = getPiProfilePaths(homeDir);
+			writeTestPiExtensionSources(sourceDir);
+			mkdirSync(join(paths.extensionDir, "outclaw"), { recursive: true });
+			writeFileSync(
+				join(paths.extensionDir, "outclaw", "index.js"),
+				"export default function staleWebTools() {}\n",
+			);
+			let buildCount = 0;
+
+			ensurePiProfile(paths, {
+				extensionSourceDir: sourceDir,
+				buildOutclawExtensionBundle: ({ extensionSourceDir, targetFile }) => {
+					buildCount += 1;
+					writeTestOutclawExtensionBundle(
+						extensionSourceDir,
+						targetFile,
+						"export default function freshOutclawExtension() {} web_search web_fetch outclaw_peer_message\n",
+					);
+				},
+			});
+
+			expect(buildCount).toBe(1);
+			expect(
+				readFileSync(join(paths.extensionDir, "outclaw", "index.js"), "utf8"),
+			).toContain("freshOutclawExtension");
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+			rmSync(sourceDir, { recursive: true, force: true });
+		}
+	});
+
+	test("regenerates a banner-current profile bundle when its body digest changes", () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-home-"));
+		const sourceDir = mkdtempSync(join(tmpdir(), "outclaw-pi-extensions-"));
+		try {
+			const paths = getPiProfilePaths(homeDir);
+			writeTestPiExtensionSources(sourceDir);
+			let buildCount = 0;
+			const buildOutclawExtensionBundle = ({
+				extensionSourceDir,
+				targetFile,
+			}: {
+				extensionSourceDir: string;
+				targetFile: string;
+			}) => {
+				buildCount += 1;
+				writeTestOutclawExtensionBundle(
+					extensionSourceDir,
+					targetFile,
+					`export default function freshOutclawExtension${buildCount}() {} web_search web_fetch outclaw_peer_message\n`,
+				);
+			};
+
+			ensurePiProfile(paths, {
+				extensionSourceDir: sourceDir,
+				buildOutclawExtensionBundle,
+			});
+			const bundlePath = join(paths.extensionDir, "outclaw", "index.js");
+			writeFileSync(
+				bundlePath,
+				`${createOutclawPiExtensionBundleBanner(sourceDir)}web_search web_fetch outclaw_peer_message corrupted\n`,
+			);
+
+			ensurePiProfile(paths, {
+				extensionSourceDir: sourceDir,
+				buildOutclawExtensionBundle,
+			});
+
+			expect(buildCount).toBe(2);
+			expect(readFileSync(bundlePath, "utf8")).toContain(
+				"freshOutclawExtension2",
+			);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+			rmSync(sourceDir, { recursive: true, force: true });
+		}
+	});
+
+	test("prunes legacy managed dependencies when manifest entries are already current", () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-home-"));
+		const sourceDir = mkdtempSync(join(tmpdir(), "outclaw-pi-extensions-"));
+		try {
+			const paths = getPiProfilePaths(homeDir);
+			writeTestPiExtensionSources(sourceDir);
+			mkdirSync(paths.extensionDir, { recursive: true });
+			writeFileSync(
+				join(paths.extensionDir, "package.json"),
+				`${JSON.stringify(
+					{
+						dependencies: {
+							jsdom: "^29.1.1",
+							linkedom: "^0.18.12",
+						},
+						pi: {
+							extensions: ["./outclaw/index.js"],
+						},
+					},
+					null,
+					2,
+				)}\n`,
+			);
+
+			ensurePiProfile(paths, {
+				extensionSourceDir: sourceDir,
+				buildOutclawExtensionBundle: ({ extensionSourceDir, targetFile }) => {
+					writeTestOutclawExtensionBundle(
+						extensionSourceDir,
+						targetFile,
+						"web_search web_fetch outclaw_peer_message\n",
+					);
+				},
+			});
+
+			const packageJson = JSON.parse(
+				readFileSync(join(paths.extensionDir, "package.json"), "utf8"),
+			);
+			expect(packageJson.dependencies).toBeUndefined();
+			expect(packageJson.pi.extensions).toEqual(["./outclaw/index.js"]);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+			rmSync(sourceDir, { recursive: true, force: true });
+		}
+	});
+
 	test("prepareWorkspace creates the canonical Outclaw skill root", () => {
 		const promptHomeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-agent-"));
-		const adapter = new PiAdapter({ driver: new MockPiDriver() });
+		let profileSetupCount = 0;
+		const adapter = new PiAdapter({
+			driver: new MockPiDriver(),
+			setupProfile: () => {
+				profileSetupCount += 1;
+			},
+		});
 		try {
 			adapter.prepareWorkspace(promptHomeDir);
 
+			expect(profileSetupCount).toBe(1);
 			expect(existsSync(join(promptHomeDir, "skills"))).toBe(true);
 			expect(existsSync(join(promptHomeDir, ".pi", "skills"))).toBe(false);
 			expect(existsSync(join(promptHomeDir, ".agents", "skills"))).toBe(false);

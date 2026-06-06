@@ -9,6 +9,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+	OutclawNativeToolContext,
+	OutclawNativeToolHost,
+} from "../../../src/common/native-tools.ts";
+import type {
 	Facade,
 	FacadeEvent,
 	ProviderModelInfo,
@@ -662,6 +666,8 @@ description: Review the current changes.
 			agentId: "agent-railly",
 			journalMode: "DELETE",
 		});
+		const nativeToolHost = {} as OutclawNativeToolHost;
+		const nativeContexts: OutclawNativeToolContext[] = [];
 		const runtime = createAgentRuntime({
 			agentId: "agent-railly",
 			name: "railly",
@@ -672,6 +678,10 @@ description: Review the current changes.
 			],
 			defaultProviderId: "claude",
 			defaultModel: "sonnet",
+			nativeToolHostFactory: (context) => {
+				nativeContexts.push(context);
+				return nativeToolHost;
+			},
 			store,
 		});
 		const ws = mockWs();
@@ -700,6 +710,22 @@ description: Review the current changes.
 			effort: "medium",
 			prompt: "chat with Pi",
 		});
+		expect(piFacade.seenParams[0]?.nativeToolHost).toBe(nativeToolHost);
+		const preferredSessionId = piFacade.seenParams[0]?.sessionId;
+		if (typeof preferredSessionId !== "string") {
+			throw new Error(
+				"Expected fresh Pi run to receive a preferred session id",
+			);
+		}
+		expect(nativeContexts).toEqual([
+			{
+				agentId: "agent-railly",
+				agentName: "railly",
+				providerSessionRef: `pi/${preferredSessionId}`,
+				source: "tui",
+				readOnly: false,
+			},
+		]);
 		expect(runtime.getStatusEvent()).toMatchObject({
 			providerId: "pi",
 			sessionId: "pi-chat-789",
@@ -710,6 +736,63 @@ description: Review the current changes.
 			model: "anthropic/claude-sonnet-4-5",
 			source: "tui",
 			tag: "chat",
+		});
+
+		await runtime.stop();
+		store.close();
+	});
+
+	test("uses Pi as the default chat provider without model selection", async () => {
+		const claudeFacade = new CatalogProviderSessionFacade(
+			"claude",
+			"claude-chat",
+			[providerModel("sonnet")],
+		);
+		const piFacade = new CatalogProviderSessionFacade("pi", "pi-chat-default", [
+			providerModel("openai-codex/gpt-5.5", {
+				displayName: "GPT 5.5",
+				isDefault: true,
+			}),
+		]);
+		const store = new SessionStore(TEST_DB, {
+			agentId: "agent-railly",
+			journalMode: "DELETE",
+		});
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: piFacade,
+			providers: [
+				{ providerId: "claude", displayName: "Claude", facade: claudeFacade },
+				{ providerId: "pi", displayName: "Pi", facade: piFacade },
+			],
+			defaultProviderId: "pi",
+			defaultModel: "openai-codex/gpt-5.5",
+			store,
+		});
+		const ws = mockWs();
+
+		expect(runtime.getStatusEvent()).toMatchObject({
+			providerId: "pi",
+			model: "openai-codex/gpt-5.5",
+		});
+		runtime.handleOpen(ws);
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "prompt", prompt: "default Pi chat" }),
+		);
+		await waitForDone(ws);
+
+		expect(claudeFacade.seenParams).toEqual([]);
+		expect(piFacade.seenParams).toHaveLength(1);
+		expect(piFacade.seenParams[0]).toMatchObject({
+			model: "openai-codex/gpt-5.5",
+			prompt: "default Pi chat",
+		});
+		expect(store.get("pi", "pi-chat-default")).toMatchObject({
+			providerId: "pi",
+			sdkSessionId: "pi-chat-default",
+			model: "openai-codex/gpt-5.5",
 		});
 
 		await runtime.stop();

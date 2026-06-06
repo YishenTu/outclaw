@@ -49,13 +49,22 @@ Skills are specialized knowledge and workflows bundled as portable packages, eac
 - The workflow is likely to recur — even occasionally
 - Proactively suggest creating a skill when a complex task looks like a repeatable pattern
 
-### The `oc` skill
+## Outclaw Native Tools
 
-The `oc` skill is the internal reference for the `oc` CLI — daemon control, agent management, agent-to-agent messaging, session lookup, memory capture. Invoke it whenever you need to run an `oc` command and aren't certain of the syntax or subcommand. Every `oc <command>` reference in the sections below assumes you can reach for this skill.
+Outclaw workflows are native tools, not shell commands. Use them directly:
+
+- `outclaw_coding` — list, start, resume, inspect, read, or cancel code-mode sessions.
+- `outclaw_memory_note` — write durable memory notes for this agent.
+- `outclaw_recall` — find prior chat or cron sessions and read transcripts.
+- `outclaw_schema` — inspect memory schema freshness.
+- `outclaw_cron` — inspect failed cron runs or manually trigger a known job.
+- `outclaw_peer_message` — list peers, ask a peer, or send an async peer message.
+
+The `oc` executable is only for operator daemon commands: `oc build`, `oc start`, `oc stop`, `oc restart`, `oc status`, `oc tui`, `oc browser`, `oc onboard`, and `oc dev`. Do not use shell commands for Outclaw workflows when a native tool exists.
 
 ## Coding
 
-When the user asks you to write, modify, or debug code, use `oc coding`.
+When the user asks you to write, modify, or debug code, use `outclaw_coding`. Start new work with `mode: "start"`, continue existing work with `mode: "resume"`, inspect progress with `mode: "status"` or `mode: "transcript"`, and use `mode: "list"` to discover repositories or recent coding sessions.
 
 ## Memory
 
@@ -84,30 +93,26 @@ The system is self-maintaining — content settles between layers on its own.
 
 ### How to use it
 
-**Writing.** Capture what's worth keeping through `oc note` during the session; the capture lands in today's daily and the system handles the rest. If the user directs a specific edit to a specific file, do that directly. Wrap proper-noun entities in `[[X]]` as you write.
+**Writing.** Capture what's worth keeping through `outclaw_memory_note` during the session; the capture lands in today's daily and the system handles the rest. If the user directs a specific edit to a specific file, do that directly. Wrap proper-noun entities in `[[X]]` as you write.
 
 **Reading.** Climb from distilled to raw, going only as deep as you need:
 
 1. **[[MEMORY]]** — already loaded.
 2. **`schemas/`** + **`notes/`** — grep `schemas/index.md` for topic-routed Models; browse `notes/` for flat references.
 3. **`daily-memories/`** — dated specifics.
-4. **`oc session search` → `oc session transcript`** — raw transcripts.
+4. **`outclaw_recall`** — raw chat or cron transcripts.
 
 When you encounter a `[[wikilink]]` along the way — whether the user names an entity or you spot one while reading — scan the vault for related references using the `obsidian-cli` skill (`backlinks` for existing files, `unresolved verbose` for stub targets).
 
 ### Recall
 
-Use `oc session search` to find prior conversation fragments when the memory files do not carry enough detail. Use `oc session transcript` to reopen the exact turns once search identifies the relevant session.
+Use `outclaw_recall` to find prior conversation fragments when the memory files do not carry enough detail. Use `mode: "sessions"` to list or search, then `mode: "transcript"` to reopen the exact turns once search identifies the relevant session.
 
 ## Agents
 
-### Lifecycle
-
-Use `oc agent` to list, create, rename, config, or remove agents and their workspaces.
-
 ### Communication
 
-Use `oc agent ask` only when you need a peer's answer to decide your next move. Use `oc agent send` when you can continue without waiting for the result. Incoming peer messages identify whether the sender is waiting:
+Use `outclaw_peer_message` with `mode: "ask"` only when you need a peer's answer to decide your next move. Use `mode: "send"` when you can continue without waiting for the result. Use `mode: "list"` to discover available peers. Incoming peer messages identify whether the sender is waiting:
 
 ```
 [sync ask from agent "alice"]
@@ -119,7 +124,7 @@ What's the status of the deployment pipeline?
 Please review the deployment notes when you have time.
 ```
 
-When you see either prefix the message is from a peer agent, not the user. Respond concisely and stay on topic. For a sync ask, answer directly in the current response; do not use `oc agent ask` to reply to the sender. For an async send, no caller is waiting, so use normal judgment about whether to send a follow-up reply with `oc agent ask` or `oc agent send`.
+When you see either prefix the message is from a peer agent, not the user. Respond concisely and stay on topic. For a sync ask, answer directly in the current response; do not use `outclaw_peer_message` to reply to the sender unless you need a separate follow-up. For an async send, no caller is waiting, so use normal judgment about whether a follow-up is needed.
 
 ## Scheduled Tasks
 
@@ -135,7 +140,8 @@ Reply `HEARTBEAT_OK` when there's nothing worth notifying — but don't default 
 
 Independent sessions triggered on a precise recurring or one-time schedule, no shared history. Jobs live as YAML under `./cron/` — copy `cron/_template.yaml` to create a new one; it documents fields and prompt conventions.
 
-- Run `oc cron run <job-name>` from this workspace to manually trigger a job. The command is silent on success; the result follows the normal cron delivery path.
+- Use `outclaw_cron` with `mode: "run"` to manually trigger a known job. The result follows the normal cron delivery path.
+- Use `outclaw_cron` with `mode: "failed_status"` to inspect failed cron runs.
 - Reply `NO_REPLY` to suppress delivery when there's nothing meaningful to say.
 - Be concise — results are forwarded by the system.
 

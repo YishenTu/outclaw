@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { OutclawNativeToolHost } from "../../../src/common/native-tools.ts";
 import type {
 	Facade,
 	FacadeEvent,
@@ -68,6 +69,7 @@ describe("runFacadePrompt", () => {
 		writeFileSync(imagePath, "bytes");
 		const capturedParams: RunParams[] = [];
 		const emitted: FacadeEvent[] = [];
+		const nativeToolHost = {} as OutclawNativeToolHost;
 
 		await runFacadePrompt({
 			abortController: new AbortController(),
@@ -82,6 +84,7 @@ describe("runFacadePrompt", () => {
 				(params) => capturedParams.push(params),
 			),
 			model: "claude-opus",
+			nativeToolHost,
 			ocSessionId: "oc-session",
 			prompt: "Build the chart",
 			promptHomeDir,
@@ -105,6 +108,7 @@ describe("runFacadePrompt", () => {
 			effort: "medium",
 			sessionId: "oc-session",
 			stream: true,
+			nativeToolHost,
 			sessionEnv: {
 				OC_MEMORY_ROOT: promptHomeDir,
 				OC_SESSION_ID: "oc-session",

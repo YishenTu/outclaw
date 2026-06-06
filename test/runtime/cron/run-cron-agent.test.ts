@@ -3,6 +3,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+	OutclawNativeToolContext,
+	OutclawNativeToolHost,
+} from "../../../src/common/native-tools.ts";
+import type {
 	Facade,
 	FacadeEvent,
 	ProviderModelInfo,
@@ -227,6 +231,49 @@ describe("createCronAgentRunner", () => {
 			providerId: "pi",
 			sessionId: "pi-cron",
 			text: "pi ran",
+		});
+	});
+
+	test("passes a cron-scoped native tool host to the provider run", async () => {
+		const promptHomeDir = createPromptHome({});
+		promptHomes.push(promptHomeDir);
+
+		let receivedParams: RunParams | undefined;
+		let receivedContext: OutclawNativeToolContext | undefined;
+		const nativeToolHost = {} as OutclawNativeToolHost;
+		const facade = createFacade(
+			[{ type: "done", sessionId: "pi-cron", durationMs: 1 }],
+			(params) => {
+				receivedParams = params;
+			},
+		);
+		const runCronAgent = createCronAgentRunner({
+			providers: { getFacade: () => facade },
+			modelProviderResolver: createModelProviderResolver([
+				{
+					providerId: "pi",
+					listModels: async () => [model("openai-codex/gpt-5.5")],
+				},
+			]),
+			promptHomeDir,
+			cwd: "/workspace/project",
+			agentId: "agent-railly",
+			agentName: "Railly",
+			createNativeToolHost: (context) => {
+				receivedContext = context;
+				return nativeToolHost;
+			},
+		});
+
+		await runCronAgent("Run native cron maintenance", "openai-codex/gpt-5.5");
+
+		expect(receivedParams?.nativeToolHost).toBe(nativeToolHost);
+		expect(receivedContext).toMatchObject({
+			agentId: "agent-railly",
+			agentName: "Railly",
+			providerSessionRef: `pi/${receivedParams?.sessionId}`,
+			source: "cron",
+			readOnly: false,
 		});
 	});
 

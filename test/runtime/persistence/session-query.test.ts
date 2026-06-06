@@ -488,6 +488,62 @@ describe("SessionQuery", () => {
 		query.close();
 	});
 
+	test("search paginates matching sessions with the shared cursor semantics", () => {
+		for (const params of [
+			{ sdkSessionId: "session-a", lastActive: 300 },
+			{ sdkSessionId: "session-b", lastActive: 300 },
+			{ sdkSessionId: "session-c", lastActive: 200 },
+		]) {
+			seedSession({
+				agentId: "agent-railly",
+				providerId: "claude",
+				sdkSessionId: params.sdkSessionId,
+				title: params.sdkSessionId,
+				createdAt: params.lastActive,
+				lastActive: params.lastActive,
+			});
+			seedTranscript({
+				agentId: "agent-railly",
+				providerId: "claude",
+				sdkSessionId: params.sdkSessionId,
+				turns: [
+					{
+						role: "user",
+						content: `deploy ${params.sdkSessionId}`,
+						timestamp: params.lastActive,
+					},
+				],
+			});
+		}
+
+		const query = new SessionQuery(TEST_DB);
+		const firstPage = query.search({
+			agentId: "agent-railly",
+			limit: 2,
+			query: "deploy",
+			tag: "chat",
+		});
+		expect(firstPage.map((match) => match.session.sdkSessionId)).toEqual([
+			"session-a",
+			"session-b",
+		]);
+		expect(
+			query
+				.search({
+					agentId: "agent-railly",
+					cursor: {
+						lastActive: firstPage[1]?.session.lastActive ?? 0,
+						sdkSessionId: firstPage[1]?.session.sdkSessionId ?? "",
+					},
+					limit: 2,
+					query: "deploy",
+					tag: "chat",
+				})
+				.map((match) => match.session.sdkSessionId),
+		).toEqual(["session-c"]);
+		query.close();
+	});
+
 	test("search ignores sessions that only contain heartbeat transport noise", () => {
 		seedSession({
 			agentId: "agent-railly",

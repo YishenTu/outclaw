@@ -164,7 +164,7 @@ describe("agent management", () => {
 		}
 	});
 
-	test("createAgent seeds the oc skill from the default templates", () => {
+	test("createAgent no longer seeds the retired oc skill", () => {
 		const homeDir = createHomeDir();
 		try {
 			const created = createAgent({
@@ -174,60 +174,19 @@ describe("agent management", () => {
 				createAgentId: () => "agent-railly",
 			});
 
-			expect(
-				readFileSync(
-					join(created.agentHomeDir, "skills", "oc", "SKILL.md"),
-					"utf-8",
-				),
-			).toContain("name: oc");
-			expect(
-				readFileSync(
-					join(
-						created.agentHomeDir,
-						"skills",
-						"oc",
-						"references",
-						"daemon-operations.md",
-					),
-					"utf-8",
-				),
-			).toContain("oc start");
-			expect(
-				readFileSync(
-					join(
-						created.agentHomeDir,
-						"skills",
-						"oc",
-						"references",
-						"session-lookup.md",
-					),
-					"utf-8",
-				),
-			).toContain("oc session transcript <id-or-prefix>");
-			expect(
-				readFileSync(
-					join(
-						created.agentHomeDir,
-						"skills",
-						"oc",
-						"references",
-						"agent-management.md",
-					),
-					"utf-8",
-				),
-			).toContain("oc agent create <name>");
-			expect(
-				readFileSync(
-					join(
-						created.agentHomeDir,
-						"skills",
-						"oc",
-						"references",
-						"schema-memory.md",
-					),
-					"utf-8",
-				),
-			).toContain("oc schema stale");
+			expect(existsSync(join(created.agentHomeDir, "skills", "oc"))).toBe(
+				false,
+			);
+			const agentsTemplate = readFileSync(
+				join(created.agentHomeDir, "AGENTS.md"),
+				"utf-8",
+			);
+			expect(agentsTemplate).toContain("outclaw_coding");
+			expect(agentsTemplate).toContain("outclaw_memory_note");
+			expect(agentsTemplate).toContain("outclaw_recall");
+			expect(agentsTemplate).toContain("outclaw_schema");
+			expect(agentsTemplate).toContain("outclaw_cron");
+			expect(agentsTemplate).toContain("outclaw_peer_message");
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 		}
@@ -307,10 +266,10 @@ describe("agent management", () => {
 				join(created.agentHomeDir, "AGENTS.md"),
 				"utf-8",
 			);
-			expect(agentsTemplate).toContain("### The `oc` skill");
 			expect(agentsTemplate).toContain("### Recall");
-			expect(agentsTemplate).toContain("`oc session search`");
-			expect(agentsTemplate).toContain("`oc session transcript`");
+			expect(agentsTemplate).toContain("`outclaw_recall`");
+			expect(agentsTemplate).not.toContain("`oc session search`");
+			expect(agentsTemplate).not.toContain("`oc session transcript`");
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 		}

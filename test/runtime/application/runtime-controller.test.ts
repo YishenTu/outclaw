@@ -488,7 +488,11 @@ class EarlySessionAutoTitleFacade implements Facade {
 
 class SessionAwareBlockingFacade implements Facade {
 	providerId = PROVIDER_ID;
-	allParams: Array<{ abortController?: AbortController; resume?: string }> = [];
+	allParams: Array<{
+		abortController?: AbortController;
+		prompt: string;
+		resume?: string;
+	}> = [];
 	doneUsage = {
 		inputTokens: 3,
 		outputTokens: 5,
@@ -507,9 +511,17 @@ class SessionAwareBlockingFacade implements Facade {
 		string,
 		ReturnType<typeof createDeferred>
 	>();
+	private readonly doneBySession = new Map<
+		string,
+		ReturnType<typeof createDeferred>
+	>();
 
 	waitStarted(sessionId: string): Promise<void> {
 		return this.getStarted(sessionId).promise;
+	}
+
+	waitDone(sessionId: string): Promise<void> {
+		return this.getDone(sessionId).promise;
 	}
 
 	release(sessionId: string) {
@@ -520,6 +532,7 @@ class SessionAwareBlockingFacade implements Facade {
 		const sessionId = params.resume ?? "new-session";
 		this.allParams.push({
 			abortController: params.abortController,
+			prompt: params.prompt,
 			resume: params.resume,
 		});
 		this.getStarted(sessionId).resolve();
@@ -531,6 +544,7 @@ class SessionAwareBlockingFacade implements Facade {
 			durationMs: 1,
 			usage: this.doneUsage,
 		};
+		this.getDone(sessionId).resolve();
 	}
 
 	private getRelease(sessionId: string) {
@@ -550,6 +564,16 @@ class SessionAwareBlockingFacade implements Facade {
 		}
 		const next = createDeferred();
 		this.startedBySession.set(sessionId, next);
+		return next;
+	}
+
+	private getDone(sessionId: string) {
+		const existing = this.doneBySession.get(sessionId);
+		if (existing) {
+			return existing;
+		}
+		const next = createDeferred();
+		this.doneBySession.set(sessionId, next);
 		return next;
 	}
 }
@@ -2516,22 +2540,22 @@ describe("RuntimeController", () => {
 			cleanupStore(TEST_DB);
 		});
 
-		test("/new during active run does not let stale completeRun overwrite session", async () => {
+		test("/new during active run does not let background completion overwrite session", async () => {
 			const facade = new MockFacade();
 			facade.delayMs = 100;
 			const { controller } = createController({ facade });
 			const ws = mockWs();
 			controller.handleOpen(ws);
 
-			// Start a slow prompt — establishes a session
+			// Start a slow prompt before the provider session id is known.
 			controller.handleMessage(ws, prompt("setup"));
 			await new Promise((r) => setTimeout(r, 30));
 
-			// /new while run is active — should abort and clear session
+			// /new while run is active clears the visible session boundary.
 			controller.handleMessage(ws, command("/new"));
 			await new Promise((r) => setTimeout(r, 150));
 
-			// Session should be cleared, not restored by stale completeRun
+			// Session should be cleared, not restored by background completion.
 			controller.handleMessage(ws, command("/status"));
 			await new Promise((r) => setTimeout(r, 10));
 
@@ -2543,21 +2567,34 @@ describe("RuntimeController", () => {
 			expect(status?.sessionId).toBeUndefined();
 		});
 
-		test("/new aborts the active run", async () => {
-			const facade = new MockFacade();
-			facade.delayMs = 200;
+		test("/new leaves the previous session running in the background", async () => {
+			const facade = new SessionAwareBlockingFacade();
 			const { controller } = createController({ facade });
 			const ws = mockWs();
 			controller.handleOpen(ws);
 
-			controller.handleMessage(ws, prompt("slow"));
-			await new Promise((r) => setTimeout(r, 30));
+			controller.handleMessage(ws, prompt("slow", "browser"));
+			await facade.waitStarted("new-session");
 
 			controller.handleMessage(ws, command("/new"));
-			await new Promise((r) => setTimeout(r, 50));
+			await new Promise((r) => setTimeout(r, 20));
 
 			const slowCall = facade.allParams.find((p) => p.prompt === "slow");
-			expect(slowCall?.abortController?.signal.aborted).toBe(true);
+			expect(slowCall?.abortController?.signal.aborted).toBe(false);
+
+			facade.release("new-session");
+			await facade.waitDone("new-session");
+
+			controller.handleMessage(ws, command("/status"));
+			await new Promise((r) => setTimeout(r, 10));
+
+			const status = ws
+				.events()
+				.findLast((event) => event.type === "runtime_status");
+			expect(status).toBeDefined();
+			expect(
+				(status as { sessionId?: string } | undefined)?.sessionId,
+			).toBeUndefined();
 		});
 	});
 

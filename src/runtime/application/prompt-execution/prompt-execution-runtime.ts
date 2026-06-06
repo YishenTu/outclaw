@@ -1,3 +1,4 @@
+import type { OutclawNativeToolHost } from "../../../common/native-tools.ts";
 import type {
 	HeartbeatResult,
 	TranscriptTurn,
@@ -28,6 +29,11 @@ export interface PromptExecutionRuntimeOptions {
 		"cancel" | "cancelAll" | "drain" | "resolveSession" | "start"
 	>;
 	clients?: PromptClientGateway;
+	createNativeToolHost?: (params: {
+		context: RuntimePromptContext & { resumeSessionId?: string };
+		readOnly: boolean;
+		task: PromptExecution;
+	}) => OutclawNativeToolHost | undefined;
 	cwd?: string;
 	deliverHeartbeatResult?: (
 		params: {
@@ -65,6 +71,7 @@ export class PromptExecutionRuntime {
 		});
 		this.promptDispatcher = new PromptDispatcher({
 			clients: options.clients ?? NULL_PROMPT_CLIENTS,
+			createNativeToolHost: options.createNativeToolHost,
 			deliverHeartbeatResult: options.deliverHeartbeatResult,
 			onVisibleRunStarted: options.onVisibleRunStarted,
 			promptRunner,

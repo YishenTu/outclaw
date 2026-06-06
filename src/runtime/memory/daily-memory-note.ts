@@ -26,18 +26,24 @@ export interface AppendDailyMemoryNoteOptions {
 	content: string;
 	salience?: string;
 	hint?: string;
+	tags?: readonly string[];
 	sessionId: string;
 	memoryRoot: string;
 	now?: Date;
 }
 
+export interface AppendDailyMemoryNoteResult {
+	path: string;
+	timestamp: number;
+}
+
 export function appendDailyMemoryNote(
 	options: AppendDailyMemoryNoteOptions,
-): void {
+): AppendDailyMemoryNoteResult {
 	const salience = resolveSalience(options.salience);
 	const content = normalizeContent(options.content);
 	if (content.length === 0) {
-		throw new Error("oc note: content is empty");
+		throw new Error("memory note: content is empty");
 	}
 
 	const now = options.now ?? new Date();
@@ -52,12 +58,18 @@ export function appendDailyMemoryNote(
 			existing,
 			sessionId: options.sessionId,
 			hint: options.hint,
+			tags: options.tags,
 			salience,
 			content,
 			now,
 		});
 		writeFileSync(dailyPath, next);
 	});
+
+	return {
+		path: dailyPath,
+		timestamp: now.getTime(),
+	};
 }
 
 function resolveSalience(value: string | undefined): Salience {
@@ -66,7 +78,7 @@ function resolveSalience(value: string | undefined): Salience {
 		return value as Salience;
 	}
 	throw new Error(
-		`oc note: unknown salience "${value}" (expected one of: ${ALLOWED_SALIENCE.join(" | ")})`,
+		`memory note: unknown salience "${value}" (expected one of: ${ALLOWED_SALIENCE.join(" | ")})`,
 	);
 }
 
@@ -102,6 +114,7 @@ interface BuildNextContentOptions {
 	existing: string;
 	sessionId: string;
 	hint: string | undefined;
+	tags: readonly string[] | undefined;
 	salience: Salience;
 	content: string;
 	now: Date;
@@ -114,6 +127,7 @@ function buildNextContent(options: BuildNextContentOptions): string {
 		options.salience,
 		options.content,
 		options.hint,
+		options.tags,
 	);
 	const title = `# ${formatDate(options.now)}\n`;
 
@@ -157,14 +171,29 @@ function formatEntry(
 	salience: Salience,
 	content: string,
 	hint: string | undefined,
+	tags: readonly string[] | undefined,
 ): string {
 	const time = formatTime(now);
-	const hintSegment = hint ? ` [[${hint}]]` : "";
+	const hintSegment = formatHintSegment(hint, tags);
 	const { head, continuation } = splitBody(content);
 	const bulletLine = `- ${time} [${salience}] ${head}${hintSegment}`;
 	return continuation.length > 0
 		? `${bulletLine}\n${continuation}`
 		: bulletLine;
+}
+
+function formatHintSegment(
+	hint: string | undefined,
+	tags: readonly string[] | undefined,
+): string {
+	const hints = [
+		...(hint === undefined ? [] : [hint]),
+		...(tags === undefined ? [] : tags),
+	];
+	if (hints.length === 0) {
+		return "";
+	}
+	return ` ${hints.map((value) => `[[${value}]]`).join(" ")}`;
 }
 
 function formatDate(now: Date): string {
@@ -180,48 +209,54 @@ function formatTime(now: Date): string {
 	return `${hours}:${minutes}`;
 }
 
-function withFileLock<T>(targetPath: string, body: () => T): T {
-	const lockPath = `${targetPath}.lock`;
-	const deadline = Date.now() + LOCK_TIMEOUT_MS;
-	let fd: number | undefined;
+function withFileLock(path: string, fn: () => void): void {
+	const lockPath = `${path}.lock`;
+	const started = Date.now();
 
-	while (fd === undefined) {
+	while (true) {
 		try {
-			fd = openSync(lockPath, "wx");
-		} catch (error) {
-			const code = (error as NodeJS.ErrnoException | undefined)?.code;
-			if (code !== "EEXIST") throw error;
-			breakStaleLock(lockPath);
-			if (Date.now() > deadline) {
-				throw new Error(`oc note: timed out waiting for lock on ${targetPath}`);
+			const fd = openSync(lockPath, "wx");
+			try {
+				fn();
+			} finally {
+				closeSync(fd);
+				try {
+					unlinkSync(lockPath);
+				} catch {
+					// Lock cleanup is best-effort; a later writer can reclaim stale locks.
+				}
 			}
-			Bun.sleepSync(LOCK_RETRY_MS);
-		}
-	}
-
-	try {
-		return body();
-	} finally {
-		closeSync(fd);
-		try {
-			unlinkSync(lockPath);
-		} catch {
-			// best-effort
+			return;
+		} catch (error) {
+			if (!isFileExistsError(error) || Date.now() - started > LOCK_TIMEOUT_MS) {
+				throw error;
+			}
+			reclaimStaleLock(lockPath);
+			sleepSync(LOCK_RETRY_MS);
 		}
 	}
 }
 
-function breakStaleLock(lockPath: string): void {
+function reclaimStaleLock(lockPath: string): void {
 	try {
-		const stat = Bun.file(lockPath);
-		const lastModified = stat.lastModified;
-		if (
-			Number.isFinite(lastModified) &&
-			Date.now() - lastModified > LOCK_STALE_MS
-		) {
+		const age = Date.now() - Bun.file(lockPath).lastModified;
+		if (age > LOCK_STALE_MS) {
 			unlinkSync(lockPath);
 		}
 	} catch {
-		// if stat fails, leave it — next retry will try again
+		// The lock may have disappeared between retries.
 	}
+}
+
+function sleepSync(ms: number): void {
+	const end = Date.now() + ms;
+	while (Date.now() < end) {}
+}
+
+function isFileExistsError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		(error as NodeJS.ErrnoException).code === "EEXIST"
+	);
 }

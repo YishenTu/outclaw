@@ -9,8 +9,8 @@ prompt: |
   ## Scope
 
   - Today's date: `bash: date`.
-  - List the schemas that need work: `bash: oc schema stale`.
-  - That command emits one line per schema where `last_observation_at > last_synthesized` (STALE), plus any with malformed frontmatter (BROKEN).
+  - List the schemas that need work with `outclaw_schema` mode `stale`.
+  - That tool returns schemas where `last_observation_at > last_synthesized` (STALE), plus any with malformed frontmatter (BROKEN).
   - If output is empty, reply `NO_REPLY` — nothing to do.
   - Only touch schemas in that list. Do not open or rewrite fresh schemas.
 
@@ -68,6 +68,6 @@ prompt: |
 
   ## After
 
-  Re-run `bash: oc schema stale` to confirm the list is empty (or only contains schemas you intentionally left alone).
+  Re-run `outclaw_schema` mode `stale` to confirm the list is empty (or only contains schemas you intentionally left alone).
 
   Reply with a one-line summary per schema touched (e.g. `food-and-drink: 4 absorbed, 1 deferred, model updated` or `working-with-yishen: 2 absorbed, model unchanged`), or `NO_REPLY` if nothing needed work.

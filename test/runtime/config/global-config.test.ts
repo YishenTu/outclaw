@@ -175,6 +175,38 @@ describe("loadGlobalConfig", () => {
 		}
 	});
 
+	test(".env strips quotes, export prefixes, and inline comments", () => {
+		const dir = tmp();
+		const keys = ["MIS_TEST_QUOTED", "MIS_TEST_EXPORTED", "MIS_TEST_COMMENTED"];
+		const original = Object.fromEntries(
+			keys.map((key) => [key, process.env[key]]),
+		);
+		try {
+			for (const key of keys) delete process.env[key];
+			writeFileSync(
+				join(dir, ".env"),
+				[
+					'MIS_TEST_QUOTED="quoted-value"',
+					"export MIS_TEST_EXPORTED='exported-value'",
+					"MIS_TEST_COMMENTED=commented-value # hidden comment",
+					"",
+				].join("\n"),
+			);
+
+			loadGlobalConfig(dir);
+
+			expect(process.env.MIS_TEST_QUOTED).toBe("quoted-value");
+			expect(process.env.MIS_TEST_EXPORTED).toBe("exported-value");
+			expect(process.env.MIS_TEST_COMMENTED).toBe("commented-value");
+		} finally {
+			for (const key of keys) {
+				if (original[key] === undefined) delete process.env[key];
+				else process.env[key] = original[key];
+			}
+			rmSync(dir, { recursive: true });
+		}
+	});
+
 	test("defaults autoCompact to true when not specified", () => {
 		const dir = tmp();
 		try {

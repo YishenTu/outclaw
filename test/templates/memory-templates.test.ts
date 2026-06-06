@@ -56,7 +56,7 @@ describe("memory template contract", () => {
 			"Append the observation to the target schema's `# Observations` section",
 		);
 		expect(synthesize).toContain(
-			"List the schemas that need work: `bash: oc schema stale`",
+			"List the schemas that need work with `outclaw_schema` mode `stale`",
 		);
 		expect(synthesize).toContain(
 			"Observations are a short-term scratch buffer",

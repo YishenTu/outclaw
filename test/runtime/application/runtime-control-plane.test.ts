@@ -144,7 +144,7 @@ describe("RuntimeControlPlane", () => {
 		});
 	});
 
-	test("/new and /session delete abort active work before generic command handling", () => {
+	test("/new clears the active session without aborting active work", () => {
 		const state = new RuntimeState("mock");
 		const clients = createGateway(state);
 		const ws = mockWs();
@@ -159,10 +159,28 @@ describe("RuntimeControlPlane", () => {
 		});
 
 		controlPlane.handleCommand(ws, "/new");
+
+		expect(calls.abort).toBe(0);
+		expect(ws.events()).toContainEqual({ type: "session_cleared" });
+	});
+
+	test("/session delete aborts active work before generic command handling", () => {
+		const state = new RuntimeState("mock");
+		const clients = createGateway(state);
+		const ws = mockWs();
+		clients.handleOpen(ws);
+		const { calls, execution } = createExecution(true);
+		const controlPlane = new RuntimeControlPlane({
+			clients,
+			createStatusEvent: () => state.createStatusEvent(),
+			execution,
+			sessions: new SessionService(state),
+			state,
+		});
+
 		controlPlane.handleCommand(ws, "/session delete sdk-123");
 
-		expect(calls.abort).toBe(2);
-		expect(ws.events()).toContainEqual({ type: "session_cleared" });
+		expect(calls.abort).toBe(1);
 	});
 
 	test("model_select validates effort before changing blank-session provider/model", () => {
