@@ -59,4 +59,40 @@ describe("RuntimeCommandPopup", () => {
 		expect(html).not.toContain("Esc dismiss");
 		expect(html).not.toContain("Enter select");
 	});
+
+	test("marks active sessions by provider and sdk session id", () => {
+		const html = renderToStaticMarkup(
+			<RuntimeCommandPopup
+				popup={{
+					kind: "session",
+					activeProviderId: "pi",
+					activeSessionId: "same-sdk-id",
+					sessions: [
+						{
+							providerId: "claude",
+							sdkSessionId: "same-sdk-id",
+							title: "Claude chat",
+							model: "opus",
+							lastActive: 20,
+						},
+						{
+							providerId: "pi",
+							sdkSessionId: "same-sdk-id",
+							title: "Pi chat",
+							model: "gpt",
+							lastActive: 10,
+						},
+					],
+				}}
+				selectedIndex={0}
+				onSelect={() => {}}
+			/>,
+		);
+
+		expect(html).toContain("Claude chat");
+		expect(html).toContain("Pi chat");
+		expect(html.indexOf("●")).toBeGreaterThan(html.indexOf("Claude chat"));
+		expect(html.indexOf("●")).toBeLessThan(html.indexOf("Pi chat"));
+		expect(html.indexOf("●")).toBe(html.lastIndexOf("●"));
+	});
 });

@@ -14,6 +14,7 @@ export type BrowserRuntimePopup =
 	| {
 			kind: "session";
 			activeSessionId?: string;
+			activeProviderId?: string;
 			sessions: SessionMenuEvent["sessions"];
 	  }
 	| {
@@ -45,6 +46,7 @@ export const useRuntimePopupStore = create<RuntimePopupState>((set) => ({
 			popup: {
 				kind: "session",
 				activeSessionId: event.activeSessionId,
+				activeProviderId: event.activeProviderId,
 				sessions: event.sessions,
 			},
 		}),

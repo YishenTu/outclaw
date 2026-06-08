@@ -20,6 +20,25 @@ function itemCount(popup: BrowserRuntimePopup): number {
 	}
 }
 
+function sessionPopupKey(session: {
+	providerId?: string;
+	sdkSessionId: string;
+}): string {
+	return `${session.providerId ?? ""}\u0000${session.sdkSessionId}`;
+}
+
+function isCurrentSession(
+	session: { providerId?: string; sdkSessionId: string },
+	popup: Extract<BrowserRuntimePopup, { kind: "session" }>,
+): boolean {
+	return (
+		session.sdkSessionId === popup.activeSessionId &&
+		(!popup.activeProviderId ||
+			!session.providerId ||
+			session.providerId === popup.activeProviderId)
+	);
+}
+
 function splitStatusPopupText(text: string): {
 	title: string;
 	body: string;
@@ -128,11 +147,10 @@ export function RuntimeCommandPopup({
 							})
 						: popup.sessions.map((session, index) => {
 								const active = index === selectedIndex;
-								const currentSession =
-									session.sdkSessionId === popup.activeSessionId;
+								const currentSession = isCurrentSession(session, popup);
 								return (
 									<button
-										key={session.sdkSessionId}
+										key={sessionPopupKey(session)}
 										type="button"
 										onMouseDown={(event) => {
 											event.preventDefault();

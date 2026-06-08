@@ -34,9 +34,11 @@ describe("runtime popup store", () => {
 	test("opens the session popup and status popup", () => {
 		useRuntimePopupStore.getState().openSessionMenu({
 			type: "session_menu",
+			activeProviderId: "pi",
 			activeSessionId: "sdk-alpha",
 			sessions: [
 				{
+					providerId: "pi",
 					sdkSessionId: "sdk-alpha",
 					title: "Alpha",
 					model: "opus",
@@ -47,9 +49,11 @@ describe("runtime popup store", () => {
 
 		expect(useRuntimePopupStore.getState().popup).toEqual({
 			kind: "session",
+			activeProviderId: "pi",
 			activeSessionId: "sdk-alpha",
 			sessions: [
 				{
+					providerId: "pi",
 					sdkSessionId: "sdk-alpha",
 					title: "Alpha",
 					model: "opus",
