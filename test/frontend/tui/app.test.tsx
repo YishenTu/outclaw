@@ -757,15 +757,18 @@ describe("TuiApp", () => {
 			socket.dispatch("message", {
 				data: JSON.stringify({
 					type: "session_menu",
+					activeProviderId: "pi",
 					activeSessionId: "sdk-active",
 					sessions: [
 						{
+							providerId: "pi",
 							sdkSessionId: "sdk-active",
 							title: "Active session",
 							model: "opus",
 							lastActive: 10,
 						},
 						{
+							providerId: "claude",
 							sdkSessionId: "sdk-other",
 							title: "Other session",
 							model: "sonnet",
@@ -778,21 +781,24 @@ describe("TuiApp", () => {
 
 			await pressEnter(stdin);
 			expect(socket.sent).toContain(
-				'{"type":"command","command":"/session sdk-active"}',
+				'{"type":"command","command":"/session pi/sdk-active"}',
 			);
 
 			socket.dispatch("message", {
 				data: JSON.stringify({
 					type: "session_menu",
+					activeProviderId: "pi",
 					activeSessionId: "sdk-active",
 					sessions: [
 						{
+							providerId: "pi",
 							sdkSessionId: "sdk-active",
 							title: "Active session",
 							model: "opus",
 							lastActive: 10,
 						},
 						{
+							providerId: "claude",
 							sdkSessionId: "sdk-other",
 							title: "Other session",
 							model: "sonnet",
@@ -805,21 +811,24 @@ describe("TuiApp", () => {
 
 			await typeText(stdin, "d");
 			expect(socket.sent).toContain(
-				'{"type":"command","command":"/session delete sdk-active"}',
+				'{"type":"command","command":"/session delete pi/sdk-active"}',
 			);
 
 			socket.dispatch("message", {
 				data: JSON.stringify({
 					type: "session_menu",
+					activeProviderId: "pi",
 					activeSessionId: "sdk-active",
 					sessions: [
 						{
+							providerId: "pi",
 							sdkSessionId: "sdk-active",
 							title: "Active session",
 							model: "opus",
 							lastActive: 10,
 						},
 						{
+							providerId: "claude",
 							sdkSessionId: "sdk-other",
 							title: "Other session",
 							model: "sonnet",
@@ -834,21 +843,24 @@ describe("TuiApp", () => {
 			await pressEnter(stdin);
 			await pressEnter(stdin);
 			expect(socket.sent).toContain(
-				'{"type":"command","command":"/session rename sdk-active Active session"}',
+				'{"type":"command","command":"/session rename pi/sdk-active Active session"}',
 			);
 
 			socket.dispatch("message", {
 				data: JSON.stringify({
 					type: "session_menu",
+					activeProviderId: "pi",
 					activeSessionId: "sdk-active",
 					sessions: [
 						{
+							providerId: "pi",
 							sdkSessionId: "sdk-active",
 							title: "Active session",
 							model: "opus",
 							lastActive: 10,
 						},
 						{
+							providerId: "claude",
 							sdkSessionId: "sdk-other",
 							title: "Other session",
 							model: "sonnet",
@@ -862,7 +874,7 @@ describe("TuiApp", () => {
 			await pressUp(stdin);
 			await pressEnter(stdin);
 			expect(socket.sent).toContain(
-				'{"type":"command","command":"/session sdk-other"}',
+				'{"type":"command","command":"/session claude/sdk-other"}',
 			);
 		} finally {
 			app.unmount();

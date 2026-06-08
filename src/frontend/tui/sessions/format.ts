@@ -3,10 +3,15 @@ import type { SessionMenuChoice, SessionSummary } from "./types.ts";
 export function sessionMenuChoices(
 	sessions: SessionSummary[],
 	activeSessionId: string | undefined,
+	activeProviderId?: string,
 ): SessionMenuChoice[] {
 	return sessions.map((session) => ({
 		...session,
-		active: session.sdkSessionId === activeSessionId,
+		active:
+			session.sdkSessionId === activeSessionId &&
+			(!activeProviderId ||
+				!session.providerId ||
+				session.providerId === activeProviderId),
 	}));
 }
 

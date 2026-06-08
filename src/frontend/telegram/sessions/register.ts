@@ -85,6 +85,7 @@ export function registerTelegramSessionHandlers(
 
 		const view = buildSessionPageView({
 			activeSessionId: event.activeSessionId as string | undefined,
+			activeProviderId: event.activeProviderId as string | undefined,
 			mode: request.renderMode ?? "list",
 			nextCursor: event.nextCursor,
 			page: 0,
@@ -94,6 +95,7 @@ export function registerTelegramSessionHandlers(
 					? String(event.query ?? "")
 					: undefined),
 			sessions: event.sessions as Array<{
+				providerId?: string;
 				sdkSessionId: string;
 				title: string;
 				lastActive: number;
@@ -154,11 +156,13 @@ export function registerTelegramSessionHandlers(
 			}
 			const view = buildSessionPageView({
 				activeSessionId: event.activeSessionId as string | undefined,
+				activeProviderId: event.activeProviderId as string | undefined,
 				mode: action.mode ?? "list",
 				nextCursor: event.nextCursor,
 				page,
 				query,
 				sessions: event.sessions as Array<{
+					providerId?: string;
 					sdkSessionId: string;
 					title: string;
 					lastActive: number;
@@ -213,6 +217,7 @@ function isSessionPageEvent(event: {
 }): event is {
 	type: "session_list" | "session_menu" | "session_search_result";
 	activeSessionId?: string;
+	activeProviderId?: string;
 	nextCursor?: unknown;
 	query?: string;
 	sessions: unknown[];

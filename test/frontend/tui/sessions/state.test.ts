@@ -97,6 +97,90 @@ describe("TUI session state", () => {
 		});
 	});
 
+	test("keeps same-id sessions distinct across providers", () => {
+		const menuData: SessionMenuData = {
+			activeProviderId: "claude",
+			activeSessionId: "same-sdk-id",
+			sessions: [
+				{
+					providerId: "claude",
+					sdkSessionId: "same-sdk-id",
+					title: "Claude chat",
+					model: "opus",
+					lastActive: 1000,
+				},
+				{
+					providerId: "pi",
+					sdkSessionId: "same-sdk-id",
+					title: "Pi chat",
+					model: "gpt",
+					lastActive: 900,
+				},
+			],
+		};
+
+		expect(
+			applySessionEventToMenuData(menuData, {
+				type: "session_renamed",
+				providerId: "pi",
+				sdkSessionId: "same-sdk-id",
+				title: "Renamed Pi chat",
+			})?.sessions,
+		).toEqual([
+			{
+				providerId: "claude",
+				sdkSessionId: "same-sdk-id",
+				title: "Claude chat",
+				model: "opus",
+				lastActive: 1000,
+			},
+			{
+				providerId: "pi",
+				sdkSessionId: "same-sdk-id",
+				title: "Renamed Pi chat",
+				model: "gpt",
+				lastActive: 900,
+			},
+		]);
+
+		expect(
+			applySessionEventToMenuData(menuData, {
+				type: "session_deleted",
+				providerId: "pi",
+				sdkSessionId: "same-sdk-id",
+			}),
+		).toEqual({
+			activeProviderId: "claude",
+			activeSessionId: "same-sdk-id",
+			sessions: [
+				{
+					providerId: "claude",
+					sdkSessionId: "same-sdk-id",
+					title: "Claude chat",
+					model: "opus",
+					lastActive: 1000,
+				},
+			],
+		});
+
+		expect(
+			applySessionEventToMenuData(menuData, {
+				type: "session_list",
+				activeProviderId: "claude",
+				activeSessionId: "same-sdk-id",
+				sessions: [
+					{
+						providerId: "pi",
+						sdkSessionId: "same-sdk-id",
+						title: "Pi chat",
+						model: "gpt",
+						lastActive: 900,
+					},
+				],
+			})?.sessions,
+		).toHaveLength(2);
+	});
+
 	test("appends paginated session_list events and replaces with search results", () => {
 		const appended = applySessionEventToMenuData(MENU_DATA, {
 			type: "session_list",

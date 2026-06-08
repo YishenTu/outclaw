@@ -51,6 +51,31 @@ describe("sessionMenuChoices", () => {
 		const choices = sessionMenuChoices(SESSIONS, undefined);
 		expect(choices.every((c) => !c.active)).toBe(true);
 	});
+
+	test("uses provider id when marking duplicate session ids active", () => {
+		const choices = sessionMenuChoices(
+			[
+				{
+					providerId: "claude",
+					sdkSessionId: "same-sdk-id",
+					title: "Claude chat",
+					model: "opus",
+					lastActive: 20,
+				},
+				{
+					providerId: "pi",
+					sdkSessionId: "same-sdk-id",
+					title: "Pi chat",
+					model: "gpt",
+					lastActive: 10,
+				},
+			],
+			"same-sdk-id",
+			"pi",
+		);
+
+		expect(choices.map((choice) => choice.active)).toEqual([false, true]);
+	});
 });
 
 describe("formatSessionMenuItem", () => {

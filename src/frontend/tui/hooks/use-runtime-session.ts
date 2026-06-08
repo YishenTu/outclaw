@@ -5,6 +5,7 @@ import type {
 	SkillInfo,
 	WorkspaceFileEntry,
 } from "../../../common/protocol.ts";
+import { formatMaybeProviderSessionRef } from "../../../common/provider-session-ref.ts";
 import type { AgentMenuData } from "../agents/types.ts";
 import type { ConnectionStatus, RuntimeInfo } from "../chrome/status-bar.tsx";
 import {
@@ -305,11 +306,11 @@ export function useRuntimeSession(
 			if (trimmed) {
 				pendingSessionSearchQueryRef.current = trimmed;
 				return runCommand(
-					`/session search --limit 10 --cursor ${cursor.lastActive} ${cursor.sdkSessionId} -- ${trimmed}`,
+					`/session search --limit 10 --cursor ${cursor.lastActive} ${formatMaybeProviderSessionRef(cursor)} -- ${trimmed}`,
 				);
 			}
 			return runCommand(
-				`/session list 10 ${cursor.lastActive} ${cursor.sdkSessionId}`,
+				`/session list 10 ${cursor.lastActive} ${formatMaybeProviderSessionRef(cursor)}`,
 			);
 		},
 		[runCommand],

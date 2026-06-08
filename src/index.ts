@@ -711,6 +711,9 @@ function decodeNativeSessionCursor(
 			ok: true,
 			data: {
 				lastActive: (parsed as { lastActive: number }).lastActive,
+				...(typeof (parsed as { providerId?: unknown }).providerId === "string"
+					? { providerId: (parsed as { providerId: string }).providerId }
+					: {}),
 				sdkSessionId: (parsed as { sdkSessionId: string }).sdkSessionId,
 			},
 		};

@@ -4,6 +4,7 @@ import {
 	canonicalizePromptSlashCommand,
 	isRuntimeCommand,
 } from "../../common/commands.ts";
+import { formatMaybeProviderSessionRef } from "../../common/provider-session-ref.ts";
 import { AgentMenu } from "./agents/menu.tsx";
 import { HeaderBar } from "./chrome/header-bar.tsx";
 import { StatusBar } from "./chrome/status-bar.tsx";
@@ -126,7 +127,7 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 
 	const handleMenuSelect = useCallback(
 		(choice: SessionMenuChoice) => {
-			if (runCommand(`/session ${choice.sdkSessionId}`)) {
+			if (runCommand(`/session ${formatMaybeProviderSessionRef(choice)}`)) {
 				dismissSessionMenu();
 			}
 		},
@@ -135,14 +136,16 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 
 	const handleMenuDelete = useCallback(
 		(choice: SessionMenuChoice) => {
-			runCommand(`/session delete ${choice.sdkSessionId}`);
+			runCommand(`/session delete ${formatMaybeProviderSessionRef(choice)}`);
 		},
 		[runCommand],
 	);
 
 	const handleMenuRename = useCallback(
 		(choice: SessionMenuChoice, title: string) => {
-			runCommand(`/session rename ${choice.sdkSessionId} ${title}`);
+			runCommand(
+				`/session rename ${formatMaybeProviderSessionRef(choice)} ${title}`,
+			);
 		},
 		[runCommand],
 	);
@@ -243,6 +246,7 @@ export function TuiApp({ url, agentName }: TuiAppProps) {
 		? sessionMenuChoices(
 				sessionMenuData.sessions,
 				sessionMenuData.activeSessionId,
+				sessionMenuData.activeProviderId,
 			)
 		: null;
 	const divider = "─".repeat(columns);

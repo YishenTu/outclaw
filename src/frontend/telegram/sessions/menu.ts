@@ -1,3 +1,4 @@
+import { formatMaybeProviderSessionRef } from "../../../common/provider-session-ref.ts";
 import { TELEGRAM_SESSION_PAGE_SIZE } from "./command.ts";
 
 export function formatTimeCompact(timestamp: number): string {
@@ -36,28 +37,38 @@ export interface SessionPageView {
 
 export function buildSessionButtons(
 	sessions: Array<{
+		providerId?: string;
 		sdkSessionId: string;
 		title: string;
 		lastActive: number;
 	}>,
 	activeSessionId?: string,
+	activeProviderId?: string,
 ): SessionButtonRow[] {
 	return sessions.map((session) => {
-		const marker = session.sdkSessionId === activeSessionId ? "● " : "";
+		const marker =
+			session.sdkSessionId === activeSessionId &&
+			(!activeProviderId ||
+				!session.providerId ||
+				session.providerId === activeProviderId)
+				? "● "
+				: "";
 		return {
 			label: `${marker}${session.title}`,
-			switchData: `ss:${session.sdkSessionId}`,
+			switchData: `ss:${formatMaybeProviderSessionRef(session)}`,
 		};
 	});
 }
 
 export function buildSessionPageView(params: {
 	activeSessionId?: string;
+	activeProviderId?: string;
 	mode: "list" | "search";
 	nextCursor?: unknown;
 	page: number;
 	query?: string;
 	sessions: Array<{
+		providerId?: string;
 		sdkSessionId: string;
 		title: string;
 		lastActive: number;
@@ -69,9 +80,11 @@ export function buildSessionPageView(params: {
 		start,
 		start + TELEGRAM_SESSION_PAGE_SIZE,
 	);
-	const rows = buildSessionButtons(pageSessions, params.activeSessionId).map(
-		(row) => [{ label: row.label, data: row.switchData }],
-	);
+	const rows = buildSessionButtons(
+		pageSessions,
+		params.activeSessionId,
+		params.activeProviderId,
+	).map((row) => [{ label: row.label, data: row.switchData }]);
 	const hasPrevious = page > 0;
 	const hasNext =
 		params.sessions.length > start + TELEGRAM_SESSION_PAGE_SIZE ||

@@ -984,7 +984,7 @@ description: Review the current changes.
 		await runtime.stop();
 	});
 
-	test("normalizes stale legacy blank selection back to Pi", async () => {
+	test("normalizes stale legacy blank selection while preserving the active legacy session", async () => {
 		const legacyFacade = new RecordingFacade();
 		legacyFacade.providerId = "claude";
 		const piFacade = new CatalogProviderSessionFacade("pi", "pi-chat", [
@@ -1029,26 +1029,14 @@ description: Review the current changes.
 		runtime.handleOpen(ws);
 
 		expect(runtime.getStatusEvent()).toMatchObject({
-			providerId: "pi",
-			model: "openai-codex/gpt-5.5",
-			sessionId: undefined,
+			providerId: "claude",
+			model: "opus",
+			sessionId: "legacy-claude",
 		});
 		expect(store.getBlankChatModelSelection()).toEqual({
 			providerId: "pi",
 			model: "openai-codex/gpt-5.5",
 			effort: "medium",
-		});
-
-		runtime.handleMessage(
-			ws,
-			JSON.stringify({ type: "command", command: "/session claude/legacy" }),
-		);
-		await waitForCondition(() =>
-			ws.events().some((event) => event.type === "session_switched"),
-		);
-		expect(runtime.getStatusEvent()).toMatchObject({
-			providerId: "claude",
-			sessionId: "legacy-claude",
 		});
 
 		runtime.handleMessage(

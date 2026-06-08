@@ -112,7 +112,7 @@ export class SessionQuery {
 						last_active
 					FROM sessions
 					WHERE ${conditions.join(" AND ")}
-					ORDER BY last_active DESC, sdk_session_id ASC
+					ORDER BY last_active DESC, provider_id ASC, sdk_session_id ASC
 					LIMIT $limit`,
 				)
 				.all(params) as Parameters<typeof mapSessionRows>[0],
@@ -156,7 +156,7 @@ export class SessionQuery {
 						last_active
 						FROM sessions
 						WHERE ${conditions.join(" AND ")}
-						ORDER BY last_active DESC, sdk_session_id ASC`,
+						ORDER BY last_active DESC, provider_id ASC, sdk_session_id ASC`,
 				)
 				.all(params) as Parameters<typeof mapSessionRows>[0],
 		).filter((row) => titleMatchesSearchTokens(row.title, tokens));
@@ -256,19 +256,11 @@ export class SessionQuery {
 			conditions.push("s.agent_id = $agentId");
 			params.$agentId = options.agentId;
 		}
-		if (options.cursor) {
-			conditions.push(
-				`(
-					s.last_active < $cursorLastActive
-					OR (
-						s.last_active = $cursorLastActive
-						AND s.sdk_session_id > $cursorSessionId
-					)
-				)`,
-			);
-			params.$cursorLastActive = options.cursor.lastActive;
-			params.$cursorSessionId = options.cursor.sdkSessionId;
-		}
+		addSessionCursorCondition(conditions, params, options.cursor, {
+			lastActive: "s.last_active",
+			providerId: "s.provider_id",
+			sdkSessionId: "s.sdk_session_id",
+		});
 		if (options.limit !== undefined) {
 			params.$limit = options.limit;
 		}
@@ -300,7 +292,7 @@ export class SessionQuery {
 						  AND t.sdk_session_id = s.sdk_session_id
 						  AND transcript_turns_fts MATCH $query
 					  )
-					ORDER BY s.last_active DESC, s.sdk_session_id ASC${limitClause}
+					ORDER BY s.last_active DESC, s.provider_id ASC, s.sdk_session_id ASC${limitClause}
 				)
 				SELECT
 					ms.agent_id,
@@ -326,7 +318,7 @@ export class SessionQuery {
 				JOIN transcript_turns_fts
 				  ON transcript_turns_fts.rowid = t.rowid
 				WHERE transcript_turns_fts MATCH $query
-				ORDER BY ms.last_active DESC, ms.sdk_session_id ASC, t.timestamp ASC, t.turn_index ASC`,
+				ORDER BY ms.last_active DESC, ms.provider_id ASC, ms.sdk_session_id ASC, t.timestamp ASC, t.turn_index ASC`,
 			)
 			.all(params) as SearchDatabaseRow[];
 

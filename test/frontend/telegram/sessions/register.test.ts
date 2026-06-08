@@ -31,10 +31,21 @@ describe("Telegram session handler registration", () => {
 		const bridge = {
 			sendCommandAndWait: mock(async () => ({
 				type: "session_menu",
+				activeProviderId: "pi",
 				activeSessionId: "sdk-1",
 				sessions: [
-					{ sdkSessionId: "sdk-1", title: "Alpha", lastActive: 1 },
-					{ sdkSessionId: "sdk-2", title: "Beta", lastActive: 2 },
+					{
+						providerId: "pi",
+						sdkSessionId: "sdk-1",
+						title: "Alpha",
+						lastActive: 1,
+					},
+					{
+						providerId: "claude",
+						sdkSessionId: "sdk-2",
+						title: "Beta",
+						lastActive: 2,
+					},
 				],
 			})),
 		};
@@ -62,8 +73,8 @@ describe("Telegram session handler registration", () => {
 				}
 			).reply_markup?.inline_keyboard,
 		).toEqual([
-			[{ text: "● Alpha", callback_data: "ss:sdk-1" }],
-			[{ text: "Beta", callback_data: "ss:sdk-2" }],
+			[{ text: "● Alpha", callback_data: "ss:pi/sdk-1" }],
+			[{ text: "Beta", callback_data: "ss:claude/sdk-2" }],
 			[{ text: "1/1", callback_data: "sn" }],
 		]);
 	});
@@ -137,13 +148,13 @@ describe("Telegram session handler registration", () => {
 		const answerCallbackQuery = mock(async (_text: string) => undefined);
 		const editMessageText = mock(async (_text: string) => undefined);
 		await callbackHandler?.({
-			callbackQuery: { data: "ss:sdk-2" },
+			callbackQuery: { data: "ss:pi/sdk-2" },
 			answerCallbackQuery,
 			editMessageText,
 		});
 
 		expect(bridge.sendCommandAndWait).toHaveBeenCalledWith(
-			"/session sdk-2",
+			"/session pi/sdk-2",
 			expect.any(Set),
 		);
 		expect(answerCallbackQuery).toHaveBeenCalledWith("Switched to: Beta");

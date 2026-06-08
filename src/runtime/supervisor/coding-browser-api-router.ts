@@ -759,6 +759,7 @@ function readSessionCursor(
 	| { status: "valid"; value?: SessionCursor }
 	| { status: "invalid"; message: string } {
 	const cursorLastActiveParam = url.searchParams.get("cursorLastActive");
+	const cursorProviderId = url.searchParams.get("cursorProviderId");
 	const cursorSessionId = url.searchParams.get("cursorSdkSessionId");
 	if (cursorLastActiveParam === null && cursorSessionId === null) {
 		return { status: "valid", value: undefined };
@@ -774,6 +775,7 @@ function readSessionCursor(
 		status: "valid",
 		value: {
 			lastActive,
+			...(cursorProviderId ? { providerId: cursorProviderId } : {}),
 			sdkSessionId: cursorSessionId,
 		},
 	};

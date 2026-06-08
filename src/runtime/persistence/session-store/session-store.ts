@@ -519,7 +519,7 @@ export class SessionStore {
 							auto_title_attempted
 						FROM sessions
 						WHERE ${conditions.join(" AND ")}
-						ORDER BY last_active DESC, sdk_session_id ASC
+						ORDER BY last_active DESC, provider_id ASC, sdk_session_id ASC
 						LIMIT $limit`,
 					)
 					.all(params) as Parameters<typeof mapSessionRows>[0],
@@ -569,7 +569,7 @@ export class SessionStore {
 							auto_title_attempted
 							FROM sessions
 							WHERE ${conditions.join(" AND ")}
-							ORDER BY last_active DESC, sdk_session_id ASC`,
+						ORDER BY last_active DESC, provider_id ASC, sdk_session_id ASC`,
 					)
 					.all(params) as Parameters<typeof mapSessionRows>[0],
 			).filter((row) => titleMatchesSearchTokens(row.title, tokens));

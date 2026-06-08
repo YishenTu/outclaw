@@ -170,6 +170,9 @@ export function mapEventToActions(event: ServerEvent): TuiAction[] {
 					type: "session_menu",
 					data: {
 						activeSessionId: event.activeSessionId,
+						...(event.activeProviderId
+							? { activeProviderId: event.activeProviderId }
+							: {}),
 						nextCursor: event.nextCursor,
 						sessions: event.sessions,
 					},

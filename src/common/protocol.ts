@@ -420,6 +420,7 @@ export interface SessionInfoEvent {
 
 export interface SessionCursor {
 	lastActive: number;
+	providerId?: string;
 	sdkSessionId: string;
 }
 
@@ -440,6 +441,7 @@ export interface SessionRowSummary {
 export interface SessionListEvent {
 	type: "session_list";
 	activeSessionId?: string;
+	activeProviderId?: string;
 	sessions: SessionRowSummary[];
 	nextCursor?: SessionCursor;
 }
@@ -447,6 +449,7 @@ export interface SessionListEvent {
 export interface SessionMenuEvent {
 	type: "session_menu";
 	activeSessionId?: string;
+	activeProviderId?: string;
 	sessions: SessionRowSummary[];
 	nextCursor?: SessionCursor;
 }

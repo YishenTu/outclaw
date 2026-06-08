@@ -117,6 +117,9 @@ export async function fetchAgentSessions(
 	url.searchParams.set("limit", String(params.limit));
 	if (params.cursor) {
 		url.searchParams.set("cursorLastActive", String(params.cursor.lastActive));
+		if (params.cursor.providerId) {
+			url.searchParams.set("cursorProviderId", params.cursor.providerId);
+		}
 		url.searchParams.set("cursorSdkSessionId", params.cursor.sdkSessionId);
 	}
 	if (params.query?.trim()) {
@@ -146,6 +149,9 @@ export async function fetchCodingSessions(params: {
 	url.searchParams.set("limit", String(params.limit));
 	if (params.cursor) {
 		url.searchParams.set("cursorLastActive", String(params.cursor.lastActive));
+		if (params.cursor.providerId) {
+			url.searchParams.set("cursorProviderId", params.cursor.providerId);
+		}
 		url.searchParams.set("cursorSdkSessionId", params.cursor.sdkSessionId);
 	}
 	if (params.providerId) {

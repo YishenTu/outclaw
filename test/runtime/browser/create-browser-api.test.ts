@@ -467,6 +467,7 @@ describe("createBrowserApi", () => {
 		]);
 		expect(firstPage.nextCursor).toEqual({
 			lastActive: 200,
+			providerId: "claude",
 			sdkSessionId: "sdk-b",
 		});
 		expect(

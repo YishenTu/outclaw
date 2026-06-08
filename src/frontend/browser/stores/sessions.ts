@@ -105,6 +105,7 @@ function cursorsEqual(
 	}
 	return (
 		left.lastActive === right.lastActive &&
+		left.providerId === right.providerId &&
 		left.sdkSessionId === right.sdkSessionId
 	);
 }
@@ -342,9 +343,18 @@ function mergeRefreshedLeadingPage(
 }
 
 function isAfterCursor(
-	session: Pick<SessionEntry, "lastActive" | "sdkSessionId">,
+	session: Pick<SessionEntry, "lastActive" | "providerId" | "sdkSessionId">,
 	cursor: SessionCursor,
 ): boolean {
+	if (cursor.providerId) {
+		return (
+			session.lastActive < cursor.lastActive ||
+			(session.lastActive === cursor.lastActive &&
+				(session.providerId > cursor.providerId ||
+					(session.providerId === cursor.providerId &&
+						session.sdkSessionId > cursor.sdkSessionId)))
+		);
+	}
 	return (
 		session.lastActive < cursor.lastActive ||
 		(session.lastActive === cursor.lastActive &&

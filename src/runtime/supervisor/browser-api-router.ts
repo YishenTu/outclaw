@@ -371,6 +371,7 @@ export async function handleBrowserApiRequest(
 				return jsonError("Invalid limit", 400);
 			}
 			const cursorLastActiveParam = url.searchParams.get("cursorLastActive");
+			const cursorProviderId = url.searchParams.get("cursorProviderId");
 			const cursorSessionId = url.searchParams.get("cursorSdkSessionId");
 			let cursor: SessionCursor | undefined;
 			if (cursorLastActiveParam !== null || cursorSessionId !== null) {
@@ -387,6 +388,7 @@ export async function handleBrowserApiRequest(
 				}
 				cursor = {
 					lastActive,
+					...(cursorProviderId ? { providerId: cursorProviderId } : {}),
 					sdkSessionId: cursorSessionId,
 				};
 			}

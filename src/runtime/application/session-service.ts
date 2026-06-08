@@ -596,14 +596,13 @@ export class SessionService {
 		if (!this.store) {
 			return;
 		}
+		const activeProviderId = this.resolvePersistedActiveProviderId();
 
 		// First, honor any persisted blank-session selection so the runtime
 		// reflects the user's last provider/model choice across daemon
 		// restarts. The visible session — if any — overrides this below.
 		this.restoreBlankSelection();
 
-		const activeProviderId =
-			this.store.getActiveChatProviderId() ?? this.state.providerId;
 		const activeSessionId = this.store.getActiveSessionId(activeProviderId);
 		const session = activeSessionId
 			? this.store.get(activeProviderId, activeSessionId)
@@ -614,6 +613,7 @@ export class SessionService {
 				: undefined;
 		if (session) {
 			this.state.setProvider(session.providerId);
+			this.store.setActiveChatProviderId(session.providerId);
 		} else {
 			if (activeSessionId) {
 				this.store.setActiveSessionId(activeProviderId, undefined);
@@ -628,6 +628,23 @@ export class SessionService {
 			session,
 			usage,
 		});
+	}
+
+	private resolvePersistedActiveProviderId(): string {
+		const activeProviderId = this.store?.getActiveChatProviderId();
+		if (activeProviderId) {
+			return activeProviderId;
+		}
+
+		const blankSelection = this.store?.getBlankChatModelSelection();
+		if (
+			blankSelection &&
+			this.store?.getActiveSessionId(blankSelection.providerId)
+		) {
+			return blankSelection.providerId;
+		}
+
+		return this.state.providerId;
 	}
 
 	private applyBlankSelectionModel(model: string) {

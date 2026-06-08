@@ -27,6 +27,9 @@ export async function handleSessionCommand(
 		options.hub.send(options.ws, {
 			type: "session_menu",
 			activeSessionId: options.sessions.activeSessionId,
+			activeProviderId: options.sessions.activeSessionId
+				? options.sessions.providerId
+				: undefined,
 			sessions: result.sessions,
 			nextCursor: result.nextCursor,
 		});
@@ -57,6 +60,7 @@ export async function handleSessionCommand(
 		});
 		if (deletion.clearedActiveSession) {
 			options.hub.broadcast({ type: "session_cleared" });
+			options.hub.broadcast(options.createStatusEvent());
 		}
 		return;
 	}
@@ -92,6 +96,9 @@ export async function handleSessionCommand(
 		options.hub.send(options.ws, {
 			type: "session_list",
 			activeSessionId: options.sessions.activeSessionId,
+			activeProviderId: options.sessions.activeSessionId
+				? options.sessions.providerId
+				: undefined,
 			sessions: result.sessions,
 			nextCursor: result.nextCursor,
 		});
@@ -139,9 +146,9 @@ export async function handleSessionCommand(
 }
 
 const LIST_USAGE =
-	"Usage: /session list [limit] [cursorLastActive cursorSdkId]";
+	"Usage: /session list [limit] [cursorLastActive cursorSessionId]";
 const SEARCH_USAGE =
-	"Usage: /session search [--limit n] [--cursor lastActive sdkSessionId] <query>";
+	"Usage: /session search [--limit n] [--cursor lastActive cursorSessionId] <query>";
 
 function parseSessionListArgs(
 	arg: string,
@@ -163,13 +170,13 @@ function parseSessionListArgs(
 	}
 
 	const lastActive = parseNonNegativeInteger(parts[1] ?? "");
-	const sdkSessionId = parts[2]?.trim();
-	if (lastActive === undefined || !sdkSessionId) {
+	const cursorRef = parseCursorSessionRef(parts[2]?.trim() ?? "");
+	if (lastActive === undefined || !cursorRef) {
 		return LIST_USAGE;
 	}
 
 	return {
-		cursor: { lastActive, sdkSessionId },
+		cursor: { lastActive, ...cursorRef },
 		limit,
 	};
 }
@@ -212,11 +219,11 @@ function parseSessionSearchArgs(
 				return SEARCH_USAGE;
 			}
 			const lastActive = parseNonNegativeInteger(lastActiveToken[0]);
-			const sdkSessionId = sdkSessionIdToken[0].trim();
-			if (lastActive === undefined || !sdkSessionId) {
+			const cursorRef = parseCursorSessionRef(sdkSessionIdToken[0].trim());
+			if (lastActive === undefined || !cursorRef) {
 				return SEARCH_USAGE;
 			}
-			cursor = { lastActive, sdkSessionId };
+			cursor = { lastActive, ...cursorRef };
 			rest = sdkSessionIdToken[1].trimStart();
 			continue;
 		}
@@ -245,6 +252,25 @@ function shiftToken(input: string): [string, string] | undefined {
 		return undefined;
 	}
 	return [match[1] ?? "", match[2] ?? ""];
+}
+
+function parseCursorSessionRef(
+	raw: string,
+): { providerId?: string; sdkSessionId: string } | undefined {
+	if (!raw) {
+		return undefined;
+	}
+	const separator = raw.indexOf("/");
+	if (separator < 0) {
+		return { sdkSessionId: raw };
+	}
+	if (separator === 0 || separator === raw.length - 1) {
+		return undefined;
+	}
+	return {
+		providerId: raw.slice(0, separator),
+		sdkSessionId: raw.slice(separator + 1),
+	};
 }
 
 function parsePositiveInteger(value: string): number | undefined {

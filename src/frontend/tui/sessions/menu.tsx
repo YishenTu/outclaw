@@ -52,8 +52,8 @@ export function SessionMenu({
 	const { cursor, renaming, renameValue } = menuState;
 	const displayedSearchQuery = searchQuery?.trim() || undefined;
 	const loadingResetKey = `${choices.length}:${nextCursor?.lastActive ?? ""}:${
-		nextCursor?.sdkSessionId ?? ""
-	}`;
+		nextCursor?.providerId ?? ""
+	}:${nextCursor?.sdkSessionId ?? ""}`;
 
 	useEffect(() => {
 		const nextState = normalizeSessionMenuState(menuStateRef.current, choices);
@@ -228,9 +228,10 @@ export function SessionMenu({
 			)}
 			{choices.map((choice, index) => {
 				const pointer = index === cursor ? "▸ " : "  ";
+				const choiceKey = `${choice.providerId ?? ""}\u0000${choice.sdkSessionId}`;
 				if (renaming && index === cursor) {
 					return (
-						<Box key={choice.sdkSessionId}>
+						<Box key={choiceKey}>
 							<Text color={theme.accent}>{pointer}</Text>
 							<RenameInput
 								value={renameValue}
@@ -245,7 +246,7 @@ export function SessionMenu({
 				const label = formatSessionMenuItem(choice, labelWidth);
 				return (
 					<Text
-						key={choice.sdkSessionId}
+						key={choiceKey}
 						color={index === cursor ? theme.accent : undefined}
 					>
 						{pointer}

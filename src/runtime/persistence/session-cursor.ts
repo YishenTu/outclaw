@@ -5,20 +5,48 @@ export function addSessionCursorCondition(
 	conditions: string[],
 	params: Record<string, string | number>,
 	cursor: SessionCursor | undefined,
+	columns: {
+		lastActive: string;
+		providerId: string;
+		sdkSessionId: string;
+	} = {
+		lastActive: "last_active",
+		providerId: "provider_id",
+		sdkSessionId: "sdk_session_id",
+	},
 ) {
 	if (!cursor) {
 		return;
 	}
 
-	conditions.push(
-		`(
-			last_active < $cursorLastActive
-			OR (
-				last_active = $cursorLastActive
-				AND sdk_session_id > $cursorSessionId
-			)
-		)`,
-	);
+	if (cursor.providerId) {
+		conditions.push(
+			`(
+				${columns.lastActive} < $cursorLastActive
+				OR (
+					${columns.lastActive} = $cursorLastActive
+					AND (
+						${columns.providerId} > $cursorProviderId
+						OR (
+							${columns.providerId} = $cursorProviderId
+							AND ${columns.sdkSessionId} > $cursorSessionId
+						)
+					)
+				)
+			)`,
+		);
+		params.$cursorProviderId = cursor.providerId;
+	} else {
+		conditions.push(
+			`(
+				${columns.lastActive} < $cursorLastActive
+				OR (
+					${columns.lastActive} = $cursorLastActive
+					AND ${columns.sdkSessionId} > $cursorSessionId
+				)
+			)`,
+		);
+	}
 	params.$cursorLastActive = cursor.lastActive;
 	params.$cursorSessionId = cursor.sdkSessionId;
 }
@@ -38,6 +66,7 @@ export function nextSessionCursor(
 
 	return {
 		lastActive: lastSession.lastActive,
+		providerId: lastSession.providerId,
 		sdkSessionId: lastSession.sdkSessionId,
 	};
 }

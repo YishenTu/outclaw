@@ -272,6 +272,47 @@ describe("handleRuntimeCommand", () => {
 			).toEqual(["sdk-c"]);
 		});
 
+		test("/session list accepts a provider-qualified cursor", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state, store);
+			hub.add(ws);
+
+			for (const providerId of [OTHER_PROVIDER_ID, PROVIDER_ID]) {
+				store.upsert({
+					providerId,
+					sdkSessionId: "same-sdk-id",
+					title: providerId,
+					model: "sonnet",
+					timestamp: 300,
+				});
+			}
+
+			await handleRuntimeCommand({
+				command: `/session list 1 300 ${OTHER_PROVIDER_ID}/same-sdk-id`,
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async () => {},
+				sessions,
+				state,
+				ws,
+			});
+
+			const event = ws.events().find((e) => e.type === "session_list");
+			expect(event).toMatchObject({
+				type: "session_list",
+				sessions: [
+					{
+						providerId: PROVIDER_ID,
+						sdkSessionId: "same-sdk-id",
+					},
+				],
+			});
+		});
+
 		test("/session search returns title search results", async () => {
 			const hub = new ClientHub();
 			const ws = mockWs();
@@ -325,6 +366,47 @@ describe("handleRuntimeCommand", () => {
 			});
 		});
 
+		test("/session search accepts a provider-qualified cursor", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(state, store);
+			hub.add(ws);
+
+			for (const providerId of [OTHER_PROVIDER_ID, PROVIDER_ID]) {
+				store.upsert({
+					providerId,
+					sdkSessionId: "same-sdk-id",
+					title: "Deploy runtime",
+					model: "sonnet",
+					timestamp: 300,
+				});
+			}
+
+			await handleRuntimeCommand({
+				command: `/session search --limit 1 --cursor 300 ${OTHER_PROVIDER_ID}/same-sdk-id -- deploy`,
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async () => {},
+				sessions,
+				state,
+				ws,
+			});
+
+			const event = ws.events().find((e) => e.type === "session_search_result");
+			expect(event).toMatchObject({
+				type: "session_search_result",
+				sessions: [
+					{
+						providerId: PROVIDER_ID,
+						sdkSessionId: "same-sdk-id",
+					},
+				],
+			});
+		});
+
 		test("/session list and search reject malformed pagination arguments", async () => {
 			const { ws, run } = setup();
 			await run("/session list two");
@@ -341,8 +423,8 @@ describe("handleRuntimeCommand", () => {
 						return (event as { message: string }).message;
 					}),
 			).toEqual([
-				"Usage: /session list [limit] [cursorLastActive cursorSdkId]",
-				"Usage: /session search [--limit n] [--cursor lastActive sdkSessionId] <query>",
+				"Usage: /session list [limit] [cursorLastActive cursorSessionId]",
+				"Usage: /session search [--limit n] [--cursor lastActive cursorSessionId] <query>",
 				sessionSearchQueryTooLongMessage(),
 			]);
 		});
@@ -415,6 +497,69 @@ describe("handleRuntimeCommand", () => {
 				sdkSessionId: "sdk-target-123",
 				providerId: PROVIDER_ID,
 			});
+
+			store.close();
+		});
+
+		test("/session delete broadcasts restored status after deleting an active legacy session", async () => {
+			const hub = new ClientHub();
+			const ws = mockWs();
+			const store = new SessionStore(":memory:");
+			stores.push(store);
+			store.setBlankChatModelSelection({
+				providerId: PROVIDER_ID,
+				model: "pi-default",
+				effort: "medium",
+			});
+			store.upsert({
+				providerId: OTHER_PROVIDER_ID,
+				sdkSessionId: "sdk-legacy",
+				title: "Legacy chat",
+				model: "opus",
+			});
+			const state = new RuntimeState(PROVIDER_ID);
+			const sessions = new SessionService(
+				state,
+				store,
+				{},
+				{
+					defaultBlankSelection: {
+						providerId: PROVIDER_ID,
+						model: "pi-default",
+						effort: "medium",
+					},
+					writableProviderIds: new Set([PROVIDER_ID]),
+				},
+			);
+			hub.add(ws);
+			const legacy = store.get(OTHER_PROVIDER_ID, "sdk-legacy");
+			if (!legacy) {
+				throw new Error("Expected legacy session");
+			}
+			sessions.switchToResolvedSession(legacy);
+
+			await handleRuntimeCommand({
+				command: `/session delete ${OTHER_PROVIDER_ID}/sdk-legacy`,
+				createStatusEvent: () => state.createStatusEvent(),
+				hub,
+				replayHistoryToAll: async () => {},
+				sessions,
+				state,
+				ws,
+			});
+
+			const status = ws
+				.events()
+				.filter((event) => event.type === "runtime_status")
+				.at(-1);
+			expect(status).toMatchObject({
+				type: "runtime_status",
+				providerId: PROVIDER_ID,
+				model: "pi-default",
+			});
+			expect(
+				(status as { sessionId?: string } | undefined)?.sessionId,
+			).toBeUndefined();
 
 			store.close();
 		});

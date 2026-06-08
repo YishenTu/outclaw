@@ -459,6 +459,50 @@ describe("SessionService", () => {
 		store.close();
 	});
 
+	test("derives missing active provider from legacy blank selection during restore", () => {
+		const store = createTestStore();
+		store.setBlankChatModelSelection({
+			providerId: OTHER_PROVIDER_ID,
+			model: "opus",
+			effort: "medium",
+		});
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "sdk-legacy",
+			title: "Legacy chat",
+			model: "opus",
+			source: "tui",
+		});
+		store.setActiveSessionId(OTHER_PROVIDER_ID, "sdk-legacy");
+
+		const state = new RuntimeState(PROVIDER_ID);
+		new SessionService(
+			state,
+			store,
+			{},
+			{
+				defaultBlankSelection: {
+					providerId: PROVIDER_ID,
+					model: "pi-default",
+					effort: "medium",
+				},
+				writableProviderIds: new Set([PROVIDER_ID]),
+			},
+		);
+
+		expect(state.providerId).toBe(OTHER_PROVIDER_ID);
+		expect(state.sessionId).toBe("sdk-legacy");
+		expect(state.model).toBe("opus");
+		expect(store.getActiveChatProviderId()).toBe(OTHER_PROVIDER_ID);
+		expect(store.getBlankChatModelSelection()).toEqual({
+			providerId: PROVIDER_ID,
+			model: "pi-default",
+			effort: "medium",
+		});
+
+		store.close();
+	});
+
 	test("clears stale persisted active provider state when the session is missing", () => {
 		const store = createTestStore();
 		store.setBlankChatModelSelection({
@@ -576,6 +620,7 @@ describe("SessionService", () => {
 		]);
 		expect(firstPage.nextCursor).toEqual({
 			lastActive: 300,
+			providerId: PROVIDER_ID,
 			sdkSessionId: "sdk-b",
 		});
 
@@ -617,6 +662,48 @@ describe("SessionService", () => {
 		).toEqual([
 			[OTHER_PROVIDER_ID, "sdk-legacy"],
 			[PROVIDER_ID, "sdk-pi"],
+		]);
+
+		store.close();
+	});
+
+	test("listSessions paginates same-id sessions across providers", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		for (const providerId of [OTHER_PROVIDER_ID, PROVIDER_ID]) {
+			store.upsert({
+				providerId,
+				sdkSessionId: "same-sdk-id",
+				title: `${providerId} chat`,
+				model: providerId === OTHER_PROVIDER_ID ? "opus" : "pi-default",
+				timestamp: 300,
+			});
+		}
+
+		const firstPage = sessions.listSessions({ limit: 1 });
+		expect(firstPage.sessions).toEqual([
+			expect.objectContaining({
+				providerId: OTHER_PROVIDER_ID,
+				sdkSessionId: "same-sdk-id",
+			}),
+		]);
+		expect(firstPage.nextCursor).toEqual({
+			lastActive: 300,
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "same-sdk-id",
+		});
+
+		const secondPage = sessions.listSessions({
+			cursor: firstPage.nextCursor,
+			limit: 1,
+		});
+		expect(secondPage.sessions).toEqual([
+			expect.objectContaining({
+				providerId: PROVIDER_ID,
+				sdkSessionId: "same-sdk-id",
+			}),
 		]);
 
 		store.close();

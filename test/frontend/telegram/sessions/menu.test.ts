@@ -37,6 +37,32 @@ describe("buildSessionButtons", () => {
 	test("returns empty array for no sessions", () => {
 		expect(buildSessionButtons([], undefined)).toEqual([]);
 	});
+
+	test("uses provider id in callback data and active matching", () => {
+		const rows = buildSessionButtons(
+			[
+				{
+					providerId: "claude",
+					sdkSessionId: "same-sdk-id",
+					title: "Claude chat",
+					lastActive: Date.now(),
+				},
+				{
+					providerId: "pi",
+					sdkSessionId: "same-sdk-id",
+					title: "Pi chat",
+					lastActive: Date.now(),
+				},
+			],
+			"same-sdk-id",
+			"pi",
+		);
+
+		expect(rows).toEqual([
+			{ label: "Claude chat", switchData: "ss:claude/same-sdk-id" },
+			{ label: "● Pi chat", switchData: "ss:pi/same-sdk-id" },
+		]);
+	});
 });
 
 describe("formatTimeCompact", () => {
@@ -56,6 +82,10 @@ describe("parseSessionCallback", () => {
 		expect(parseSessionCallback("ss:sdk-aaa")).toEqual({
 			type: "switch",
 			sdkSessionId: "sdk-aaa",
+		});
+		expect(parseSessionCallback("ss:pi/sdk-aaa")).toEqual({
+			type: "switch",
+			sdkSessionId: "pi/sdk-aaa",
 		});
 	});
 
