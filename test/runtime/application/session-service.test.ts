@@ -85,7 +85,81 @@ describe("SessionService", () => {
 		store.close();
 	});
 
-	test("does not restore another provider's active session", () => {
+	test("restores a legacy active session when no active provider key exists", () => {
+		const store = createTestStore();
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "legacy-claude",
+			title: "Legacy Claude session",
+			model: "opus",
+			timestamp: 200,
+		});
+		store.setActiveSessionId(OTHER_PROVIDER_ID, "legacy-claude");
+
+		const state = new RuntimeState(PROVIDER_ID);
+		new SessionService(state, store);
+
+		expect(state.providerId).toBe(OTHER_PROVIDER_ID);
+		expect(state.sessionId).toBe("legacy-claude");
+		expect(state.sessionTitle).toBe("Legacy Claude session");
+		expect(store.getActiveChatProviderId()).toBe(OTHER_PROVIDER_ID);
+
+		store.close();
+	});
+
+	test("skips stale blank-provider active state when a legacy active session is valid", () => {
+		const store = createTestStore();
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "legacy-claude",
+			title: "Legacy Claude session",
+			model: "opus",
+			timestamp: 200,
+		});
+		store.setBlankChatModelSelection({
+			providerId: PROVIDER_ID,
+			model: "pi-default",
+			effort: "medium",
+		});
+		store.setActiveSessionId(PROVIDER_ID, "missing-pi-session");
+		store.setActiveSessionId(OTHER_PROVIDER_ID, "legacy-claude");
+
+		const state = new RuntimeState(PROVIDER_ID);
+		new SessionService(state, store);
+
+		expect(state.providerId).toBe(OTHER_PROVIDER_ID);
+		expect(state.sessionId).toBe("legacy-claude");
+		expect(store.getActiveSessionId(PROVIDER_ID)).toBeUndefined();
+		expect(store.getActiveChatProviderId()).toBe(OTHER_PROVIDER_ID);
+
+		store.close();
+	});
+
+	test("skips stale explicit active provider state when a legacy active session is valid", () => {
+		const store = createTestStore();
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "legacy-claude",
+			title: "Legacy Claude session",
+			model: "opus",
+			timestamp: 200,
+		});
+		store.setActiveChatProviderId(PROVIDER_ID);
+		store.setActiveSessionId(PROVIDER_ID, "missing-pi-session");
+		store.setActiveSessionId(OTHER_PROVIDER_ID, "legacy-claude");
+
+		const state = new RuntimeState(PROVIDER_ID);
+		new SessionService(state, store);
+
+		expect(state.providerId).toBe(OTHER_PROVIDER_ID);
+		expect(state.sessionId).toBe("legacy-claude");
+		expect(store.getActiveSessionId(PROVIDER_ID)).toBeUndefined();
+		expect(store.getActiveChatProviderId()).toBe(OTHER_PROVIDER_ID);
+
+		store.close();
+	});
+
+	test("does not restore a stale provider-scoped active session id", () => {
 		const store = createTestStore();
 		store.upsert({
 			providerId: OTHER_PROVIDER_ID,
@@ -93,7 +167,7 @@ describe("SessionService", () => {
 			title: "Other session",
 			model: "haiku",
 		});
-		store.setActiveSessionId(OTHER_PROVIDER_ID, "sdk-456");
+		store.setActiveSessionId(OTHER_PROVIDER_ID, "missing-session");
 
 		const state = new RuntimeState(PROVIDER_ID);
 		new SessionService(state, store);
@@ -350,6 +424,51 @@ describe("SessionService", () => {
 		expect(store.get(OTHER_PROVIDER_ID, "same-sdk-id")?.title).toBe(
 			"Other pending",
 		);
+
+		store.close();
+	});
+
+	test("applyAutoTitle does not rename active state across provider collisions", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+		const stateChanges: number[] = [];
+		sessions.configureCallbacks({
+			onSessionStateChange: () => {
+				stateChanges.push(Date.now());
+			},
+		});
+
+		store.upsert({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "same-sdk-id",
+			title: "Pi pending",
+			model: "openai-codex/gpt-5.5",
+		});
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "same-sdk-id",
+			title: "Claude pending",
+			model: "opus",
+		});
+		state.restorePersistedState({
+			session: store.get(PROVIDER_ID, "same-sdk-id"),
+		});
+
+		expect(
+			sessions.applyAutoTitle({
+				providerId: OTHER_PROVIDER_ID,
+				sessionId: "same-sdk-id",
+				expectedTitle: "Claude pending",
+				title: "Renamed legacy chat",
+			}),
+		).toBe(true);
+
+		expect(store.get(OTHER_PROVIDER_ID, "same-sdk-id")?.title).toBe(
+			"Renamed legacy chat",
+		);
+		expect(state.sessionTitle).toBe("Pi pending");
+		expect(stateChanges).toHaveLength(0);
 
 		store.close();
 	});

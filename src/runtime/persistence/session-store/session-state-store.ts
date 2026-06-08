@@ -16,6 +16,7 @@ import {
 import {
 	activeChatProviderKey,
 	activeSessionKey,
+	activeSessionKeyPrefix,
 	blankChatModelSelectionKey,
 	browserClientAgentKey,
 	FRONTEND_NOTICE_KEY,
@@ -227,7 +228,7 @@ export class SessionStateStore {
 		this.getDb()
 			.query(
 				`DELETE FROM state
-				 WHERE key LIKE $activeSessionPrefix
+				 WHERE substr(key, 1, $activeSessionPrefixLength) = $activeSessionPrefix
 				    OR key = $activeChatProviderKey
 				    OR key = $lastUserTargetKey
 				    OR (key LIKE $browserClientAgentPrefix AND value = $agentId)`,
@@ -235,7 +236,8 @@ export class SessionStateStore {
 			.run({
 				$agentId: agentId,
 				$activeChatProviderKey: activeChatProviderKey(agentId),
-				$activeSessionPrefix: `${activeSessionKey(agentId, "")}%`,
+				$activeSessionPrefix: activeSessionKeyPrefix(agentId),
+				$activeSessionPrefixLength: activeSessionKeyPrefix(agentId).length,
 				$browserClientAgentPrefix: `${browserClientAgentKey("")}%`,
 				$lastUserTargetKey: lastUserTargetKey(agentId),
 			});

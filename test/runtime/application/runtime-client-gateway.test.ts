@@ -522,4 +522,28 @@ describe("RuntimeClientGateway", () => {
 			],
 		});
 	});
+
+	test("replayHistory does not fall back to the primary facade for unresolved multi-provider refs", async () => {
+		const readHistory = mock(async () => [
+			{
+				kind: "chat" as const,
+				role: "assistant" as const,
+				content: "wrong provider history",
+			},
+		]);
+		const gateway = new RuntimeClientGateway({
+			facade: createFacade({
+				providerId: "pi",
+				readHistory,
+			}),
+			resolveFacadeForSession: () => undefined,
+			getStatusEvent: () => createStatusEvent(),
+		});
+		const ws = mockWs();
+
+		await gateway.replayHistory([ws], "same-sdk-id");
+
+		expect(readHistory).not.toHaveBeenCalled();
+		expect(ws.events()).toEqual([]);
+	});
 });

@@ -69,10 +69,35 @@ export function resolveVisibleActiveChatSession(
 		return undefined;
 	}
 
-	const providerId =
-		store.getActiveChatProviderId() ??
-		store.getBlankChatModelSelection()?.providerId ??
-		agent.providerId;
+	const activeSession =
+		getActiveChatSessionForProvider(store, store.getActiveChatProviderId()) ??
+		getActiveChatSessionForProvider(
+			store,
+			store.getBlankChatModelSelection()?.providerId,
+		) ??
+		getActiveChatSessionForProvider(
+			store,
+			store.findVisibleActiveChatProviderId(),
+		) ??
+		getActiveChatSessionForProvider(store, agent.providerId);
+	if (!activeSession) {
+		return undefined;
+	}
+
+	return {
+		providerId: activeSession.providerId,
+		sdkSessionId: activeSession.sdkSessionId,
+	};
+}
+
+function getActiveChatSessionForProvider(
+	store: SessionStore,
+	providerId: string | undefined,
+): SessionRow | undefined {
+	if (!providerId) {
+		return undefined;
+	}
+
 	const activeSessionId = store.getActiveSessionId(providerId);
 	if (!activeSessionId) {
 		return undefined;
@@ -83,8 +108,5 @@ export function resolveVisibleActiveChatSession(
 		return undefined;
 	}
 
-	return {
-		providerId,
-		sdkSessionId: activeSessionId,
-	};
+	return activeSession;
 }

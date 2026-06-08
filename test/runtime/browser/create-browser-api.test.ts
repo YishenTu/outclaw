@@ -262,6 +262,173 @@ describe("createBrowserApi", () => {
 		store.close();
 	});
 
+	test("shows a legacy active session without an active provider key", () => {
+		const root = createTempDir("outclaw-browser-api-legacy-active-migration-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		store.upsert({
+			providerId: "claude",
+			sdkSessionId: "legacy-claude",
+			title: "Legacy Claude session",
+			model: "opus",
+			timestamp: 200,
+		});
+		store.setActiveSessionId("claude", "legacy-claude");
+		store.setBlankChatModelSelection({
+			providerId: "pi",
+			model: "openai-codex/gpt-5.5",
+			effort: "medium",
+		});
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "pi",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		expect(api.getAgentActiveSession("agent-railly")).toEqual({
+			activeSession: {
+				providerId: "claude",
+				sdkSessionId: "legacy-claude",
+			},
+			blankSelection: {
+				providerId: "pi",
+				model: "openai-codex/gpt-5.5",
+				effort: "medium",
+			},
+		});
+		expect(api.listAgents().agents[0]?.activeSession).toEqual({
+			providerId: "claude",
+			sdkSessionId: "legacy-claude",
+		});
+
+		store.close();
+	});
+
+	test("shows a legacy active session when the blank provider active key is stale", () => {
+		const root = createTempDir("outclaw-browser-api-legacy-active-stale-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		store.upsert({
+			providerId: "claude",
+			sdkSessionId: "legacy-claude",
+			title: "Legacy Claude session",
+			model: "opus",
+			timestamp: 200,
+		});
+		store.setBlankChatModelSelection({
+			providerId: "pi",
+			model: "openai-codex/gpt-5.5",
+			effort: "medium",
+		});
+		store.setActiveSessionId("pi", "missing-pi-session");
+		store.setActiveSessionId("claude", "legacy-claude");
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "pi",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		expect(api.getAgentActiveSession("agent-railly")).toEqual({
+			activeSession: {
+				providerId: "claude",
+				sdkSessionId: "legacy-claude",
+			},
+			blankSelection: {
+				providerId: "pi",
+				model: "openai-codex/gpt-5.5",
+				effort: "medium",
+			},
+		});
+		expect(api.listAgents().agents[0]?.activeSession).toEqual({
+			providerId: "claude",
+			sdkSessionId: "legacy-claude",
+		});
+
+		store.close();
+	});
+
+	test("shows a legacy active session when the explicit active provider key is stale", () => {
+		const root = createTempDir("outclaw-browser-api-legacy-active-explicit-");
+		cleanupPaths.push(root);
+
+		const dbPath = join(root, "db.sqlite");
+		const agentHomeDir = join(root, "agents", "railly");
+		mkdirSync(agentHomeDir, { recursive: true });
+
+		const store = new SessionStore(dbPath, { agentId: "agent-railly" });
+		store.upsert({
+			providerId: "claude",
+			sdkSessionId: "legacy-claude",
+			title: "Legacy Claude session",
+			model: "opus",
+			timestamp: 200,
+		});
+		store.setActiveChatProviderId("pi");
+		store.setActiveSessionId("pi", "missing-pi-session");
+		store.setActiveSessionId("claude", "legacy-claude");
+
+		const api = createBrowserApi({
+			agents: [
+				{
+					agentId: "agent-railly",
+					name: "railly",
+					homeDir: agentHomeDir,
+					providerId: "pi",
+					terminalRunCommand: "",
+				},
+			],
+			getRememberedAgentId: () => "agent-railly",
+			gitRoot: root,
+			homeDir: root,
+			storesByAgent: new Map([["agent-railly", store]]),
+		});
+
+		expect(api.getAgentActiveSession("agent-railly")).toEqual({
+			activeSession: {
+				providerId: "claude",
+				sdkSessionId: "legacy-claude",
+			},
+		});
+		expect(api.listAgents().agents[0]?.activeSession).toEqual({
+			providerId: "claude",
+			sdkSessionId: "legacy-claude",
+		});
+
+		store.close();
+	});
+
 	test("lists chat models across configured providers", async () => {
 		const root = createTempDir("outclaw-browser-api-chat-models-");
 		cleanupPaths.push(root);

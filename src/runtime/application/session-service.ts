@@ -408,7 +408,9 @@ export class SessionService {
 			return false;
 		}
 
-		const isActiveSession = this.state.sessionId === params.sessionId;
+		const isActiveSession =
+			this.state.providerId === providerId &&
+			this.state.sessionId === params.sessionId;
 		if (isActiveSession) {
 			this.state.renameSession(params.sessionId, params.title);
 		}
@@ -603,10 +605,8 @@ export class SessionService {
 		// restarts. The visible session — if any — overrides this below.
 		this.restoreBlankSelection();
 
-		const activeSessionId = this.store.getActiveSessionId(activeProviderId);
-		const session = activeSessionId
-			? this.store.get(activeProviderId, activeSessionId)
-			: undefined;
+		const session = this.getActiveChatSession(activeProviderId);
+		const activeSessionId = session?.sdkSessionId;
 		const usage =
 			session && activeSessionId
 				? this.store.getUsage(activeProviderId, activeSessionId)
@@ -633,18 +633,42 @@ export class SessionService {
 	private resolvePersistedActiveProviderId(): string {
 		const activeProviderId = this.store?.getActiveChatProviderId();
 		if (activeProviderId) {
-			return activeProviderId;
+			if (this.getActiveChatSession(activeProviderId)) {
+				return activeProviderId;
+			}
+			this.store?.setActiveChatProviderId(undefined);
 		}
 
 		const blankSelection = this.store?.getBlankChatModelSelection();
 		if (
 			blankSelection &&
-			this.store?.getActiveSessionId(blankSelection.providerId)
+			this.getActiveChatSession(blankSelection.providerId)
 		) {
 			return blankSelection.providerId;
 		}
 
+		const visibleActiveProviderId =
+			this.store?.findVisibleActiveChatProviderId();
+		if (visibleActiveProviderId) {
+			return visibleActiveProviderId;
+		}
+
 		return this.state.providerId;
+	}
+
+	private getActiveChatSession(providerId: string): SessionRow | undefined {
+		const activeSessionId = this.store?.getActiveSessionId(providerId);
+		if (!activeSessionId) {
+			return undefined;
+		}
+
+		const session = this.store?.get(providerId, activeSessionId);
+		if (!session || session.tag !== "chat") {
+			this.store?.setActiveSessionId(providerId, undefined);
+			return undefined;
+		}
+
+		return session;
 	}
 
 	private applyBlankSelectionModel(model: string) {

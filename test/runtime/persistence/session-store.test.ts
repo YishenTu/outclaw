@@ -194,6 +194,35 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("findBySdkSessionId only resolves globally unique sdk session ids", () => {
+		const store = createTestStore();
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "unique-id",
+			title: "Unique",
+			model: "opus",
+		});
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "shared-id",
+			title: "Claude",
+			model: "opus",
+		});
+		store.upsert({
+			providerId: MOCK_PROVIDER,
+			sdkSessionId: "shared-id",
+			title: "Pi",
+			model: "openai-codex/gpt-5.5",
+		});
+
+		expect(store.findBySdkSessionId("unique-id")?.providerId).toBe(
+			CLAUDE_PROVIDER,
+		);
+		expect(store.findBySdkSessionId("shared-id")).toBeUndefined();
+
+		store.close();
+	});
+
 	test("persists last user target", () => {
 		let store = createTestStore();
 		store.setLastUserTarget({
@@ -942,6 +971,97 @@ describe("SessionStore", () => {
 
 		store.setActiveChatProviderId(undefined);
 		expect(store.getActiveChatProviderId()).toBeUndefined();
+		store.close();
+	});
+
+	test("findVisibleActiveChatProviderId resolves legacy active keys by last active chat", () => {
+		const store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		store.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "shared-id",
+			title: "Older Claude chat",
+			model: "opus",
+			timestamp: 100,
+		});
+		store.upsert({
+			providerId: MOCK_PROVIDER,
+			sdkSessionId: "shared-id",
+			title: "Newer Pi chat",
+			model: "openai-codex/gpt-5.5",
+			timestamp: 200,
+		});
+		store.upsert({
+			providerId: "codex",
+			sdkSessionId: "cron-id",
+			title: "Cron run",
+			model: "gpt-5.5",
+			tag: "cron",
+			timestamp: 300,
+		});
+		store.setActiveSessionId(CLAUDE_PROVIDER, "shared-id");
+		store.setActiveSessionId(MOCK_PROVIDER, "shared-id");
+		store.setActiveSessionId("codex", "cron-id");
+		store.setActiveSessionId("missing", "missing-id");
+
+		expect(store.findVisibleActiveChatProviderId()).toBe(MOCK_PROVIDER);
+
+		store.close();
+	});
+
+	test("findVisibleActiveChatProviderId matches the active key prefix exactly", () => {
+		const wildcardAgentStore = createTestStore({ agentId: "agent_1" });
+		wildcardAgentStore.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "shared-id",
+			title: "Wildcard agent chat",
+			model: "opus",
+		});
+		wildcardAgentStore.close();
+
+		const siblingStore = createTestStore({ agentId: "agentA1" });
+		siblingStore.upsert({
+			providerId: CLAUDE_PROVIDER,
+			sdkSessionId: "shared-id",
+			title: "Sibling chat",
+			model: "opus",
+		});
+		siblingStore.setActiveSessionId(CLAUDE_PROVIDER, "shared-id");
+		siblingStore.close();
+
+		const reopened = createTestStore({ agentId: "agent_1" });
+		expect(reopened.findVisibleActiveChatProviderId()).toBeUndefined();
+		reopened.close();
+	});
+
+	test("active session state keys encode agent and provider delimiters", () => {
+		let store = createTestStore({ agentId: "agent" });
+		store.upsert({
+			providerId: "foo:pi",
+			sdkSessionId: "left-session",
+			title: "Left chat",
+			model: "opus",
+		});
+		store.setActiveSessionId("foo:pi", "left-session");
+		store.close();
+
+		store = createTestStore({ agentId: "agent:foo" });
+		store.upsert({
+			providerId: "pi",
+			sdkSessionId: "right-session",
+			title: "Right chat",
+			model: "openai-codex/gpt-5.5",
+		});
+		store.setActiveSessionId("pi", "right-session");
+		store.close();
+
+		store = createTestStore({ agentId: "agent" });
+		expect(store.getActiveSessionId("foo:pi")).toBe("left-session");
+		expect(store.findVisibleActiveChatProviderId()).toBe("foo:pi");
+		store.close();
+
+		store = createTestStore({ agentId: "agent:foo" });
+		expect(store.getActiveSessionId("pi")).toBe("right-session");
+		expect(store.findVisibleActiveChatProviderId()).toBe("pi");
 		store.close();
 	});
 

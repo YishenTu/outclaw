@@ -28,9 +28,9 @@ interface RuntimeClientGatewayOptions {
 	) => ChatHistoryReader | undefined;
 	/**
 	 * Resolve the facade that owns a given persisted chat session. Returns
-	 * undefined when the runtime has no record of the session — callers
-	 * fall back to the primary facade in that case (e.g. a fresh blank
-	 * session whose id only exists in the runtime status snapshot).
+	 * undefined when the runtime has no unambiguous record of the session.
+	 * When this resolver is configured, replay refuses to guess with the
+	 * primary facade because sdk session ids are only provider-scoped.
 	 */
 	resolveFacadeForSession?: (
 		providerId: string | undefined,
@@ -102,8 +102,8 @@ export class RuntimeClientGateway {
 		const sessionId = ref.sdkSessionId;
 		const facade =
 			this.options.resolveFacadeForSession?.(ref.providerId, sessionId) ??
-			this.options.facade;
-		if (!facade.readHistory && !facade.readReplay) {
+			(this.options.resolveFacadeForSession ? undefined : this.options.facade);
+		if (!facade || (!facade.readHistory && !facade.readReplay)) {
 			return Promise.resolve();
 		}
 

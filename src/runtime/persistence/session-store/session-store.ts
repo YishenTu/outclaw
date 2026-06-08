@@ -10,6 +10,10 @@ import type {
 import type { LastUserTarget } from "../last-user-target.ts";
 import { addSessionCursorCondition } from "../session-cursor.ts";
 import {
+	activeSessionKeyPrefix,
+	decodeActiveSessionProviderId,
+} from "../state-keys.ts";
+import {
 	normalizeTitleSearchTokens,
 	titleMatchesSearchTokens,
 } from "../title-search.ts";
@@ -163,13 +167,12 @@ export class SessionStore {
 	}
 
 	/**
-	 * Look up a session by sdk session id alone, across providers. Returns
-	 * the row that owns this id for the current agent. Returns undefined
-	 * when no row exists. The primary key is `(agent_id, provider_id,
-	 * sdk_session_id)` so a single sdk session id is unique within an agent.
+	 * Look up a session by sdk session id alone, across providers. Returns a
+	 * row only when that sdk id is globally unique for the current agent.
+	 * Provider-qualified lookups should use get() or findByPrefix().
 	 */
 	findBySdkSessionId(sdkSessionId: string): SessionRow | undefined {
-		return mapSessionRow(
+		const rows = mapSessionRows(
 			this.db
 				.query(
 					`SELECT
@@ -190,13 +193,45 @@ export class SessionStore {
 					FROM sessions
 					WHERE agent_id = $agentId
 					  AND sdk_session_id = $id
-					LIMIT 1`,
+					ORDER BY provider_id ASC
+					LIMIT 2`,
 				)
-				.get({
+				.all({
 					$agentId: this.agentId,
 					$id: sdkSessionId,
-				}) as Parameters<typeof mapSessionRow>[0],
+				}) as Parameters<typeof mapSessionRows>[0],
 		);
+		return rows.length === 1 ? rows[0] : undefined;
+	}
+
+	findVisibleActiveChatProviderId(): string | undefined {
+		const keyPrefix = activeSessionKeyPrefix(this.agentId);
+		const activeRows = this.db
+			.query(
+				`SELECT key, value
+				 FROM state
+				 WHERE substr(state.key, 1, $keyPrefixLength) = $keyPrefix
+				 ORDER BY key ASC`,
+			)
+			.all({
+				$keyPrefix: keyPrefix,
+				$keyPrefixLength: keyPrefix.length,
+			}) as { key: string; value: string | null }[];
+		const candidates = activeRows.flatMap((row) => {
+			const providerId = decodeActiveSessionProviderId(this.agentId, row.key);
+			if (!providerId || !row.value) {
+				return [];
+			}
+			const session = this.get(providerId, row.value);
+			return session?.tag === "chat" ? [session] : [];
+		});
+		candidates.sort(
+			(left, right) =>
+				right.lastActive - left.lastActive ||
+				left.providerId.localeCompare(right.providerId) ||
+				left.sdkSessionId.localeCompare(right.sdkSessionId),
+		);
+		return candidates[0]?.providerId;
 	}
 
 	get(providerId: string, sdkSessionId: string): SessionRow | undefined {
