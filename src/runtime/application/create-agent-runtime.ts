@@ -1,4 +1,4 @@
-import type { EffortLevel } from "../../common/commands.ts";
+import { DEFAULT_EFFORT, type EffortLevel } from "../../common/commands.ts";
 import type {
 	OutclawNativeToolContext,
 	OutclawNativeToolHost,
@@ -42,8 +42,9 @@ import { SessionService } from "./session-service.ts";
 import { RuntimeState } from "./state/runtime-state.ts";
 
 /**
- * One backend chat provider available to a runtime. Composition owns the
- * facade instances; runtime modules never import provider adapters directly.
+ * One backend chat provider available for new/runnable chat turns.
+ * Composition owns the facade instances; runtime modules never import
+ * provider adapters directly.
  */
 export interface RuntimeProvider {
 	providerId: string;
@@ -80,10 +81,15 @@ interface CreateAgentRuntimeOptions {
 	 */
 	facade: Facade;
 	/**
-	 * Optional explicit provider set for multi-provider chat. When omitted,
-	 * the runtime treats `facade` as the only available provider.
+	 * Optional explicit provider set for runnable chat. When omitted, the
+	 * runtime treats `facade` as the only runnable provider.
 	 */
 	providers?: ReadonlyArray<RuntimeProvider>;
+	/**
+	 * Optional legacy providers that may read old transcripts but may not run
+	 * new chat turns or appear in model resolution.
+	 */
+	historyProviders?: ReadonlyArray<RuntimeProvider>;
 	/**
 	 * Optional default chat provider id. When omitted, defaults to
 	 * `facade.providerId`. Must match one entry in `providers` when that
@@ -186,6 +192,8 @@ export function createAgentRuntime(
 	const providerResolver = buildProviderResolver(options);
 	const historyReaderResolver = buildHistoryReaderResolver(options);
 	const modelProviderResolver = buildModelProviderResolver(options);
+	const runnableProviderIds = buildRunnableProviderIds(options);
+	const readOnlyProviderMessage = buildReadOnlyProviderMessage(options);
 	let activeSessionChanged:
 		| ((event: {
 				activeSessionId?: string;
@@ -203,17 +211,29 @@ export function createAgentRuntime(
 		},
 	);
 	let noteRolloverStateChange = () => {};
-	const sessions = new SessionService(state, options.store, {
-		onAcceptedInteractivePrompt: () => noteRolloverStateChange(),
-		onActiveSessionChanged: (event) =>
-			activeSessionChanged?.({
-				...event,
-				agentId: options.agentId,
-			}),
-		onSessionCatalogChanged: () =>
-			sessionCatalogChanged?.({ agentId: options.agentId }),
-		onSessionStateChange: () => noteRolloverStateChange(),
-	});
+	const sessions = new SessionService(
+		state,
+		options.store,
+		{
+			onAcceptedInteractivePrompt: () => noteRolloverStateChange(),
+			onActiveSessionChanged: (event) =>
+				activeSessionChanged?.({
+					...event,
+					agentId: options.agentId,
+				}),
+			onSessionCatalogChanged: () =>
+				sessionCatalogChanged?.({ agentId: options.agentId }),
+			onSessionStateChange: () => noteRolloverStateChange(),
+		},
+		{
+			defaultBlankSelection: {
+				providerId: options.defaultProviderId ?? facade.providerId,
+				model: options.defaultModel ?? "",
+				effort: options.defaultEffort ?? DEFAULT_EFFORT,
+			},
+			writableProviderIds: runnableProviderIds,
+		},
+	);
 	const workspaceCwd = options.cwd;
 	const promptHomeDir = options.promptHomeDir;
 	const controller = createRuntimeController({
@@ -253,6 +273,8 @@ export function createAgentRuntime(
 		deliverCronResult: options.deliverCronResult,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
 		deliverRolloverNotice: options.deliverRolloverNotice,
+		canRunProvider: (providerId) => runnableProviderIds.has(providerId),
+		readOnlyProviderMessage,
 		promptHomeDir,
 		sessions,
 		state,
@@ -396,6 +418,9 @@ function buildProviderResolver(
 	options: CreateAgentRuntimeOptions,
 ): PromptProviderResolver {
 	if (!options.providers || options.providers.length === 0) {
+		if (options.historyProviders && options.historyProviders.length > 0) {
+			return strictSingleFacadeResolver(options.facade);
+		}
 		// Single-provider runtime: every providerId resolves to the same
 		// facade. Auto-title and cron routing infer a provider id from the
 		// model id (`claude` vs `codex`); when the caller wired only one
@@ -432,15 +457,43 @@ function buildProviderResolver(
 	};
 }
 
+function strictSingleFacadeResolver(facade: Facade): PromptProviderResolver {
+	return {
+		getFacade(providerId: string) {
+			if (providerId !== facade.providerId) {
+				throw new Error(
+					`Provider ${providerId} is not configured in this runtime`,
+				);
+			}
+			return facade;
+		},
+	};
+}
+
 function buildHistoryReaderResolver(
 	options: CreateAgentRuntimeOptions,
 ): ChatHistoryReaderResolver {
-	if (!options.providers || options.providers.length === 0) {
+	const historyProviders = [
+		...(options.providers ?? []),
+		...(options.historyProviders ?? []),
+	];
+	if (historyProviders.length === 0) {
 		return singleHistoryReaderResolver(options.facade);
 	}
 	const byId = new Map(
-		options.providers.map((provider) => [provider.providerId, provider.facade]),
+		(options.providers ?? []).map((provider) => [
+			provider.providerId,
+			provider.facade,
+		]),
 	);
+	for (const provider of options.historyProviders ?? []) {
+		if (!byId.has(provider.providerId)) {
+			byId.set(provider.providerId, provider.facade);
+		}
+	}
+	if (!byId.has(options.facade.providerId)) {
+		byId.set(options.facade.providerId, options.facade);
+	}
 	return {
 		getHistoryReader(providerId: string) {
 			const found = byId.get(providerId);
@@ -476,6 +529,30 @@ function buildModelProviderResolver(
 			listModels: provider.facade.listModels?.bind(provider.facade),
 		})),
 	);
+}
+
+function buildRunnableProviderIds(
+	options: CreateAgentRuntimeOptions,
+): ReadonlySet<string> {
+	return new Set(
+		options.providers && options.providers.length > 0
+			? options.providers.map((provider) => provider.providerId)
+			: [options.facade.providerId],
+	);
+}
+
+function buildReadOnlyProviderMessage(
+	options: CreateAgentRuntimeOptions,
+): (providerId: string) => string {
+	const targetProviderId =
+		options.defaultProviderId ?? options.facade.providerId;
+	const targetLabel =
+		options.providers?.find(
+			(provider) => provider.providerId === targetProviderId,
+		)?.displayName ?? targetProviderId;
+
+	return (providerId: string) =>
+		`Legacy ${providerId} chat sessions are read-only; start a new ${targetLabel} session.`;
 }
 
 function createUnconfiguredCodingRuntime(): CodingRuntime {

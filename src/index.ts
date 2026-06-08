@@ -196,16 +196,6 @@ function startMultiAgentDaemon(
 		);
 		chatProvidersByAgent.set(agent.agentId, [
 			{
-				providerId: "claude",
-				displayName: "Claude",
-				listModels: () => claudeAdapter.listModels(),
-			},
-			{
-				providerId: "codex",
-				displayName: "Codex",
-				listModels: () => codexAdapter.listModels(),
-			},
-			{
 				providerId: "pi",
 				displayName: "Pi",
 				listModels: () => piAdapter.listModels(),
@@ -225,10 +215,10 @@ function startMultiAgentDaemon(
 			defaultEffort: config.thinkingEffort,
 			defaultModel: DEFAULT_PI_CHAT_MODEL,
 			facade: piAdapter,
-			providers: [
+			providers: [{ providerId: "pi", displayName: "Pi", facade: piAdapter }],
+			historyProviders: [
 				{ providerId: "claude", displayName: "Claude", facade: claudeAdapter },
 				{ providerId: "codex", displayName: "Codex", facade: codexAdapter },
-				{ providerId: "pi", displayName: "Pi", facade: piAdapter },
 			],
 			workspaceIgnoredNames: workspaceMetadata.ignoredWorkspaceNames,
 			defaultProviderId: "pi",

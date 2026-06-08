@@ -2,7 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { DoneEvent, FacadeEvent } from "../../../src/common/protocol.ts";
-import type { PromptDispatcher } from "../../../src/runtime/application/prompt-execution/prompt-dispatcher.ts";
+import type {
+	PromptDispatcher,
+	PromptExecution,
+} from "../../../src/runtime/application/prompt-execution/prompt-dispatcher.ts";
 import { RuntimeExecutionCoordinator } from "../../../src/runtime/application/runtime-execution-coordinator.ts";
 import { SessionService } from "../../../src/runtime/application/session-service.ts";
 import { RuntimeState } from "../../../src/runtime/application/state/runtime-state.ts";
@@ -89,6 +92,50 @@ describe("RuntimeExecutionCoordinator", () => {
 
 		release.resolve();
 		await coordinator.drain();
+	});
+
+	test("read-only user prompts do not update accepted prompt state", async () => {
+		const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+		const state = new RuntimeState("legacy");
+		const sessions = new SessionService(state, store);
+		store.setRolloverNotice({
+			kind: "rollover",
+			message: "Previous notice",
+		});
+		let runCount = 0;
+		const events: FacadeEvent[] = [];
+		const coordinator = new RuntimeExecutionCoordinator({
+			promptDispatcher: {
+				canRunProvider: () => false,
+				rejectReadOnlyProvider: (task: PromptExecution) => {
+					task.onEvent?.({ type: "error", message: "read-only" });
+				},
+				run: async () => {
+					runCount += 1;
+				},
+			} as unknown as Pick<PromptDispatcher, "run">,
+			sessions,
+			state,
+		});
+
+		coordinator.enqueuePrompt({
+			onEvent: (event) => events.push(event),
+			prompt: "continue legacy chat",
+			source: "telegram",
+			telegramChatId: 123,
+		});
+		await coordinator.drain();
+
+		expect(events).toEqual([{ type: "error", message: "read-only" }]);
+		expect(runCount).toBe(0);
+		expect(state.createHeartbeatDeliveryTarget()).toBeUndefined();
+		expect(store.getLastInteractiveAt()).toBeUndefined();
+		expect(store.getRolloverNotice()).toEqual({
+			kind: "rollover",
+			message: "Previous notice",
+		});
+
+		store.close();
 	});
 
 	test("agent prompts do not mutate the last user target", async () => {
@@ -197,6 +244,40 @@ describe("RuntimeExecutionCoordinator", () => {
 			message:
 				"Previous session auto-finalized after 8h idle. A new session will begin with your next message. Use /session to resume.",
 		});
+
+		store.close();
+	});
+
+	test("rollover does not start for read-only providers", async () => {
+		const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
+		const state = new RuntimeState("legacy");
+		const sessions = new SessionService(state, store);
+		store.setLastInteractiveAt(123);
+		state.preparePrompt("Old session");
+		sessions.completeRun(makeDoneEvent("sdk-old"));
+		let runCount = 0;
+		const coordinator = new RuntimeExecutionCoordinator({
+			promptDispatcher: {
+				canRunProvider: () => false,
+				rejectReadOnlyProvider: () => {},
+				run: async () => {
+					runCount += 1;
+				},
+			} as unknown as Pick<PromptDispatcher, "run">,
+			sessions,
+			state,
+		});
+
+		expect(coordinator.enqueueRollover("finalize the old session", 480)).toBe(
+			false,
+		);
+		await coordinator.drain();
+
+		expect(runCount).toBe(0);
+		expect(state.sessionId).toBe("sdk-old");
+		expect(store.getActiveSessionId("legacy")).toBe("sdk-old");
+		expect(store.getLastHandledRolloverInteractiveAt()).toBeUndefined();
+		expect(store.getRolloverNotice()).toBeUndefined();
 
 		store.close();
 	});

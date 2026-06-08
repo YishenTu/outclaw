@@ -14,6 +14,7 @@ import {
 	serializeLastUserTarget,
 } from "../last-user-target.ts";
 import {
+	activeChatProviderKey,
 	activeSessionKey,
 	blankChatModelSelectionKey,
 	browserClientAgentKey,
@@ -29,9 +30,9 @@ import {
 /**
  * Per-agent persisted blank-session model selection. This is the single
  * source of truth for the provider/model/effort/service-tier that a new chat
- * session will inherit, and it determines which provider's
- * `active_session_id:{agentId}:{providerId}` row is the visible one after
- * daemon restart.
+ * session will inherit. The visible active session provider is stored
+ * separately so legacy read-only sessions can remain visible across browser
+ * refresh and daemon restart without becoming the new-session default.
  */
 export interface StoredBlankChatModelSelection {
 	providerId: string;
@@ -58,6 +59,19 @@ export class SessionStateStore {
 		}
 
 		this.deleteStateValue(key);
+	}
+
+	getActiveChatProviderId(): string | undefined {
+		return this.getStateValue(activeChatProviderKey(this.agentId));
+	}
+
+	setActiveChatProviderId(providerId: string | undefined) {
+		if (!providerId) {
+			this.deleteStateValue(activeChatProviderKey(this.agentId));
+			return;
+		}
+
+		this.setStateValue(activeChatProviderKey(this.agentId), providerId);
 	}
 
 	getLastUserTarget(): LastUserTarget | undefined {
@@ -214,11 +228,13 @@ export class SessionStateStore {
 			.query(
 				`DELETE FROM state
 				 WHERE key LIKE $activeSessionPrefix
+				    OR key = $activeChatProviderKey
 				    OR key = $lastUserTargetKey
 				    OR (key LIKE $browserClientAgentPrefix AND value = $agentId)`,
 			)
 			.run({
 				$agentId: agentId,
+				$activeChatProviderKey: activeChatProviderKey(agentId),
 				$activeSessionPrefix: `${activeSessionKey(agentId, "")}%`,
 				$browserClientAgentPrefix: `${browserClientAgentKey("")}%`,
 				$lastUserTargetKey: lastUserTargetKey(agentId),

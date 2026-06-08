@@ -312,6 +312,12 @@ describe("handleRuntimeCommand", () => {
 				query: "auth middle",
 				sessions: [
 					{
+						providerId: OTHER_PROVIDER_ID,
+						sdkSessionId: "sdk-other",
+						title: "Refactor auth middleware",
+					},
+					{
+						providerId: PROVIDER_ID,
 						sdkSessionId: "sdk-auth",
 						title: "Refactor auth middleware",
 					},

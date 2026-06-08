@@ -682,6 +682,14 @@ export class SessionStore {
 		this.stateStore.setActiveSessionId(providerId, id);
 	}
 
+	getActiveChatProviderId(): string | undefined {
+		return this.stateStore.getActiveChatProviderId();
+	}
+
+	setActiveChatProviderId(providerId: string | undefined) {
+		this.stateStore.setActiveChatProviderId(providerId);
+	}
+
 	getLastUserTarget(): LastUserTarget | undefined {
 		return this.stateStore.getLastUserTarget();
 	}

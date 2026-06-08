@@ -922,6 +922,29 @@ describe("SessionStore", () => {
 		store.close();
 	});
 
+	test("active chat provider persists independently from blank-session selection", () => {
+		let store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		store.setActiveChatProviderId(CLAUDE_PROVIDER);
+		store.setBlankChatModelSelection({
+			providerId: MOCK_PROVIDER,
+			model: "pi-default",
+			effort: "medium",
+		});
+		store.close();
+
+		store = createTestStore({ agentId: RAILLY_AGENT_ID });
+		expect(store.getActiveChatProviderId()).toBe(CLAUDE_PROVIDER);
+		expect(store.getBlankChatModelSelection()).toEqual({
+			providerId: MOCK_PROVIDER,
+			model: "pi-default",
+			effort: "medium",
+		});
+
+		store.setActiveChatProviderId(undefined);
+		expect(store.getActiveChatProviderId()).toBeUndefined();
+		store.close();
+	});
+
 	test("last user target is scoped by bound agent id", () => {
 		const raillyStore = createTestStore({ agentId: RAILLY_AGENT_ID });
 		const mimiStore = createTestStore({ agentId: MIMI_AGENT_ID });
@@ -1176,6 +1199,7 @@ describe("SessionStore", () => {
 			model: "haiku",
 		});
 		mimiStore.setActiveSessionId(CLAUDE_PROVIDER, "sdk-mimi");
+		mimiStore.setActiveChatProviderId(CLAUDE_PROVIDER);
 		mimiStore.setLastUserTarget({
 			kind: "telegram",
 			chatId: 222,
@@ -1187,6 +1211,7 @@ describe("SessionStore", () => {
 		expect(raillyStore.get(CLAUDE_PROVIDER, "sdk-railly")).toBeDefined();
 		expect(mimiStore.get(CLAUDE_PROVIDER, "sdk-mimi")).toBeUndefined();
 		expect(mimiStore.getActiveSessionId(CLAUDE_PROVIDER)).toBeUndefined();
+		expect(mimiStore.getActiveChatProviderId()).toBeUndefined();
 		expect(mimiStore.getLastUserTarget()).toBeUndefined();
 		expect(globalStore.getLastInteractiveAgentId()).toBeUndefined();
 

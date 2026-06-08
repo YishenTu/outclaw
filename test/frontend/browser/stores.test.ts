@@ -976,6 +976,52 @@ describe("browser stores", () => {
 		expect(session?.isThinking).toBe(true);
 	});
 
+	test("chat store rolls back an unconfirmed optimistic prompt on error", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "continue legacy chat",
+		});
+		useChatStore
+			.getState()
+			.startAssistantTurn(sessionKey, { pendingPromptStart: true });
+
+		useChatStore.getState().setError(sessionKey, "read-only");
+
+		const session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.messages).toEqual([]);
+		expect(session?.error).toBe("read-only");
+		expect(session?.pendingPromptStart).toBe(false);
+		expect(session?.isStreaming).toBe(false);
+		expect(session?.isThinking).toBe(false);
+	});
+
+	test("chat store keeps confirmed user prompts when a running turn errors", () => {
+		const sessionKey = "agent-a:claude:sdk-alpha";
+
+		useChatStore.getState().pushMessage(sessionKey, {
+			kind: "chat",
+			role: "user",
+			content: "accepted prompt",
+		});
+		useChatStore.getState().startAssistantTurn(sessionKey);
+
+		useChatStore.getState().setError(sessionKey, "provider failed");
+
+		const session = useChatStore.getState().getSession(sessionKey);
+		expect(session?.messages).toEqual([
+			{
+				kind: "chat",
+				role: "user",
+				content: "accepted prompt",
+			},
+		]);
+		expect(session?.error).toBe("provider failed");
+		expect(session?.pendingPromptStart).toBe(false);
+	});
+
 	test("chat store requeues a local optimistic prompt when another browser prompt starts first", () => {
 		const sessionKey = "agent-a:claude:sdk-alpha";
 

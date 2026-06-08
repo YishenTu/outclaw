@@ -47,11 +47,24 @@ interface SessionServiceCallbacks {
 	onSessionStateChange?: () => void;
 }
 
+interface BlankChatModelSelection {
+	providerId: string;
+	model: string;
+	effort: string;
+	serviceTier?: string;
+}
+
+interface SessionServicePolicy {
+	defaultBlankSelection?: BlankChatModelSelection;
+	writableProviderIds?: ReadonlySet<string>;
+}
+
 export class SessionService {
 	constructor(
 		private readonly state: RuntimeState,
 		private readonly store?: SessionStore,
 		private readonly callbacks: SessionServiceCallbacks = {},
+		private readonly policy: SessionServicePolicy = {},
 	) {
 		this.restorePersistedState();
 	}
@@ -73,14 +86,19 @@ export class SessionService {
 	}
 
 	listSessions(
-		options: { cursor?: SessionCursor; limit?: number; tag?: SessionTag } = {},
+		options: {
+			cursor?: SessionCursor;
+			limit?: number;
+			providerId?: string;
+			tag?: SessionTag;
+		} = {},
 	): SessionListResult {
 		const limit = options.limit ?? 20;
 		const sessions =
 			this.store?.list({
 				cursor: options.cursor,
 				limit,
-				providerId: this.state.providerId,
+				providerId: options.providerId,
 				tag: options.tag ?? "chat",
 			}) ?? [];
 		return {
@@ -92,6 +110,7 @@ export class SessionService {
 	searchSessions(options: {
 		cursor?: SessionCursor;
 		limit?: number;
+		providerId?: string;
 		query: string;
 		tag?: SessionTag;
 	}): SessionListResult {
@@ -100,7 +119,7 @@ export class SessionService {
 			this.store?.searchByTitle({
 				cursor: options.cursor,
 				limit,
-				providerId: this.state.providerId,
+				providerId: options.providerId,
 				query: options.query,
 				tag: options.tag ?? "chat",
 			}) ?? [];
@@ -153,19 +172,26 @@ export class SessionService {
 	}
 
 	clearActiveSession() {
+		const previousProviderId = this.state.providerId;
 		this.state.clearSession();
-		this.store?.setActiveSessionId(this.state.providerId, undefined);
+		this.store?.setActiveSessionId(previousProviderId, undefined);
+		this.store?.setActiveChatProviderId(undefined);
+		this.restoreBlankSelection();
 		this.callbacks.onSessionStateChange?.();
-		this.notifyActiveSessionChanged(undefined);
+		this.notifyActiveSessionChanged(undefined, previousProviderId);
 	}
 
 	deleteSession(sessionId: string): { clearedActiveSession: boolean } {
+		const previousProviderId = this.state.providerId;
 		const clearedActiveSession = this.state.sessionId === sessionId;
-		this.store?.delete(this.state.providerId, sessionId);
+		this.store?.delete(previousProviderId, sessionId);
 		if (clearedActiveSession) {
 			this.state.clearSession();
-			this.store?.setActiveSessionId(this.state.providerId, undefined);
+			this.store?.setActiveSessionId(previousProviderId, undefined);
+			this.store?.setActiveChatProviderId(undefined);
+			this.restoreBlankSelection();
 			this.callbacks.onSessionStateChange?.();
+			this.notifyActiveSessionChanged(undefined, previousProviderId);
 		}
 		this.notifySessionCatalogChanged();
 		return { clearedActiveSession };
@@ -186,6 +212,8 @@ export class SessionService {
 		}
 		if (clearedActiveSession) {
 			this.state.clearSession();
+			this.store?.setActiveChatProviderId(undefined);
+			this.restoreBlankSelection();
 			this.callbacks.onSessionStateChange?.();
 			this.notifyActiveSessionChanged(undefined, session.providerId);
 		}
@@ -240,6 +268,7 @@ export class SessionService {
 		if (params.active) {
 			this.state.initializeRun(params.sessionId, params.source);
 			this.store?.setActiveSessionId(providerId, params.sessionId);
+			this.store?.setActiveChatProviderId(providerId);
 		}
 		this.persistSession({ ...params, providerId });
 		if (params.active) {
@@ -258,6 +287,7 @@ export class SessionService {
 	}) {
 		const providerId = params.providerId ?? this.state.providerId;
 		this.store?.setActiveSessionId(providerId, params.sessionId);
+		this.store?.setActiveChatProviderId(providerId);
 		this.persistSession({ ...params, providerId });
 		this.state.switchToSession(
 			{
@@ -416,12 +446,15 @@ export class SessionService {
 			this.store?.getUsage(session.providerId, session.sdkSessionId),
 		);
 		this.store?.setActiveSessionId(session.providerId, session.sdkSessionId);
-		this.store?.setBlankChatModelSelection({
-			providerId: session.providerId,
-			model: session.model,
-			effort: this.state.effort,
-			...(session.serviceTier ? { serviceTier: session.serviceTier } : {}),
-		});
+		this.store?.setActiveChatProviderId(session.providerId);
+		if (this.isWritableProvider(session.providerId)) {
+			this.store?.setBlankChatModelSelection({
+				providerId: session.providerId,
+				model: session.model,
+				effort: this.state.effort,
+				...(session.serviceTier ? { serviceTier: session.serviceTier } : {}),
+			});
+		}
 		this.callbacks.onSessionStateChange?.();
 		this.notifyActiveSessionChanged(session.sdkSessionId, session.providerId);
 		return session;
@@ -515,6 +548,7 @@ export class SessionService {
 
 		const existing = this.store?.get(this.state.providerId, sessionId);
 		this.store?.setActiveSessionId(this.state.providerId, sessionId);
+		this.store?.setActiveChatProviderId(this.state.providerId);
 		this.persistSession({
 			sessionId,
 			ocSessionId: this.state.ocSessionId,
@@ -566,33 +600,28 @@ export class SessionService {
 		// First, honor any persisted blank-session selection so the runtime
 		// reflects the user's last provider/model choice across daemon
 		// restarts. The visible session — if any — overrides this below.
-		const blankSelection = this.store.getBlankChatModelSelection();
-		if (blankSelection) {
-			try {
-				this.state.setProvider(blankSelection.providerId);
-			} catch {
-				// Setting the provider only fails when a session is already
-				// active; restorePersistedState runs at startup, so we never
-				// expect that. Swallow defensively rather than crash startup
-				// if a future caller order changes.
-			}
-			this.applyBlankSelectionModel(blankSelection.model);
-			if (isEffortLevel(blankSelection.effort)) {
-				this.state.setEffort(blankSelection.effort);
-			}
-			this.state.setServiceTier(blankSelection.serviceTier);
-		}
+		this.restoreBlankSelection();
 
-		const activeSessionId = this.store.getActiveSessionId(
-			this.state.providerId,
-		);
+		const activeProviderId =
+			this.store.getActiveChatProviderId() ?? this.state.providerId;
+		const activeSessionId = this.store.getActiveSessionId(activeProviderId);
 		const session = activeSessionId
-			? this.store.get(this.state.providerId, activeSessionId)
+			? this.store.get(activeProviderId, activeSessionId)
 			: undefined;
 		const usage =
 			session && activeSessionId
-				? this.store.getUsage(this.state.providerId, activeSessionId)
+				? this.store.getUsage(activeProviderId, activeSessionId)
 				: undefined;
+		if (session) {
+			this.state.setProvider(session.providerId);
+		} else {
+			if (activeSessionId) {
+				this.store.setActiveSessionId(activeProviderId, undefined);
+			}
+			if (this.store.getActiveChatProviderId()) {
+				this.store.setActiveChatProviderId(undefined);
+			}
+		}
 
 		this.state.restorePersistedState({
 			lastUserTarget: this.store.getLastUserTarget(),
@@ -603,6 +632,49 @@ export class SessionService {
 
 	private applyBlankSelectionModel(model: string) {
 		this.state.setProviderModel(model);
+	}
+
+	private restoreBlankSelection() {
+		const blankSelection = this.resolveBlankSelection();
+		if (!blankSelection) {
+			return;
+		}
+
+		try {
+			this.state.setProvider(blankSelection.providerId);
+		} catch {
+			// Setting the provider only fails when a session is already active.
+			// Restore paths call this after clearing or during startup, but keep
+			// this defensive so state restoration cannot crash future callers.
+		}
+		this.applyBlankSelectionModel(blankSelection.model);
+		if (isEffortLevel(blankSelection.effort)) {
+			this.state.setEffort(blankSelection.effort);
+		}
+		this.state.setServiceTier(blankSelection.serviceTier);
+	}
+
+	private resolveBlankSelection(): BlankChatModelSelection | undefined {
+		const stored = this.store?.getBlankChatModelSelection();
+		if (stored && this.isWritableProvider(stored.providerId)) {
+			return stored;
+		}
+
+		const fallback = this.policy.defaultBlankSelection;
+		if (!fallback) {
+			return undefined;
+		}
+		if (stored) {
+			this.store?.setBlankChatModelSelection(fallback);
+		}
+		return fallback;
+	}
+
+	private isWritableProvider(providerId: string): boolean {
+		return (
+			this.policy.writableProviderIds === undefined ||
+			this.policy.writableProviderIds.has(providerId)
+		);
 	}
 
 	private matchCurrentSession(

@@ -32,7 +32,13 @@ interface RuntimeExecutionCoordinatorOptions {
 		text: string;
 	}) => Promise<void> | void;
 	onStatusChange?: () => void;
-	promptDispatcher: Pick<PromptDispatcher, "run">;
+	promptDispatcher: Pick<PromptDispatcher, "run"> &
+		Partial<
+			Pick<
+				PromptDispatcher,
+				"canRunProvider" | "readOnlyProviderMessage" | "rejectReadOnlyProvider"
+			>
+		>;
 	sessions: Pick<
 		SessionService,
 		| "beginRolloverAttempt"
@@ -139,6 +145,9 @@ export class RuntimeExecutionCoordinator {
 		if (this.shuttingDown) {
 			return false;
 		}
+		if (!this.canRunProvider(this.options.state.providerId)) {
+			return false;
+		}
 		if (this.shouldAttemptHeartbeat(scheduledAt, deferMinutes) !== "attempt") {
 			return false;
 		}
@@ -166,6 +175,10 @@ export class RuntimeExecutionCoordinator {
 
 	enqueuePrompt(task: PromptExecution) {
 		if (this.shuttingDown) {
+			return;
+		}
+		if (!this.canRunProvider(this.options.state.providerId)) {
+			this.rejectReadOnlyProvider(task);
 			return;
 		}
 		this.options.state.preparePrompt(task.prompt, task.images, {
@@ -196,6 +209,9 @@ export class RuntimeExecutionCoordinator {
 		if (this.shuttingDown || this.rolloverQueued || this.hasVisibleRun) {
 			return false;
 		}
+		if (!this.canRunProvider(this.options.state.providerId)) {
+			return false;
+		}
 		const context = this.options.state.capturePromptContext();
 		if (context.sessionId === undefined) {
 			return false;
@@ -216,6 +232,10 @@ export class RuntimeExecutionCoordinator {
 		return new Promise((resolve, reject) => {
 			if (this.shuttingDown) {
 				reject(new Error("Runtime shutting down"));
+				return;
+			}
+			if (!this.canRunProvider(this.options.state.providerId)) {
+				reject(new Error(this.readOnlyProviderMessage()));
 				return;
 			}
 
@@ -253,6 +273,9 @@ export class RuntimeExecutionCoordinator {
 		if (this.shuttingDown) {
 			return false;
 		}
+		if (!this.canRunProvider(this.options.state.providerId)) {
+			return false;
+		}
 
 		this.options.state.preparePrompt(task.prompt, task.images);
 		const context = this.options.state.capturePromptContext();
@@ -264,6 +287,9 @@ export class RuntimeExecutionCoordinator {
 		task: PromptExecution,
 	): { ocSessionId: string; abort: () => boolean } | undefined {
 		if (this.shuttingDown) {
+			return undefined;
+		}
+		if (!this.canRunProvider(this.options.state.providerId)) {
 			return undefined;
 		}
 
@@ -310,6 +336,34 @@ export class RuntimeExecutionCoordinator {
 
 	startDeferTimer(deferMinutes: number) {
 		this.heartbeatPolicy.startDeferTimer(deferMinutes);
+	}
+
+	private canRunProvider(providerId: string): boolean {
+		return this.options.promptDispatcher.canRunProvider?.(providerId) ?? true;
+	}
+
+	private readOnlyProviderMessage(): string {
+		const providerId = this.options.state.providerId;
+		return (
+			this.options.promptDispatcher.readOnlyProviderMessage?.(providerId) ??
+			`Provider ${providerId} is read-only; start a new session.`
+		);
+	}
+
+	private rejectReadOnlyProvider(task: PromptExecution) {
+		const providerId = this.options.state.providerId;
+		const rejectReadOnly = this.options.promptDispatcher.rejectReadOnlyProvider;
+		if (rejectReadOnly) {
+			rejectReadOnly.call(this.options.promptDispatcher, task, {
+				providerId,
+				isVisible: () => true,
+			});
+			return;
+		}
+		task.onEvent?.({
+			type: "error",
+			message: this.readOnlyProviderMessage(),
+		});
 	}
 
 	private async runHeartbeat(

@@ -81,6 +81,11 @@ export interface PromptExecution {
 
 type ClientFacadeEvent = Exclude<FacadeEvent, SessionInitializedEvent>;
 
+export interface ReadOnlyProviderContext {
+	providerId: string;
+	isVisible: () => boolean;
+}
+
 export interface PromptClientGateway {
 	listBrowserTargets(exclude?: WsClient): WsClient[];
 	listInteractiveTargets(exclude?: WsClient): WsClient[];
@@ -89,6 +94,7 @@ export interface PromptClientGateway {
 }
 
 interface PromptDispatcherOptions {
+	canRunProvider?: (providerId: string) => boolean;
 	clients: PromptClientGateway;
 	createNativeToolHost?: (params: {
 		context: RuntimePromptContext & { resumeSessionId?: string };
@@ -111,6 +117,7 @@ interface PromptDispatcherOptions {
 		sessionId: string,
 		context: RuntimePromptContext,
 	) => Promise<TranscriptTurn[]> | undefined;
+	readOnlyProviderMessage?: (providerId: string) => string;
 	sessions: SessionService;
 	state: RuntimeState;
 	streamingState: StreamingStateStore;
@@ -134,6 +141,34 @@ export class PromptDispatcher {
 		this.deliverHeartbeatResult = handler;
 	}
 
+	canRunProvider(providerId: string): boolean {
+		return this.options.canRunProvider?.(providerId) !== false;
+	}
+
+	readOnlyProviderMessage(providerId: string): string {
+		return (
+			this.options.readOnlyProviderMessage?.(providerId) ??
+			`Provider ${providerId} is read-only; start a new session.`
+		);
+	}
+
+	rejectReadOnlyProvider(
+		task: PromptExecution,
+		context: ReadOnlyProviderContext,
+	) {
+		const event: FacadeEvent = {
+			type: "error",
+			message: this.readOnlyProviderMessage(context.providerId),
+		};
+		task.onEvent?.(event);
+		if (context.isVisible() && task.sender) {
+			this.options.clients.send(task.sender, event);
+		}
+		if (context.isVisible()) {
+			this.options.clients.sendMany(this.listObservers(task), event);
+		}
+	}
+
 	async run(
 		task: PromptExecution,
 		context: RuntimePromptContext & {
@@ -146,6 +181,10 @@ export class PromptDispatcher {
 		let completedEvent: DoneEvent | undefined;
 		const observedSessionId = context.resumeSessionId;
 		const isVisible = () => context.isVisible();
+		if (!this.canRunProvider(context.providerId)) {
+			this.rejectReadOnlyProvider(task, context);
+			return;
+		}
 		if (observedSessionId) {
 			this.options.streamingState.start(context.providerId, observedSessionId);
 		}

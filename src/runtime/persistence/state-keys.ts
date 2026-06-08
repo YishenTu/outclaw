@@ -6,6 +6,10 @@ export function activeSessionKey(agentId: string, providerId: string): string {
 	return `active_session_id:${agentId}:${providerId}`;
 }
 
+export function activeChatProviderKey(agentId: string): string {
+	return `active_chat_provider_id:${agentId}`;
+}
+
 export function lastUserTargetKey(agentId: string): string {
 	return `last_user_target:${agentId}`;
 }
@@ -29,11 +33,10 @@ export function browserClientAgentKey(clientId: string): string {
 /**
  * Per-agent "what provider/model would a new chat session use right now?".
  * This key is the single source of the blank-session selection: which
- * provider and model would be picked on `/new`, and after daemon restart
- * which provider's `active_session_id:{agentId}:{providerId}` row is visible.
- *
- * Do not add a separate `active_chat_provider_id:{agentId}` key — derive the
- * visible provider from this selection plus the matching active-session row.
+ * provider and model would be picked on `/new`. The currently visible active
+ * session provider is tracked separately by `activeChatProviderKey()` because
+ * read-only legacy sessions can be visible without becoming the writable
+ * blank-session default.
  */
 export function blankChatModelSelectionKey(agentId: string): string {
 	return `blank_chat_model_selection:${agentId}`;

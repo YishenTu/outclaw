@@ -529,7 +529,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		}),
 	setError: (sessionKey, error) =>
 		set((state) => {
-			const session = getOrCreateSession(state.sessions, sessionKey);
+			const session = error
+				? rollbackUnconfirmedPromptStart(
+						getOrCreateSession(state.sessions, sessionKey),
+					)
+				: getOrCreateSession(state.sessions, sessionKey);
 			const nextSession = {
 				...session,
 				error,
@@ -781,6 +785,23 @@ function confirmPromptStarted(
 		...pendingSession,
 		messages: [...pendingSession.messages, message],
 	});
+}
+
+function rollbackUnconfirmedPromptStart(session: ChatSession): ChatSession {
+	if (!session.pendingPromptStart) {
+		return session;
+	}
+
+	const lastMessage = session.messages.at(-1);
+	if (lastMessage?.kind !== "chat" || lastMessage.role !== "user") {
+		return session;
+	}
+
+	return {
+		...session,
+		messages: session.messages.slice(0, -1),
+		queuedPrompts: [],
+	};
 }
 
 function startConfirmedAssistantTurn(session: ChatSession): ChatSession {

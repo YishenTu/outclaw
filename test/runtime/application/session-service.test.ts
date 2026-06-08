@@ -415,6 +415,83 @@ describe("SessionService", () => {
 		store.close();
 	});
 
+	test("restores the persisted active provider without changing blank selection", () => {
+		const store = createTestStore();
+		store.setBlankChatModelSelection({
+			providerId: PROVIDER_ID,
+			model: "pi-default",
+			effort: "medium",
+		});
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "sdk-legacy",
+			title: "Legacy chat",
+			model: "opus",
+			source: "tui",
+		});
+		store.setActiveSessionId(OTHER_PROVIDER_ID, "sdk-legacy");
+		store.setActiveChatProviderId(OTHER_PROVIDER_ID);
+
+		const state = new RuntimeState(PROVIDER_ID);
+		new SessionService(
+			state,
+			store,
+			{},
+			{
+				defaultBlankSelection: {
+					providerId: PROVIDER_ID,
+					model: "pi-default",
+					effort: "medium",
+				},
+				writableProviderIds: new Set([PROVIDER_ID]),
+			},
+		);
+
+		expect(state.providerId).toBe(OTHER_PROVIDER_ID);
+		expect(state.sessionId).toBe("sdk-legacy");
+		expect(state.model).toBe("opus");
+		expect(store.getBlankChatModelSelection()).toEqual({
+			providerId: PROVIDER_ID,
+			model: "pi-default",
+			effort: "medium",
+		});
+
+		store.close();
+	});
+
+	test("clears stale persisted active provider state when the session is missing", () => {
+		const store = createTestStore();
+		store.setBlankChatModelSelection({
+			providerId: PROVIDER_ID,
+			model: "pi-default",
+			effort: "medium",
+		});
+		store.setActiveSessionId(OTHER_PROVIDER_ID, "deleted-legacy");
+		store.setActiveChatProviderId(OTHER_PROVIDER_ID);
+
+		const state = new RuntimeState(PROVIDER_ID);
+		new SessionService(
+			state,
+			store,
+			{},
+			{
+				defaultBlankSelection: {
+					providerId: PROVIDER_ID,
+					model: "pi-default",
+					effort: "medium",
+				},
+				writableProviderIds: new Set([PROVIDER_ID]),
+			},
+		);
+
+		expect(state.providerId).toBe(PROVIDER_ID);
+		expect(state.sessionId).toBeUndefined();
+		expect(store.getActiveChatProviderId()).toBeUndefined();
+		expect(store.getActiveSessionId(OTHER_PROVIDER_ID)).toBeUndefined();
+
+		store.close();
+	});
+
 	test("switchToSession does not report a catalog change for active-session-only switches", () => {
 		const store = createTestStore();
 		store.upsert({
@@ -513,6 +590,38 @@ describe("SessionService", () => {
 		store.close();
 	});
 
+	test("listSessions includes chat history across providers by default", () => {
+		const store = createTestStore();
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(state, store);
+
+		store.upsert({
+			providerId: PROVIDER_ID,
+			sdkSessionId: "sdk-pi",
+			title: "Pi chat",
+			model: "pi-default",
+			timestamp: 200,
+		});
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "sdk-legacy",
+			title: "Legacy chat",
+			model: "opus",
+			timestamp: 300,
+		});
+
+		expect(
+			sessions
+				.listSessions()
+				.sessions.map((session) => [session.providerId, session.sdkSessionId]),
+		).toEqual([
+			[OTHER_PROVIDER_ID, "sdk-legacy"],
+			[PROVIDER_ID, "sdk-pi"],
+		]);
+
+		store.close();
+	});
+
 	test("searchSessions matches titles across the agent provider scope", () => {
 		const store = createTestStore();
 		const state = new RuntimeState(PROVIDER_ID);
@@ -543,8 +652,11 @@ describe("SessionService", () => {
 		expect(
 			sessions
 				.searchSessions({ query: "auth middle" })
-				.sessions.map((session) => session.sdkSessionId),
-		).toEqual(["sdk-auth"]);
+				.sessions.map((session) => [session.providerId, session.sdkSessionId]),
+		).toEqual([
+			[OTHER_PROVIDER_ID, "sdk-other-provider"],
+			[PROVIDER_ID, "sdk-auth"],
+		]);
 		expect(sessions.searchSessions({ query: "auth foo" })).toEqual({
 			sessions: [],
 		});
@@ -604,6 +716,96 @@ describe("SessionService", () => {
 		expect(state.sessionId).toBeUndefined();
 		expect(store.getActiveSessionId(PROVIDER_ID)).toBeUndefined();
 		expect(store.get(PROVIDER_ID, "sdk-active")).toBeUndefined();
+
+		store.close();
+	});
+
+	test("deleteSession restores writable blank selection after deleting an active legacy session", () => {
+		const store = createTestStore();
+		store.setBlankChatModelSelection({
+			providerId: PROVIDER_ID,
+			model: "pi-default",
+			effort: "medium",
+		});
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "sdk-legacy",
+			title: "Legacy chat",
+			model: "opus",
+		});
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(
+			state,
+			store,
+			{},
+			{
+				defaultBlankSelection: {
+					providerId: PROVIDER_ID,
+					model: "pi-default",
+					effort: "medium",
+				},
+				writableProviderIds: new Set([PROVIDER_ID]),
+			},
+		);
+		const legacy = store.get(OTHER_PROVIDER_ID, "sdk-legacy");
+		if (!legacy) {
+			throw new Error("Expected legacy session");
+		}
+		sessions.switchToResolvedSession(legacy);
+
+		expect(sessions.deleteSession("sdk-legacy")).toEqual({
+			clearedActiveSession: true,
+		});
+
+		expect(state.providerId).toBe(PROVIDER_ID);
+		expect(state.sessionId).toBeUndefined();
+		expect(store.getActiveSessionId(OTHER_PROVIDER_ID)).toBeUndefined();
+		expect(store.getActiveChatProviderId()).toBeUndefined();
+
+		store.close();
+	});
+
+	test("deleteResolvedSession restores writable blank selection after deleting an active legacy session", () => {
+		const store = createTestStore();
+		store.setBlankChatModelSelection({
+			providerId: PROVIDER_ID,
+			model: "pi-default",
+			effort: "medium",
+		});
+		store.upsert({
+			providerId: OTHER_PROVIDER_ID,
+			sdkSessionId: "sdk-legacy",
+			title: "Legacy chat",
+			model: "opus",
+		});
+		const state = new RuntimeState(PROVIDER_ID);
+		const sessions = new SessionService(
+			state,
+			store,
+			{},
+			{
+				defaultBlankSelection: {
+					providerId: PROVIDER_ID,
+					model: "pi-default",
+					effort: "medium",
+				},
+				writableProviderIds: new Set([PROVIDER_ID]),
+			},
+		);
+		const legacy = store.get(OTHER_PROVIDER_ID, "sdk-legacy");
+		if (!legacy) {
+			throw new Error("Expected legacy session");
+		}
+		sessions.switchToResolvedSession(legacy);
+
+		expect(sessions.deleteResolvedSession(legacy)).toEqual({
+			clearedActiveSession: true,
+		});
+
+		expect(state.providerId).toBe(PROVIDER_ID);
+		expect(state.sessionId).toBeUndefined();
+		expect(store.getActiveSessionId(OTHER_PROVIDER_ID)).toBeUndefined();
+		expect(store.getActiveChatProviderId()).toBeUndefined();
 
 		store.close();
 	});

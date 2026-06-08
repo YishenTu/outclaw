@@ -798,4 +798,279 @@ description: Review the current changes.
 		await runtime.stop();
 		store.close();
 	});
+
+	test("keeps legacy chat sessions readable but rejects follow-up prompts", async () => {
+		const legacyFacade = new MockFacade();
+		legacyFacade.providerId = "claude";
+		legacyFacade.historyMessages = [
+			{ kind: "chat", role: "assistant", content: "legacy answer" },
+		];
+		const piFacade = new CatalogProviderSessionFacade("pi", "pi-chat-default", [
+			providerModel("openai-codex/gpt-5.5"),
+		]);
+		const store = new SessionStore(TEST_DB, {
+			agentId: "agent-railly",
+			journalMode: "DELETE",
+		});
+		store.upsert({
+			providerId: "claude",
+			sdkSessionId: "legacy-claude",
+			title: "Legacy Claude chat",
+			model: "opus",
+			source: "tui",
+		});
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: piFacade,
+			providers: [{ providerId: "pi", displayName: "Pi", facade: piFacade }],
+			historyProviders: [
+				{ providerId: "claude", displayName: "Claude", facade: legacyFacade },
+			],
+			defaultProviderId: "pi",
+			defaultModel: "openai-codex/gpt-5.5",
+			store,
+		});
+		const ws = mockWs();
+
+		runtime.handleOpen(ws);
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "command", command: "/session claude/legacy" }),
+		);
+		await waitForCondition(() =>
+			ws.events().some((event) => event.type === "session_switched"),
+		);
+		await waitForCondition(() =>
+			ws.events().some((event) => event.type === "history_replay"),
+		);
+		expect(ws.events()).toContainEqual({
+			type: "history_replay",
+			providerId: "claude",
+			sdkSessionId: "legacy-claude",
+			messages: [{ kind: "chat", role: "assistant", content: "legacy answer" }],
+		});
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "prompt", prompt: "continue legacy chat" }),
+		);
+		await waitForCondition(() =>
+			ws
+				.events()
+				.some(
+					(event) =>
+						event.type === "error" &&
+						event.message.includes("read-only") &&
+						event.message.includes("new Pi session"),
+				),
+		);
+
+		expect(legacyFacade.callCount).toBe(0);
+		expect(piFacade.seenParams).toEqual([]);
+		expect(runtime.getStatusEvent()).toMatchObject({
+			providerId: "claude",
+			sessionId: "legacy-claude",
+		});
+
+		await runtime.stop();
+		store.close();
+	});
+
+	test("uses the configured runnable provider label in legacy read-only guidance", async () => {
+		const legacyFacade = new MockFacade();
+		legacyFacade.providerId = "legacy";
+		const localFacade = new CatalogProviderSessionFacade(
+			"local",
+			"local-chat",
+			[providerModel("local-default")],
+		);
+		const store = new SessionStore(TEST_DB, {
+			agentId: "agent-railly",
+			journalMode: "DELETE",
+		});
+		store.upsert({
+			providerId: "legacy",
+			sdkSessionId: "legacy-chat",
+			title: "Legacy chat",
+			model: "old-model",
+			source: "tui",
+		});
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: localFacade,
+			providers: [
+				{ providerId: "local", displayName: "Local", facade: localFacade },
+			],
+			historyProviders: [
+				{ providerId: "legacy", displayName: "Legacy", facade: legacyFacade },
+			],
+			defaultProviderId: "local",
+			defaultModel: "local-default",
+			store,
+		});
+		const ws = mockWs();
+
+		runtime.handleOpen(ws);
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "command", command: "/session legacy/legacy" }),
+		);
+		await waitForCondition(() =>
+			ws.events().some((event) => event.type === "session_switched"),
+		);
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "prompt", prompt: "continue legacy chat" }),
+		);
+		await waitForCondition(() =>
+			ws
+				.events()
+				.some(
+					(event) =>
+						event.type === "error" &&
+						event.message.includes("new Local session"),
+				),
+		);
+
+		expect(localFacade.seenParams).toEqual([]);
+
+		await runtime.stop();
+		store.close();
+	});
+
+	test("excludes history-only providers from chat model selection", async () => {
+		const legacyFacade = new CatalogProviderSessionFacade("claude", "legacy", [
+			providerModel("sonnet"),
+		]);
+		const piFacade = new CatalogProviderSessionFacade("pi", "pi-chat", [
+			providerModel("openai-codex/gpt-5.5"),
+		]);
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: piFacade,
+			providers: [{ providerId: "pi", displayName: "Pi", facade: piFacade }],
+			historyProviders: [
+				{ providerId: "claude", displayName: "Claude", facade: legacyFacade },
+			],
+			defaultProviderId: "pi",
+			defaultModel: "openai-codex/gpt-5.5",
+		});
+		const ws = mockWs();
+
+		runtime.handleOpen(ws);
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "command", command: "/model sonnet" }),
+		);
+		await waitForCondition(() =>
+			ws
+				.events()
+				.some(
+					(event) =>
+						event.type === "error" &&
+						event.message.includes("Invalid model: sonnet") &&
+						event.message.includes("openai-codex/gpt-5.5") &&
+						!event.message.includes("sonnet,"),
+				),
+		);
+
+		expect(runtime.getStatusEvent()).toMatchObject({
+			providerId: "pi",
+			model: "openai-codex/gpt-5.5",
+		});
+
+		await runtime.stop();
+	});
+
+	test("normalizes stale legacy blank selection back to Pi", async () => {
+		const legacyFacade = new RecordingFacade();
+		legacyFacade.providerId = "claude";
+		const piFacade = new CatalogProviderSessionFacade("pi", "pi-chat", [
+			providerModel("openai-codex/gpt-5.5"),
+		]);
+		const seedStore = new SessionStore(TEST_DB, {
+			agentId: "agent-railly",
+			journalMode: "DELETE",
+		});
+		seedStore.setBlankChatModelSelection({
+			providerId: "claude",
+			model: "opus",
+			effort: "high",
+		});
+		seedStore.upsert({
+			providerId: "claude",
+			sdkSessionId: "legacy-claude",
+			title: "Legacy Claude chat",
+			model: "opus",
+		});
+		seedStore.setActiveSessionId("claude", "legacy-claude");
+		seedStore.close();
+
+		const store = new SessionStore(TEST_DB, {
+			agentId: "agent-railly",
+			journalMode: "DELETE",
+		});
+		const runtime = createAgentRuntime({
+			agentId: "agent-railly",
+			name: "railly",
+			facade: piFacade,
+			providers: [{ providerId: "pi", displayName: "Pi", facade: piFacade }],
+			historyProviders: [
+				{ providerId: "claude", displayName: "Claude", facade: legacyFacade },
+			],
+			defaultProviderId: "pi",
+			defaultModel: "openai-codex/gpt-5.5",
+			store,
+		});
+		const ws = mockWs();
+
+		runtime.handleOpen(ws);
+
+		expect(runtime.getStatusEvent()).toMatchObject({
+			providerId: "pi",
+			model: "openai-codex/gpt-5.5",
+			sessionId: undefined,
+		});
+		expect(store.getBlankChatModelSelection()).toEqual({
+			providerId: "pi",
+			model: "openai-codex/gpt-5.5",
+			effort: "medium",
+		});
+
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "command", command: "/session claude/legacy" }),
+		);
+		await waitForCondition(() =>
+			ws.events().some((event) => event.type === "session_switched"),
+		);
+		expect(runtime.getStatusEvent()).toMatchObject({
+			providerId: "claude",
+			sessionId: "legacy-claude",
+		});
+
+		runtime.handleMessage(
+			ws,
+			JSON.stringify({ type: "command", command: "/new" }),
+		);
+		await waitForCondition(() =>
+			ws.events().some((event) => event.type === "session_cleared"),
+		);
+
+		expect(runtime.getStatusEvent()).toMatchObject({
+			providerId: "pi",
+			model: "openai-codex/gpt-5.5",
+			sessionId: undefined,
+		});
+		expect(store.getBlankChatModelSelection()).toEqual({
+			providerId: "pi",
+			model: "openai-codex/gpt-5.5",
+			effort: "medium",
+		});
+
+		await runtime.stop();
+		store.close();
+	});
 });

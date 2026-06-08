@@ -86,18 +86,17 @@ export function ModelSelector({
 	}, [agentId]);
 
 	const models = useMemo(() => catalog, [catalog]);
-	const currentProviderId = resolveCurrentProviderId({
+	const currentSelection = resolveModelSelectorCurrentModel({
 		model,
 		models,
 		providerId,
 	});
-	const currentModel =
-		resolveCurrentModel({
-			model,
-			models,
-			providerId: currentProviderId,
-		}) ?? models[0];
-	const currentEffort = resolveVisibleEffort(effort, currentModel);
+	const currentProviderId = currentSelection.providerId;
+	const currentModel = currentSelection.model;
+	const currentModelSelectable = currentSelection.selectable;
+	const currentEffort = currentModelSelectable
+		? resolveVisibleEffort(effort, currentModel)
+		: resolveCurrentEffort(effort);
 	const visibleModels = groupModelsByProvider(
 		sessionActive
 			? models.filter((candidate) => candidate.providerId === currentProviderId)
@@ -106,7 +105,9 @@ export function ModelSelector({
 	const providerCount = new Set(
 		visibleModels.map((candidate) => candidate.providerId),
 	).size;
-	const visibleEffortLevels = effortLevelsForChatModel(currentModel);
+	const visibleEffortLevels = currentModelSelectable
+		? effortLevelsForChatModel(currentModel)
+		: [];
 	const fastTier = resolveFastServiceTier(currentModel);
 	const fastTierEnabled = serviceTier === fastTier?.id;
 	const fastTierLabel = fastTier?.name ?? "Fast";
@@ -131,7 +132,9 @@ export function ModelSelector({
 					groupLabel: showGroups ? candidate.providerDisplayName : undefined,
 				}))}
 				selectedId={currentModel ? modelKey(currentModel) : undefined}
-				disabled={disabled || visibleModels.length === 0}
+				disabled={
+					disabled || !currentModelSelectable || visibleModels.length === 0
+				}
 				minWidthClassName="min-w-[9rem]"
 				onSelect={(item) => {
 					const selected = visibleModels.find(
@@ -162,7 +165,12 @@ export function ModelSelector({
 					label: formatEffortLabel(level),
 				}))}
 				selectedId={currentEffort}
-				disabled={disabled || !currentModel || visibleEffortLevels.length === 0}
+				disabled={
+					disabled ||
+					!currentModel ||
+					!currentModelSelectable ||
+					visibleEffortLevels.length === 0
+				}
 				minWidthClassName="min-w-[8.5rem]"
 				onSelect={(item) => {
 					if (!currentModel || !isEffortLevel(item.id)) {
@@ -213,6 +221,49 @@ export function ModelSelector({
 	);
 }
 
+export interface ResolvedModelSelectorCurrentModel {
+	model: BrowserChatModel | undefined;
+	providerId: string;
+	selectable: boolean;
+}
+
+export function resolveModelSelectorCurrentModel(params: {
+	model: string | null;
+	models: BrowserChatModel[];
+	providerId: string | null;
+}): ResolvedModelSelectorCurrentModel {
+	const currentProviderId = resolveCurrentProviderId(params);
+	const catalogModel = resolveCurrentModel({
+		model: params.model,
+		models: params.models,
+		providerId: currentProviderId,
+	});
+	if (catalogModel) {
+		return {
+			model: catalogModel,
+			providerId: currentProviderId,
+			selectable: true,
+		};
+	}
+
+	if (params.providerId) {
+		return {
+			model: createUnavailableChatModel({
+				model: params.model,
+				providerId: params.providerId,
+			}),
+			providerId: params.providerId,
+			selectable: false,
+		};
+	}
+
+	return {
+		model: params.models[0],
+		providerId: currentProviderId,
+		selectable: params.models.length > 0,
+	};
+}
+
 function resolveCurrentProviderId(params: {
 	model: string | null;
 	models: BrowserChatModel[];
@@ -246,6 +297,38 @@ function resolveCurrentModel(params: {
 		providerModels.find((candidate) => candidate.isDefault) ??
 		providerModels[0]
 	);
+}
+
+function createUnavailableChatModel(params: {
+	model: string | null;
+	providerId: string;
+}): BrowserChatModel {
+	const model = params.model?.trim() || "Legacy model";
+	return {
+		providerId: params.providerId,
+		providerDisplayName: formatProviderDisplayName(params.providerId),
+		id: model,
+		model,
+		displayName: model,
+		description: "",
+		isDefault: false,
+		defaultReasoningEffort: DEFAULT_EFFORT,
+		supportedReasoningEfforts: [],
+		serviceTiers: [],
+	};
+}
+
+function formatProviderDisplayName(providerId: string): string {
+	if (providerId === "claude") {
+		return "Claude";
+	}
+	if (providerId === "codex") {
+		return "Codex";
+	}
+	if (providerId === "pi") {
+		return "Pi";
+	}
+	return providerId;
 }
 
 function modelMatches(

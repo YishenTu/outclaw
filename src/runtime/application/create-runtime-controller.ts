@@ -39,6 +39,7 @@ interface CreateRuntimeControllerOptions {
 	autoTitle?: {
 		model: string;
 	};
+	canRunProvider?: (providerId: string) => boolean;
 	canSendToClient?: (ws: WsClient) => boolean;
 	createNativeToolHost?: PromptExecutionRuntimeOptions["createNativeToolHost"];
 	cwd?: string;
@@ -65,6 +66,7 @@ interface CreateRuntimeControllerOptions {
 	providers?: PromptProviderResolver;
 	historyReaders?: ChatHistoryReaderResolver;
 	modelProviderResolver?: ModelProviderResolver;
+	readOnlyProviderMessage?: (providerId: string) => string;
 	getFrontendNotice?: () => FrontendNotice | undefined;
 	listSkills?: () => Promise<SkillInfo[]>;
 	listWorkspaceFiles?: () => Promise<WorkspaceFileEntry[]>;
@@ -178,6 +180,7 @@ export function createRuntimeController(
 		cwd: options.cwd,
 		deliverHeartbeatResult: options.deliverHeartbeatResult,
 		deliverRolloverNotice: options.deliverRolloverNotice,
+		canRunProvider: options.canRunProvider,
 		onStatusChange: () => {
 			clients.broadcastStatus();
 			options.onExecutionStateChange?.();
@@ -185,6 +188,7 @@ export function createRuntimeController(
 		onVisibleRunStarted: () => clients.broadcastStatus(),
 		promptHomeDir: options.promptHomeDir,
 		providers: providersForRunner,
+		readOnlyProviderMessage: options.readOnlyProviderMessage,
 		// Transcript refresh follows the run's provider, not the runtime's
 		// primary facade — a completed Codex chat run reads its transcript
 		// through the Codex adapter, never through Claude.

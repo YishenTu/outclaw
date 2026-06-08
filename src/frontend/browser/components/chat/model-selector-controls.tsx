@@ -22,7 +22,7 @@ export interface SelectorDropdownItem {
 }
 
 export const SELECTOR_DROPDOWN_MENU_CLASS_NAME =
-	"absolute bottom-full left-0 z-50 mb-2 max-h-[18rem] overflow-x-hidden overflow-y-auto rounded-[16px] border border-dark-800 bg-dark-900 p-1 shadow-lg";
+	"scrollbar-none absolute bottom-full left-0 z-50 mb-2 max-h-[18rem] overflow-x-hidden overflow-y-auto rounded-[16px] border border-dark-800 bg-dark-900 p-1 shadow-lg";
 
 interface SelectorDropdownProps {
 	label: string;

@@ -11,6 +11,7 @@ import {
 	formatEffortLabel,
 	resolveCurrentEffort,
 	resolveFastServiceTier,
+	resolveModelSelectorCurrentModel,
 } from "../../../src/frontend/browser/components/chat/model-selector.tsx";
 import { SELECTOR_DROPDOWN_MENU_CLASS_NAME } from "../../../src/frontend/browser/components/chat/model-selector-controls.tsx";
 import { FileTree } from "../../../src/frontend/browser/components/right-panel/file-tree.tsx";
@@ -94,6 +95,38 @@ describe("browser component helpers", () => {
 		});
 	});
 
+	test("keeps unavailable legacy session models out of selectable catalog fallback", () => {
+		const piModel = {
+			providerId: "pi",
+			providerDisplayName: "Pi",
+			id: "openai-codex/gpt-5.5",
+			model: "openai-codex/gpt-5.5",
+			displayName: "GPT-5.5",
+			description: "",
+			isDefault: true,
+			defaultReasoningEffort: "medium",
+			supportedReasoningEfforts: ["low", "medium", "high"],
+			serviceTiers: [],
+		};
+
+		const resolved = resolveModelSelectorCurrentModel({
+			model: "opus",
+			models: [piModel],
+			providerId: "claude",
+		});
+
+		expect(resolved).toMatchObject({
+			providerId: "claude",
+			selectable: false,
+			model: {
+				providerId: "claude",
+				providerDisplayName: "Claude",
+				model: "opus",
+				displayName: "opus",
+			},
+		});
+	});
+
 	test("renders generic dropup menus for empty and selectable states", () => {
 		const emptyHtml = renderToStaticMarkup(
 			<DropupMenu<string>
@@ -121,8 +154,9 @@ describe("browser component helpers", () => {
 		expect(menuHtml).toContain("text-dark-300 hover:bg-dark-800/70");
 	});
 
-	test("constrains selector dropdown menus to a scrollable fixed height", () => {
+	test("constrains selector dropdown menus without showing a scrollbar", () => {
 		expect(SELECTOR_DROPDOWN_MENU_CLASS_NAME).toContain("max-h-[18rem]");
+		expect(SELECTOR_DROPDOWN_MENU_CLASS_NAME).toContain("scrollbar-none");
 		expect(SELECTOR_DROPDOWN_MENU_CLASS_NAME).toContain("overflow-y-auto");
 		expect(SELECTOR_DROPDOWN_MENU_CLASS_NAME).toContain("overflow-x-hidden");
 	});

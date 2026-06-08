@@ -28,6 +28,7 @@ export interface PromptExecutionRuntimeOptions {
 		AutoTitleCoordinator,
 		"cancel" | "cancelAll" | "drain" | "resolveSession" | "start"
 	>;
+	canRunProvider?: (providerId: string) => boolean;
 	clients?: PromptClientGateway;
 	createNativeToolHost?: (params: {
 		context: RuntimePromptContext & { resumeSessionId?: string };
@@ -48,6 +49,7 @@ export interface PromptExecutionRuntimeOptions {
 	onVisibleRunStarted?: () => void;
 	promptHomeDir?: string;
 	providers: PromptProviderResolver;
+	readOnlyProviderMessage?: (providerId: string) => string;
 	readTranscript?: (
 		sessionId: string,
 		context: RuntimePromptContext,
@@ -61,8 +63,18 @@ export class PromptExecutionRuntime {
 	readonly execution: RuntimeExecutionCoordinator;
 	readonly promptDispatcher: PromptDispatcher;
 	readonly streamingState: StreamingStateStore;
+	private readonly canRunProvider:
+		| PromptExecutionRuntimeOptions["canRunProvider"]
+		| undefined;
+	private readonly readOnlyProviderMessage:
+		| PromptExecutionRuntimeOptions["readOnlyProviderMessage"]
+		| undefined;
+	private readonly state: RuntimeState;
 
 	constructor(options: PromptExecutionRuntimeOptions) {
+		this.canRunProvider = options.canRunProvider;
+		this.readOnlyProviderMessage = options.readOnlyProviderMessage;
+		this.state = options.state;
 		this.streamingState = options.streamingState ?? new StreamingStateStore();
 		const promptRunner = new PromptRunner({
 			cwd: options.cwd,
@@ -70,11 +82,13 @@ export class PromptExecutionRuntime {
 			promptHomeDir: options.promptHomeDir,
 		});
 		this.promptDispatcher = new PromptDispatcher({
+			canRunProvider: options.canRunProvider,
 			clients: options.clients ?? NULL_PROMPT_CLIENTS,
 			createNativeToolHost: options.createNativeToolHost,
 			deliverHeartbeatResult: options.deliverHeartbeatResult,
 			onVisibleRunStarted: options.onVisibleRunStarted,
 			promptRunner,
+			readOnlyProviderMessage: options.readOnlyProviderMessage,
 			readTranscript: options.readTranscript,
 			sessions: options.sessions,
 			state: options.state,
@@ -107,6 +121,14 @@ export class PromptExecutionRuntime {
 	}
 
 	runDetachedPrompt(task: PromptExecution): DetachedPromptStartResult {
+		if (this.canRunProvider?.(this.state.providerId) === false) {
+			return {
+				status: "rejected",
+				message:
+					this.readOnlyProviderMessage?.(this.state.providerId) ??
+					`Provider ${this.state.providerId} is read-only; start a new session.`,
+			};
+		}
 		const result = this.execution.enqueueDetachedPrompt(task);
 		if (!result) {
 			return {

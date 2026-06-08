@@ -70,7 +70,9 @@ export function resolveVisibleActiveChatSession(
 	}
 
 	const providerId =
-		store.getBlankChatModelSelection()?.providerId ?? agent.providerId;
+		store.getActiveChatProviderId() ??
+		store.getBlankChatModelSelection()?.providerId ??
+		agent.providerId;
 	const activeSessionId = store.getActiveSessionId(providerId);
 	if (!activeSessionId) {
 		return undefined;
