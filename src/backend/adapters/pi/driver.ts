@@ -782,7 +782,6 @@ function projectSdkModel(model: SdkModel): PiDriverModel {
 		defaultReasoningEffort,
 		supportedReasoningEfforts,
 		contextWindow: model.contextWindow,
-		serviceTiers: [],
 	};
 }
 

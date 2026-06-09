@@ -374,6 +374,27 @@ describe("Pi driver", () => {
 		}
 	});
 
+	test("leaves service tiers unset when the Pi SDK model has no tier metadata", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createModelListSdk([sdkModel("openai-codex", "gpt-5.5")]),
+		});
+
+		try {
+			if (!driver.listModels) {
+				throw new Error("Pi driver should support model listing");
+			}
+
+			const [model] = await driver.listModels();
+
+			expect(model).not.toHaveProperty("serviceTiers");
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
 	test("rejects resumed sessions when Pi cannot inherit the persisted model", async () => {
 		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
 		const session = new ImmediateSession();
