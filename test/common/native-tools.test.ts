@@ -25,7 +25,7 @@ describe("native Outclaw tool catalog", () => {
 			safetyClasses: [],
 			modes: [
 				{ name: "list", safetyClasses: ["read-only"] },
-				{ name: "ask", safetyClasses: ["long-running"] },
+				{ name: "ask", safetyClasses: ["state-changing", "long-running"] },
 				{ name: "send", safetyClasses: ["state-changing"] },
 			],
 		});
@@ -58,8 +58,8 @@ describe("native Outclaw tool catalog", () => {
 			safetyClasses: [],
 			modes: [
 				{ name: "list", safetyClasses: ["read-only"] },
-				{ name: "start", safetyClasses: ["long-running"] },
-				{ name: "resume", safetyClasses: ["long-running"] },
+				{ name: "start", safetyClasses: ["state-changing", "long-running"] },
+				{ name: "resume", safetyClasses: ["state-changing", "long-running"] },
 				{ name: "status", safetyClasses: ["read-only"] },
 				{ name: "transcript", safetyClasses: ["read-only"] },
 				{ name: "cancel", safetyClasses: ["state-changing"] },
@@ -113,6 +113,16 @@ describe("native Outclaw tool catalog", () => {
 				"timeoutSeconds",
 			],
 			[
+				"outclaw_peer_message",
+				{
+					mode: "ask",
+					targetAgent: "builder",
+					message: "please review",
+					timeoutSeconds: 301,
+				},
+				"timeoutSeconds",
+			],
+			[
 				"outclaw_recall",
 				{ mode: "sessions", sessionRef: "pi/thread-1" },
 				"sessionRef",
@@ -125,9 +135,29 @@ describe("native Outclaw tool catalog", () => {
 			],
 			["outclaw_recall", { mode: "sessions", limit: 101 }, "limit"],
 			[
+				"outclaw_recall",
+				{
+					mode: "transcript",
+					sessionRef: "pi/thread-1",
+					turns: 2,
+					full: true,
+				},
+				"full",
+			],
+			[
 				"outclaw_coding",
 				{ mode: "status", sessionRef: "codex/thread-1", prompt: "continue" },
 				"prompt",
+			],
+			[
+				"outclaw_coding",
+				{
+					mode: "status",
+					sessionRef: "codex/thread-1",
+					block: true,
+					timeoutSeconds: 301,
+				},
+				"timeoutSeconds",
 			],
 			[
 				"outclaw_coding",
@@ -197,6 +227,15 @@ describe("native Outclaw tool catalog", () => {
 					tag: "cron",
 				},
 			],
+			[
+				"outclaw_recall",
+				{
+					mode: "transcript",
+					sessionRef: "pi/thread-1",
+					full: true,
+					includeEmpty: true,
+				},
+			],
 			["outclaw_schema", { mode: "all" }],
 			["outclaw_schema", { mode: "stale", agent: "planner" }],
 			[
@@ -251,6 +290,8 @@ describe("native Outclaw tool catalog", () => {
 					mode: "transcript",
 					sessionRef: "codex/thread-1",
 					turns: 10,
+					eventTypes: ["user_prompt", "text", "done"],
+					includeToolOutputs: false,
 				},
 			],
 			[

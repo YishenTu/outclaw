@@ -342,7 +342,11 @@ function createCustomTools(
 		customTools.push(createSessionEnvBashTool(sdk, cwd, params.sessionEnv));
 	}
 	if (params.nativeToolHost) {
-		customTools.push(...createOutclawNativePiTools(sdk, params.nativeToolHost));
+		customTools.push(
+			...createOutclawNativePiTools(sdk, params.nativeToolHost, {
+				readOnly: params.readOnly,
+			}),
+		);
 	}
 	return customTools.length > 0 ? customTools : undefined;
 }

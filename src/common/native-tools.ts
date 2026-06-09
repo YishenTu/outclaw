@@ -19,11 +19,11 @@ export const OUTCLAW_NATIVE_TOOL_CATALOG = [
 	{
 		name: "outclaw_peer_message",
 		description:
-			"Use when: discovering or communicating with another Outclaw agent. Modes: list returns known agents; ask waits for a peer response; send enqueues a prompt without waiting. Safety: list is read-only, ask is long-running, and send is state-changing; host guardrails reject unsafe waits and read-only contexts before effects. Do not use when: recalling old sessions, starting code work, or writing durable memory.",
+			"Use when: discovering or communicating with another Outclaw agent. Modes: list returns known agents; ask sends a prompt and waits for a peer response; send enqueues a prompt without waiting. Safety: list is read-only, ask is state-changing and long-running, and send is state-changing; host guardrails reject unsafe waits and read-only contexts before effects. Do not use when: recalling old sessions, starting code work, or writing durable memory.",
 		safetyClasses: [],
 		modes: [
 			{ name: "list", safetyClasses: ["read-only"] },
-			{ name: "ask", safetyClasses: ["long-running"] },
+			{ name: "ask", safetyClasses: ["state-changing", "long-running"] },
 			{ name: "send", safetyClasses: ["state-changing"] },
 		],
 	},
@@ -70,12 +70,12 @@ export const OUTCLAW_NATIVE_TOOL_CATALOG = [
 	{
 		name: "outclaw_coding",
 		description:
-			"Use when: managing Codex-backed code-mode tasks from chat. Modes: list returns repositories and recent sessions; start begins a task; resume sends a follow-up; status inspects state; transcript reads normalized events; cancel stops active work. Safety: list, status, and transcript are read-only; start and resume are long-running; cancel is state-changing; the host rejects disabled modes before effects. Do not use when: recalling chat sessions, peer messaging, or capturing memory.",
+			"Use when: managing Codex-backed code-mode tasks from chat. Modes: list returns repositories and recent sessions; start begins a task; resume sends a follow-up; status inspects state; transcript reads normalized events; cancel stops active work. Safety: list, status, and transcript are read-only; start and resume are state-changing and long-running; cancel is state-changing; the host rejects disabled modes before effects. Do not use when: recalling chat sessions, peer messaging, or capturing memory.",
 		safetyClasses: [],
 		modes: [
 			{ name: "list", safetyClasses: ["read-only"] },
-			{ name: "start", safetyClasses: ["long-running"] },
-			{ name: "resume", safetyClasses: ["long-running"] },
+			{ name: "start", safetyClasses: ["state-changing", "long-running"] },
+			{ name: "resume", safetyClasses: ["state-changing", "long-running"] },
 			{ name: "status", safetyClasses: ["read-only"] },
 			{ name: "transcript", safetyClasses: ["read-only"] },
 			{ name: "cancel", safetyClasses: ["state-changing"] },
@@ -91,6 +91,7 @@ export type NativeToolErrorCode =
 	| "not_found"
 	| "ambiguous_ref"
 	| "context_disabled"
+	| "policy_denied"
 	| "read_only_violation"
 	| "provider_failure"
 	| "timeout";
@@ -143,6 +144,9 @@ export type OutclawRecallParams =
 			readonly sessionRef: string;
 			readonly agent?: string;
 			readonly turns?: number;
+			readonly full?: boolean;
+			readonly includeEmpty?: boolean;
+			readonly cursor?: string;
 			readonly tag?: "chat" | "cron";
 	  };
 
@@ -195,6 +199,9 @@ export type OutclawCodingParams =
 			readonly sessionRef: string;
 			readonly turns?: number;
 			readonly full?: boolean;
+			readonly cursor?: string;
+			readonly eventTypes?: readonly string[];
+			readonly includeToolOutputs?: boolean;
 	  }
 	| {
 			readonly mode: "cancel";
@@ -260,6 +267,9 @@ export type OutclawRecallData =
 				readonly content: string;
 				readonly timestamp: number;
 			}[];
+			readonly truncated?: boolean;
+			readonly omittedTurns?: number;
+			readonly nextCursor?: string;
 	  };
 
 export interface OutclawSchemaData {
@@ -338,6 +348,9 @@ export type OutclawCodingData =
 			readonly mode: "transcript";
 			readonly sessionRef: string;
 			readonly events: readonly Record<string, unknown>[];
+			readonly truncated?: boolean;
+			readonly omittedEvents?: number;
+			readonly nextCursor?: string;
 	  }
 	| {
 			readonly mode: "cancel";
@@ -383,6 +396,7 @@ export interface OutclawNativeToolHost {
 
 const MAX_RECALL_SESSION_LIMIT = 100;
 const MAX_TRANSCRIPT_TURNS = 500;
+const MAX_NATIVE_TOOL_TIMEOUT_SECONDS = 300;
 
 export function validateOutclawNativeToolParams(
 	toolName: OutclawNativeToolName,
@@ -418,18 +432,23 @@ function validatePeerMessageParams(
 		return modeResult;
 	}
 	if (modeResult.data === "list") {
-		const wrongModeFieldResult = rejectModeFields(record, "list", [
-			"targetAgent",
-			"message",
-			"timeoutSeconds",
-		]);
-		if (!wrongModeFieldResult.ok) {
-			return wrongModeFieldResult;
+		const fieldResult = rejectFieldsOutsideMode(record, "list", ["mode"]);
+		if (!fieldResult.ok) {
+			return fieldResult;
 		}
 		return {
 			ok: true,
 			data: { mode: "list" },
 		};
+	}
+	const fieldResult = rejectFieldsOutsideMode(record, modeResult.data, [
+		"mode",
+		"targetAgent",
+		"message",
+		"timeoutSeconds",
+	]);
+	if (!fieldResult.ok) {
+		return fieldResult;
 	}
 	const targetAgentResult = requireNonEmptyString(record, "targetAgent");
 	if (!targetAgentResult.ok) {
@@ -439,7 +458,11 @@ function validatePeerMessageParams(
 	if (!messageResult.ok) {
 		return messageResult;
 	}
-	const timeoutResult = optionalPositiveNumber(record, "timeoutSeconds");
+	const timeoutResult = optionalBoundedPositiveNumber(
+		record,
+		"timeoutSeconds",
+		MAX_NATIVE_TOOL_TIMEOUT_SECONDS,
+	);
 	if (!timeoutResult.ok) {
 		return timeoutResult;
 	}
@@ -465,6 +488,15 @@ function validateMemoryNoteParams(
 ): NativeToolResult<OutclawMemoryNoteParams> {
 	if ("mode" in record) {
 		return validationError("outclaw_memory_note does not accept a mode");
+	}
+	const fieldResult = rejectUnknownFields(record, [
+		"text",
+		"salience",
+		"title",
+		"tags",
+	]);
+	if (!fieldResult.ok) {
+		return fieldResult;
 	}
 	const textResult = requireNonEmptyString(record, "text");
 	if (!textResult.ok) {
@@ -519,12 +551,17 @@ function validateRecallParams(
 	}
 
 	if (modeResult.data === "sessions") {
-		const wrongModeFieldResult = rejectModeFields(record, "sessions", [
-			"sessionRef",
-			"turns",
+		const fieldResult = rejectFieldsOutsideMode(record, "sessions", [
+			"mode",
+			"query",
+			"agent",
+			"allAgents",
+			"limit",
+			"cursor",
+			"tag",
 		]);
-		if (!wrongModeFieldResult.ok) {
-			return wrongModeFieldResult;
+		if (!fieldResult.ok) {
+			return fieldResult;
 		}
 		const queryResult = optionalNonEmptyString(record, "query");
 		if (!queryResult.ok) {
@@ -565,14 +602,18 @@ function validateRecallParams(
 		};
 	}
 
-	const wrongModeFieldResult = rejectModeFields(record, "transcript", [
-		"query",
-		"allAgents",
-		"limit",
+	const fieldResult = rejectFieldsOutsideMode(record, "transcript", [
+		"mode",
+		"sessionRef",
+		"agent",
+		"turns",
+		"full",
+		"includeEmpty",
 		"cursor",
+		"tag",
 	]);
-	if (!wrongModeFieldResult.ok) {
-		return wrongModeFieldResult;
+	if (!fieldResult.ok) {
+		return fieldResult;
 	}
 	const sessionRefResult = requireProviderQualifiedRef(record, "sessionRef");
 	if (!sessionRefResult.ok) {
@@ -587,6 +628,21 @@ function validateRecallParams(
 	if (!turnsResult.ok) {
 		return turnsResult;
 	}
+	const fullResult = optionalBoolean(record, "full");
+	if (!fullResult.ok) {
+		return fullResult;
+	}
+	const includeEmptyResult = optionalBoolean(record, "includeEmpty");
+	if (!includeEmptyResult.ok) {
+		return includeEmptyResult;
+	}
+	const cursorResult = optionalNonEmptyString(record, "cursor");
+	if (!cursorResult.ok) {
+		return cursorResult;
+	}
+	if (turnsResult.data !== undefined && fullResult.data === true) {
+		return validationError("Use either full or turns, not both");
+	}
 	return {
 		ok: true,
 		data: {
@@ -594,6 +650,11 @@ function validateRecallParams(
 			sessionRef: sessionRefResult.data,
 			...(agentResult.data === undefined ? {} : { agent: agentResult.data }),
 			...(turnsResult.data === undefined ? {} : { turns: turnsResult.data }),
+			...(fullResult.data === undefined ? {} : { full: fullResult.data }),
+			...(includeEmptyResult.data === undefined
+				? {}
+				: { includeEmpty: includeEmptyResult.data }),
+			...(cursorResult.data === undefined ? {} : { cursor: cursorResult.data }),
 			...(tagResult.data === undefined ? {} : { tag: tagResult.data }),
 		},
 	};
@@ -605,6 +666,13 @@ function validateSchemaParams(
 	const modeResult = requireMode(record, "mode", ["all", "stale"]);
 	if (!modeResult.ok) {
 		return modeResult;
+	}
+	const fieldResult = rejectFieldsOutsideMode(record, modeResult.data, [
+		"mode",
+		"agent",
+	]);
+	if (!fieldResult.ok) {
+		return fieldResult;
 	}
 	const agentResult = optionalNonEmptyString(record, "agent");
 	if (!agentResult.ok) {
@@ -633,9 +701,16 @@ function validateCronParams(
 	}
 
 	if (modeResult.data === "failed_status") {
-		const wrongModeFieldResult = rejectModeFields(record, "failed_status", []);
-		if (!wrongModeFieldResult.ok) {
-			return wrongModeFieldResult;
+		const fieldResult = rejectFieldsOutsideMode(record, "failed_status", [
+			"mode",
+			"agent",
+			"jobName",
+			"namesOnly",
+			"sinceEpochMs",
+			"limit",
+		]);
+		if (!fieldResult.ok) {
+			return fieldResult;
 		}
 		const jobNameResult = optionalNonEmptyString(record, "jobName");
 		if (!jobNameResult.ok) {
@@ -672,9 +747,13 @@ function validateCronParams(
 		};
 	}
 
-	const wrongModeFieldResult = rejectModeFields(record, "run", ["namesOnly"]);
-	if (!wrongModeFieldResult.ok) {
-		return wrongModeFieldResult;
+	const fieldResult = rejectFieldsOutsideMode(record, "run", [
+		"mode",
+		"jobName",
+		"agent",
+	]);
+	if (!fieldResult.ok) {
+		return fieldResult;
 	}
 	const jobNameResult = requireNonEmptyString(record, "jobName");
 	if (!jobNameResult.ok) {
@@ -707,17 +786,14 @@ function validateCodingParams(
 
 	switch (modeResult.data) {
 		case "list": {
-			const wrongModeFieldResult = rejectModeFields(record, "list", [
-				"target",
-				"prompt",
-				"cwd",
-				"sessionRef",
-				"block",
-				"timeoutSeconds",
-				"turns",
+			const fieldResult = rejectFieldsOutsideMode(record, "list", [
+				"mode",
+				"repository",
+				"includeArchived",
+				"limit",
 			]);
-			if (!wrongModeFieldResult.ok) {
-				return wrongModeFieldResult;
+			if (!fieldResult.ok) {
+				return fieldResult;
 			}
 			const repositoryResult = optionalNonEmptyString(record, "repository");
 			if (!repositoryResult.ok) {
@@ -748,14 +824,14 @@ function validateCodingParams(
 			};
 		}
 		case "start": {
-			const wrongModeFieldResult = rejectModeFields(record, "start", [
-				"sessionRef",
-				"block",
-				"timeoutSeconds",
-				"turns",
+			const fieldResult = rejectFieldsOutsideMode(record, "start", [
+				"mode",
+				"target",
+				"prompt",
+				"cwd",
 			]);
-			if (!wrongModeFieldResult.ok) {
-				return wrongModeFieldResult;
+			if (!fieldResult.ok) {
+				return fieldResult;
 			}
 			const targetResult = requireNonEmptyString(record, "target");
 			if (!targetResult.ok) {
@@ -780,15 +856,13 @@ function validateCodingParams(
 			};
 		}
 		case "resume": {
-			const wrongModeFieldResult = rejectModeFields(record, "resume", [
-				"target",
-				"cwd",
-				"block",
-				"timeoutSeconds",
-				"turns",
+			const fieldResult = rejectFieldsOutsideMode(record, "resume", [
+				"mode",
+				"sessionRef",
+				"prompt",
 			]);
-			if (!wrongModeFieldResult.ok) {
-				return wrongModeFieldResult;
+			if (!fieldResult.ok) {
+				return fieldResult;
 			}
 			const sessionRefResult = requireProviderQualifiedRef(
 				record,
@@ -811,14 +885,14 @@ function validateCodingParams(
 			};
 		}
 		case "status": {
-			const wrongModeFieldResult = rejectModeFields(record, "status", [
-				"target",
-				"prompt",
-				"cwd",
-				"turns",
+			const fieldResult = rejectFieldsOutsideMode(record, "status", [
+				"mode",
+				"sessionRef",
+				"block",
+				"timeoutSeconds",
 			]);
-			if (!wrongModeFieldResult.ok) {
-				return wrongModeFieldResult;
+			if (!fieldResult.ok) {
+				return fieldResult;
 			}
 			const sessionRefResult = requireProviderQualifiedRef(
 				record,
@@ -831,7 +905,11 @@ function validateCodingParams(
 			if (!blockResult.ok) {
 				return blockResult;
 			}
-			const timeoutResult = optionalPositiveNumber(record, "timeoutSeconds");
+			const timeoutResult = optionalBoundedPositiveNumber(
+				record,
+				"timeoutSeconds",
+				MAX_NATIVE_TOOL_TIMEOUT_SECONDS,
+			);
 			if (!timeoutResult.ok) {
 				return timeoutResult;
 			}
@@ -850,15 +928,17 @@ function validateCodingParams(
 			};
 		}
 		case "transcript": {
-			const wrongModeFieldResult = rejectModeFields(record, "transcript", [
-				"target",
-				"prompt",
-				"cwd",
-				"block",
-				"timeoutSeconds",
+			const fieldResult = rejectFieldsOutsideMode(record, "transcript", [
+				"mode",
+				"sessionRef",
+				"turns",
+				"full",
+				"cursor",
+				"eventTypes",
+				"includeToolOutputs",
 			]);
-			if (!wrongModeFieldResult.ok) {
-				return wrongModeFieldResult;
+			if (!fieldResult.ok) {
+				return fieldResult;
 			}
 			const sessionRefResult = requireProviderQualifiedRef(
 				record,
@@ -880,6 +960,21 @@ function validateCodingParams(
 			if (!fullResult.ok) {
 				return fullResult;
 			}
+			const cursorResult = optionalNonEmptyString(record, "cursor");
+			if (!cursorResult.ok) {
+				return cursorResult;
+			}
+			const eventTypesResult = optionalStringArray(record, "eventTypes");
+			if (!eventTypesResult.ok) {
+				return eventTypesResult;
+			}
+			const includeToolOutputsResult = optionalBoolean(
+				record,
+				"includeToolOutputs",
+			);
+			if (!includeToolOutputsResult.ok) {
+				return includeToolOutputsResult;
+			}
 			if (turnsResult.data !== undefined && fullResult.data === true) {
 				return validationError("Use either full or turns, not both");
 			}
@@ -892,20 +987,25 @@ function validateCodingParams(
 						? {}
 						: { turns: turnsResult.data }),
 					...(fullResult.data === undefined ? {} : { full: fullResult.data }),
+					...(cursorResult.data === undefined
+						? {}
+						: { cursor: cursorResult.data }),
+					...(eventTypesResult.data === undefined
+						? {}
+						: { eventTypes: eventTypesResult.data }),
+					...(includeToolOutputsResult.data === undefined
+						? {}
+						: { includeToolOutputs: includeToolOutputsResult.data }),
 				},
 			};
 		}
 		case "cancel": {
-			const wrongModeFieldResult = rejectModeFields(record, "cancel", [
-				"target",
-				"prompt",
-				"cwd",
-				"block",
-				"timeoutSeconds",
-				"turns",
+			const fieldResult = rejectFieldsOutsideMode(record, "cancel", [
+				"mode",
+				"sessionRef",
 			]);
-			if (!wrongModeFieldResult.ok) {
-				return wrongModeFieldResult;
+			if (!fieldResult.ok) {
+				return fieldResult;
 			}
 			const sessionRefResult = requireProviderQualifiedRef(
 				record,
@@ -952,14 +1052,28 @@ function requireMode<TMode extends string>(
 	return { ok: true, data: value as TMode };
 }
 
-function rejectModeFields(
+function rejectFieldsOutsideMode(
 	record: Readonly<Record<string, unknown>>,
 	mode: string,
-	fieldNames: readonly string[],
+	allowedFieldNames: readonly string[],
 ): NativeToolResult<void> {
-	for (const fieldName of fieldNames) {
-		if (fieldName in record) {
+	const allowedFields = new Set(allowedFieldNames);
+	for (const fieldName of Object.keys(record)) {
+		if (!allowedFields.has(fieldName)) {
 			return validationError(`${fieldName} is not valid for mode ${mode}`);
+		}
+	}
+	return { ok: true, data: undefined };
+}
+
+function rejectUnknownFields(
+	record: Readonly<Record<string, unknown>>,
+	allowedFieldNames: readonly string[],
+): NativeToolResult<void> {
+	const allowedFields = new Set(allowedFieldNames);
+	for (const fieldName of Object.keys(record)) {
+		if (!allowedFields.has(fieldName)) {
+			return validationError(`${fieldName} is not valid for this tool`);
 		}
 	}
 	return { ok: true, data: undefined };
@@ -1033,6 +1147,23 @@ function optionalPositiveNumber(
 		return validationError(`${fieldName} must be a positive number`);
 	}
 	return { ok: true, data: value };
+}
+
+function optionalBoundedPositiveNumber(
+	record: Readonly<Record<string, unknown>>,
+	fieldName: string,
+	maximum: number,
+): NativeToolResult<number | undefined> {
+	const valueResult = optionalPositiveNumber(record, fieldName);
+	if (!valueResult.ok || valueResult.data === undefined) {
+		return valueResult;
+	}
+	if (valueResult.data > maximum) {
+		return validationError(
+			`${fieldName} must be a positive number no greater than ${maximum}`,
+		);
+	}
+	return valueResult;
 }
 
 function optionalBoundedInteger(

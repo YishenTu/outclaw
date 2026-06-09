@@ -11,12 +11,14 @@ import {
 	type OutclawNativeToolContext,
 	type OutclawNativeToolHost,
 	type OutclawNativeToolName,
+	type OutclawNativeToolParams,
 	type OutclawPeerMessageData,
 	type OutclawPeerMessageParams,
 	type OutclawRecallData,
 	type OutclawRecallParams,
 	type OutclawSchemaData,
 	type OutclawSchemaParams,
+	validateOutclawNativeToolParams,
 } from "../../common/native-tools.ts";
 
 export interface OutclawNativeToolHandlers {
@@ -49,45 +51,88 @@ export function createOutclawNativeToolHost(
 	return {
 		context: options.context,
 		peerMessage: (params) =>
-			runWithSafety(options, "outclaw_peer_message", params.mode, () =>
-				requireHandler(
-					options.handlers.peerMessage,
-					"outclaw_peer_message",
-				)(params),
+			runValidated<OutclawPeerMessageParams, OutclawPeerMessageData>(
+				options,
+				"outclaw_peer_message",
+				params,
+				(validated) => validated.mode,
+				requireHandler(options.handlers.peerMessage, "outclaw_peer_message"),
 			),
 		memoryNote: (params) =>
-			runWithSafety(options, "outclaw_memory_note", undefined, () =>
-				requireHandler(
-					options.handlers.memoryNote,
-					"outclaw_memory_note",
-				)(params),
+			runValidated<OutclawMemoryNoteParams, OutclawMemoryNoteData>(
+				options,
+				"outclaw_memory_note",
+				params,
+				() => undefined,
+				requireHandler(options.handlers.memoryNote, "outclaw_memory_note"),
 			),
 		recall: (params) =>
-			runWithSafety(options, "outclaw_recall", params.mode, () =>
-				requireHandler(options.handlers.recall, "outclaw_recall")(params),
+			runValidated<OutclawRecallParams, OutclawRecallData>(
+				options,
+				"outclaw_recall",
+				params,
+				(validated) => validated.mode,
+				requireHandler(options.handlers.recall, "outclaw_recall"),
 			),
 		schema: (params) =>
-			runWithSafety(options, "outclaw_schema", params.mode, () =>
-				requireHandler(options.handlers.schema, "outclaw_schema")(params),
+			runValidated<OutclawSchemaParams, OutclawSchemaData>(
+				options,
+				"outclaw_schema",
+				params,
+				(validated) => validated.mode,
+				requireHandler(options.handlers.schema, "outclaw_schema"),
 			),
 		cron: (params) =>
-			runWithSafety(options, "outclaw_cron", params.mode, () =>
-				requireHandler(options.handlers.cron, "outclaw_cron")(params),
+			runValidated<OutclawCronParams, OutclawCronData>(
+				options,
+				"outclaw_cron",
+				params,
+				(validated) => validated.mode,
+				requireHandler(options.handlers.cron, "outclaw_cron"),
 			),
 		coding: (params) =>
-			runWithSafety(options, "outclaw_coding", params.mode, () =>
-				requireHandler(options.handlers.coding, "outclaw_coding")(params),
+			runValidated<OutclawCodingParams, OutclawCodingData>(
+				options,
+				"outclaw_coding",
+				params,
+				(validated) => validated.mode,
+				requireHandler(options.handlers.coding, "outclaw_coding"),
 			),
 	};
+}
+
+async function runValidated<TParams extends OutclawNativeToolParams, TData>(
+	options: CreateOutclawNativeToolHostOptions,
+	toolName: OutclawNativeToolName,
+	params: unknown,
+	resolveMode: (params: TParams) => string | undefined,
+	delegate: (params: TParams) => Promise<NativeToolResult<TData>>,
+): Promise<NativeToolResult<TData>> {
+	const validation = validateOutclawNativeToolParams(toolName, params);
+	if (!validation.ok) {
+		return {
+			ok: false,
+			error: validation.error,
+		};
+	}
+	const validatedParams = validation.data as TParams;
+	const mode = resolveMode(validatedParams);
+	return runWithSafety(
+		options,
+		toolName,
+		mode,
+		getEffectiveSafetyClasses(toolName, mode, validatedParams),
+		() => delegate(validatedParams),
+	);
 }
 
 async function runWithSafety<T>(
 	options: CreateOutclawNativeToolHostOptions,
 	toolName: OutclawNativeToolName,
 	mode: string | undefined,
+	safetyClasses: readonly NativeToolSafetyClass[],
 	delegate: () => Promise<NativeToolResult<T>>,
 ): Promise<NativeToolResult<T>> {
-	const safetyClasses = getSafetyClasses(toolName, mode);
 	if (options.context.readOnly && hasEffectfulSafetyClass(safetyClasses)) {
 		return {
 			ok: false,
@@ -111,6 +156,25 @@ async function runWithSafety<T>(
 		};
 	}
 	return delegate();
+}
+
+function getEffectiveSafetyClasses(
+	toolName: OutclawNativeToolName,
+	mode: string | undefined,
+	params: OutclawNativeToolParams,
+): readonly NativeToolSafetyClass[] {
+	const safetyClasses = getSafetyClasses(toolName, mode);
+	if (
+		toolName === "outclaw_coding" &&
+		mode === "status" &&
+		"block" in params &&
+		params.block === true
+	) {
+		return [
+			...new Set<NativeToolSafetyClass>([...safetyClasses, "long-running"]),
+		];
+	}
+	return safetyClasses;
 }
 
 function requireHandler<TParams, TData>(

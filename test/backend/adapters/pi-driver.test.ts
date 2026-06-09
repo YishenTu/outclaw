@@ -528,6 +528,69 @@ describe("Pi driver", () => {
 		}
 	});
 
+	test("advertises only read-only native Outclaw modes in read-only Pi sessions", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const session = new ImmediateSession();
+		const captured: {
+			customTools?: CapturedPiTool[];
+			tools?: string[];
+		} = {};
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () => createNativeToolSdk(session, captured),
+		});
+
+		try {
+			await drainRun(
+				driver.run({
+					prompt: "Use read-only native Outclaw tools",
+					instructionMode: "provider_default",
+					model: "anthropic/claude-sonnet-4-5",
+					nativeToolHost: testNativeToolHost(),
+					readOnly: true,
+				}),
+			);
+
+			const schemas = new Map(
+				captured.customTools?.map((tool) => [tool.name, tool.parameters]) ?? [],
+			);
+
+			expect(captured.customTools?.map((tool) => tool.name)).toEqual([
+				"outclaw_peer_message",
+				"outclaw_recall",
+				"outclaw_schema",
+				"outclaw_cron",
+				"outclaw_coding",
+			]);
+			expect(nativeModeNames(schemas.get("outclaw_peer_message"))).toEqual([
+				"list",
+			]);
+			expect(nativeModeNames(schemas.get("outclaw_cron"))).toEqual([
+				"failed_status",
+			]);
+			expect(nativeModeNames(schemas.get("outclaw_coding"))).toEqual([
+				"list",
+				"status",
+				"transcript",
+			]);
+			expect(
+				nativeModeProperties(schemas.get("outclaw_peer_message")),
+			).not.toHaveProperty("targetAgent");
+			expect(
+				nativeModeProperties(schemas.get("outclaw_coding")),
+			).not.toHaveProperty("prompt");
+			expect(
+				nativeModeProperties(schemas.get("outclaw_coding")),
+			).not.toHaveProperty("block");
+			expect(
+				captured.customTools?.find((tool) => tool.name === "outclaw_coding")
+					?.description,
+			).not.toContain("start");
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
 	test("registers OpenAI-compatible schemas for native Outclaw tools", async () => {
 		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
 		const session = new ImmediateSession();

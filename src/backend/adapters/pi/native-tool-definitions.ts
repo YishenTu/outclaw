@@ -1,4 +1,5 @@
 import {
+	type NativeToolContract,
 	type NativeToolResult,
 	OUTCLAW_NATIVE_TOOL_CATALOG,
 	type OutclawCodingParams,
@@ -20,11 +21,24 @@ interface OutclawNativePiToolSdk {
 	defineTool: PiSdkModule["defineTool"];
 }
 
+type OutclawNativePiContract = NativeToolContract & {
+	readonly name: OutclawNativeToolName;
+};
+
 export function createOutclawNativePiTools(
 	sdk: OutclawNativePiToolSdk,
 	host: OutclawNativeToolHost,
+	options: { readOnly?: boolean } = {},
 ): PiToolDefinition[] {
-	return OUTCLAW_NATIVE_TOOL_CATALOG.map((contract) =>
+	const catalog: readonly OutclawNativePiContract[] =
+		OUTCLAW_NATIVE_TOOL_CATALOG;
+	const contracts: readonly OutclawNativePiContract[] = options.readOnly
+		? catalog.flatMap((contract) => {
+				const readOnlyContract = filterReadOnlyNativeToolContract(contract);
+				return readOnlyContract ? [readOnlyContract] : [];
+			})
+		: catalog;
+	return contracts.map((contract) =>
 		sdk.defineTool({
 			name: contract.name,
 			label: nativeToolLabel(contract.name),
@@ -34,7 +48,11 @@ export function createOutclawNativePiTools(
 				"Pass structured JSON parameters matching the documented mode.",
 				"Do not call shell commands for Outclaw workflows when a native Outclaw tool exists.",
 			],
-			parameters: nativeToolParameterSchema(contract.name),
+			parameters: nativeToolParameterSchema(
+				contract.name,
+				contract.modes.map((mode) => mode.name),
+				{ readOnly: options.readOnly },
+			),
 			async execute(_toolCallId, params) {
 				const result = await callNativeHost(host, contract.name, params);
 				return {
@@ -49,6 +67,30 @@ export function createOutclawNativePiTools(
 			},
 		}),
 	);
+}
+
+function filterReadOnlyNativeToolContract(
+	contract: OutclawNativePiContract,
+): OutclawNativePiContract | undefined {
+	if (contract.safetyClasses.includes("read-only")) {
+		return contract;
+	}
+	const modes = contract.modes.filter((mode) =>
+		mode.safetyClasses.includes("read-only"),
+	);
+	if (modes.length === 0) {
+		return undefined;
+	}
+	return {
+		...contract,
+		description: [
+			`Use when: ${nativeToolLabel(contract.name)} read-only operations are needed in this context.`,
+			`Modes: ${modes.map((mode) => mode.name).join(", ")}.`,
+			"Safety: read-only only; state-changing and long-running modes are hidden in this session.",
+			"Do not use when: the task needs unavailable modes.",
+		].join(" "),
+		modes,
+	};
 }
 
 async function callNativeHost(
@@ -86,7 +128,11 @@ function nativeToolLabel(toolName: OutclawNativeToolName): string {
 		.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function nativeToolParameterSchema(toolName: OutclawNativeToolName): never {
+function nativeToolParameterSchema(
+	toolName: OutclawNativeToolName,
+	modes?: readonly string[],
+	options: { readOnly?: boolean } = {},
+): never {
 	switch (toolName) {
 		case "outclaw_memory_note":
 			return objectSchema(["text"], {
@@ -102,37 +148,52 @@ function nativeToolParameterSchema(toolName: OutclawNativeToolName): never {
 				tags: arraySchema(stringSchema()),
 			}) as never;
 		case "outclaw_peer_message":
-			return modeObjectSchema(["list", "ask", "send"], {
-				targetAgent: stringSchema(),
-				message: stringSchema(),
-				timeoutSeconds: numberSchema(),
-			}) as never;
+			return nativeModeObjectSchema(
+				toolName,
+				modes ?? ["list", "ask", "send"],
+				{
+					targetAgent: stringSchema(),
+					message: stringSchema(),
+					timeoutSeconds: numberSchema(),
+				},
+			) as never;
 		case "outclaw_recall":
-			return modeObjectSchema(["sessions", "transcript"], {
-				query: stringSchema(),
-				agent: stringSchema(),
-				allAgents: booleanSchema(),
-				limit: numberSchema(),
-				cursor: stringSchema(),
-				tag: enumSchema(["chat", "cron"]),
-				sessionRef: stringSchema(),
-				turns: numberSchema(),
-			}) as never;
+			return nativeModeObjectSchema(
+				toolName,
+				modes ?? ["sessions", "transcript"],
+				{
+					query: stringSchema(),
+					agent: stringSchema(),
+					allAgents: booleanSchema(),
+					limit: numberSchema(),
+					cursor: stringSchema(),
+					tag: enumSchema(["chat", "cron"]),
+					sessionRef: stringSchema(),
+					turns: numberSchema(),
+					full: booleanSchema(),
+					includeEmpty: booleanSchema(),
+				},
+			) as never;
 		case "outclaw_schema":
-			return modeObjectSchema(["all", "stale"], {
+			return nativeModeObjectSchema(toolName, modes ?? ["all", "stale"], {
 				agent: stringSchema(),
 			}) as never;
 		case "outclaw_cron":
-			return modeObjectSchema(["failed_status", "run"], {
-				agent: stringSchema(),
-				jobName: stringSchema(),
-				namesOnly: booleanSchema(),
-				sinceEpochMs: numberSchema(),
-				limit: numberSchema(),
-			}) as never;
+			return nativeModeObjectSchema(
+				toolName,
+				modes ?? ["failed_status", "run"],
+				{
+					agent: stringSchema(),
+					jobName: stringSchema(),
+					namesOnly: booleanSchema(),
+					sinceEpochMs: numberSchema(),
+					limit: numberSchema(),
+				},
+			) as never;
 		case "outclaw_coding":
-			return modeObjectSchema(
-				["list", "start", "resume", "status", "transcript", "cancel"],
+			return nativeModeObjectSchema(
+				toolName,
+				modes ?? ["list", "start", "resume", "status", "transcript", "cancel"],
 				{
 					repository: stringSchema(),
 					includeArchived: booleanSchema(),
@@ -145,8 +206,90 @@ function nativeToolParameterSchema(toolName: OutclawNativeToolName): never {
 					timeoutSeconds: numberSchema(),
 					turns: numberSchema(),
 					full: booleanSchema(),
+					cursor: stringSchema(),
+					eventTypes: arraySchema(stringSchema()),
+					includeToolOutputs: booleanSchema(),
 				},
+				options.readOnly ? ["block", "timeoutSeconds"] : [],
 			) as never;
+	}
+}
+
+function nativeModeObjectSchema(
+	toolName: OutclawNativeToolName,
+	modes: readonly string[],
+	properties: Record<string, NativeToolJsonSchema>,
+	hiddenProperties: readonly string[] = [],
+): NativeToolJsonSchema {
+	const allowedProperties = new Set(
+		modes.flatMap((mode) => nativeModePropertyNames(toolName, mode)),
+	);
+	for (const hiddenProperty of hiddenProperties) {
+		allowedProperties.delete(hiddenProperty);
+	}
+	return modeObjectSchema(
+		modes,
+		Object.fromEntries(
+			Object.entries(properties).filter(([propertyName]) =>
+				allowedProperties.has(propertyName),
+			),
+		),
+	);
+}
+
+function nativeModePropertyNames(
+	toolName: OutclawNativeToolName,
+	mode: string,
+): readonly string[] {
+	switch (toolName) {
+		case "outclaw_memory_note":
+			return ["text", "salience", "title", "tags"];
+		case "outclaw_peer_message":
+			return mode === "list"
+				? []
+				: ["targetAgent", "message", "timeoutSeconds"];
+		case "outclaw_recall":
+			return mode === "sessions"
+				? ["query", "agent", "allAgents", "limit", "cursor", "tag"]
+				: [
+						"sessionRef",
+						"agent",
+						"turns",
+						"full",
+						"includeEmpty",
+						"cursor",
+						"tag",
+					];
+		case "outclaw_schema":
+			return ["agent"];
+		case "outclaw_cron":
+			return mode === "failed_status"
+				? ["agent", "jobName", "namesOnly", "sinceEpochMs", "limit"]
+				: ["agent", "jobName"];
+		case "outclaw_coding":
+			switch (mode) {
+				case "list":
+					return ["repository", "includeArchived", "limit"];
+				case "start":
+					return ["target", "prompt", "cwd"];
+				case "resume":
+					return ["sessionRef", "prompt"];
+				case "status":
+					return ["sessionRef", "block", "timeoutSeconds"];
+				case "transcript":
+					return [
+						"sessionRef",
+						"turns",
+						"full",
+						"cursor",
+						"eventTypes",
+						"includeToolOutputs",
+					];
+				case "cancel":
+					return ["sessionRef"];
+				default:
+					return [];
+			}
 	}
 }
 

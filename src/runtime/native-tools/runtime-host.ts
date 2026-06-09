@@ -29,6 +29,10 @@ import { createOutclawNativeToolHost } from "./host.ts";
 
 const CODING_STATUS_POLL_MS = 10;
 const DEFAULT_CODING_STATUS_TIMEOUT_SECONDS = 30;
+const DEFAULT_CODING_TRANSCRIPT_EVENTS = 200;
+const DEFAULT_PEER_ASK_TIMEOUT_SECONDS = 120;
+const DEFAULT_RECALL_TRANSCRIPT_TURNS = 20;
+const MAX_NATIVE_TRANSCRIPT_BYTES = 24_000;
 
 export interface NativeToolAgentInfo {
 	readonly agentId: string;
@@ -123,6 +127,18 @@ export interface NativeToolCronRunner {
 	}): NativeToolCronRunResult | Promise<NativeToolCronRunResult>;
 }
 
+export interface NativeToolRecallPolicy {
+	allows(params: {
+		requestingAgentId: string;
+		currentAgentId: string;
+		targetAgentId?: string;
+		allAgents: boolean;
+		mode: "sessions" | "transcript";
+		source: OutclawNativeToolContext["source"];
+		tag: "chat" | "cron";
+	}): boolean;
+}
+
 export interface NativeToolCodingSession {
 	readonly providerId: string;
 	readonly sdkSessionId: string;
@@ -207,6 +223,7 @@ export interface RuntimeNativeToolHostOptions {
 	readonly currentAgentId: string;
 	readonly now?: () => Date;
 	readonly peers?: NativeToolPeerMessenger;
+	readonly recallPolicy?: NativeToolRecallPolicy;
 	readonly readTranscript?: (params: {
 		agentId: string;
 		providerId: string;
@@ -314,6 +331,8 @@ async function peerMessage(
 			};
 		}
 
+		const timeoutSeconds =
+			params.timeoutSeconds ?? DEFAULT_PEER_ASK_TIMEOUT_SECONDS;
 		const responseText = await askWithOptionalTimeout(
 			options.peers.ask({
 				fromAgentId: fromAgent.agentId,
@@ -321,11 +340,9 @@ async function peerMessage(
 				targetAgentId: targetAgent.agentId,
 				targetAgentName: targetAgent.name,
 				message: params.message,
-				...(params.timeoutSeconds === undefined
-					? {}
-					: { timeoutSeconds: params.timeoutSeconds }),
+				timeoutSeconds,
 			}),
-			params.timeoutSeconds,
+			timeoutSeconds,
 		);
 		return {
 			ok: true,
@@ -345,7 +362,7 @@ async function peerMessage(
 				ok: false,
 				error: {
 					code: "timeout",
-					message: `Peer ask timed out after ${params.timeoutSeconds} seconds`,
+					message: `Peer ask timed out after ${params.timeoutSeconds ?? DEFAULT_PEER_ASK_TIMEOUT_SECONDS} seconds`,
 					retryable: true,
 				},
 			};
@@ -388,6 +405,15 @@ function recallSessions(
 		};
 	}
 	const tag = params.tag ?? "chat";
+	const policyResult = authorizeRecall(options, {
+		allAgents: params.allAgents === true,
+		mode: "sessions",
+		tag,
+		...(targetAgent === undefined ? {} : { targetAgent }),
+	});
+	if (!policyResult.ok) {
+		return policyResult;
+	}
 	const rows = options.sessions.listSessions({
 		...(targetAgent === undefined ? {} : { agentId: targetAgent.agentId }),
 		...(params.cursor === undefined ? {} : { cursor: params.cursor }),
@@ -553,12 +579,32 @@ async function coding(
 	const selectedEvents = params.full
 		? events
 		: selectLatestCodingInteractionTurns(events, params.turns ?? 1);
+	const filteredEvents = filterCodingTranscriptEvents(selectedEvents, params);
+	const pageResult = selectLatestTranscriptPage(filteredEvents, {
+		...(params.cursor === undefined ? {} : { cursor: params.cursor }),
+		maxBytes: MAX_NATIVE_TRANSCRIPT_BYTES,
+		maxItems: DEFAULT_CODING_TRANSCRIPT_EVENTS,
+		measureItemBytes: measureJsonBytes,
+	});
+	if (!pageResult.ok) {
+		return {
+			ok: false,
+			error: pageResult.error,
+		};
+	}
 	return {
 		ok: true,
 		data: {
 			mode: "transcript",
 			sessionRef: formatNativeSessionRef(session),
-			events: selectedEvents,
+			events: pageResult.data.items,
+			...(pageResult.data.truncated ? { truncated: true } : {}),
+			...(pageResult.data.omittedItems === 0
+				? {}
+				: { omittedEvents: pageResult.data.omittedItems }),
+			...(pageResult.data.nextCursor === undefined
+				? {}
+				: { nextCursor: pageResult.data.nextCursor }),
 		},
 	};
 }
@@ -820,7 +866,7 @@ async function cron(
 			ok: true,
 			data: {
 				mode: "failed_status",
-				failures,
+				failures: params.namesOnly ? [] : failures,
 				...(params.namesOnly
 					? { jobNames: [...new Set(failures.map((row) => row.jobName))] }
 					: {}),
@@ -973,8 +1019,36 @@ function selectLatestCodingInteractionTurns(
 	return selectedRange ? records.slice(selectedRange.start) : records;
 }
 
+function filterCodingTranscriptEvents(
+	records: readonly Record<string, unknown>[],
+	params: Extract<OutclawCodingParams, { mode: "transcript" }>,
+): readonly Record<string, unknown>[] {
+	const eventTypes =
+		params.eventTypes === undefined ? undefined : new Set(params.eventTypes);
+	return records.filter((record) => {
+		const eventType = unwrapCodingEvent(record)?.type;
+		if (eventTypes !== undefined && !eventTypes.has(String(eventType))) {
+			return false;
+		}
+		if (params.includeToolOutputs !== true && isToolOutputEvent(eventType)) {
+			return false;
+		}
+		return true;
+	});
+}
+
 function isTerminalCodingEvent(type: unknown): boolean {
 	return type === "done" || type === "error" || type === "turn_aborted";
+}
+
+function isToolOutputEvent(type: unknown): boolean {
+	return (
+		typeof type === "string" &&
+		(type === "command_execution_output" ||
+			type === "function_call_output" ||
+			type === "custom_tool_call_output" ||
+			type.endsWith("_output"))
+	);
 }
 
 function unwrapCodingEvent(
@@ -1114,10 +1188,20 @@ async function recallTranscript(
 			},
 		};
 	}
+	const tag = params.tag ?? "chat";
+	const policyResult = authorizeRecall(options, {
+		allAgents: false,
+		mode: "transcript",
+		tag,
+		targetAgent,
+	});
+	if (!policyResult.ok) {
+		return policyResult;
+	}
 	const session = options.sessions.getSession({
 		agentId: targetAgent.agentId,
 		...ref,
-		tag: params.tag ?? "chat",
+		tag,
 	});
 	if (!session) {
 		return {
@@ -1142,15 +1226,169 @@ async function recallTranscript(
 			},
 		};
 	}
+	const candidateTurns = params.includeEmpty
+		? transcript
+		: transcript.filter((turn) => turn.content.trim() !== "");
+	const pageResult = selectLatestTranscriptPage(candidateTurns, {
+		...(params.cursor === undefined ? {} : { cursor: params.cursor }),
+		maxBytes: MAX_NATIVE_TRANSCRIPT_BYTES,
+		maxItems: params.full
+			? Number.POSITIVE_INFINITY
+			: (params.turns ?? DEFAULT_RECALL_TRANSCRIPT_TURNS),
+		measureItemBytes: measureJsonBytes,
+	});
+	if (!pageResult.ok) {
+		return {
+			ok: false,
+			error: pageResult.error,
+		};
+	}
 	return {
 		ok: true,
 		data: {
 			mode: "transcript",
 			sessionRef: formatNativeSessionRef(session),
-			turns:
-				params.turns === undefined
-					? transcript
-					: transcript.slice(-params.turns),
+			turns: pageResult.data.items,
+			...(pageResult.data.truncated ? { truncated: true } : {}),
+			...(pageResult.data.omittedItems === 0
+				? {}
+				: { omittedTurns: pageResult.data.omittedItems }),
+			...(pageResult.data.nextCursor === undefined
+				? {}
+				: { nextCursor: pageResult.data.nextCursor }),
+		},
+	};
+}
+
+function selectLatestTranscriptPage<T>(
+	items: readonly T[],
+	options: {
+		cursor?: string;
+		maxBytes: number;
+		maxItems: number;
+		measureItemBytes: (item: T) => number;
+	},
+): NativeToolResult<{
+	items: readonly T[];
+	omittedItems: number;
+	truncated: boolean;
+	nextCursor?: string;
+}> {
+	const beforeResult =
+		options.cursor === undefined
+			? { ok: true as const, data: items.length }
+			: decodeNativeTranscriptCursor(options.cursor);
+	if (!beforeResult.ok) {
+		return beforeResult;
+	}
+	const before = Math.min(beforeResult.data, items.length);
+	const countLimitedStart = Number.isFinite(options.maxItems)
+		? Math.max(0, before - options.maxItems)
+		: 0;
+	let start = before;
+	let bytes = 0;
+	for (let index = before - 1; index >= countLimitedStart; index -= 1) {
+		const item = items[index];
+		if (item === undefined) {
+			continue;
+		}
+		const itemBytes = options.measureItemBytes(item);
+		if (start < before && bytes + itemBytes > options.maxBytes) {
+			break;
+		}
+		bytes += itemBytes;
+		start = index;
+	}
+	const omittedItems = start;
+	return {
+		ok: true,
+		data: {
+			items: items.slice(start, before),
+			omittedItems,
+			truncated: omittedItems > 0,
+			...(omittedItems === 0
+				? {}
+				: { nextCursor: encodeNativeTranscriptCursor({ before: start }) }),
+		},
+	};
+}
+
+function measureJsonBytes(value: unknown): number {
+	return JSON.stringify(value).length;
+}
+
+function encodeNativeTranscriptCursor(cursor: { before: number }): string {
+	return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeNativeTranscriptCursor(
+	cursor: string,
+): NativeToolResult<number> {
+	try {
+		const parsed = JSON.parse(
+			Buffer.from(cursor, "base64url").toString("utf8"),
+		) as unknown;
+		if (
+			typeof parsed !== "object" ||
+			parsed === null ||
+			!Number.isInteger((parsed as { before?: unknown }).before) ||
+			(parsed as { before: number }).before < 0
+		) {
+			return nativeValidationError("Invalid native transcript cursor");
+		}
+		return { ok: true, data: (parsed as { before: number }).before };
+	} catch {
+		return nativeValidationError("Invalid native transcript cursor");
+	}
+}
+
+function nativeValidationError<T>(message: string): NativeToolResult<T> {
+	return {
+		ok: false,
+		error: {
+			code: "validation_error",
+			message,
+		},
+	};
+}
+
+function authorizeRecall(
+	options: RuntimeNativeToolHostOptions,
+	params: {
+		allAgents: boolean;
+		mode: "sessions" | "transcript";
+		tag: "chat" | "cron";
+		targetAgent?: NativeToolAgentInfo;
+	},
+): NativeToolResult<void> {
+	if (
+		!params.allAgents &&
+		params.targetAgent?.agentId === options.currentAgentId
+	) {
+		return { ok: true, data: undefined };
+	}
+	const allowed =
+		options.recallPolicy?.allows({
+			requestingAgentId: options.context.agentId,
+			currentAgentId: options.currentAgentId,
+			...(params.targetAgent === undefined
+				? {}
+				: { targetAgentId: params.targetAgent.agentId }),
+			allAgents: params.allAgents,
+			mode: params.mode,
+			source: options.context.source,
+			tag: params.tag,
+		}) === true;
+	if (allowed) {
+		return { ok: true, data: undefined };
+	}
+	return {
+		ok: false,
+		error: {
+			code: "policy_denied",
+			message: params.allAgents
+				? "All-agent recall requires an explicit policy grant"
+				: "Cross-agent recall requires an explicit policy grant",
 		},
 	};
 }

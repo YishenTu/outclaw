@@ -73,6 +73,9 @@ describe("runtime native tool host behavior", () => {
 				agent("agent-builder", "Builder", "/agents/builder"),
 			],
 			currentAgentId: "agent-default",
+			recallPolicy: {
+				allows: () => true,
+			},
 			sessions: {
 				listSessions: (params) => {
 					requested.push(params);
@@ -123,6 +126,40 @@ describe("runtime native tool host behavior", () => {
 				tag: "chat",
 			},
 		]);
+	});
+
+	test("recall sessions rejects cross-agent requests without a policy grant", async () => {
+		let called = false;
+		const host = createRuntimeNativeToolHost({
+			context: {
+				agentId: "agent-default",
+				agentName: "Default",
+				source: "browser",
+				readOnly: false,
+			},
+			agents: [
+				agent("agent-default", "Default", "/agents/default"),
+				agent("agent-builder", "Builder", "/agents/builder"),
+			],
+			currentAgentId: "agent-default",
+			sessions: {
+				listSessions: () => {
+					called = true;
+					return [];
+				},
+			},
+		});
+
+		await expect(
+			host.recall({
+				mode: "sessions",
+				agent: "Builder",
+			}),
+		).resolves.toMatchObject({
+			ok: false,
+			error: { code: "policy_denied" },
+		});
+		expect(called).toBe(false);
 	});
 
 	test("recall sessions returns reader validation failures", async () => {
@@ -292,6 +329,60 @@ describe("runtime native tool host behavior", () => {
 						timestamp: 200,
 					},
 				],
+				truncated: true,
+				omittedTurns: 1,
+				nextCursor: expect.any(String),
+			},
+		});
+	});
+
+	test("recall transcript defaults to recent non-empty turns with truncation metadata", async () => {
+		const transcript = [
+			{ role: "user" as const, content: "oldest", timestamp: 1 },
+			{ role: "assistant" as const, content: "   ", timestamp: 2 },
+			...Array.from({ length: 25 }, (_, index) => ({
+				role: "assistant" as const,
+				content: `turn ${index + 1}`,
+				timestamp: index + 3,
+			})),
+		];
+		const host = createRuntimeNativeToolHost({
+			context: {
+				agentId: "agent-default",
+				agentName: "Default",
+				source: "browser",
+				readOnly: false,
+			},
+			agents: [agent("agent-default", "Default", "/agents/default")],
+			currentAgentId: "agent-default",
+			sessions: {
+				getSession: ({ agentId, providerId, sdkSessionId, tag }) => ({
+					agentId,
+					providerId,
+					sdkSessionId,
+					title: "Long thread",
+					tag,
+					lastActive: 1234,
+				}),
+				listSessions: () => [],
+			},
+			readTranscript: async () => transcript,
+		});
+
+		await expect(
+			host.recall({
+				mode: "transcript",
+				sessionRef: "pi/thread-1",
+			}),
+		).resolves.toEqual({
+			ok: true,
+			data: {
+				mode: "transcript",
+				sessionRef: "pi/thread-1",
+				turns: transcript.slice(-20),
+				truncated: true,
+				omittedTurns: 6,
+				nextCursor: expect.any(String),
 			},
 		});
 	});
@@ -309,6 +400,9 @@ describe("runtime native tool host behavior", () => {
 				agent("agent-builder", "Builder", "/agents/builder"),
 			],
 			currentAgentId: "agent-default",
+			recallPolicy: {
+				allows: () => true,
+			},
 			sessions: {
 				getSession: ({ agentId, providerId, sdkSessionId, tag }) => {
 					expect({ agentId, providerId, sdkSessionId, tag }).toEqual({
@@ -494,14 +588,7 @@ describe("runtime native tool host behavior", () => {
 			ok: true,
 			data: {
 				mode: "failed_status",
-				failures: [
-					{
-						jobName: "nightly-summary",
-						sessionRef: "claude/cron-thread-1",
-						startedAt: 1234,
-						error: "model unavailable",
-					},
-				],
+				failures: [],
 				jobNames: ["nightly-summary"],
 			},
 		});
@@ -706,6 +793,59 @@ describe("runtime native tool host behavior", () => {
 			ok: true,
 			data: { events },
 		});
+	});
+
+	test("coding transcript filters tool output and caps returned events", async () => {
+		const events = [
+			{ type: "user_prompt", text: "inspect" },
+			{ type: "command_execution_output", text: "large raw output" },
+			...Array.from({ length: 240 }, (_, index) => ({
+				type: "text",
+				text: `delta ${index + 1}`,
+			})),
+			{ type: "done" },
+		];
+		const host = createRuntimeNativeToolHost({
+			context: {
+				agentId: "agent-default",
+				agentName: "Default",
+				source: "browser",
+				readOnly: true,
+			},
+			agents: [agent("agent-default", "Default", "/agents/default")],
+			currentAgentId: "agent-default",
+			coding: {
+				resolveSession: ({ providerId, sdkSessionId }) => ({
+					providerId,
+					sdkSessionId,
+					runStatus: "idle",
+				}),
+				readEvents: async () => events,
+			},
+		});
+
+		const result = await host.coding({
+			mode: "transcript",
+			sessionRef: "codex/code-thread-1",
+		});
+
+		expect(result).toMatchObject({
+			ok: true,
+			data: {
+				mode: "transcript",
+				sessionRef: "codex/code-thread-1",
+				truncated: true,
+				omittedEvents: 42,
+				nextCursor: expect.any(String),
+			},
+		});
+		if (result.ok && result.data.mode === "transcript") {
+			expect(result.data.events).toHaveLength(200);
+			expect(result.data.events).not.toContainEqual(
+				expect.objectContaining({ type: "command_execution_output" }),
+			);
+			expect(result.data.events.at(-1)).toEqual({ type: "done" });
+		}
 	});
 
 	test("coding list returns repositories and recent coding sessions", async () => {
@@ -1094,6 +1234,7 @@ describe("runtime native tool host behavior", () => {
 
 	test("peer message sends and asks another known agent", async () => {
 		const sent: string[] = [];
+		const askTimeouts: Array<number | undefined> = [];
 		const host = createRuntimeNativeToolHost({
 			context: {
 				agentId: "agent-default",
@@ -1112,8 +1253,10 @@ describe("runtime native tool host behavior", () => {
 					sent.push(`${targetAgentId}:${message}`);
 					return true;
 				},
-				ask: async ({ targetAgentId, message }) =>
-					`answer from ${targetAgentId}: ${message}`,
+				ask: async ({ targetAgentId, message, timeoutSeconds }) => {
+					askTimeouts.push(timeoutSeconds);
+					return `answer from ${targetAgentId}: ${message}`;
+				},
 			},
 		});
 
@@ -1149,6 +1292,7 @@ describe("runtime native tool host behavior", () => {
 			},
 		});
 		expect(sent).toEqual(["agent-builder:please review"]);
+		expect(askTimeouts).toEqual([120]);
 	});
 
 	test("peer message lists known agents without transport setup", async () => {

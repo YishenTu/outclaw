@@ -9,6 +9,55 @@ import type {
 import { createOutclawNativeToolHost } from "../../../src/runtime/native-tools/host.ts";
 
 describe("Outclaw native tool host", () => {
+	test("validates direct host calls before delegation", async () => {
+		const calls: string[] = [];
+		const host = createOutclawNativeToolHost({
+			context: {
+				agentId: "agent-default",
+				agentName: "Default",
+				source: "browser",
+				readOnly: false,
+			},
+			handlers: {
+				peerMessage: async (params) => {
+					calls.push(params.mode);
+					return peerMessageOk(params);
+				},
+				memoryNote: async (params) => {
+					calls.push(params.text);
+					return {
+						ok: true,
+						data: {
+							path: "/memory/daily.md",
+							timestamp: 1,
+						},
+					};
+				},
+			},
+		});
+
+		await expect(
+			host.peerMessage({
+				mode: "unknown",
+				targetAgent: "builder",
+				message: "can you review this?",
+			} as never),
+		).resolves.toMatchObject({
+			ok: false,
+			error: { code: "validation_error" },
+		});
+		await expect(
+			host.memoryNote({
+				text: "Remember this.",
+				unexpected: true,
+			} as never),
+		).resolves.toMatchObject({
+			ok: false,
+			error: { code: "validation_error" },
+		});
+		expect(calls).toEqual([]);
+	});
+
 	test("rejects state-changing and long-running modes in read-only contexts", async () => {
 		const calls: string[] = [];
 		const host = createOutclawNativeToolHost({
@@ -41,6 +90,43 @@ describe("Outclaw native tool host", () => {
 				mode: "send",
 				targetAgent: "builder",
 				message: "please review this",
+			}),
+		).resolves.toMatchObject({
+			ok: false,
+			error: { code: "read_only_violation" },
+		});
+		expect(calls).toEqual([]);
+	});
+
+	test("rejects blocking coding status in read-only contexts", async () => {
+		const calls: string[] = [];
+		const host = createOutclawNativeToolHost({
+			context: {
+				agentId: "agent-default",
+				agentName: "Default",
+				source: "auto-title",
+				readOnly: true,
+			},
+			handlers: {
+				coding: async (params) => {
+					calls.push(params.mode);
+					return {
+						ok: true,
+						data: {
+							mode: "status",
+							sessionRef: "codex/thread-1",
+							status: "idle",
+						},
+					};
+				},
+			},
+		});
+
+		await expect(
+			host.coding({
+				mode: "status",
+				sessionRef: "codex/thread-1",
+				block: true,
 			}),
 		).resolves.toMatchObject({
 			ok: false,
