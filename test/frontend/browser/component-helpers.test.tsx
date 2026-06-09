@@ -62,7 +62,7 @@ describe("browser component helpers", () => {
 		expect(resolveCurrentEffort(null)).toBe("medium");
 		expect(resolveCurrentEffort("xhigh")).toBe("xhigh");
 		expect(resolveCurrentEffort("turbo")).toBe("medium");
-		expect(formatEffortLabel("xhigh")).toBe("XHigh");
+		expect(formatEffortLabel("xhigh")).toBe("xHigh");
 
 		const codexModel = {
 			providerId: "codex",
