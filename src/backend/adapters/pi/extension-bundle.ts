@@ -12,6 +12,7 @@ export const OUTCLAW_PI_EXTENSION_FINGERPRINT_PREFIX =
 
 const EXTENSION_SOURCE_FILES = [
 	OUTCLAW_PI_EXTENSION_SOURCE_FILE,
+	"fast-mode.ts",
 	"web-tools.ts",
 	"default-tools.ts",
 	"outclaw-tools.ts",

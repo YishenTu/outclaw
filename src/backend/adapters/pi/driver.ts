@@ -140,6 +140,9 @@ class PiDriverImpl implements PiDriver {
 			resourceLoader,
 			settingsManager,
 			sessionManager,
+			...(params.serviceTier !== undefined
+				? { sessionStartEvent: createOutclawSessionStartEvent(params) }
+				: {}),
 			...(customTools ? { customTools } : {}),
 			...(params.readOnly ? { tools: readOnlyToolAllowlist(params) } : {}),
 		});
@@ -302,6 +305,20 @@ class PiDriverImpl implements PiDriver {
 		}
 		return found;
 	}
+}
+
+function createOutclawSessionStartEvent(params: PiDriverRunParams): NonNullable<
+	SdkCreateAgentSessionOptions["sessionStartEvent"]
+> & {
+	outclaw?: { serviceTier?: string };
+} {
+	return {
+		type: "session_start",
+		reason: params.resumeSessionId ? "resume" : "startup",
+		outclaw: {
+			serviceTier: params.serviceTier,
+		},
+	};
 }
 
 function readOnlyToolAllowlist(params: PiDriverRunParams): string[] {

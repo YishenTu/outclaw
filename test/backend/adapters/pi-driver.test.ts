@@ -209,6 +209,35 @@ describe("Pi driver", () => {
 		}
 	});
 
+	test("passes selected service tier through session-scoped extension metadata", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const session = new ImmediateSession();
+		const captured: { sessionStartEvent?: unknown } = {};
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () => createSessionStartEventSdk(session, captured),
+		});
+
+		try {
+			await drainRun(
+				driver.run({
+					prompt: "Use fast mode",
+					instructionMode: "provider_default",
+					model: "openai-codex/gpt-5.5",
+					serviceTier: "priority",
+				}),
+			);
+
+			expect(captured.sessionStartEvent).toEqual({
+				type: "session_start",
+				reason: "startup",
+				outclaw: { serviceTier: "priority" },
+			});
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
 	test("uses an in-memory session manager for ephemeral fresh runs", async () => {
 		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
 		const session = new ImmediateSession();
@@ -1349,6 +1378,32 @@ function createModelFallbackSdk(
 		SettingsManager: { inMemory: () => ({}) },
 		DefaultResourceLoader: ReloadableResourceLoader,
 		createAgentSession: async () => ({ session, modelFallbackMessage }),
+	} as never;
+}
+
+function createSessionStartEventSdk(
+	session: ImmediateSession,
+	captured: { sessionStartEvent?: unknown },
+) {
+	return {
+		SessionManager: {
+			create: () => ({ getSessionId: () => session.sessionId }),
+			open: () => ({ getSessionId: () => session.sessionId }),
+			listAll: async () => [{ id: session.sessionId, path: "/session" }],
+		},
+		AuthStorage: { create: () => ({}) },
+		ModelRegistry: {
+			inMemory: () => ({
+				getAll: () => [sdkModel("openai-codex", "gpt-5.5")],
+				getAvailable: () => [],
+			}),
+		},
+		SettingsManager: { inMemory: () => ({}) },
+		DefaultResourceLoader: ReloadableResourceLoader,
+		createAgentSession: async (options: { sessionStartEvent?: unknown }) => {
+			captured.sessionStartEvent = options.sessionStartEvent;
+			return { session };
+		},
 	} as never;
 }
 
