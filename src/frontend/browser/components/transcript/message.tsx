@@ -19,13 +19,15 @@ import {
 	chatImageLabel,
 	inlineChatImageSrc,
 } from "./message-render-projection.ts";
-import { ThinkingBlock } from "./thinking-block.tsx";
+import { ThinkingBlock, ThinkingContent } from "./thinking-block.tsx";
+import type { ThinkingPresentation } from "./transcript-items.ts";
 import { TRANSCRIPT_VERTICAL_GAP_CLASS } from "./transcript-layout.ts";
 
 interface MessageProps {
 	message: DisplayMessage;
 	queued?: boolean;
 	showUtilityBar?: boolean;
+	thinkingPresentation?: ThinkingPresentation;
 }
 
 function renderImageGallery(images: ChatImage[], role: "user" | "assistant") {
@@ -63,6 +65,7 @@ export function Message({
 	message,
 	queued = false,
 	showUtilityBar = false,
+	thinkingPresentation = "block",
 }: MessageProps) {
 	if (message.kind === "system") {
 		if (message.event === "compact_boundary") {
@@ -138,7 +141,11 @@ export function Message({
 				<div className={clsx("flex flex-col", TRANSCRIPT_VERTICAL_GAP_CLASS)}>
 					{withSegmentKeys(segments).map(({ key, segment }) =>
 						segment.type === "thinking" ? (
-							<ThinkingBlock content={segment.text} key={key} />
+							<ThinkingSegment
+								content={segment.text}
+								key={key}
+								presentation={thinkingPresentation}
+							/>
 						) : (
 							segment.text.trim() !== "" && (
 								<div className="px-3" key={key}>
@@ -165,6 +172,20 @@ export function Message({
 			</div>
 		</div>
 	);
+}
+
+function ThinkingSegment({
+	content,
+	presentation,
+}: {
+	content: string;
+	presentation: ThinkingPresentation;
+}) {
+	if (presentation === "inline") {
+		return <ThinkingContent content={content} />;
+	}
+
+	return <ThinkingBlock content={content} />;
 }
 
 function withSegmentKeys(segments: readonly AssistantMessageSegment[]): Array<{

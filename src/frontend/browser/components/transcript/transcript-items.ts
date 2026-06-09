@@ -4,6 +4,8 @@ import type {
 	DisplayMessage,
 } from "../../../../common/protocol.ts";
 
+export type ThinkingPresentation = "block" | "inline";
+
 export type TranscriptItem =
 	| {
 			kind: "message";

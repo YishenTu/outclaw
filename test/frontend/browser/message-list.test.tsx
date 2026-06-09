@@ -178,6 +178,32 @@ describe("browser message list", () => {
 		expect(html).not.toContain("`code`");
 	});
 
+	test("renders chat thinking directly without disclosure chrome", () => {
+		const html = renderToStaticMarkup(
+			<MessageList
+				messages={[
+					{
+						kind: "chat",
+						role: "assistant",
+						thinking: "**Inspecting files** before answering.",
+						content: "done",
+					},
+				]}
+				streamingText=""
+				streamingThinking="Checking context"
+				isStreaming={true}
+				isCompacting={false}
+				thinkingStartedAt={null}
+			/>,
+		);
+
+		expect(html).toContain("<strong>Inspecting files</strong>");
+		expect(html).toContain("Checking context");
+		expect(html).toContain("text-sm italic text-dark-500");
+		expect(html).not.toContain("Thinking");
+		expect(html).not.toContain("<button");
+	});
+
 	test("keeps the spinner visible as working once assistant output starts", () => {
 		const html = renderToStaticMarkup(
 			<MessageList

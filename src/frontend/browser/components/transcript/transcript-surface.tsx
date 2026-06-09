@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { TranscriptItemList } from "./transcript-item-list.tsx";
-import type { TranscriptItem } from "./transcript-items.ts";
+import type {
+	ThinkingPresentation,
+	TranscriptItem,
+} from "./transcript-items.ts";
 import {
 	createTranscriptAutoScrollState,
 	createTranscriptAutoScrollToken,
@@ -13,12 +16,14 @@ interface TranscriptSurfaceProps {
 	emptyMessage?: string;
 	items: TranscriptItem[];
 	sessionKey?: string | null;
+	thinkingPresentation?: ThinkingPresentation;
 }
 
 export function TranscriptSurface({
 	emptyMessage,
 	items,
 	sessionKey = null,
+	thinkingPresentation = "block",
 }: TranscriptSurfaceProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const autoScrollStateRef = useRef(createTranscriptAutoScrollState());
@@ -139,7 +144,11 @@ export function TranscriptSurface({
 				className="scrollbar-none h-full overflow-y-auto overflow-x-hidden overscroll-contain"
 			>
 				<div className="mx-auto max-w-4xl p-4">
-					<TranscriptItemList items={items} emptyMessage={emptyMessage} />
+					<TranscriptItemList
+						items={items}
+						emptyMessage={emptyMessage}
+						thinkingPresentation={thinkingPresentation}
+					/>
 				</div>
 			</div>
 			{showScrollToBottomButton && (

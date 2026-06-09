@@ -65,6 +65,7 @@ Run `bun run check` before considering implementation work done.
 - Treat maintainability issues as findings when they increase future change cost or failure risk.
 - Call out duplicated logic, tight coupling, unclear ownership, shallow modules, and provider/runtime leaks with a concrete refactoring direction.
 - If no material issues are found, say so clearly and mention residual risk or coverage gaps.
+- When asked to use a subagent for review, start a fresh-context subagent with the user's requirements and decisions, then ask it to verify whether the implementation satisfies the task.
 
 ## Stack
 

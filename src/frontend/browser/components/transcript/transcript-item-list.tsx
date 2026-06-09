@@ -1,20 +1,25 @@
 import { clsx } from "clsx";
 import { Message } from "./message.tsx";
-import { ThinkingBlock } from "./thinking-block.tsx";
+import { ThinkingBlock, ThinkingContent } from "./thinking-block.tsx";
 import { ThinkingIndicator } from "./thinking-indicator.tsx";
-import type { TranscriptItem } from "./transcript-items.ts";
+import type {
+	ThinkingPresentation,
+	TranscriptItem,
+} from "./transcript-items.ts";
 import { TRANSCRIPT_VERTICAL_GAP_CLASS } from "./transcript-layout.ts";
 
 interface TranscriptItemListProps {
 	className?: string;
 	emptyMessage?: string;
 	items: TranscriptItem[];
+	thinkingPresentation?: ThinkingPresentation;
 }
 
 export function TranscriptItemList({
 	className,
 	emptyMessage,
 	items,
+	thinkingPresentation = "block",
 }: TranscriptItemListProps) {
 	if (items.length === 0 && !emptyMessage) {
 		return null;
@@ -31,13 +36,25 @@ export function TranscriptItemList({
 			{items.length === 0 ? (
 				<div className="text-sm text-dark-400">{emptyMessage}</div>
 			) : (
-				items.map((item) => <TranscriptItemView key={item.key} item={item} />)
+				items.map((item) => (
+					<TranscriptItemView
+						item={item}
+						key={item.key}
+						thinkingPresentation={thinkingPresentation}
+					/>
+				))
 			)}
 		</div>
 	);
 }
 
-function TranscriptItemView({ item }: { item: TranscriptItem }) {
+function TranscriptItemView({
+	item,
+	thinkingPresentation,
+}: {
+	item: TranscriptItem;
+	thinkingPresentation: ThinkingPresentation;
+}) {
 	switch (item.kind) {
 		case "message":
 			return (
@@ -45,9 +62,13 @@ function TranscriptItemView({ item }: { item: TranscriptItem }) {
 					message={item.message}
 					queued={item.queued}
 					showUtilityBar={item.showUtilityBar}
+					thinkingPresentation={thinkingPresentation}
 				/>
 			);
 		case "thinking":
+			if (thinkingPresentation === "inline") {
+				return <ThinkingContent content={item.content} />;
+			}
 			return <ThinkingBlock content={item.content} />;
 		case "activity":
 			return (

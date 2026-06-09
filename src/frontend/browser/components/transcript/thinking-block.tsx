@@ -6,6 +6,21 @@ interface ThinkingBlockProps {
 	content: string;
 }
 
+export function ThinkingContent({ content }: ThinkingBlockProps) {
+	if (content.trim() === "") {
+		return null;
+	}
+
+	return (
+		<div className="px-3 py-2 text-sm italic text-dark-500">
+			<MarkdownContent
+				content={content}
+				className="text-dark-500 prose-strong:text-dark-300"
+			/>
+		</div>
+	);
+}
+
 export function ThinkingBlock({ content }: ThinkingBlockProps) {
 	const [expanded, setExpanded] = useState(false);
 	const renderBody = expanded || typeof window === "undefined";
@@ -35,12 +50,7 @@ export function ThinkingBlock({ content }: ThinkingBlockProps) {
 			</button>
 			{renderBody && (
 				<div className="bg-dark-950/50">
-					<div className="px-3 py-2 text-sm italic text-dark-500">
-						<MarkdownContent
-							content={content}
-							className="text-dark-500 prose-strong:text-dark-300"
-						/>
-					</div>
+					<ThinkingContent content={content} />
 				</div>
 			)}
 		</div>

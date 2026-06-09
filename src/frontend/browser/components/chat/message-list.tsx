@@ -60,5 +60,11 @@ export const MessageList = memo(function MessageList({
 		],
 	);
 
-	return <TranscriptSurface sessionKey={sessionKey} items={items} />;
+	return (
+		<TranscriptSurface
+			sessionKey={sessionKey}
+			items={items}
+			thinkingPresentation="inline"
+		/>
+	);
 });
