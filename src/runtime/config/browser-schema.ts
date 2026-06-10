@@ -1,12 +1,6 @@
 import { EFFORT_LEVELS } from "../../common/commands.ts";
 import type { BrowserConfigSchemaNode } from "../../common/protocol.ts";
 
-const booleanLeaf = {
-	kind: "leaf",
-	editorKinds: ["boolean"],
-	typeLabel: "boolean",
-} as const;
-
 const numberLeaf = {
 	kind: "leaf",
 	editorKinds: ["number"],
@@ -23,7 +17,6 @@ export function createBrowserConfigSchema(): BrowserConfigSchemaNode {
 	return {
 		kind: "object",
 		properties: {
-			autoCompact: booleanLeaf,
 			autoTitle: {
 				kind: "object",
 				properties: {

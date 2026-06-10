@@ -62,7 +62,6 @@ describe("agent onboarding", () => {
 						},
 					},
 				},
-				autoCompact: true,
 				host: "127.0.0.1",
 				heartbeat: {
 					deferMinutes: 0,
@@ -105,7 +104,6 @@ describe("agent onboarding", () => {
 						},
 					},
 				},
-				autoCompact: true,
 				host: "127.0.0.1",
 				heartbeat: {
 					deferMinutes: 0,

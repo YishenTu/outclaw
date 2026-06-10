@@ -12,7 +12,6 @@ import {
 
 export interface ConfigDocument extends Record<string, unknown> {
 	agents?: Record<string, StoredAgentConfig>;
-	autoCompact?: boolean;
 	autoTitle?: {
 		model?: string;
 	};
@@ -26,7 +25,6 @@ export interface ConfigDocument extends Record<string, unknown> {
 }
 
 export const DEFAULT_GLOBAL_CONFIG = {
-	autoCompact: true,
 	heartbeat: {
 		intervalMinutes: 30,
 		deferMinutes: 0,
@@ -46,6 +44,8 @@ export function configPathFor(homeDir: string): string {
 
 export function normalizeConfigDocument(raw: unknown): ConfigDocument {
 	const document = isObject(raw) ? raw : {};
+	const { autoCompact: _autoCompact, ...documentWithoutObsoleteFields } =
+		document;
 	const heartbeat = isObject(document.heartbeat) ? document.heartbeat : {};
 	const agents = isObject(document.agents) ? document.agents : {};
 	const normalizedAgents = isObject(document.agents)
@@ -58,12 +58,8 @@ export function normalizeConfigDocument(raw: unknown): ConfigDocument {
 		: undefined;
 
 	return {
-		...document,
+		...documentWithoutObsoleteFields,
 		...(normalizedAgents ? { agents: normalizedAgents } : {}),
-		autoCompact:
-			typeof document.autoCompact === "boolean"
-				? document.autoCompact
-				: DEFAULT_GLOBAL_CONFIG.autoCompact,
 		host:
 			typeof document.host === "string" && document.host.trim() !== ""
 				? document.host

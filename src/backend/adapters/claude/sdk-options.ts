@@ -40,7 +40,6 @@ export interface ClaudeSdkRunOptions {
 export function buildClaudeSdkOptions(
 	params: RunParams,
 	abortController: AbortController,
-	autoCompact: boolean,
 ): ClaudeSdkRunOptions {
 	const systemPrompt =
 		params.instructionPolicy?.mode === "runtime_constructed"
@@ -65,7 +64,7 @@ export function buildClaudeSdkOptions(
 		permissionMode: "bypassPermissions",
 		allowDangerouslySkipPermissions: true,
 		includePartialMessages: params.stream ?? true,
-		settings: buildClaudeAutoCompactSettings(params.model, autoCompact),
+		settings: buildClaudeAutoCompactSettings(params.model),
 		tools: params.executionMode === "read_only" ? [] : CLAUDE_TOOLS,
 		hooks: { PreToolUse: [blockDotClaudeHookMatcher] },
 	};
@@ -73,9 +72,8 @@ export function buildClaudeSdkOptions(
 
 function buildClaudeAutoCompactSettings(
 	model: string | undefined,
-	autoCompact: boolean,
 ): { autoCompactWindow: number } | undefined {
-	if (!autoCompact || !model) return undefined;
+	if (!model) return undefined;
 	const contextWindow = claudeContextWindowForModel(model);
 	if (!contextWindow) return undefined;
 	return { autoCompactWindow: Math.round(contextWindow * 0.8) };

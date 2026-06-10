@@ -10,7 +10,6 @@ import {
 import { loadSharedEnv } from "./env.ts";
 
 export interface GlobalConfig {
-	autoCompact: boolean;
 	/**
 	 * Optional global title-generation model. When omitted, the runtime
 	 * disables generated titles and keeps the deterministic fallback title.
@@ -32,7 +31,6 @@ export interface GlobalConfig {
 export type Config = GlobalConfig;
 
 export interface GlobalConfigPatch {
-	autoCompact?: boolean;
 	heartbeat?: {
 		intervalMinutes?: number;
 		deferMinutes?: number;
@@ -77,9 +75,6 @@ export function updateGlobalConfig(
 	const normalized = normalizeConfigDocument(raw);
 	const nextDocument = {
 		...normalized,
-		...(patch.autoCompact !== undefined
-			? { autoCompact: patch.autoCompact }
-			: {}),
 		...(patch.host !== undefined ? { host: patch.host } : {}),
 		...(patch.port !== undefined ? { port: patch.port } : {}),
 		...(patch.thinkingEffort !== undefined
@@ -104,7 +99,6 @@ export function updateGlobalConfig(
 function globalConfigFromDocument(document: ConfigDocument): GlobalConfig {
 	const autoTitleModel = resolveAutoTitleModel(document);
 	return {
-		autoCompact: document.autoCompact ?? DEFAULTS.autoCompact,
 		...(autoTitleModel ? { autoTitle: { model: autoTitleModel } } : {}),
 		heartbeat: {
 			intervalMinutes:

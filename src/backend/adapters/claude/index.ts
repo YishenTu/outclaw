@@ -38,7 +38,6 @@ interface ClaudeAdapterSdk {
 }
 
 interface ClaudeAdapterOptions {
-	autoCompact?: boolean;
 	claudeProjectsDir?: string;
 	sdk?: ClaudeAdapterSdk;
 	sleep?: (ms: number) => Promise<void>;
@@ -53,10 +52,7 @@ export class ClaudeAdapter implements Facade {
 	private readonly sleep: (ms: number) => Promise<void>;
 	private readonly unlinkFile: (path: string) => void;
 
-	readonly autoCompact: boolean;
-
 	constructor(options: ClaudeAdapterOptions = {}) {
-		this.autoCompact = options.autoCompact ?? true;
 		this.sdk = options.sdk;
 		this.claudeProjectsDir = options.claudeProjectsDir;
 		this.sleep = options.sleep ?? waitFor;
@@ -118,11 +114,7 @@ export class ClaudeAdapter implements Facade {
 		try {
 			const conversation = sdk.query({
 				prompt: createClaudePromptInput(params),
-				options: buildClaudeSdkOptions(
-					params,
-					abortController,
-					this.autoCompact,
-				),
+				options: buildClaudeSdkOptions(params, abortController),
 			});
 
 			for await (const event of normalizeClaudeStream({

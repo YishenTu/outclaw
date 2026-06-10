@@ -15,7 +15,7 @@ import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules
 const TEST_CONFIG_SCHEMA: BrowserConfigSchemaNode = {
 	kind: "object",
 	properties: {
-		autoCompact: {
+		enabled: {
 			kind: "leaf",
 			editorKinds: ["boolean"],
 			typeLabel: "boolean",
@@ -95,7 +95,7 @@ describe("config panel", () => {
 		expect(
 			parseConfigEntries(
 				{
-					autoCompact: true,
+					enabled: true,
 					heartbeat: {
 						intervalMinutes: 30,
 						deferMinutes: 0,
@@ -118,8 +118,8 @@ describe("config panel", () => {
 		).toEqual([
 			{
 				allowedValueKinds: ["boolean"],
-				displayItem: "autoCompact",
-				item: "autoCompact",
+				displayItem: "enabled",
+				item: "enabled",
 				typeLabel: "boolean",
 				value: "true",
 				valueKind: "boolean",
@@ -435,7 +435,7 @@ describe("config panel", () => {
 				{
 					host: "127.0.0.1",
 					port: 4000,
-					autoCompact: true,
+					enabled: true,
 					heartbeat: {
 						intervalMinutes: 30,
 					},
@@ -454,7 +454,7 @@ describe("config panel", () => {
 						valueKind: "number",
 					},
 					{
-						item: "autoCompact",
+						item: "enabled",
 						typeLabel: "boolean",
 						value: "false",
 						valueKind: "boolean",
@@ -470,7 +470,7 @@ describe("config panel", () => {
 		).toEqual({
 			host: "0.0.0.0",
 			port: 4100,
-			autoCompact: false,
+			enabled: false,
 			heartbeat: {
 				intervalMinutes: 45,
 			},

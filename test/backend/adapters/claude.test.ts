@@ -1360,7 +1360,7 @@ describe("ClaudeAdapter", () => {
 		]);
 	});
 
-	test("passes autoCompactWindow to SDK settings when autoCompact is enabled and model is known", async () => {
+	test("passes autoCompactWindow to SDK settings when model is known", async () => {
 		const query = mock((_params: unknown) =>
 			(async function* () {
 				yield {
@@ -1373,7 +1373,6 @@ describe("ClaudeAdapter", () => {
 		);
 
 		const { adapter } = createAdapter({ query });
-		// adapter has autoCompact: true by default
 
 		for await (const _event of adapter.run({
 			prompt: "hello",
@@ -1386,40 +1385,6 @@ describe("ClaudeAdapter", () => {
 			options: { settings?: { autoCompactWindow?: number } };
 		};
 		expect(args.options.settings?.autoCompactWindow).toBe(800_000);
-	});
-
-	test("does not pass autoCompactWindow when autoCompact is disabled", async () => {
-		const query = mock((_params: unknown) =>
-			(async function* () {
-				yield {
-					type: "result",
-					session_id: "sdk-no-compact",
-					duration_ms: 1,
-					total_cost_usd: 0,
-				};
-			})(),
-		);
-
-		const options: ConstructorParameters<typeof ClaudeAdapter>[0] = {
-			autoCompact: false,
-			sdk: {
-				query: query as never,
-				getSessionMessages: mock(async () => []) as never,
-			},
-		};
-		const adapter = new ClaudeAdapter(options);
-
-		for await (const _event of adapter.run({
-			prompt: "hello",
-			model: "claude-opus-4-7[1m]",
-		})) {
-			// Drain
-		}
-
-		const args = query.mock.calls[0]?.[0] as {
-			options: { settings?: { autoCompactWindow?: number } };
-		};
-		expect(args.options.settings).toBeUndefined();
 	});
 
 	test("does not pass autoCompactWindow when model context window is unknown", async () => {

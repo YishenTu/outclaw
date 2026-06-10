@@ -37,7 +37,6 @@ describe("loadGlobalConfig", () => {
 			expect(
 				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
 			).toEqual({
-				autoCompact: true,
 				host: "127.0.0.1",
 				heartbeat: {
 					intervalMinutes: 30,
@@ -98,12 +97,13 @@ describe("loadGlobalConfig", () => {
 		}
 	});
 
-	test("preserves unknown config fields while only returning runtime-global values", () => {
+	test("drops obsolete autoCompact while preserving unknown config fields", () => {
 		const dir = tmp();
 		try {
 			writeFileSync(
 				join(dir, "config.json"),
 				JSON.stringify({
+					autoCompact: false,
 					telegram: {
 						botToken: "tok",
 						allowedUsers: [123],
@@ -122,7 +122,6 @@ describe("loadGlobalConfig", () => {
 			expect(
 				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
 			).toEqual({
-				autoCompact: true,
 				host: "127.0.0.1",
 				heartbeat: {
 					intervalMinutes: 30,
@@ -203,33 +202,6 @@ describe("loadGlobalConfig", () => {
 				if (original[key] === undefined) delete process.env[key];
 				else process.env[key] = original[key];
 			}
-			rmSync(dir, { recursive: true });
-		}
-	});
-
-	test("defaults autoCompact to true when not specified", () => {
-		const dir = tmp();
-		try {
-			const config = loadGlobalConfig(dir);
-			expect(config.autoCompact).toBe(true);
-			expect(config.host).toBe("127.0.0.1");
-			expect(config.thinkingEffort).toBe("medium");
-		} finally {
-			rmSync(dir, { recursive: true });
-		}
-	});
-
-	test("reads autoCompact false from config", () => {
-		const dir = tmp();
-		try {
-			writeFileSync(
-				join(dir, "config.json"),
-				JSON.stringify({ autoCompact: false }),
-			);
-			const config = loadGlobalConfig(dir);
-			expect(config.autoCompact).toBe(false);
-			expect(config.thinkingEffort).toBe("medium");
-		} finally {
 			rmSync(dir, { recursive: true });
 		}
 	});
@@ -351,7 +323,6 @@ describe("loadGlobalConfig", () => {
 			expect(
 				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
 			).toEqual({
-				autoCompact: true,
 				host: "127.0.0.1",
 				heartbeat: {
 					intervalMinutes: 30,
@@ -403,7 +374,6 @@ describe("loadGlobalConfig", () => {
 			expect(
 				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
 			).toEqual({
-				autoCompact: true,
 				host: "127.0.0.1",
 				heartbeat: {
 					intervalMinutes: 30,
@@ -465,7 +435,6 @@ describe("loadGlobalConfig", () => {
 			);
 
 			const config = updateGlobalConfig(dir, {
-				autoCompact: false,
 				host: "0.0.0.0",
 				heartbeat: {
 					intervalMinutes: 60,
@@ -475,7 +444,6 @@ describe("loadGlobalConfig", () => {
 			});
 
 			expect(config).toEqual({
-				autoCompact: false,
 				host: "0.0.0.0",
 				heartbeat: {
 					intervalMinutes: 60,
@@ -487,7 +455,6 @@ describe("loadGlobalConfig", () => {
 			expect(
 				JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")),
 			).toEqual({
-				autoCompact: false,
 				host: "0.0.0.0",
 				heartbeat: {
 					intervalMinutes: 60,

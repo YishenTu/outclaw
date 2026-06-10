@@ -167,9 +167,7 @@ function startMultiAgentDaemon(
 		| ((event: BrowserChatCodingLinksChangedEvent) => void)
 		| undefined;
 	const runtimes = agents.map((agent) => {
-		const claudeAdapter = new ClaudeAdapter({
-			autoCompact: config.autoCompact,
-		});
+		const claudeAdapter = new ClaudeAdapter();
 		claudeAdapter.prepareWorkspace(agent.promptHomeDir);
 		// Materialize the Codex provider view of the agent workspace (skills
 		// symlink + .codex/config.toml) so Codex Chat threads can load the

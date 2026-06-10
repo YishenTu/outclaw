@@ -83,7 +83,6 @@ describe("agent management", () => {
 						},
 					},
 				},
-				autoCompact: true,
 				host: "127.0.0.1",
 				heartbeat: {
 					deferMinutes: 0,
@@ -130,7 +129,6 @@ describe("agent management", () => {
 						},
 					},
 				},
-				autoCompact: true,
 				host: "127.0.0.1",
 				heartbeat: {
 					deferMinutes: 0,
@@ -435,7 +433,6 @@ describe("agent management", () => {
 						},
 					},
 				},
-				autoCompact: true,
 				host: "127.0.0.1",
 				heartbeat: {
 					deferMinutes: 0,
