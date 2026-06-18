@@ -403,7 +403,7 @@ function createSessionEnvBashTool(
 ): SdkCustomTool {
 	return sdk.createBashToolDefinition(cwd, {
 		spawnHook: (context) => ({
-			command: context.command,
+			command: validateOutclawDaemonCommand(context.command),
 			cwd: context.cwd,
 			env: {
 				...context.env,
@@ -411,6 +411,17 @@ function createSessionEnvBashTool(
 			},
 		}),
 	}) as SdkCustomTool;
+}
+
+const OUTCLAW_DAEMON_STOP_PATTERN = /(?:^|[;&|()\s])oc\s+stop(?:\s|$)/;
+
+function validateOutclawDaemonCommand(command: string): string {
+	if (OUTCLAW_DAEMON_STOP_PATTERN.test(command)) {
+		throw new Error(
+			"Refusing to run `oc stop` from inside an active agent session because it stops the daemon and aborts the current response. Use `oc restart` when a daemon restart is explicitly needed.",
+		);
+	}
+	return command;
 }
 
 async function loadPromptImages(

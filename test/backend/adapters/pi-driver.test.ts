@@ -456,6 +456,65 @@ describe("Pi driver", () => {
 		}
 	});
 
+	test("blocks daemon stop commands from active Pi bash sessions", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const session = new ImmediateSession();
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createSessionEnvSdk(session, {}, "oc stop && sleep 2"),
+		});
+
+		try {
+			await expect(
+				drainRun(
+					driver.run({
+						prompt: "Inspect and restart",
+						instructionMode: "provider_default",
+						model: "anthropic/claude-sonnet-4-5",
+						sessionEnv: {
+							OC_MEMORY_ROOT: "/tmp/outclaw-memory",
+							OC_SESSION_ID: "oc-session-1",
+						},
+					}),
+				),
+			).rejects.toThrow(
+				"Refusing to run `oc stop` from inside an active agent session",
+			);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("allows daemon restart commands from active Pi bash sessions", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const session = new ImmediateSession();
+		const captured: { command?: string; env?: NodeJS.ProcessEnv } = {};
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createSessionEnvSdk(session, captured, "oc restart && sleep 2"),
+		});
+
+		try {
+			await drainRun(
+				driver.run({
+					prompt: "Inspect and restart",
+					instructionMode: "provider_default",
+					model: "anthropic/claude-sonnet-4-5",
+					sessionEnv: {
+						OC_MEMORY_ROOT: "/tmp/outclaw-memory",
+						OC_SESSION_ID: "oc-session-1",
+					},
+				}),
+			);
+
+			expect(captured.command).toBe("oc restart && sleep 2");
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
 	test("registers native Outclaw tools with the Pi SDK when a host is supplied", async () => {
 		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
 		const session = new ImmediateSession();
@@ -1023,6 +1082,92 @@ describe("Pi driver", () => {
 		}
 	});
 
+	test("reads Pi v3 JSONL-style final assistant text segments", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createReadSdk([
+					{
+						type: "message",
+						timestamp: "2026-06-13T00:00:00.058Z",
+						message: {
+							role: "user",
+							content: [{ type: "text", text: "Run morning push" }],
+							timestamp: 1781308800058,
+						},
+					},
+					{
+						type: "message",
+						timestamp: "2026-06-13T00:00:54.019Z",
+						message: {
+							role: "assistant",
+							content: [
+								{ type: "thinking", thinking: "Checking files" },
+								{
+									type: "text",
+									text: "pushed: 丙午年 甲午月 戊午日 + health-check",
+									textSignature: '{"phase":"final_answer"}',
+								},
+							],
+							stopReason: "stop",
+							timestamp: 1781308854019,
+						},
+					},
+				]),
+		});
+
+		try {
+			await expect(driver.readSession("pi-session")).resolves.toEqual({
+				id: "pi-session",
+				messages: [
+					{
+						role: "user",
+						content: "Run morning push",
+						timestamp: 1781308800058,
+					},
+					{
+						role: "assistant",
+						segments: [
+							{ type: "thinking", text: "Checking files" },
+							{
+								type: "text",
+								text: "pushed: 丙午年 甲午月 戊午日 + health-check",
+							},
+						],
+						timestamp: 1781308854019,
+					},
+				],
+				entries: [
+					{
+						type: "message",
+						message: {
+							role: "user",
+							content: "Run morning push",
+							timestamp: 1781308800058,
+						},
+					},
+					{
+						type: "message",
+						message: {
+							role: "assistant",
+							segments: [
+								{ type: "thinking", text: "Checking files" },
+								{
+									type: "text",
+									text: "pushed: 丙午年 甲午月 戊午日 + health-check",
+								},
+							],
+							timestamp: 1781308854019,
+						},
+					},
+				],
+			});
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
 	test("reads Pi session branch entries with compactions and prompt images", async () => {
 		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
 		const driver = createPiDriver({
@@ -1493,7 +1638,8 @@ function createSessionStartEventSdk(
 
 function createSessionEnvSdk(
 	session: ImmediateSession,
-	captured: { env?: NodeJS.ProcessEnv },
+	captured: { command?: string; env?: NodeJS.ProcessEnv },
+	command = "printenv OC_SESSION_ID",
 ) {
 	return {
 		SessionManager: {
@@ -1525,11 +1671,13 @@ function createSessionEnvSdk(
 			description: "Run shell commands",
 			parameters: {},
 			execute: async () => {
-				captured.env = options.spawnHook({
-					command: "printenv OC_SESSION_ID",
+				const spawnOptions = options.spawnHook({
+					command,
 					cwd: "/workspace",
 					env: { PATH: "/usr/bin" },
-				}).env;
+				});
+				captured.command = spawnOptions.command;
+				captured.env = spawnOptions.env;
 				return { content: [] };
 			},
 		}),

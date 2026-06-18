@@ -91,6 +91,12 @@ export class CronExecutionPolicy {
 			const runResult = normalizeRunResult(
 				await this.options.runAgent(job.config.prompt, model, effort),
 			);
+			if (runResult.text.trim() === "") {
+				throw Object.assign(new Error("Cron run produced no assistant text"), {
+					...(runResult.providerId ? { providerId: runResult.providerId } : {}),
+					...(runResult.sessionId ? { sessionId: runResult.sessionId } : {}),
+				});
+			}
 
 			if (isSuppressedCronResult(runResult.text)) {
 				await this.options.onResult({

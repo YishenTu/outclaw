@@ -26,6 +26,10 @@ interface RuntimeCronBroadcasterOptions {
 		telegramChatId: number;
 		text: string;
 	}) => Promise<void> | void;
+	refreshTranscript?: (
+		providerId: string,
+		sessionId: string,
+	) => Promise<void> | void;
 	sessions: SessionService;
 }
 
@@ -58,6 +62,15 @@ export class RuntimeCronBroadcaster {
 						}
 					: {}),
 			});
+			if (!result.persistResultText && this.options.refreshTranscript) {
+				try {
+					await this.options.refreshTranscript(providerId, result.sessionId);
+				} catch (err) {
+					console.error(
+						`Failed to refresh cron transcript snapshot: ${extractError(err)}`,
+					);
+				}
+			}
 			this.notifyBrowserCronChanged();
 		}
 

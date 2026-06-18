@@ -14,11 +14,11 @@
 #                 "2026-04-29T09:00:00+08:00"
 #                 "2026-04-29T01:00:00Z"
 #               Use exactly one of schedule or runAt.
+#   model     — provider-qualified model, e.g. openai-codex/gpt-5.5
 #   prompt    — the task description the agent reads when the cron fires
 #
 # OPTIONAL fields:
 #   enabled   — false to disable without deleting (default: true)
-#   model     — openai-codex/gpt-5.5 | gpt-5.4-mini (default: the agent's current model)
 #   effort    — low | medium | high | xhigh | max (default: runtime config)
 #   timezone  — UTC offset for the schedule: "UTC", "UTC+8", "UTC-7"
 #               (default: daemon's local timezone — leave this field OUT
@@ -37,7 +37,7 @@ schedule: "0 9 * * 1"
 # For one-time jobs, replace schedule with:
 # runAt: "2026-04-29T09:00:00+08:00"
 enabled: true
-# model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.5
 # effort: medium
 # timezone: UTC
 prompt: |

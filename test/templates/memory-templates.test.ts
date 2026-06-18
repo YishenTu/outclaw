@@ -73,9 +73,9 @@ describe("memory template contract", () => {
 		];
 
 		expect(template).toContain(
-			"#   model     — openai-codex/gpt-5.5 | gpt-5.4-mini",
+			"#   model     — provider-qualified model, e.g. openai-codex/gpt-5.5",
 		);
-		expect(template).toContain("# model: openai-codex/gpt-5.5");
+		expect(template).toContain("model: openai-codex/gpt-5.5");
 		expect(template).not.toContain("opus | sonnet | haiku");
 
 		for (const templatePath of maintenanceTemplatePaths) {

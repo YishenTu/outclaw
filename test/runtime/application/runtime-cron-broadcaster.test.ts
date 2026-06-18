@@ -277,6 +277,55 @@ describe("RuntimeCronBroadcaster", () => {
 		);
 	});
 
+	test("refreshes provider transcript snapshots for successful cron sessions", async () => {
+		const clients = createGateway();
+		const { sessions } = createSessionsRecorder();
+		const refreshed: Array<{ providerId: string; sessionId: string }> = [];
+		const broadcaster = new RuntimeCronBroadcaster({
+			clients,
+			refreshTranscript: (providerId, sessionId) => {
+				refreshed.push({ providerId, sessionId });
+			},
+			sessions,
+		});
+
+		await broadcaster.broadcastResult({
+			jobName: "daily",
+			model: "gpt-5.5",
+			providerId: "pi",
+			sessionId: "pi-cron-session",
+			text: "summary",
+		});
+
+		expect(refreshed).toEqual([
+			{ providerId: "pi", sessionId: "pi-cron-session" },
+		]);
+	});
+
+	test("keeps fallback error text instead of refreshing failed synthetic sessions", async () => {
+		const clients = createGateway();
+		const { sessions } = createSessionsRecorder();
+		const refreshed: unknown[] = [];
+		const broadcaster = new RuntimeCronBroadcaster({
+			clients,
+			refreshTranscript: (providerId, sessionId) => {
+				refreshed.push({ providerId, sessionId });
+			},
+			sessions,
+		});
+
+		await broadcaster.broadcastResult({
+			failureMessage: "agent exploded",
+			jobName: "daily",
+			model: "haiku",
+			persistResultText: true,
+			sessionId: "synthetic-error-session",
+			text: "[error] agent exploded",
+		});
+
+		expect(refreshed).toEqual([]);
+	});
+
 	test("Telegram delivery failures are logged without failing the broadcast", async () => {
 		const originalConsoleError = console.error;
 		const logged: string[] = [];

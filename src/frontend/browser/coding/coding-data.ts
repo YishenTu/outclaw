@@ -119,10 +119,7 @@ export function useCodingDataLoader(enabled = true) {
 	const setRepositorySessions = useCodingStore(
 		(state) => state.setRepositorySessions,
 	);
-	const codingModelsLoaded = useCodingStore(
-		(state) => state.codingModelsLoaded,
-	);
-	const setCodingModels = useCodingStore((state) => state.setCodingModels);
+	useCodingModelsLoader(enabled);
 
 	useEffect(() => {
 		if (!enabled || repositoriesLoaded) {
@@ -139,19 +136,6 @@ export function useCodingDataLoader(enabled = true) {
 				console.warn("Failed to load coding repositories", error);
 			});
 	}, [enabled, repositoriesLoaded, setRepositories]);
-
-	useEffect(() => {
-		if (!enabled || codingModelsLoaded) {
-			return;
-		}
-		void fetchCodingModels()
-			.then((result) => {
-				setCodingModels(result.models);
-			})
-			.catch((error) => {
-				console.warn("Failed to load coding models", error);
-			});
-	}, [codingModelsLoaded, enabled, setCodingModels]);
 
 	useEffect(() => {
 		if (!enabled || !focusedRepositoryId) {
@@ -180,6 +164,26 @@ export function useCodingDataLoader(enabled = true) {
 		sessionsByRepository,
 		setRepositorySessions,
 	]);
+}
+
+export function useCodingModelsLoader(enabled = true) {
+	const codingModelsLoaded = useCodingStore(
+		(state) => state.codingModelsLoaded,
+	);
+	const setCodingModels = useCodingStore((state) => state.setCodingModels);
+
+	useEffect(() => {
+		if (!enabled || codingModelsLoaded) {
+			return;
+		}
+		void fetchCodingModels()
+			.then((result) => {
+				setCodingModels(result.models);
+			})
+			.catch((error) => {
+				console.warn("Failed to load coding models", error);
+			});
+	}, [codingModelsLoaded, enabled, setCodingModels]);
 }
 
 /**

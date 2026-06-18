@@ -13,6 +13,7 @@ import type {
 	ProviderWorkspaceMetadata,
 	SessionCursor,
 } from "./common/protocol.ts";
+import { extractError } from "./common/protocol.ts";
 import { deriveTelegramBotId } from "./common/telegram.ts";
 import type { TelegramMessageFileRecord } from "./frontend/telegram/files/message-file-ref.ts";
 import { copyTelegramFile } from "./frontend/telegram/files/storage.ts";
@@ -75,23 +76,30 @@ writeFileSync(layout.readyPath, `${process.pid}\n`);
 
 let shuttingDown = false;
 
-async function shutdown() {
+async function shutdown(reason: "SIGINT" | "SIGTERM") {
 	if (shuttingDown) {
 		return;
 	}
 	shuttingDown = true;
 
-	await daemon.stop();
-	rmSync(layout.readyPath, { force: true });
-	pidManager.remove();
-	process.exit(0);
+	console.log(`daemon shutdown requested (${reason})`);
+	try {
+		await daemon.stop();
+		rmSync(layout.readyPath, { force: true });
+		pidManager.remove();
+		console.log(`daemon shutdown complete (${reason})`);
+		process.exit(0);
+	} catch (err) {
+		console.error(`daemon shutdown failed (${reason}): ${extractError(err)}`);
+		process.exit(1);
+	}
 }
 
 process.on("SIGINT", () => {
-	void shutdown();
+	void shutdown("SIGINT");
 });
 process.on("SIGTERM", () => {
-	void shutdown();
+	void shutdown("SIGTERM");
 });
 
 function startMultiAgentDaemon(

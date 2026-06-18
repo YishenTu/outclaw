@@ -226,6 +226,14 @@ export function createRuntimeController(
 		agentId: options.agentId,
 		clients,
 		deliverCronResult: options.deliverCronResult,
+		refreshTranscript: async (providerId, sessionId) => {
+			const historyReader = historyReaders.getHistoryReader(providerId);
+			await options.sessions.refreshTranscript(
+				providerId,
+				sessionId,
+				historyReader.readTranscript?.bind(historyReader),
+			);
+		},
 		sessions: options.sessions,
 	});
 	const messageRouter = new RuntimeMessageRouter({

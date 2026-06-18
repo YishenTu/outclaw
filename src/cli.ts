@@ -14,6 +14,7 @@ const argv = process.argv;
 const daemon = createDaemonCommands({
 	argv,
 	browserDir: layout.browserDir,
+	cliEntry: layout.cliEntry,
 	daemonEntry: layout.daemonEntry,
 	homeDir: layout.homeDir,
 	logPath: layout.logPath,

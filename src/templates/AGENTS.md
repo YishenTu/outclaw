@@ -62,6 +62,8 @@ Outclaw workflows are native tools, not shell commands. Use them directly:
 
 The `oc` executable is only for operator daemon commands: `oc build`, `oc start`, `oc stop`, `oc restart`, `oc status`, `oc tui`, `oc browser`, `oc onboard`, and `oc dev`. Do not use shell commands for Outclaw workflows when a native tool exists.
 
+Do not run `oc stop` from inside an active agent response. `oc restart` is allowed when a daemon restart is explicitly needed; it hands off to a detached restart helper, but the current response may still be interrupted while the daemon restarts.
+
 ## Coding
 
 When the user asks you to write, modify, or debug code, use `outclaw_coding`. Start new work with `mode: "start"`, continue existing work with `mode: "resume"`, inspect progress with `mode: "status"` or `mode: "transcript"`, and use `mode: "list"` to discover repositories or recent coding sessions.

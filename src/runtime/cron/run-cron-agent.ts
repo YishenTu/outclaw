@@ -114,6 +114,13 @@ export function createCronAgentRunner(options: RunCronAgentOptions) {
 				completedSessionId ?? sessionId,
 			);
 		}
+		if (resultText.trim() === "") {
+			throw new CronAgentRunError(
+				"Cron run produced no assistant text",
+				providerId,
+				completedSessionId ?? sessionId,
+			);
+		}
 
 		return {
 			providerId,

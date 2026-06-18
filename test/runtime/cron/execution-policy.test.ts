@@ -160,6 +160,36 @@ describe("CronExecutionPolicy", () => {
 		]);
 	});
 
+	test("treats empty successful runs as failures", async () => {
+		const results: unknown[] = [];
+		const policy = new CronExecutionPolicy({
+			getDefaultEffort: () => "medium",
+			onResult: (result) => {
+				results.push(result);
+			},
+			runAgent: async () => ({
+				providerId: "pi",
+				sessionId: "empty-cron-session",
+				text: "   ",
+			}),
+		});
+
+		await policy.runScheduledJob(makeJob());
+
+		expect(results).toEqual([
+			{
+				failureMessage: "Cron run produced no assistant text",
+				jobName: "test-job",
+				model: "opus",
+				persistResultText: true,
+				providerId: "pi",
+				sessionId: "empty-cron-session",
+				telegramChatId: undefined,
+				text: "[error] Cron run produced no assistant text",
+			},
+		]);
+	});
+
 	test("synthesizes a cron session id when a failed run has none", async () => {
 		const results: Array<{ sessionId?: string }> = [];
 		const policy = new CronExecutionPolicy({

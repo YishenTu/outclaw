@@ -242,7 +242,10 @@ describe("createCronAgentRunner", () => {
 		let receivedContext: OutclawNativeToolContext | undefined;
 		const nativeToolHost = {} as OutclawNativeToolHost;
 		const facade = createFacade(
-			[{ type: "done", sessionId: "pi-cron", durationMs: 1 }],
+			[
+				{ type: "text", text: "native cron ran" },
+				{ type: "done", sessionId: "pi-cron", durationMs: 1 },
+			],
 			(params) => {
 				receivedParams = params;
 			},
@@ -275,6 +278,40 @@ describe("createCronAgentRunner", () => {
 			source: "cron",
 			readOnly: false,
 		});
+	});
+
+	test("throws the cron session id when a completed run emits no assistant text", async () => {
+		const promptHomeDir = createPromptHome({});
+		promptHomes.push(promptHomeDir);
+
+		let receivedParams: RunParams | undefined;
+		const facade = createFacade(
+			[{ type: "done", sessionId: "empty-cron", durationMs: 1 }],
+			(params) => {
+				receivedParams = params;
+			},
+		);
+		const runCronAgent = createCronAgentRunner({
+			providers: { getFacade: () => facade },
+			modelProviderResolver: staticModelProviderResolver("claude"),
+			promptHomeDir,
+			cwd: "/workspace/project",
+		});
+
+		let thrown: unknown;
+		try {
+			await runCronAgent("Fail if empty", "haiku");
+		} catch (error) {
+			thrown = error;
+		}
+
+		expect(thrown).toBeInstanceOf(Error);
+		expect((thrown as Error).message).toBe(
+			"Cron run produced no assistant text",
+		);
+		expect((thrown as { providerId?: string }).providerId).toBe("claude");
+		expect((thrown as { sessionId?: string }).sessionId).toBe("empty-cron");
+		expect(receivedParams?.sessionId).toBeDefined();
 	});
 
 	test("rejects unknown provider models instead of inferring from prefixes", async () => {

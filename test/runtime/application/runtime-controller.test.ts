@@ -2289,7 +2289,26 @@ describe("RuntimeController", () => {
 		test("records cron runs as tagged sessions without replacing the active session", async () => {
 			cleanupStore(TEST_DB);
 			const store = new SessionStore(TEST_DB, { journalMode: "DELETE" });
-			const { controller } = createController({ store });
+			const facade = new MockFacade();
+			const transcriptReads: string[] = [];
+			(
+				facade as unknown as Facade & {
+					readTranscript: (id: string) => Promise<TranscriptTurn[]>;
+				}
+			).readTranscript = async (id: string) => {
+				transcriptReads.push(id);
+				if (id === "cron-session-1") {
+					return [
+						{
+							role: "assistant",
+							content: "All clear from provider transcript",
+							timestamp: 100,
+						},
+					];
+				}
+				return [];
+			};
+			const { controller } = createController({ facade, store });
 			const ws = mockWs("tui");
 			controller.handleOpen(ws);
 
@@ -2316,9 +2335,10 @@ describe("RuntimeController", () => {
 				expect.objectContaining({
 					providerId: PROVIDER_ID,
 					sessionId: "cron-session-1",
-					resultText: "",
+					resultText: "All clear from provider transcript",
 				}),
 			]);
+			expect(transcriptReads).toContain("cron-session-1");
 
 			store.close();
 			cleanupStore(TEST_DB);

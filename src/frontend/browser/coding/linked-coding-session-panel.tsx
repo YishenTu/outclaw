@@ -5,6 +5,7 @@ import type {
 } from "../../../common/protocol.ts";
 import { CenterPanelBreadcrumb } from "../components/center/center-panel-breadcrumb.tsx";
 import { fetchCodingRepository, fetchCodingSession } from "../lib/api.ts";
+import { useCodingModelsLoader } from "./coding-data.ts";
 import { ActiveSessionPanel } from "./coding-session-view.tsx";
 
 interface LinkedCodingSessionPanelProps {
@@ -27,6 +28,7 @@ export function LinkedCodingSessionPanel({
 		BrowserCodingRepositorySummary | undefined
 	>();
 	const [error, setError] = useState<string | undefined>();
+	useCodingModelsLoader(true);
 
 	useEffect(() => {
 		let cancelled = false;
