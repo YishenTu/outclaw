@@ -204,7 +204,7 @@ function startMultiAgentDaemon(
 			{
 				providerId: "pi",
 				displayName: "Pi",
-				listModels: () => piAdapter.listModels(),
+				listModels: () => piAdapter.listScopedModels(),
 			},
 		]);
 		const workspaceMetadata = collectProviderWorkspaceMetadata(

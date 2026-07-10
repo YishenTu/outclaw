@@ -297,6 +297,84 @@ describe("Pi driver", () => {
 		}
 	});
 
+	test("lists Pi scoped models separately from every available model", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createScopedModelListSdk({
+					availableModels: [
+						sdkModel("anthropic", "claude-sonnet-4-5"),
+						sdkModel("openai-codex", "gpt-5.5"),
+					],
+					enabledModels: ["openai-codex/gpt-5.5"],
+				}),
+		});
+
+		try {
+			if (!driver.listModels || !driver.listScopedModels) {
+				throw new Error("Pi driver should support scoped model listing");
+			}
+
+			await expect(driver.listScopedModels()).resolves.toEqual([
+				expect.objectContaining({ id: "openai-codex/gpt-5.5" }),
+			]);
+			await expect(driver.listModels()).resolves.toHaveLength(2);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("lists every available Pi model when no scope is configured", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createScopedModelListSdk({
+					availableModels: [
+						sdkModel("anthropic", "claude-sonnet-4-5"),
+						sdkModel("openai-codex", "gpt-5.5"),
+					],
+					enabledModels: undefined,
+				}),
+		});
+
+		try {
+			if (!driver.listScopedModels) {
+				throw new Error("Pi driver should support scoped model listing");
+			}
+
+			await expect(driver.listScopedModels()).resolves.toHaveLength(2);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("falls back to every available Pi model when the scope resolves empty", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createScopedModelListSdk({
+					availableModels: [
+						sdkModel("anthropic", "claude-sonnet-4-5"),
+						sdkModel("openai-codex", "gpt-5.5"),
+					],
+					enabledModels: ["missing/*"],
+				}),
+		});
+
+		try {
+			if (!driver.listScopedModels) {
+				throw new Error("Pi driver should support scoped model listing");
+			}
+
+			await expect(driver.listScopedModels()).resolves.toHaveLength(2);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
 	test("passes prompt images to the Pi SDK as base64 image content", async () => {
 		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
 		const imagePath = join(homeDir, "image.png");
@@ -1869,6 +1947,40 @@ function createModelListSdk(models: unknown[]) {
 				getAvailable: () => models,
 			}),
 		},
+	} as never;
+}
+
+function createScopedModelListSdk(params: {
+	availableModels: unknown[];
+	enabledModels: string[] | undefined;
+}) {
+	return {
+		AuthStorage: { create: () => ({}) },
+		ModelRegistry: {
+			inMemory: () => ({
+				getAvailable: () => params.availableModels,
+			}),
+		},
+		SettingsManager: {
+			create: (_cwd: string, agentDir: string) => ({
+				agentDir,
+				getEnabledModels: () => params.enabledModels,
+			}),
+		},
+		resolveModelScopeWithDiagnostics: async (
+			patterns: string[],
+			modelRegistry: { getAvailable(): unknown[] },
+		) => ({
+			scopedModels: modelRegistry
+				.getAvailable()
+				.filter((model) =>
+					patterns.includes(
+						`${(model as { provider: string }).provider}/${(model as { id: string }).id}`,
+					),
+				)
+				.map((model) => ({ model })),
+			diagnostics: [],
+		}),
 	} as never;
 }
 

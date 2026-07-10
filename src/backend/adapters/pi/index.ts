@@ -66,6 +66,14 @@ export class PiAdapter implements Facade {
 		return projectPiModels((await this.driver.listModels?.()) ?? []);
 	}
 
+	async listScopedModels(): Promise<ProviderModelInfo[]> {
+		return projectPiModels(
+			(await this.driver.listScopedModels?.()) ??
+				(await this.driver.listModels?.()) ??
+				[],
+		);
+	}
+
 	async dispose(): Promise<void> {
 		await this.driver.dispose?.();
 	}

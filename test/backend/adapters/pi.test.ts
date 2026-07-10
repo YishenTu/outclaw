@@ -64,6 +64,19 @@ class MockPiDriver implements PiDriver {
 		];
 	}
 
+	async listScopedModels() {
+		return [
+			{
+				id: "openai-codex/gpt-5.5",
+				model: "openai-codex/gpt-5.5",
+				displayName: "GPT-5.5",
+				description: "Pi scoped GPT",
+				defaultReasoningEffort: "high",
+				supportedReasoningEfforts: ["medium", "high"],
+			},
+		];
+	}
+
 	async dispose() {
 		this.disposed = true;
 	}
@@ -550,6 +563,30 @@ describe("PiAdapter", () => {
 
 		await adapter.dispose();
 		expect(driver.disposed).toBe(true);
+	});
+
+	test("lists scoped models from the driver", async () => {
+		const adapter = new PiAdapter({ driver: new MockPiDriver() });
+
+		await expect(adapter.listScopedModels()).resolves.toEqual([
+			{
+				id: "openai-codex/gpt-5.5",
+				model: "openai-codex/gpt-5.5",
+				displayName: "GPT-5.5",
+				description: "Pi scoped GPT",
+				isDefault: false,
+				defaultReasoningEffort: "high",
+				supportedReasoningEfforts: ["medium", "high"],
+				serviceTiers: [
+					{
+						id: "priority",
+						name: "Fast",
+						description:
+							"Priority service tier for supported OpenAI GPT models.",
+					},
+				],
+			},
+		]);
 	});
 
 	test("sets up an Outclaw-scoped Pi profile without inheriting global resources", () => {

@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DEFAULT_EFFORT, type EffortLevel } from "../../../common/commands.ts";
 import { OUTCLAW_NATIVE_TOOL_CATALOG } from "../../../common/native-tools.ts";
 import {
@@ -277,6 +277,31 @@ class PiDriverImpl implements PiDriver {
 		const authStorage = sdk.AuthStorage.create(this.paths.sharedAuthFile);
 		const modelRegistry = sdk.ModelRegistry.inMemory(authStorage);
 		return modelRegistry.getAvailable().map(projectSdkModel);
+	}
+
+	async listScopedModels(): Promise<PiDriverModel[]> {
+		const sdk = await this.getSdk();
+		const authStorage = sdk.AuthStorage.create(this.paths.sharedAuthFile);
+		const modelRegistry = sdk.ModelRegistry.inMemory(authStorage);
+		const availableModels = modelRegistry.getAvailable();
+		const settingsManager = sdk.SettingsManager.create(
+			this.paths.agentDir,
+			dirname(this.paths.sharedAuthFile),
+			{ projectTrusted: false },
+		);
+		const enabledModels = settingsManager.getEnabledModels();
+		if (!enabledModels || enabledModels.length === 0) {
+			return availableModels.map(projectSdkModel);
+		}
+		const { scopedModels } = await sdk.resolveModelScopeWithDiagnostics(
+			enabledModels,
+			modelRegistry,
+		);
+		return (
+			scopedModels.length > 0
+				? scopedModels.map(({ model }) => model)
+				: availableModels
+		).map(projectSdkModel);
 	}
 
 	dispose(): void {
