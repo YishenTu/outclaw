@@ -279,6 +279,63 @@ class PiDriverImpl implements PiDriver {
 		return modelRegistry.getAvailable().map(projectSdkModel);
 	}
 
+	async getDefaultModel(): Promise<string | undefined> {
+		const sdk = await this.getSdk();
+		const authStorage = sdk.AuthStorage.create(this.paths.sharedAuthFile);
+		const modelRegistry = sdk.ModelRegistry.inMemory(authStorage);
+		const settingsManager = sdk.SettingsManager.create(
+			this.paths.agentDir,
+			dirname(this.paths.sharedAuthFile),
+			{ projectTrusted: false },
+		);
+		const enabledModels = settingsManager.getEnabledModels();
+		if (enabledModels && enabledModels.length > 0) {
+			const { scopedModels } = await sdk.resolveModelScopeWithDiagnostics(
+				enabledModels,
+				modelRegistry,
+			);
+			const savedProvider = settingsManager.getDefaultProvider();
+			const savedModelId = settingsManager.getDefaultModel();
+			const savedModel =
+				savedProvider && savedModelId
+					? modelRegistry.find(savedProvider, savedModelId)
+					: undefined;
+			const scopedDefault =
+				scopedModels.find(
+					({ model }) =>
+						model.provider === savedModel?.provider &&
+						model.id === savedModel.id,
+				)?.model ?? scopedModels[0]?.model;
+			if (scopedDefault) {
+				return qualifiedSdkModelId(scopedDefault);
+			}
+		}
+		const resourceLoader = createNoDiscoveryResourceLoader(sdk, {
+			cwd: this.paths.agentDir,
+			agentDir: this.paths.agentDir,
+			extensionDir: this.paths.extensionDir,
+			settingsManager,
+			skillRootDir: undefined,
+			systemPrompt: undefined,
+		});
+		await resourceLoader.reload();
+		const { session } = await sdk.createAgentSession({
+			cwd: this.paths.agentDir,
+			agentDir: this.paths.agentDir,
+			authStorage,
+			modelRegistry,
+			resourceLoader,
+			settingsManager,
+			sessionManager: sdk.SessionManager.inMemory(this.paths.agentDir),
+			tools: [],
+		});
+		try {
+			return qualifiedSdkModelId(session.model);
+		} finally {
+			session.dispose();
+		}
+	}
+
 	async listScopedModels(): Promise<PiDriverModel[]> {
 		const sdk = await this.getSdk();
 		const authStorage = sdk.AuthStorage.create(this.paths.sharedAuthFile);
@@ -330,6 +387,12 @@ class PiDriverImpl implements PiDriver {
 		}
 		return found;
 	}
+}
+
+function qualifiedSdkModelId(
+	model: { id: string; provider: string } | undefined,
+): string | undefined {
+	return model ? `${model.provider}/${model.id}` : undefined;
 }
 
 function createOutclawSessionStartEvent(params: PiDriverRunParams): NonNullable<

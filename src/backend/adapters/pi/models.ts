@@ -1,7 +1,6 @@
 import type { ProviderModelInfo } from "../../../common/protocol.ts";
 import type { PiDriverModel } from "./types.ts";
 
-export const DEFAULT_PI_CHAT_MODEL = "openai-codex/gpt-5.5";
 export const PI_FAST_SERVICE_TIER = {
 	id: "priority",
 	name: "Fast",

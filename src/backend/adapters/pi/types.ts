@@ -10,6 +10,7 @@ import type {
 export interface PiDriver {
 	run(params: PiDriverRunParams): AsyncIterable<PiDriverEvent>;
 	readSession(sessionId: string): Promise<PiDriverSession>;
+	getDefaultModel?(): Promise<string | undefined>;
 	listModels?(): Promise<PiDriverModel[]>;
 	listScopedModels?(): Promise<PiDriverModel[]>;
 	dispose?(): Promise<void> | void;

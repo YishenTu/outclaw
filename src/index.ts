@@ -3,7 +3,6 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import { ClaudeAdapter } from "./backend/adapters/claude/index.ts";
 import { CodexAdapter } from "./backend/adapters/codex/index.ts";
 import { PiAdapter } from "./backend/adapters/pi/index.ts";
-import { DEFAULT_PI_CHAT_MODEL } from "./backend/adapters/pi/models.ts";
 import { createOutclawLayout } from "./common/layout.ts";
 import type { NativeToolResult } from "./common/native-tools.ts";
 import type {
@@ -67,7 +66,7 @@ if (discoveredAgents.length === 0) {
 	);
 }
 
-const daemon = startMultiAgentDaemon(config, discoveredAgents);
+const daemon = await startMultiAgentDaemon(config, discoveredAgents);
 
 console.log(`outclaw runtime listening on ws://localhost:${daemon.port}`);
 console.log(`runtime bound on http://${config.host}:${daemon.port}`);
@@ -102,7 +101,7 @@ process.on("SIGTERM", () => {
 	void shutdown("SIGTERM");
 });
 
-function startMultiAgentDaemon(
+async function startMultiAgentDaemon(
 	config: ReturnType<typeof loadGlobalConfig>,
 	agents: ReturnType<typeof discoverAgents>,
 ) {
@@ -134,6 +133,10 @@ function startMultiAgentDaemon(
 	// launching multiple app-server processes.
 	const codexAdapter = new CodexAdapter();
 	const piAdapter = new PiAdapter();
+	const defaultPiChatModel = await piAdapter.getDefaultModel();
+	if (!defaultPiChatModel) {
+		throw new Error("Pi has no available model for default chat startup");
+	}
 	const codingFacade = codexAdapter;
 	const codingService = createCodingService({
 		facade: codingFacade,
@@ -219,7 +222,7 @@ function startMultiAgentDaemon(
 			cwd: agent.homeDir,
 			cronDir: join(agent.homeDir, "cron"),
 			defaultEffort: config.thinkingEffort,
-			defaultModel: DEFAULT_PI_CHAT_MODEL,
+			defaultModel: defaultPiChatModel,
 			facade: piAdapter,
 			providers: [{ providerId: "pi", displayName: "Pi", facade: piAdapter }],
 			historyProviders: [

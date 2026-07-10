@@ -10,6 +10,7 @@ import type {
 	ImageRef,
 	ReplyContext,
 } from "../../../common/protocol.ts";
+import { formatThinkingForDisplay } from "../../../common/thinking-display.ts";
 import type { StreamChunk } from "../bridge/client.ts";
 import {
 	hasTelegramVisibleText,
@@ -78,7 +79,11 @@ function wrapThinking(html: string): string {
 }
 
 function htmlForSegment(segment: AssistantMessageSegment): string {
-	const html = markdownToTelegramHtml(segment.text);
+	const content =
+		segment.type === "thinking"
+			? formatThinkingForDisplay(segment.text)
+			: segment.text;
+	const html = markdownToTelegramHtml(content);
 	return segment.type === "thinking" ? wrapThinking(html) : html;
 }
 

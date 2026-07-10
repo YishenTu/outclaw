@@ -375,6 +375,122 @@ describe("Pi driver", () => {
 		}
 	});
 
+	test("resolves the default chat model through Pi settings", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createDefaultModelSdk({
+					availableModels: [
+						sdkModel("anthropic", "claude-sonnet-4-5"),
+						sdkModel("openai-codex", "gpt-5.6-sol"),
+					],
+					defaultModel: "gpt-5.6-sol",
+					defaultProvider: "openai-codex",
+				}),
+		});
+
+		try {
+			if (!driver.getDefaultModel) {
+				throw new Error("Pi driver should support default model resolution");
+			}
+
+			await expect(driver.getDefaultModel()).resolves.toBe(
+				"openai-codex/gpt-5.6-sol",
+			);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("uses the saved Pi default when it belongs to the model scope", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createDefaultModelSdk({
+					availableModels: [
+						sdkModel("openai-codex", "gpt-5.6-luna"),
+						sdkModel("openai-codex", "gpt-5.6-sol"),
+					],
+					defaultModel: "gpt-5.6-sol",
+					defaultProvider: "openai-codex",
+					enabledModels: [
+						"openai-codex/gpt-5.6-luna",
+						"openai-codex/gpt-5.6-sol",
+					],
+				}),
+		});
+
+		try {
+			if (!driver.getDefaultModel) {
+				throw new Error("Pi driver should support default model resolution");
+			}
+
+			await expect(driver.getDefaultModel()).resolves.toBe(
+				"openai-codex/gpt-5.6-sol",
+			);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("uses the first scoped Pi model when the saved default is outside scope", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createDefaultModelSdk({
+					availableModels: [
+						sdkModel("anthropic", "claude-sonnet-4-5"),
+						sdkModel("openai-codex", "gpt-5.6-sol"),
+					],
+					defaultModel: "gpt-5.6-sol",
+					defaultProvider: "openai-codex",
+					enabledModels: ["anthropic/claude-sonnet-4-5"],
+				}),
+		});
+
+		try {
+			if (!driver.getDefaultModel) {
+				throw new Error("Pi driver should support default model resolution");
+			}
+
+			await expect(driver.getDefaultModel()).resolves.toBe(
+				"anthropic/claude-sonnet-4-5",
+			);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("delegates unscoped default selection to the Pi SDK", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createDefaultModelSdk({
+					availableModels: [
+						sdkModel("anthropic", "claude-sonnet-4-5"),
+						sdkModel("openai-codex", "gpt-5.6-sol"),
+					],
+					sdkSelectedModel: sdkModel("openai-codex", "gpt-5.6-sol"),
+				}),
+		});
+
+		try {
+			if (!driver.getDefaultModel) {
+				throw new Error("Pi driver should support default model resolution");
+			}
+
+			await expect(driver.getDefaultModel()).resolves.toBe(
+				"openai-codex/gpt-5.6-sol",
+			);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
 	test("passes prompt images to the Pi SDK as base64 image content", async () => {
 		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
 		const imagePath = join(homeDir, "image.png");
@@ -1980,6 +2096,58 @@ function createScopedModelListSdk(params: {
 				)
 				.map((model) => ({ model })),
 			diagnostics: [],
+		}),
+	} as never;
+}
+
+function createDefaultModelSdk(params: {
+	availableModels: unknown[];
+	defaultModel?: string;
+	defaultProvider?: string;
+	enabledModels?: string[];
+	sdkSelectedModel?: unknown;
+}) {
+	const availableModels = params.availableModels as Array<{
+		id: string;
+		provider: string;
+	}>;
+	return {
+		AuthStorage: { create: () => ({}) },
+		ModelRegistry: {
+			inMemory: () => ({
+				getAvailable: () => params.availableModels,
+				find: (provider: string, id: string) =>
+					availableModels.find(
+						(model) => model.provider === provider && model.id === id,
+					),
+			}),
+		},
+		SettingsManager: {
+			create: () => ({
+				getDefaultModel: () => params.defaultModel,
+				getDefaultProvider: () => params.defaultProvider,
+				getEnabledModels: () => params.enabledModels,
+			}),
+		},
+		resolveModelScopeWithDiagnostics: async (patterns: string[]) => ({
+			scopedModels: params.availableModels
+				.filter((model) =>
+					patterns.includes(
+						`${(model as { provider: string }).provider}/${(model as { id: string }).id}`,
+					),
+				)
+				.map((model) => ({ model })),
+			diagnostics: [],
+		}),
+		DefaultResourceLoader: ReloadableResourceLoader,
+		SessionManager: {
+			inMemory: () => ({ buildSessionContext: () => ({ messages: [] }) }),
+		},
+		createAgentSession: async () => ({
+			session: {
+				dispose: () => {},
+				model: params.sdkSelectedModel ?? params.availableModels[1],
+			},
 		}),
 	} as never;
 }

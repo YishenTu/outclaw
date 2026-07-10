@@ -1,5 +1,6 @@
 import { Brain, ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { formatThinkingForDisplay } from "../../../../common/thinking-display.ts";
 import { MarkdownContent } from "./markdown-content.tsx";
 
 interface ThinkingBlockProps {
@@ -7,14 +8,15 @@ interface ThinkingBlockProps {
 }
 
 export function ThinkingContent({ content }: ThinkingBlockProps) {
-	if (content.trim() === "") {
+	const displayContent = formatThinkingForDisplay(content);
+	if (displayContent === "") {
 		return null;
 	}
 
 	return (
 		<div className="px-3 py-2 text-sm italic text-dark-500">
 			<MarkdownContent
-				content={content}
+				content={displayContent}
 				className="text-dark-500 prose-strong:text-dark-300"
 			/>
 		</div>

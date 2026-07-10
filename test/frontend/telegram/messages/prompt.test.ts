@@ -96,6 +96,27 @@ describe("runTelegramPrompt", () => {
 		expect(ctx.sendMessage.mock.calls[1]?.[0]).toBe("answer");
 	});
 
+	test("hides the GPT-5.6 reasoning summary placeholder", async () => {
+		const ctx = createContext();
+
+		await runTelegramPrompt(ctx, {
+			prompt: "hello",
+			streamPrompt: () =>
+				(async function* () {
+					yield {
+						type: "thinking" as const,
+						text: "**Inspecting peer and current workspaces**\n\n<!-- -->",
+					};
+					yield { type: "text" as const, text: "answer" };
+				})(),
+		});
+
+		expect(ctx.sendMessage.mock.calls.map((call) => call[0])).toEqual([
+			"<blockquote expandable><b>Inspecting peer and current workspaces</b></blockquote>",
+			"answer",
+		]);
+	});
+
 	test("sends interleaved thinking and text chunks in stream order", async () => {
 		const ctx = createContext();
 
