@@ -19,7 +19,6 @@ import {
 	createClaudePromptInput,
 } from "./prompt-input.ts";
 import { buildClaudeSdkOptions } from "./sdk-options.ts";
-import { ensureClaudeSkillsSymlink } from "./setup.ts";
 import { cleanupClaudeSessionFile } from "./skill-probe.ts";
 import { normalizeClaudeStream } from "./stream-normalizer.ts";
 
@@ -57,10 +56,6 @@ export class ClaudeAdapter implements Facade {
 		this.claudeProjectsDir = options.claudeProjectsDir;
 		this.sleep = options.sleep ?? waitFor;
 		this.unlinkFile = options.unlinkFile ?? unlinkSync;
-	}
-
-	prepareWorkspace(promptHomeDir: string): void {
-		ensureClaudeSkillsSymlink(promptHomeDir);
 	}
 
 	workspaceMetadata(promptHomeDir: string) {

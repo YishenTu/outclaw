@@ -179,14 +179,6 @@ async function startMultiAgentDaemon(
 		| undefined;
 	const runtimes = agents.map((agent) => {
 		const claudeAdapter = new ClaudeAdapter();
-		claudeAdapter.prepareWorkspace(agent.promptHomeDir);
-		// Materialize the Codex provider view of the agent workspace (skills
-		// symlink + .codex/config.toml) so Codex Chat threads can load the
-		// Outclaw-owned project layer once the workspace is trusted. The
-		// trust step itself runs lazily inside CodexAdapter.run() before
-		// the first Codex Chat thread for the workspace — that path is
-		// async and the daemon entry is sync.
-		codexAdapter.prepareWorkspace(agent.promptHomeDir);
 		piAdapter.prepareWorkspace(agent.promptHomeDir);
 		transcriptReadersByAgent.set(
 			agent.agentId,

@@ -5,8 +5,6 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { ClaudeAdapter } from "../../backend/adapters/claude/index.ts";
-import { CodexAdapter } from "../../backend/adapters/codex/index.ts";
 import { PiAdapter } from "../../backend/adapters/pi/index.ts";
 import { listAgents } from "../../runtime/agents/list-agents.ts";
 import { stopDaemon } from "../../runtime/process/daemon-stop.ts";
@@ -324,18 +322,13 @@ function prepareProviderWorkspaces(agentHomeDirs: string[]): void {
 		return;
 	}
 
-	const claudeAdapter = new ClaudeAdapter();
-	const codexAdapter = new CodexAdapter();
 	const piAdapter = new PiAdapter();
 
 	try {
 		for (const agentHomeDir of agentHomeDirs) {
-			claudeAdapter.prepareWorkspace(agentHomeDir);
-			codexAdapter.prepareWorkspace(agentHomeDir);
 			piAdapter.prepareWorkspace(agentHomeDir);
 		}
 	} finally {
-		void codexAdapter.dispose();
 		void piAdapter.dispose();
 	}
 }

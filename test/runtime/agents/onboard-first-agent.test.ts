@@ -8,15 +8,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ClaudeAdapter } from "../../../src/backend/adapters/claude/index.ts";
 import { completeAgentOnboarding } from "../../../src/runtime/agents/complete-agent-onboarding.ts";
 import { readAgentId } from "../../../src/runtime/agents/read-agent-id.ts";
-
-const claudeWorkspaceAdapter = new ClaudeAdapter();
-
-function prepareWorkspace(agentHomeDir: string) {
-	claudeWorkspaceAdapter.prepareWorkspace(agentHomeDir);
-}
 
 function createHomeDir() {
 	return mkdtempSync(join(tmpdir(), "outclaw-onboard-"));
@@ -41,13 +34,14 @@ describe("agent onboarding", () => {
 				createAgentId: () => "agent-railly",
 				homeDir,
 				name: "railly",
-				prepareWorkspace,
 				templatesDir,
 			});
 
 			expect(created.agentId).toBe("agent-railly");
 			expect(readAgentId(created.agentHomeDir)).toBe("agent-railly");
 			expect(existsSync(join(homeDir, ".env"))).toBe(true);
+			expect(existsSync(join(created.agentHomeDir, ".claude"))).toBe(false);
+			expect(existsSync(join(created.agentHomeDir, ".codex"))).toBe(false);
 			expect(
 				JSON.parse(readFileSync(join(homeDir, "config.json"), "utf-8")),
 			).toEqual({
@@ -84,7 +78,6 @@ describe("agent onboarding", () => {
 				createAgentId: () => "agent-railly",
 				homeDir,
 				name: "railly",
-				prepareWorkspace,
 				templatesDir,
 			});
 

@@ -14,7 +14,6 @@ interface CreateAgentOptions {
 	defaultCronUserId?: number;
 	homeDir: string;
 	name: string;
-	prepareWorkspace: (agentHomeDir: string) => void;
 	rolloverIdleMinutes?: number;
 	templatesDir: string;
 }
@@ -39,7 +38,6 @@ export function createAgent(options: CreateAgentOptions) {
 	seedTemplates(agentHomeDir, options.templatesDir, {
 		agentName: options.name,
 	});
-	options.prepareWorkspace(agentHomeDir);
 	const configPath = writeAgentConfig({
 		agentId,
 		config: {

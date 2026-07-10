@@ -1538,7 +1538,6 @@ export interface ChatHistoryReader {
 
 export interface ProviderCatalog {
 	providerId: string;
-	prepareWorkspace?(promptHomeDir: string): void;
 	workspaceMetadata?(promptHomeDir: string): ProviderWorkspaceMetadata;
 	listModels?(): Promise<ProviderModelInfo[]>;
 }

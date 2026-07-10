@@ -10,7 +10,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ClaudeAdapter } from "../../../src/backend/adapters/claude/index.ts";
 import { createAgent as createAgentBase } from "../../../src/runtime/agents/create-agent.ts";
 import { listAgents } from "../../../src/runtime/agents/list-agents.ts";
 import { readAgentId } from "../../../src/runtime/agents/read-agent-id.ts";
@@ -33,23 +32,10 @@ function createTemplatesDir() {
 }
 
 const REPO_TEMPLATES_DIR = join(import.meta.dir, "../../../src/templates");
-const claudeWorkspaceAdapter = new ClaudeAdapter();
-
-function prepareWorkspace(agentHomeDir: string) {
-	claudeWorkspaceAdapter.prepareWorkspace(agentHomeDir);
-}
-
-function createAgent(
-	options: Omit<Parameters<typeof createAgentBase>[0], "prepareWorkspace">,
-) {
-	return createAgentBase({
-		...options,
-		prepareWorkspace,
-	});
-}
+const createAgent = createAgentBase;
 
 describe("agent management", () => {
-	test("createAgent seeds a new agent directory, config, and Claude skills symlink", () => {
+	test("createAgent seeds provider-neutral agent files only", () => {
 		const homeDir = createHomeDir();
 		const templatesDir = createTemplatesDir();
 		try {
@@ -91,9 +77,8 @@ describe("agent management", () => {
 				port: 4000,
 				thinkingEffort: "medium",
 			});
-			expect(existsSync(join(created.agentHomeDir, ".claude", "skills"))).toBe(
-				true,
-			);
+			expect(existsSync(join(created.agentHomeDir, ".claude"))).toBe(false);
+			expect(existsSync(join(created.agentHomeDir, ".codex"))).toBe(false);
 		} finally {
 			rmSync(homeDir, { force: true, recursive: true });
 			rmSync(templatesDir, { force: true, recursive: true });

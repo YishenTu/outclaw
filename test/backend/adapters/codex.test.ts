@@ -164,23 +164,6 @@ class FakeCodexAppServerClient implements CodexAppServerClient {
 			} as T;
 		}
 
-		// Default stubs for the Codex Chat project-trust handshake. These
-		// match the production behavior that ensureProjectTrusted expects:
-		// config/batchWrite is fire-and-forget, config/read reports the
-		// project layer values (personality + features) so the verification
-		// guard passes.
-		if (method === "config/batchWrite") {
-			return {} as T;
-		}
-		if (method === "config/read") {
-			return {
-				config: {
-					personality: "friendly",
-					features: { multi_agent: false, memories: false },
-				},
-			} as T;
-		}
-
 		throw new Error(`Unexpected request: ${method}`);
 	}
 

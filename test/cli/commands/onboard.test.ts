@@ -45,6 +45,12 @@ describe("CLI onboarding helpers", () => {
 			expect(result.lanEnabled).toBe(true);
 			expect(result.securedConfig).toBe(false);
 			expect(result.created.agentId).toBe("agent-railly");
+			expect(existsSync(join(result.created.agentHomeDir, ".claude"))).toBe(
+				false,
+			);
+			expect(existsSync(join(result.created.agentHomeDir, ".codex"))).toBe(
+				false,
+			);
 			expect(
 				JSON.parse(readFileSync(join(homeDir, "config.json"), "utf-8")),
 			).toMatchObject({

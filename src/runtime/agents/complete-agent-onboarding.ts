@@ -7,7 +7,6 @@ interface CompleteAgentOnboardingOptions {
 	createAgentId?: () => string;
 	homeDir: string;
 	name: string;
-	prepareWorkspace: (agentHomeDir: string) => void;
 	templatesDir: string;
 }
 
@@ -20,7 +19,6 @@ export function completeAgentOnboarding(
 		createAgentId: options.createAgentId,
 		homeDir: options.homeDir,
 		name: options.name,
-		prepareWorkspace: options.prepareWorkspace,
 		templatesDir: options.templatesDir,
 	});
 	ensureGlobalEnvFile(options.homeDir);

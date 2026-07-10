@@ -1,11 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import {
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeAdapter } from "../../../src/backend/adapters/claude/index.ts";
@@ -48,23 +42,6 @@ describe("ClaudeAdapter", () => {
 		expect(adapter.run).toBeFunction();
 		expect(adapter.readHistory).toBeFunction();
 		expect(adapter.readTranscript).toBeFunction();
-		expect(adapter.prepareWorkspace).toBeFunction();
-	});
-
-	test("prepareWorkspace creates the Claude skills symlink", () => {
-		const promptHomeDir = mkdtempSync(
-			join(tmpdir(), "outclaw-claude-workspace-"),
-		);
-		try {
-			const { adapter } = createAdapter();
-
-			adapter.prepareWorkspace(promptHomeDir);
-
-			expect(existsSync(join(promptHomeDir, "skills"))).toBe(true);
-			expect(existsSync(join(promptHomeDir, ".claude", "skills"))).toBe(true);
-		} finally {
-			rmSync(promptHomeDir, { recursive: true, force: true });
-		}
 	});
 
 	test("run() returns an async iterable", async () => {

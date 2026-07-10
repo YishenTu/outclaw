@@ -25,7 +25,6 @@ import {
 } from "./history.ts";
 import { formatGptDisplayName } from "./model-naming.ts";
 import { CodexNotificationQueue } from "./notification-queue.ts";
-import { ensureCodexAgentWorkspace } from "./setup.ts";
 import { normalizeCodexTurnNotifications } from "./stream-normalizer.ts";
 import type {
 	CodexAppServerClient,
@@ -80,15 +79,10 @@ export class CodexAdapter implements Facade {
 		(update: ProviderCodingSessionUpdate) => void
 	>();
 	private codingSessionUpdateUnsubscribe?: () => void;
-	private readonly trustedAgentHomes = new Set<string>();
 
 	constructor(options: CodexAdapterOptions = {}) {
 		this.injectedClient = options.client;
 		this.appServerOptions = options.appServer;
-	}
-
-	prepareWorkspace(promptHomeDir: string): void {
-		ensureCodexAgentWorkspace(promptHomeDir);
 	}
 
 	workspaceMetadata(promptHomeDir: string) {
@@ -96,50 +90,6 @@ export class CodexAdapter implements Facade {
 			ignoredWorkspaceNames: [".codex"],
 			ignoredGitPaths: [join(promptHomeDir, ".codex", "skills")],
 		};
-	}
-
-	/**
-	 * Idempotently mark an agent workspace as a trusted Codex project so the
-	 * agent-local `.codex/config.toml` is honored. The trust entry is persisted
-	 * into the active Codex home by upserting the `projects` table and reloaded
-	 * into the running app-server process. Writing the whole project map entry
-	 * keeps dotted directory names such as `.outclaw` inside one TOML key. After
-	 * writing, the adapter verifies the project layer is visible by reading
-	 * `config/read { cwd: agentHome }`.
-	 */
-	async ensureProjectTrusted(agentHome: string): Promise<void> {
-		if (this.trustedAgentHomes.has(agentHome)) {
-			return;
-		}
-		const client = await this.loadClient();
-		await client.initialize();
-		await client.request("config/batchWrite", {
-			edits: [
-				{
-					keyPath: "projects",
-					value: {
-						[agentHome]: {
-							trust_level: "trusted",
-						},
-					},
-					mergeStrategy: "upsert",
-				},
-			],
-			reloadUserConfig: true,
-		});
-		const readback = await client.request<unknown>("config/read", {
-			cwd: agentHome,
-		});
-		// Verify the project layer is actually loaded before caching the
-		// trust state. Without this, the cache could mark a workspace as
-		// trusted even though Codex silently fell back to the user-global
-		// config (e.g. if a future version changes the trust contract).
-		if (!projectLayerLoaded(readback)) {
-			throw new Error(
-				`Codex project layer not loaded for ${agentHome} after trust; expected personality and [features] from agent .codex/config.toml`,
-			);
-		}
-		this.trustedAgentHomes.add(agentHome);
 	}
 
 	async dispose(): Promise<void> {
@@ -362,16 +312,6 @@ export class CodexAdapter implements Facade {
 
 		try {
 			await client.initialize();
-			// Chat-mode threads load `cwd/.codex/config.toml` via Codex's
-			// trusted-project mechanism. Ensure the workspace is trusted
-			// before the first thread/start or thread/resume for it; the
-			// step is idempotent and cached per agent home.
-			if (
-				params.cwd &&
-				params.instructionPolicy?.mode === "runtime_constructed"
-			) {
-				await this.ensureProjectTrusted(params.cwd);
-			}
 			const threadResult = params.resume
 				? await client.request<CodexThreadResumeResult>(
 						"thread/resume",
@@ -670,29 +610,6 @@ function readTurnSandboxPolicy(
 	return mode === "read_only"
 		? CODEX_READ_ONLY_TURN_SANDBOX_POLICY
 		: CODEX_YOLO_TURN_SANDBOX_POLICY;
-}
-
-/**
- * Inspect a `config/read { cwd: agentHome }` response and decide whether it
- * reports the Outclaw-owned project layer (the `.codex/config.toml` written
- * by `ensureCodexAgentWorkspace`). Check exact template values, not merely the
- * presence of keys, because the user's global Codex config may also define
- * `personality` and `[features]`.
- */
-function projectLayerLoaded(readback: unknown): boolean {
-	const root = asRecord(readback);
-	if (!root) {
-		return false;
-	}
-	const config = asRecord(root.config) ?? root;
-	if (!config) {
-		return false;
-	}
-	if (config.personality !== "friendly") {
-		return false;
-	}
-	const features = asRecord(config.features);
-	return features?.multi_agent === false && features.memories === false;
 }
 
 async function archiveEphemeralCodexThread(

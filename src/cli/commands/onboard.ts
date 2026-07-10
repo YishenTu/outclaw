@@ -1,6 +1,4 @@
 import { basename } from "node:path";
-import { ClaudeAdapter } from "../../backend/adapters/claude/index.ts";
-import { ensureCodexAgentWorkspace } from "../../backend/adapters/codex/setup.ts";
 import { createOutclawLayout } from "../../common/layout.ts";
 import {
 	type AgentOnboardingSubmission,
@@ -37,8 +35,6 @@ type RestartSpawn = (
 	},
 ) => RestartSpawnResult;
 
-const claudeWorkspaceAdapter = new ClaudeAdapter();
-
 export function applyOnboardingSubmission(
 	options: ApplyOnboardingSubmissionOptions,
 ) {
@@ -48,13 +44,6 @@ export function applyOnboardingSubmission(
 		createAgentId: options.createAgentId,
 		homeDir: options.homeDir,
 		name: options.submission.name,
-		prepareWorkspace: (agentHomeDir) => {
-			claudeWorkspaceAdapter.prepareWorkspace(agentHomeDir);
-			// Codex Chat shares the same agent workspace; materialize the
-			// `.codex/config.toml` and skills symlink here too so the agent
-			// is ready for both providers on first daemon boot.
-			ensureCodexAgentWorkspace(agentHomeDir);
-		},
 		templatesDir: options.templatesDir,
 	});
 
