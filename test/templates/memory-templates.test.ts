@@ -65,23 +65,23 @@ describe("memory template contract", () => {
 
 	test("pins memory cron templates to Pi model ids", () => {
 		const template = readTemplate("cron/_template.yaml");
-		const maintenanceTemplatePaths = [
-			"cron/memory-distill.yaml",
-			"cron/memory-route.yaml",
-			"cron/memory-synthesize.yaml",
-			"cron/soul-evolve.yaml",
-		];
+		const maintenanceTemplates = {
+			"cron/memory-distill.yaml": "openai-codex/gpt-5.6-sol",
+			"cron/memory-route.yaml": "openai-codex/gpt-5.6-terra",
+			"cron/memory-synthesize.yaml": "openai-codex/gpt-5.6-sol",
+			"cron/soul-evolve.yaml": "openai-codex/gpt-5.6-sol",
+		};
 
 		expect(template).toContain(
 			"#   model     — provider-qualified model, e.g. openai-codex/gpt-5.5",
 		);
-		expect(template).toContain("model: openai-codex/gpt-5.5");
+		expect(template).toContain("model: openai-codex/gpt-5.6-sol");
 		expect(template).not.toContain("opus | sonnet | haiku");
 
-		for (const templatePath of maintenanceTemplatePaths) {
+		for (const [templatePath, model] of Object.entries(maintenanceTemplates)) {
 			const cronTemplate = readTemplate(templatePath);
 
-			expect(cronTemplate).toContain("model: openai-codex/gpt-5.5");
+			expect(cronTemplate).toContain(`model: ${model}`);
 			expect(cronTemplate).not.toContain("model: opus");
 			expect(cronTemplate).not.toContain("model: sonnet");
 			expect(cronTemplate).not.toContain("model: haiku");

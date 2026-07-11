@@ -9,7 +9,9 @@ interface AgentFilesEntry {
 
 export interface AgentFilesState {
 	entriesByAgent: Record<string, AgentFilesEntry>;
-	loadingAgentId: string | null;
+	errorByAgent: Record<string, string>;
+	loadingByAgent: Record<string, boolean>;
+	requestGenerationByAgent: Record<string, number>;
 	requestFiles: (agentId: string) => Promise<void>;
 	invalidate: (agentId: string) => void;
 	getFiles: (agentId: string | null) => WorkspaceFileEntry[];
@@ -17,7 +19,9 @@ export interface AgentFilesState {
 
 export const useAgentFilesStore = create<AgentFilesState>((set, get) => ({
 	entriesByAgent: {},
-	loadingAgentId: null,
+	errorByAgent: {},
+	loadingByAgent: {},
+	requestGenerationByAgent: {},
 	getFiles: (agentId) => {
 		if (!agentId) {
 			return [];
@@ -25,36 +29,69 @@ export const useAgentFilesStore = create<AgentFilesState>((set, get) => ({
 		return get().entriesByAgent[agentId]?.files ?? [];
 	},
 	invalidate: (agentId) =>
-		set((state) => {
-			if (!state.entriesByAgent[agentId]) {
-				return state;
-			}
-			const next = { ...state.entriesByAgent };
-			delete next[agentId];
-			return { entriesByAgent: next };
-		}),
+		set((state) => ({
+			entriesByAgent: omitRecordKey(state.entriesByAgent, agentId),
+			errorByAgent: omitRecordKey(state.errorByAgent, agentId),
+			loadingByAgent: omitRecordKey(state.loadingByAgent, agentId),
+			requestGenerationByAgent: {
+				...state.requestGenerationByAgent,
+				[agentId]: (state.requestGenerationByAgent[agentId] ?? 0) + 1,
+			},
+		})),
 	requestFiles: async (agentId) => {
 		const state = get();
-		if (state.entriesByAgent[agentId] || state.loadingAgentId === agentId) {
+		if (state.entriesByAgent[agentId] || state.loadingByAgent[agentId]) {
 			return;
 		}
 
-		set({ loadingAgentId: agentId });
+		const generation = (state.requestGenerationByAgent[agentId] ?? 0) + 1;
+		set((current) => ({
+			errorByAgent: omitRecordKey(current.errorByAgent, agentId),
+			loadingByAgent: { ...current.loadingByAgent, [agentId]: true },
+			requestGenerationByAgent: {
+				...current.requestGenerationByAgent,
+				[agentId]: generation,
+			},
+		}));
 		try {
 			const files = await fetchAgentWorkspaceFiles(agentId);
-			set((current) => ({
-				entriesByAgent: {
-					...current.entriesByAgent,
-					[agentId]: { files, loadedAt: Date.now() },
-				},
-				loadingAgentId:
-					current.loadingAgentId === agentId ? null : current.loadingAgentId,
-			}));
-		} catch {
-			set((current) => ({
-				loadingAgentId:
-					current.loadingAgentId === agentId ? null : current.loadingAgentId,
-			}));
+			set((current) => {
+				if (current.requestGenerationByAgent[agentId] !== generation) {
+					return current;
+				}
+				return {
+					entriesByAgent: {
+						...current.entriesByAgent,
+						[agentId]: { files, loadedAt: Date.now() },
+					},
+					loadingByAgent: omitRecordKey(current.loadingByAgent, agentId),
+				};
+			});
+		} catch (error) {
+			set((current) => {
+				if (current.requestGenerationByAgent[agentId] !== generation) {
+					return current;
+				}
+				return {
+					errorByAgent: {
+						...current.errorByAgent,
+						[agentId]: error instanceof Error ? error.message : String(error),
+					},
+					loadingByAgent: omitRecordKey(current.loadingByAgent, agentId),
+				};
+			});
 		}
 	},
 }));
+
+function omitRecordKey<T>(
+	record: Record<string, T>,
+	key: string,
+): Record<string, T> {
+	if (!(key in record)) {
+		return record;
+	}
+	const next = { ...record };
+	delete next[key];
+	return next;
+}

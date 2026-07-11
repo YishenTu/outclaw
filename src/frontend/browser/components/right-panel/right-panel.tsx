@@ -5,7 +5,14 @@ import {
 	GitBranch,
 	Inbox,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import type { BrowserGitHistoryCommit } from "../../../../common/protocol.ts";
 import { requestConfigRestart } from "../../commands/config-save-restart.ts";
 import { useWs } from "../../contexts/websocket-context.tsx";
@@ -38,11 +45,11 @@ import {
 	selectRunTerminalRuntimeState,
 	useTerminalStore,
 } from "../../stores/terminal.ts";
+import { FeatureLoading } from "../ui/feature-loading.tsx";
 import { CronPanel } from "./cron-panel.tsx";
 import { type FilesViewMode, FileTree, FileTreeHeader } from "./file-tree.tsx";
 import { GitPanel } from "./git/git-panel.tsx";
 import { shouldClearSelectedGitCommit } from "./git/git-selection-state.ts";
-import { GraphView } from "./graph-view.tsx";
 import { InboxPanel, type InboxUndoArchive } from "./inbox-panel.tsx";
 import {
 	useAgentTreeLoader,
@@ -57,7 +64,6 @@ import {
 	RightPanelSplitShell,
 	RightPanelTabBar,
 } from "./right-panel-shell.tsx";
-import { TerminalPanel } from "./terminal/terminal-panel.tsx";
 import {
 	clearDispatchedTerminalRunRequest,
 	createTerminalRunRequest,
@@ -72,6 +78,15 @@ import {
 	useAgentTerminalRunCommand,
 } from "./terminal/use-agent-terminal-run-command.ts";
 import { shouldShowTreeLoading } from "./tree-refresh-policy.ts";
+
+const GraphView = lazy(async () => {
+	const module = await import("./graph-view.tsx");
+	return { default: module.GraphView };
+});
+const TerminalPanel = lazy(async () => {
+	const module = await import("./terminal/terminal-panel.tsx");
+	return { default: module.TerminalPanel };
+});
 
 const TAB_LABELS: Record<UpperRightPanelTab, string> = {
 	inbox: "Inbox",
@@ -619,13 +634,15 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 						}`}
 					>
 						{activeAgentId ? (
-							<GraphView
-								agentId={activeAgentId}
-								treeRevision={treeRevision}
-								isVisible={isGraph}
-								activeFilePath={activeFilePathForGraph}
-								onOpenFile={handleOpenFile}
-							/>
+							<Suspense fallback={<FeatureLoading label="graph" />}>
+								<GraphView
+									agentId={activeAgentId}
+									treeRevision={treeRevision}
+									isVisible={isGraph}
+									activeFilePath={activeFilePathForGraph}
+									onOpenFile={handleOpenFile}
+								/>
+							</Suspense>
 						) : (
 							<div className="px-4 py-4 text-sm text-dark-500">
 								No active agent.
@@ -812,10 +829,12 @@ export function RightPanel({ onCollapse }: RightPanelProps) {
 								activeTerminalTab === "terminal" ? "h-full" : "hidden h-full"
 							}
 						>
-							<TerminalPanel
-								agentId={activeAgentId}
-								active={activeTerminalTab === "terminal"}
-							/>
+							<Suspense fallback={<FeatureLoading label="terminal" />}>
+								<TerminalPanel
+									agentId={activeAgentId}
+									active={activeTerminalTab === "terminal"}
+								/>
+							</Suspense>
 						</div>
 					</>
 				}

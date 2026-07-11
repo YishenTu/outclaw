@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAgentRuntime } from "../../../src/runtime/application/create-agent-runtime.ts";
@@ -1341,6 +1341,20 @@ describe("createSupervisor browser routes", () => {
 		const response = await fetch(`http://localhost:${supervisor.port}/`);
 
 		expect(response.status).toBe(200);
+		expect(response.headers.get("cache-control")).toBe("no-cache");
+		const contentSecurityPolicy = response.headers.get(
+			"content-security-policy",
+		);
+		expect(contentSecurityPolicy).not.toBeNull();
+		expect(contentSecurityPolicy ?? "").toContain("default-src 'self'");
+		expect(contentSecurityPolicy ?? "").toContain("connect-src 'self'");
+		expect(contentSecurityPolicy ?? "").not.toContain("ws:");
+		expect(contentSecurityPolicy ?? "").not.toContain("wss:");
+		expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+		expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+		expect(response.headers.get("permissions-policy")).toBe(
+			"camera=(), geolocation=(), microphone=()",
+		);
 		expect(await response.text()).toContain("OUTCLAW_BROWSER");
 	});
 
@@ -1374,7 +1388,11 @@ describe("createSupervisor browser routes", () => {
 			join(tempDir, "index.html"),
 			"<!doctype html><html><body>OUTCLAW_SPA</body></html>",
 		);
-		writeFileSync(join(tempDir, "app.js"), "console.log('browser-app');\n");
+		mkdirSync(join(tempDir, "assets"));
+		writeFileSync(
+			join(tempDir, "assets", "app-Cc7WZMzd.js"),
+			"console.log('browser-app');\n",
+		);
 
 		const supervisor = createSupervisor({
 			agents: [
@@ -1392,9 +1410,13 @@ describe("createSupervisor browser routes", () => {
 		cleanup = () => supervisor.stop();
 
 		const assetResponse = await fetch(
-			`http://localhost:${supervisor.port}/app.js`,
+			`http://localhost:${supervisor.port}/assets/app-Cc7WZMzd.js`,
 		);
 		expect(assetResponse.status).toBe(200);
+		expect(assetResponse.headers.get("cache-control")).toBe(
+			"public, max-age=31536000, immutable",
+		);
+		expect(assetResponse.headers.get("x-content-type-options")).toBe("nosniff");
 		expect(await assetResponse.text()).toContain("browser-app");
 
 		const routeResponse = await fetch(

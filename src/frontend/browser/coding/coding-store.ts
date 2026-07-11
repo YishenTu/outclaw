@@ -20,8 +20,6 @@ import {
 	upsertCodingSession,
 } from "./coding-session-collections.ts";
 
-export type BrowserAppMode = "chat" | "code";
-
 export const CODING_STORAGE_KEY = "outclaw.browser.coding";
 
 interface FocusedSessionRef {
@@ -137,7 +135,6 @@ export interface RepositorySearchState {
 }
 
 export interface CodingState {
-	appMode: BrowserAppMode;
 	focusedRepositoryId: string | undefined;
 	focusedSession: FocusedSessionRef | undefined;
 	openTabs: CodingTab[];
@@ -160,7 +157,6 @@ export interface CodingState {
 	selectedEffort: EffortLevel | undefined;
 	fastTierEnabled: boolean;
 
-	setAppMode(mode: BrowserAppMode): void;
 	setFocusedRepository(repositoryId: string | undefined): void;
 	setFocusedSession(ref: FocusedSessionRef | undefined): void;
 	setRepositories(repositories: BrowserCodingRepositorySummary[]): void;
@@ -607,7 +603,6 @@ function sessionCursorsEqual(
 export const useCodingStore = create<CodingState>()(
 	persist(
 		(set) => ({
-			appMode: "chat",
 			focusedRepositoryId: undefined,
 			focusedSession: undefined,
 			openTabs: [],
@@ -630,9 +625,6 @@ export const useCodingStore = create<CodingState>()(
 			selectedEffort: undefined,
 			fastTierEnabled: false,
 
-			setAppMode(mode) {
-				set({ appMode: mode });
-			},
 			setFocusedRepository(repositoryId) {
 				set((state) => {
 					if (repositoryId === undefined) {
@@ -1300,7 +1292,6 @@ export const useCodingStore = create<CodingState>()(
 			name: storageKey,
 			storage: createJSONStorage(safeStorage),
 			partialize: (state) => ({
-				appMode: state.appMode,
 				focusedRepositoryId: state.focusedRepositoryId,
 				focusedSession: state.focusedSession,
 				openTabs: state.openTabs,

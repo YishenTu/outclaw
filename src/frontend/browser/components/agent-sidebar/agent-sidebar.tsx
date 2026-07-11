@@ -5,10 +5,10 @@ import type {
 	SessionCursor,
 } from "../../../../common/protocol.ts";
 import { ChatCodePillSwitcher } from "../../coding/chat-code-pill-switcher.tsx";
-import { useCodingStore } from "../../coding/coding-store.ts";
 import { fetchAgentSessions } from "../../lib/api.ts";
 import type { AgentReorderPosition } from "../../stores/agents.ts";
 import { useAgentsStore } from "../../stores/agents.ts";
+import { useAppModeStore } from "../../stores/app-mode.ts";
 import type { SessionEntry } from "../../stores/sessions.ts";
 import { useSessionsStore } from "../../stores/sessions.ts";
 import { RuntimeConfigModalController } from "../runtime-config/runtime-config-modal.tsx";
@@ -26,7 +26,7 @@ interface AgentSidebarProps {
 }
 
 export function AgentSidebar({ onCollapse }: AgentSidebarProps) {
-	const setAppMode = useCodingStore((state) => state.setAppMode);
+	const setAppMode = useAppModeStore((state) => state.setAppMode);
 	const dragThreshold = 4;
 	const [expandedAgents, setExpandedAgents] = useState<Record<string, boolean>>(
 		{},

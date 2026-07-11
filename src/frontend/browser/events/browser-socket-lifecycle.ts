@@ -29,6 +29,7 @@ export interface BrowserSocketLifecycleOptions<
 	clearRetry?: (timer: TimerHandle) => void;
 	openSocket: () => BrowserRuntimeSocket<SocketLike>;
 	onConnected: () => void;
+	maxRetryDelayMs?: number;
 	parseMessage: (data: string) => ServerEvent;
 	retryDelayMs?: number;
 	scheduleRetry?: (callback: () => void, delayMs: number) => TimerHandle;
@@ -51,6 +52,7 @@ export function createBrowserSocketLifecycle<
 	clearRetry = (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
 	openSocket,
 	onConnected,
+	maxRetryDelayMs = 30_000,
 	parseMessage,
 	retryDelayMs = 3000,
 	scheduleRetry = (callback, delayMs) =>
@@ -65,6 +67,7 @@ export function createBrowserSocketLifecycle<
 	let cancelled = false;
 	let currentSocket: SocketLike | null = null;
 	let retryTimer: TimerHandle | null = null;
+	let retryAttempt = 0;
 
 	function setSocket(socket: SocketLike | null) {
 		currentSocket = socket;
@@ -100,6 +103,7 @@ export function createBrowserSocketLifecycle<
 			}
 			setConnectionStatus("connected");
 			setRuntimeError(null);
+			retryAttempt = 0;
 			onConnected();
 		};
 
@@ -109,7 +113,12 @@ export function createBrowserSocketLifecycle<
 			}
 			setSocket(null);
 			setConnectionStatus("disconnected");
-			retryTimer = scheduleRetry(connect, retryDelayMs);
+			const delayMs = Math.min(
+				retryDelayMs * 2 ** retryAttempt,
+				maxRetryDelayMs,
+			);
+			retryAttempt += 1;
+			retryTimer = scheduleRetry(connect, delayMs);
 		};
 
 		handlers.onerror = () => {
@@ -120,7 +129,12 @@ export function createBrowserSocketLifecycle<
 			if (cancelled || currentSocket !== ws) {
 				return;
 			}
-			applyEvent(parseMessage(String(message.data)));
+			try {
+				applyEvent(parseMessage(String(message.data)));
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				setRuntimeError(`Invalid runtime message: ${message}`);
+			}
 		};
 	}
 

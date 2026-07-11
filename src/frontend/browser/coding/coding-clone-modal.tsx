@@ -1,5 +1,6 @@
 import { GitBranch, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Dialog } from "../components/ui/dialog.tsx";
 
 interface CodingCloneModalProps {
 	defaultLocation?: string;
@@ -92,21 +93,15 @@ export function CodingCloneModal({
 	);
 
 	return (
-		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-dark-950/80 px-4 py-6 backdrop-blur-sm"
-			onPointerDown={(event) => {
-				if (event.target === event.currentTarget && !cloning) {
-					onClose();
-				}
-			}}
+		<Dialog
+			ariaLabel="Clone GitHub repo"
+			className="w-full max-w-xl overflow-hidden rounded-2xl border border-dark-800 bg-dark-950 shadow-2xl shadow-black/50"
+			initialFocusRef={urlInputRef}
+			onClose={onClose}
+			onKeyDown={handleKeyDown}
+			preventClose={cloning}
 		>
-			<div
-				role="dialog"
-				aria-label="Clone GitHub repo"
-				aria-modal="true"
-				onKeyDown={handleKeyDown}
-				className="w-full max-w-xl overflow-hidden rounded-2xl border border-dark-800 bg-dark-950 shadow-2xl shadow-black/50"
-			>
+			<div>
 				<div className="flex items-center justify-between gap-3 bg-dark-900/40 px-5 py-4">
 					<div className="flex items-center gap-2 text-dark-50">
 						<GitBranch size={16} className="shrink-0 text-dark-300" />
@@ -197,6 +192,6 @@ export function CodingCloneModal({
 					</button>
 				</div>
 			</div>
-		</div>
+		</Dialog>
 	);
 }

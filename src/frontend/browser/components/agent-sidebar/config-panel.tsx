@@ -1,5 +1,6 @@
 import { Settings2, X } from "lucide-react";
 import type { ReactNode } from "react";
+import { Dialog } from "../ui/dialog.tsx";
 import type { ConfigEntry } from "./config-editor.ts";
 import { buildConfigEntryTree, type ConfigTreeNode } from "./config-tree.ts";
 
@@ -32,79 +33,84 @@ export function ConfigModalContent({
 		errorMode === "save" ? "Failed to save config" : "Failed to load config";
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-dark-950/80 px-4 py-6 backdrop-blur-sm">
-			<div
-				role="dialog"
-				aria-label="Config modal"
-				className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-dark-800 bg-dark-950 shadow-2xl shadow-black/50"
-			>
-				<header className="flex h-14 items-center gap-3 border-b border-dark-800 bg-dark-900/40 px-5">
-					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-dark-800 bg-dark-950 text-brand">
-						<Settings2 size={14} />
-					</div>
-					<div className="min-w-0">
-						<div className="font-display text-[13px] font-semibold uppercase tracking-[0.22em] text-dark-50">
-							Runtime config
-						</div>
-						<div className="font-mono-ui text-[10px] uppercase tracking-[0.16em] text-dark-500">
-							config.json
-						</div>
-					</div>
-					<div className="flex-1" />
-					<button
-						type="button"
-						onClick={onClose}
-						aria-label="Close config modal"
-						className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-dark-500 transition-colors hover:border-dark-700 hover:bg-dark-900 hover:text-dark-100"
-					>
-						<X size={16} />
-					</button>
-				</header>
-
-				<div className="scrollbar-none flex-1 overflow-y-auto px-5 py-4">
-					{isLoading ? (
-						<StatusCard tone="muted">Loading config…</StatusCard>
-					) : null}
-					{!isLoading && error ? (
-						<StatusCard tone="danger" title={errorTitle}>
-							{error}
-						</StatusCard>
-					) : null}
-					{isEmpty ? (
-						<StatusCard tone="muted">No config entries found.</StatusCard>
-					) : null}
-					{hasContent ? (
-						<div className="space-y-4">
-							{tree.map((node) => (
-								<TopLevelNode
-									key={node.key}
-									node={node}
-									onEntryChange={onEntryChange}
-								/>
-							))}
-						</div>
-					) : null}
+		<Dialog
+			ariaLabel="Config modal"
+			className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-dark-800 bg-dark-950 shadow-2xl shadow-black/50"
+			onClose={() => {
+				if (!isSaving) {
+					onClose();
+				}
+			}}
+			preventClose={isSaving}
+		>
+			<header className="flex h-14 items-center gap-3 border-b border-dark-800 bg-dark-900/40 px-5">
+				<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-dark-800 bg-dark-950 text-brand">
+					<Settings2 size={14} />
 				</div>
+				<div className="min-w-0">
+					<div className="font-display text-[13px] font-semibold uppercase tracking-[0.22em] text-dark-50">
+						Runtime config
+					</div>
+					<div className="font-mono-ui text-[10px] uppercase tracking-[0.16em] text-dark-500">
+						config.json
+					</div>
+				</div>
+				<div className="flex-1" />
+				<button
+					type="button"
+					onClick={onClose}
+					disabled={isSaving}
+					aria-label="Close config modal"
+					className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-dark-500 transition-colors hover:border-dark-700 hover:bg-dark-900 hover:text-dark-100 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					<X size={16} />
+				</button>
+			</header>
 
-				<footer className="flex items-center justify-end gap-3 border-t border-dark-800 bg-dark-900/40 px-5 py-4">
-					<button
-						type="button"
-						onClick={onClose}
-						className="rounded-lg border border-dark-700 bg-dark-950 px-3 py-2 text-sm text-dark-200 transition-colors hover:border-dark-500 hover:text-dark-50"
-					>
-						Close
-					</button>
-					<button
-						type="button"
-						onClick={onSave}
-						disabled={isLoading || isSaving || entries.length === 0}
-						className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-dark-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-					>
-						{isSaving ? "Saving…" : "Save and restart"}
-					</button>
-				</footer>
+			<div className="scrollbar-none flex-1 overflow-y-auto px-5 py-4">
+				{isLoading ? (
+					<StatusCard tone="muted">Loading config…</StatusCard>
+				) : null}
+				{!isLoading && error ? (
+					<StatusCard tone="danger" title={errorTitle}>
+						{error}
+					</StatusCard>
+				) : null}
+				{isEmpty ? (
+					<StatusCard tone="muted">No config entries found.</StatusCard>
+				) : null}
+				{hasContent ? (
+					<div className="space-y-4">
+						{tree.map((node) => (
+							<TopLevelNode
+								key={node.key}
+								node={node}
+								onEntryChange={onEntryChange}
+							/>
+						))}
+					</div>
+				) : null}
 			</div>
-		</div>
+
+			<footer className="flex items-center justify-end gap-3 border-t border-dark-800 bg-dark-900/40 px-5 py-4">
+				<button
+					type="button"
+					onClick={onClose}
+					disabled={isSaving}
+					className="rounded-lg border border-dark-700 bg-dark-950 px-3 py-2 text-sm text-dark-200 transition-colors hover:border-dark-500 hover:text-dark-50 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					Close
+				</button>
+				<button
+					type="button"
+					onClick={onSave}
+					disabled={isLoading || isSaving || entries.length === 0}
+					className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-dark-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					{isSaving ? "Saving…" : "Save and restart"}
+				</button>
+			</footer>
+		</Dialog>
 	);
 }
 

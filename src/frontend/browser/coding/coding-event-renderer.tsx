@@ -19,6 +19,15 @@ import {
 import { TranscriptItemList } from "../components/transcript/transcript-item-list.tsx";
 import type { TranscriptItem } from "../components/transcript/transcript-items.ts";
 import type { CodingSessionEventStreamItem } from "../lib/api.ts";
+import {
+	asPayloadRecord,
+	planProgressLabel,
+	readToolDetails,
+	readUpdatePlanArguments,
+	sameToolDetails,
+	type ToolDetailView,
+	type UpdatePlanStep,
+} from "./coding-event-data.ts";
 
 type FacadeLike = LiveTranscriptEventLike;
 
@@ -690,61 +699,6 @@ function renderGenericTool(entry: ToolEntry): React.ReactNode {
 	);
 }
 
-interface ToolDetailView {
-	label: string;
-	value: string;
-}
-
-function readToolDetails(value: unknown): ToolDetailView[] {
-	if (!Array.isArray(value)) {
-		return [];
-	}
-	return value
-		.map((entry) => {
-			const record =
-				entry && typeof entry === "object"
-					? (entry as Record<string, unknown>)
-					: undefined;
-			const label =
-				typeof record?.label === "string" ? record.label : undefined;
-			const detailValue =
-				typeof record?.value === "string" ? record.value : undefined;
-			if (!label || detailValue === undefined) {
-				return undefined;
-			}
-			return { label, value: detailValue };
-		})
-		.filter((entry): entry is ToolDetailView => entry !== undefined);
-}
-
-function sameToolDetails(
-	left: ToolDetailView[],
-	right: ToolDetailView[],
-): boolean {
-	if (left.length !== right.length) {
-		return false;
-	}
-	return left.every((entry, index) => {
-		const candidate = right[index];
-		return (
-			candidate !== undefined &&
-			entry.label === candidate.label &&
-			entry.value === candidate.value
-		);
-	});
-}
-
-function asPayloadRecord(value: unknown): Record<string, unknown> | undefined {
-	if (!value || typeof value !== "object") return undefined;
-	const record = value as Record<string, unknown>;
-	return Object.keys(record).length === 0 ? undefined : record;
-}
-
-interface UpdatePlanStep {
-	step: string;
-	status: string;
-}
-
 function renderUpdatePlan(entry: ToolEntry): React.ReactNode {
 	// Codex delivers `update_plan` as a function_call whose `arguments` field
 	// is a JSON-encoded `{ explanation, plan }` payload, flattened by the
@@ -850,63 +804,6 @@ function planStepStyle(status: string): {
 				textClass: "text-dark-200",
 			};
 	}
-}
-
-function readUpdatePlanArguments(
-	event: FacadeLike | undefined,
-): { explanation?: string; steps: UpdatePlanStep[] } | undefined {
-	if (!event) {
-		return undefined;
-	}
-	const fromDetails = readToolDetails(event.details).find(
-		(detail) => detail.label === "arguments",
-	);
-	const raw = fromDetails?.value;
-	if (typeof raw !== "string" || raw.length === 0) {
-		return undefined;
-	}
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		return undefined;
-	}
-	if (!parsed || typeof parsed !== "object") {
-		return undefined;
-	}
-	const record = parsed as Record<string, unknown>;
-	const explanation =
-		typeof record.explanation === "string" ? record.explanation : undefined;
-	const steps = Array.isArray(record.plan)
-		? record.plan
-				.map((entry): UpdatePlanStep | undefined => {
-					if (!entry || typeof entry !== "object") {
-						return undefined;
-					}
-					const stepRecord = entry as Record<string, unknown>;
-					const stepText =
-						typeof stepRecord.step === "string" ? stepRecord.step : undefined;
-					const status =
-						typeof stepRecord.status === "string"
-							? stepRecord.status
-							: undefined;
-					if (!stepText || !status) {
-						return undefined;
-					}
-					return { step: stepText, status };
-				})
-				.filter((step): step is UpdatePlanStep => step !== undefined)
-		: [];
-	if (!explanation && steps.length === 0) {
-		return undefined;
-	}
-	return { ...(explanation ? { explanation } : {}), steps };
-}
-
-function planProgressLabel(steps: UpdatePlanStep[]): string | undefined {
-	if (steps.length === 0) return undefined;
-	const completed = steps.filter((step) => step.status === "completed").length;
-	return `${completed}/${steps.length} done`;
 }
 
 interface SubagentState {

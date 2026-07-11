@@ -31,7 +31,6 @@ function session(
 describe("coding session refresh", () => {
 	beforeEach(() => {
 		useCodingStore.setState({
-			appMode: "code",
 			focusedRepositoryId: undefined,
 			focusedSession: undefined,
 			openTabs: [],

@@ -7,6 +7,24 @@ export interface BrowserApp {
 
 const INDEX_FILENAME = "index.html";
 const BROWSER_BUILD_COMMAND = "oc build && oc restart";
+const BROWSER_SECURITY_HEADERS = {
+	"content-security-policy": [
+		"default-src 'self'",
+		"base-uri 'self'",
+		"connect-src 'self'",
+		"font-src 'self' data:",
+		"form-action 'self'",
+		"frame-ancestors 'none'",
+		"img-src 'self' blob: data:",
+		"object-src 'none'",
+		"script-src 'self'",
+		"style-src 'self' 'unsafe-inline'",
+	].join("; "),
+	"permissions-policy": "camera=(), geolocation=(), microphone=()",
+	"referrer-policy": "no-referrer",
+	"x-content-type-options": "nosniff",
+} as const;
+const IMMUTABLE_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 export function serveBrowserApp(
 	method: string,
@@ -32,7 +50,9 @@ export function serveBrowserApp(
 
 	const filePath = resolveWithinRoot(browserApp.distDir, decodedPathname);
 	if (filePath && isFile(filePath)) {
-		return serveFile(method, filePath);
+		return serveFile(method, filePath, {
+			"cache-control": resolveAssetCacheControl(decodedPathname),
+		});
 	}
 
 	if (looksLikeAssetPath(decodedPathname)) {
@@ -97,7 +117,10 @@ function serveFile(
 	extraHeaders?: Record<string, string>,
 ): Response {
 	const file = Bun.file(path);
-	const headers = new Headers(extraHeaders);
+	const headers = new Headers(BROWSER_SECURITY_HEADERS);
+	for (const [name, value] of Object.entries(extraHeaders ?? {})) {
+		headers.set(name, value);
+	}
 	if (file.type) {
 		headers.set("content-type", file.type);
 	}
@@ -111,4 +134,10 @@ function serveFile(
 		headers,
 		status: 200,
 	});
+}
+
+function resolveAssetCacheControl(pathname: string): string {
+	return pathname.startsWith("/assets/")
+		? IMMUTABLE_ASSET_CACHE_CONTROL
+		: "no-cache";
 }

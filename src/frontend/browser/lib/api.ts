@@ -23,40 +23,22 @@ import type {
 	BrowserCodingSessionStopResponse,
 	BrowserCodingSessionTrashResponse,
 	BrowserCodingSkillsResponse,
-	BrowserConfigResponse,
 	BrowserCronEntry,
 	BrowserCronHistoryCursor,
 	BrowserCronHistoryResponse,
 	BrowserFileResponse,
-	BrowserGitCommitResponse,
-	BrowserGitCommitStats,
-	BrowserGitDiffResponse,
-	BrowserGitHistory,
-	BrowserGitStatusResponse,
 	BrowserGraphResponse,
-	BrowserImageUploadResponse,
 	BrowserInboxArchiveResponse,
 	BrowserInboxCreateNoteResponse,
 	BrowserInboxResponse,
 	BrowserInboxRestoreResponse,
-	BrowserLatencyResponse,
 	BrowserSessionPageResponse,
 	BrowserTerminalRunCommandResponse,
 	BrowserTreeEntry,
 	SessionCursor,
 	WorkspaceFileEntry,
 } from "../../../common/protocol.ts";
-
-async function parseJsonResponse<T>(response: Response): Promise<T> {
-	if (!response.ok) {
-		const errorBody = (await response.json().catch(() => undefined)) as
-			| { error?: string }
-			| undefined;
-		throw new Error(errorBody?.error ?? `Request failed: ${response.status}`);
-	}
-
-	return (await response.json()) as T;
-}
+import { parseJsonResponse } from "./http-client.ts";
 
 export class FileConflictError extends Error {
 	readonly current: BrowserFileResponse;
@@ -467,37 +449,6 @@ export async function updateCodingRepositoryTerminalRunCommand(
 	);
 }
 
-export async function fetchRuntimeLatency(
-	signal?: AbortSignal,
-): Promise<BrowserLatencyResponse> {
-	return parseJsonResponse(
-		await fetch("/api/latency", {
-			cache: "no-store",
-			signal,
-		}),
-	);
-}
-
-export async function fetchConfigFile(): Promise<BrowserConfigResponse> {
-	return parseJsonResponse(await fetch("/api/config"));
-}
-
-export async function updateConfigFile(
-	document: Record<string, unknown>,
-): Promise<BrowserConfigResponse> {
-	return parseJsonResponse(
-		await fetch("/api/config", {
-			method: "PATCH",
-			headers: {
-				"content-type": "application/json",
-			},
-			body: JSON.stringify({
-				document,
-			}),
-		}),
-	);
-}
-
 export async function fetchAgentTree(
 	agentId: string,
 ): Promise<BrowserTreeEntry[]> {
@@ -783,130 +734,17 @@ function appendCodingWorkspaceParams(
 	return url;
 }
 
-function appendGitScopeParams(
-	url: URL,
-	params?: {
-		providerId?: string;
-		repositoryId?: string;
-		sdkSessionId?: string;
-	},
-): URL {
-	if (params?.repositoryId) {
-		url.searchParams.set("repositoryId", params.repositoryId);
-	}
-	appendCodingWorkspaceParams(url, params);
-	return url;
-}
-
-export async function fetchGitStatus(params?: {
-	providerId?: string;
-	repositoryId?: string;
-	sdkSessionId?: string;
-}): Promise<BrowserGitStatusResponse> {
-	const url = appendGitScopeParams(
-		new URL("/api/git/status", window.location.origin),
-		params,
-	);
-	return parseJsonResponse(await fetch(url));
-}
-
-export async function fetchGitHistory(params?: {
-	cursor?: string;
-	limit?: number;
-	providerId?: string;
-	repositoryId?: string;
-	sdkSessionId?: string;
-}): Promise<BrowserGitHistory> {
-	const url = appendGitScopeParams(
-		new URL("/api/git/history", window.location.origin),
-		params,
-	);
-	if (params?.cursor) {
-		url.searchParams.set("cursor", params.cursor);
-	}
-	if (params?.limit !== undefined) {
-		url.searchParams.set("limit", String(params.limit));
-	}
-	return parseJsonResponse(await fetch(url));
-}
-
-export async function initGitRepo(params?: {
-	providerId?: string;
-	repositoryId?: string;
-	sdkSessionId?: string;
-}): Promise<BrowserGitStatusResponse> {
-	const url = appendGitScopeParams(
-		new URL("/api/git/init", window.location.origin),
-		params,
-	);
-	return parseJsonResponse(
-		await fetch(url, {
-			method: "POST",
-		}),
-	);
-}
-
-export async function fetchGitDiff(
-	path: string,
-	params?: {
-		providerId?: string;
-		repositoryId?: string;
-		sdkSessionId?: string;
-	},
-): Promise<BrowserGitDiffResponse> {
-	const url = appendGitScopeParams(
-		new URL("/api/git/diff", window.location.origin),
-		params,
-	);
-	url.searchParams.set("path", path);
-	return parseJsonResponse(await fetch(url));
-}
-
-export async function fetchGitCommit(
-	sha: string,
-	params?: {
-		providerId?: string;
-		repositoryId?: string;
-		sdkSessionId?: string;
-	},
-): Promise<BrowserGitCommitResponse> {
-	const url = appendGitScopeParams(
-		new URL("/api/git/commit", window.location.origin),
-		params,
-	);
-	url.searchParams.set("sha", sha);
-	return parseJsonResponse(await fetch(url));
-}
-
-export async function fetchGitCommitStats(
-	sha: string,
-	params?: {
-		providerId?: string;
-		repositoryId?: string;
-		sdkSessionId?: string;
-	},
-): Promise<BrowserGitCommitStats> {
-	const url = appendGitScopeParams(
-		new URL("/api/git/commit/stats", window.location.origin),
-		params,
-	);
-	url.searchParams.set("sha", sha);
-	return parseJsonResponse(await fetch(url));
-}
-
-export async function uploadPromptImages(
-	files: File[],
-): Promise<BrowserImageUploadResponse["images"]> {
-	const formData = new FormData();
-	for (const file of files) {
-		formData.append("images", file);
-	}
-
-	const response = await parseJsonResponse<BrowserImageUploadResponse>(
-		await fetch("/api/images", {
-			method: "POST",
-			body: formData,
-		}),
-	);
-	return response.images;
-}
+export {
+	fetchGitCommit,
+	fetchGitCommitStats,
+	fetchGitDiff,
+	fetchGitHistory,
+	fetchGitStatus,
+	initGitRepo,
+} from "./api/git.ts";
+export {
+	fetchConfigFile,
+	fetchRuntimeLatency,
+	updateConfigFile,
+	uploadPromptImages,
+} from "./api/runtime.ts";

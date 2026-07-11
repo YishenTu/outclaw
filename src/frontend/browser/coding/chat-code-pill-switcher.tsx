@@ -1,5 +1,5 @@
 import { Code2, MessageSquare } from "lucide-react";
-import type { BrowserAppMode } from "./coding-store.ts";
+import type { BrowserAppMode } from "../stores/app-mode.ts";
 
 interface ChatCodePillSwitcherProps {
 	active: BrowserAppMode;

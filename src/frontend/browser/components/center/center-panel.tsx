@@ -1,12 +1,27 @@
+import { lazy, Suspense } from "react";
 import { LinkedCodingSessionMenuButton } from "../../coding/linked-coding-session-menu-button.tsx";
-import { LinkedCodingSessionPanel } from "../../coding/linked-coding-session-panel.tsx";
 import { CHAT_TAB } from "../../stores/tab-policy.ts";
 import { type Tab, useTabsStore } from "../../stores/tabs.ts";
 import { ChatPanel } from "../chat/chat-panel.tsx";
-import { FileViewer } from "../file-viewer/file-viewer.tsx";
-import { GitCommitViewer } from "../git-commit-viewer/git-commit-viewer.tsx";
-import { GitDiffViewer } from "../git-diff-viewer/git-diff-viewer.tsx";
+import { FeatureLoading } from "../ui/feature-loading.tsx";
 import { TabBarView } from "./tab-bar.tsx";
+
+const FileViewer = lazy(async () => {
+	const module = await import("../document-viewers.tsx");
+	return { default: module.FileViewer };
+});
+const GitCommitViewer = lazy(async () => {
+	const module = await import("../document-viewers.tsx");
+	return { default: module.GitCommitViewer };
+});
+const GitDiffViewer = lazy(async () => {
+	const module = await import("../document-viewers.tsx");
+	return { default: module.GitDiffViewer };
+});
+const LinkedCodingSessionPanel = lazy(async () => {
+	const module = await import("../../coding/linked-coding-session-panel.tsx");
+	return { default: module.LinkedCodingSessionPanel };
+});
 
 interface CenterPanelProps {
 	leftCollapsed?: boolean;
@@ -97,31 +112,43 @@ export function CenterPanelView({
 function CenterTabPanel({ active, tab }: { active: boolean; tab: Tab }) {
 	if (tab.type === "file") {
 		return (
-			<FileViewer
-				active={active}
-				tabId={tab.id}
-				path={tab.path}
-				source={{ kind: "agent", agentId: tab.agentId }}
-			/>
+			<Suspense fallback={<FeatureLoading label="file viewer" />}>
+				<FileViewer
+					active={active}
+					tabId={tab.id}
+					path={tab.path}
+					source={{ kind: "agent", agentId: tab.agentId }}
+				/>
+			</Suspense>
 		);
 	}
 
 	if (tab.type === "git-commit") {
-		return <GitCommitViewer sha={tab.sha} title={tab.title} />;
+		return (
+			<Suspense fallback={<FeatureLoading label="commit" />}>
+				<GitCommitViewer sha={tab.sha} title={tab.title} />
+			</Suspense>
+		);
 	}
 
 	if (tab.type === "git-diff") {
-		return <GitDiffViewer path={tab.path} />;
+		return (
+			<Suspense fallback={<FeatureLoading label="diff" />}>
+				<GitDiffViewer path={tab.path} />
+			</Suspense>
+		);
 	}
 
 	if (tab.type === "coding-session") {
 		return (
-			<LinkedCodingSessionPanel
-				providerId={tab.providerId}
-				sdkSessionId={tab.sdkSessionId}
-				repositoryId={tab.repositoryId}
-				title={tab.title}
-			/>
+			<Suspense fallback={<FeatureLoading label="coding session" />}>
+				<LinkedCodingSessionPanel
+					providerId={tab.providerId}
+					sdkSessionId={tab.sdkSessionId}
+					repositoryId={tab.repositoryId}
+					title={tab.title}
+				/>
+			</Suspense>
 		);
 	}
 

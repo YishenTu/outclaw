@@ -78,6 +78,21 @@ body {
 	font-family: var(--font-ui-sans);
 }
 
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		/* biome-ignore lint/complexity/noImportantStyles: reduced-motion preference must override component animation utilities */
+		scroll-behavior: auto !important;
+		/* biome-ignore lint/complexity/noImportantStyles: reduced-motion preference must override component animation utilities */
+		animation-duration: 0.01ms !important;
+		/* biome-ignore lint/complexity/noImportantStyles: reduced-motion preference must override component animation utilities */
+		animation-iteration-count: 1 !important;
+		/* biome-ignore lint/complexity/noImportantStyles: reduced-motion preference must override component animation utilities */
+		transition-duration: 0.01ms !important;
+	}
+}
+
 #root {
 	min-height: 100vh;
 }

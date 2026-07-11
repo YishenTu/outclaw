@@ -2099,7 +2099,8 @@ describe("browser runtime server events", () => {
 					loadedAt: 1,
 				},
 			},
-			loadingAgentId: null,
+			loadingByAgent: {},
+			requestGenerationByAgent: {},
 		});
 		handleBrowserServerEvent(
 			{

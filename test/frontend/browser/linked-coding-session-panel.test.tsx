@@ -62,7 +62,6 @@ describe("linked coding session panel", () => {
 		});
 		reactActScope.IS_REACT_ACT_ENVIRONMENT = true;
 		useCodingStore.setState({
-			appMode: "chat",
 			codingModels: [],
 			codingModelsLoaded: false,
 			selectedModelId: undefined,

@@ -46,7 +46,6 @@ function makeSession(
 describe("useCodingStore", () => {
 	beforeEach(() => {
 		useCodingStore.setState({
-			appMode: "chat",
 			focusedRepositoryId: undefined,
 			focusedSession: undefined,
 			openTabs: [],

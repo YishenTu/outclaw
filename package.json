@@ -11,16 +11,18 @@
 		"oc": "src/cli.ts"
 	},
 	"scripts": {
-		"build:browser": "bun run --cwd src/frontend/browser build",
+		"build:browser": "bun run --cwd src/frontend/browser build && bun run check:browser-bundle",
+		"check:browser-bundle": "bun run scripts/check-browser-bundle.ts",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",
 		"test": "bun test --max-concurrency=1",
+		"test:browser:e2e": "bun run --cwd src/frontend/browser test:e2e",
 		"test:watch": "bun test --watch --max-concurrency=1",
 		"test:coverage": "bun test --coverage --max-concurrency=1",
 		"check:pi-extension": "bun run scripts/build-pi-extension.ts --check",
 		"check:boundaries": "bun run scripts/check-boundaries.ts",
-		"check": "bun run lint && bun run typecheck && bun run test && bun run check:pi-extension && bun run check:boundaries"
+		"check": "bun run lint && bun run typecheck && bun run test && bun run check:pi-extension && bun run check:boundaries && bun run build:browser && bun run test:browser:e2e"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",

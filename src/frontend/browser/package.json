@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "tsc -b && vite build",
+		"test:e2e": "playwright test --config playwright.config.ts",
 		"preview": "vite preview"
 	},
 	"dependencies": {
@@ -41,6 +42,7 @@
 		"zustand": "^5.0.0"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.55.0",
 		"@tailwindcss/typography": "^0.5.15",
 		"@types/d3-force": "^3.0.10",
 		"@types/diff": "^8.0.0",

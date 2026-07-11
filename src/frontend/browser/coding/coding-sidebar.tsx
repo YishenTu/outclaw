@@ -15,6 +15,7 @@ import {
 	pickCodingRepositoryFolder,
 	registerCodingRepository,
 } from "../lib/api.ts";
+import { useAppModeStore } from "../stores/app-mode.ts";
 import {
 	type ArchiveCenterTab,
 	ArchivedSessionsItem,
@@ -152,7 +153,7 @@ export function CodingSidebar({
 	>({});
 	const [archivedSessionsModalOpen, setArchivedSessionsModalOpen] =
 		useState(false);
-	const setAppMode = useCodingStore((state) => state.setAppMode);
+	const setAppMode = useAppModeStore((state) => state.setAppMode);
 	const nextCursorByRepository = useCodingStore(
 		(state) => state.nextCursorByRepository,
 	);

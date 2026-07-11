@@ -35,9 +35,8 @@ describe("browser mobile layout", () => {
 			/>,
 		);
 
-		expect(html).toContain("No active repositories.");
-		expect(html).toContain("Select a repository to start a coding session.");
-		expect(html).toContain('aria-label="Expand right sidebar"');
-		expect(html).not.toContain("No active agent.");
+		expect(html).toContain("Loading coding sidebar…");
+		expect(html).toContain("Loading coding workspace…");
+		expect(html).toContain("Loading coding inspector…");
 	});
 });

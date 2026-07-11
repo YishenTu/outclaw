@@ -18,7 +18,6 @@ import { renderToStaticMarkup } from "../../../src/frontend/browser/node_modules
 describe("browser coding center", () => {
 	beforeEach(() => {
 		useCodingStore.setState({
-			appMode: "chat",
 			focusedRepositoryId: undefined,
 			focusedSession: undefined,
 			openTabs: [],

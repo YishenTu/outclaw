@@ -1,5 +1,5 @@
-import { FileViewer } from "../components/file-viewer/file-viewer.tsx";
-import { GitDiffViewer } from "../components/git-diff-viewer/git-diff-viewer.tsx";
+import { lazy, Suspense } from "react";
+import { FeatureLoading } from "../components/ui/feature-loading.tsx";
 import { useCodingData } from "./coding-data.ts";
 import { CodingSessionView } from "./coding-session-view.tsx";
 import {
@@ -9,6 +9,15 @@ import {
 	isCodingFileTab,
 } from "./coding-store.ts";
 import { CodingTabBar } from "./coding-tab-bar.tsx";
+
+const FileViewer = lazy(async () => {
+	const module = await import("../components/document-viewers.tsx");
+	return { default: module.FileViewer };
+});
+const GitDiffViewer = lazy(async () => {
+	const module = await import("../components/document-viewers.tsx");
+	return { default: module.GitDiffViewer };
+});
 
 interface CodingCenterProps {
 	leftCollapsed?: boolean;
@@ -74,18 +83,22 @@ export function CodingCenter({
 				canAdd={focusedRepositoryId !== undefined}
 			/>
 			{showFilePreview ? (
-				<FileViewer
-					path={focusedFilePath}
-					source={{
-						kind: "repository",
-						repositoryId: focusedTab.repositoryId,
-					}}
-				/>
+				<Suspense fallback={<FeatureLoading label="file viewer" />}>
+					<FileViewer
+						path={focusedFilePath}
+						source={{
+							kind: "repository",
+							repositoryId: focusedTab.repositoryId,
+						}}
+					/>
+				</Suspense>
 			) : showDiffPreview ? (
-				<GitDiffViewer
-					path={focusedDiffPath}
-					repositoryId={focusedTab.repositoryId}
-				/>
+				<Suspense fallback={<FeatureLoading label="diff" />}>
+					<GitDiffViewer
+						path={focusedDiffPath}
+						repositoryId={focusedTab.repositoryId}
+					/>
+				</Suspense>
 			) : (
 				<CodingSessionView
 					repository={repository}

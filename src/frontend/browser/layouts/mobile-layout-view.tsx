@@ -1,15 +1,29 @@
-import { type ReactNode, useCallback } from "react";
-import { CodingCenter } from "../coding/coding-center.tsx";
-import { useCodingDataLoader } from "../coding/coding-data.ts";
-import { CodingRightPanel } from "../coding/coding-right-panel.tsx";
-import { CodingSidebarContainer } from "../coding/coding-sidebar-container.tsx";
-import { useCodingStore } from "../coding/coding-store.ts";
+import { lazy, type ReactNode, Suspense, useCallback } from "react";
 import { AgentSidebar } from "../components/agent-sidebar/agent-sidebar";
 import { CenterPanel } from "../components/center/center-panel.tsx";
 import { RightPanel } from "../components/right-panel/right-panel";
+import { FeatureLoading } from "../components/ui/feature-loading.tsx";
 import { useMobileKeyboardScrollReset } from "../lib/use-mobile-keyboard-scroll-reset.ts";
+import { useAppModeStore } from "../stores/app-mode.ts";
 import { type MobilePanel, useMobileNavStore } from "../stores/mobile-nav.ts";
 import { MobileOverlay } from "./mobile-overlay.tsx";
+
+const CodingWorkspaceBootstrap = lazy(async () => {
+	const module = await import("../coding/coding-workspace.tsx");
+	return { default: module.CodingWorkspaceBootstrap };
+});
+const CodingCenter = lazy(async () => {
+	const module = await import("../coding/coding-workspace.tsx");
+	return { default: module.CodingCenter };
+});
+const CodingRightPanel = lazy(async () => {
+	const module = await import("../coding/coding-workspace.tsx");
+	return { default: module.CodingRightPanel };
+});
+const CodingSidebarContainer = lazy(async () => {
+	const module = await import("../coding/coding-workspace.tsx");
+	return { default: module.CodingSidebarContainer };
+});
 
 interface MobilePanelShellProps {
 	visible: boolean;
@@ -42,9 +56,8 @@ function MobilePanelShell({ visible, children }: MobilePanelShellProps) {
 export function MobileLayoutView() {
 	const mobilePanel = useMobileNavStore((state) => state.mobilePanel);
 	const setMobilePanel = useMobileNavStore((state) => state.setMobilePanel);
-	const appMode = useCodingStore((state) => state.appMode);
+	const appMode = useAppModeStore((state) => state.appMode);
 	const isCodeMode = appMode === "code";
-	useCodingDataLoader(isCodeMode);
 	useMobileKeyboardScrollReset(true);
 
 	const goToCenter = useCallback(
@@ -80,6 +93,11 @@ export function MobileLayoutPanels({
 }: MobileLayoutPanelsProps) {
 	return (
 		<div className="relative h-full w-full min-w-0 flex-1 overflow-hidden">
+			{isCodeMode ? (
+				<Suspense fallback={null}>
+					<CodingWorkspaceBootstrap />
+				</Suspense>
+			) : null}
 			{/*
 			 * Reuse the existing desktop chrome:
 			 *  - Sidebar `onCollapse` button -> back to the center panel.
@@ -90,10 +108,12 @@ export function MobileLayoutPanels({
 			 */}
 			<MobilePanelShell visible={mobilePanel === "agents"}>
 				{isCodeMode ? (
-					<CodingSidebarContainer
-						onCollapse={onShowCenter}
-						onActivateCenterPanel={onShowCenter}
-					/>
+					<Suspense fallback={<FeatureLoading label="coding sidebar" />}>
+						<CodingSidebarContainer
+							onCollapse={onShowCenter}
+							onActivateCenterPanel={onShowCenter}
+						/>
+					</Suspense>
 				) : (
 					<AgentSidebar onCollapse={onShowCenter} />
 				)}
@@ -101,12 +121,14 @@ export function MobileLayoutPanels({
 
 			<MobilePanelShell visible={mobilePanel === "chat"}>
 				{isCodeMode ? (
-					<CodingCenter
-						leftCollapsed
-						rightCollapsed
-						onExpandLeft={onShowLeftPanel}
-						onExpandRight={onShowRightPanel}
-					/>
+					<Suspense fallback={<FeatureLoading label="coding workspace" />}>
+						<CodingCenter
+							leftCollapsed
+							rightCollapsed
+							onExpandLeft={onShowLeftPanel}
+							onExpandRight={onShowRightPanel}
+						/>
+					</Suspense>
 				) : (
 					<CenterPanel
 						leftCollapsed
@@ -119,7 +141,9 @@ export function MobileLayoutPanels({
 
 			<MobilePanelShell visible={mobilePanel === "inspector"}>
 				{isCodeMode ? (
-					<CodingRightPanel onCollapse={onShowCenter} />
+					<Suspense fallback={<FeatureLoading label="coding inspector" />}>
+						<CodingRightPanel onCollapse={onShowCenter} />
+					</Suspense>
 				) : (
 					<RightPanel onCollapse={onShowCenter} />
 				)}

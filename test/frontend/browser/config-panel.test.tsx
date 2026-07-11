@@ -636,4 +636,31 @@ describe("config panel", () => {
 		expect(html).toContain('value="oops"');
 		expect(html).toContain("Save and restart");
 	});
+
+	test("disables every close control while saving", () => {
+		const html = renderToStaticMarkup(
+			<ConfigModalContent
+				entries={[
+					{
+						displayItem: "host",
+						item: "host",
+						typeLabel: "string",
+						value: "127.0.0.1",
+						valueKind: "string",
+					},
+				]}
+				error={null}
+				isLoading={false}
+				isSaving
+				onClose={() => {}}
+				onEntryChange={() => {}}
+				onSave={() => {}}
+			/>,
+		);
+
+		expect(html).toContain('disabled="" aria-label="Close config modal"');
+		expect(html).toContain(
+			'<button type="button" disabled="" class="rounded-lg',
+		);
+	});
 });

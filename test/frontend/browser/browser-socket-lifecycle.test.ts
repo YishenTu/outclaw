@@ -112,4 +112,66 @@ describe("browser socket lifecycle", () => {
 		expect(sockets[0]?.closed).toBe(false);
 		expect(lifecycle.getSocket()).toBeNull();
 	});
+
+	test("backs off repeated disconnects and resets after connecting", () => {
+		const sockets: FakeBrowserSocket[] = [];
+		const delays: number[] = [];
+		const scheduled: Array<() => void> = [];
+		const lifecycle = createBrowserSocketLifecycle<FakeBrowserSocket, number>({
+			applyEvent: () => {},
+			maxRetryDelayMs: 100,
+			openSocket: () => {
+				const ws = new FakeBrowserSocket();
+				sockets.push(ws);
+				return { ready: Promise.resolve(), ws };
+			},
+			onConnected: () => {},
+			parseMessage: (data) => JSON.parse(data) as ServerEvent,
+			retryDelayMs: 25,
+			scheduleRetry: (callback, delayMs) => {
+				delays.push(delayMs);
+				scheduled.push(callback);
+				return scheduled.length - 1;
+			},
+			setConnectionStatus: () => {},
+			setCurrentSocket: () => {},
+			setRuntimeError: () => {},
+		});
+
+		lifecycle.start();
+		sockets[0]?.onclose?.();
+		scheduled[0]?.();
+		sockets[1]?.onclose?.();
+		scheduled[1]?.();
+		sockets[2]?.onclose?.();
+		scheduled[2]?.();
+		sockets[3]?.onopen?.();
+		sockets[3]?.onclose?.();
+
+		expect(delays).toEqual([25, 50, 100, 25]);
+	});
+
+	test("reports malformed messages without disconnecting", () => {
+		const socket = new FakeBrowserSocket();
+		const errors: Array<string | null> = [];
+		const events: ServerEvent[] = [];
+		const lifecycle = createBrowserSocketLifecycle({
+			applyEvent: (event) => events.push(event),
+			openSocket: () => ({ ready: Promise.resolve(), ws: socket }),
+			onConnected: () => {},
+			parseMessage: (data) => JSON.parse(data) as ServerEvent,
+			setConnectionStatus: () => {},
+			setCurrentSocket: () => {},
+			setRuntimeError: (error) => errors.push(error),
+		});
+
+		lifecycle.start();
+		socket.onmessage?.({ data: "not-json" });
+		socket.onmessage?.({
+			data: JSON.stringify({ type: "ask_response", text: "ok" }),
+		});
+
+		expect(errors.at(-1)).toContain("Invalid runtime message");
+		expect(events).toEqual([{ type: "ask_response", text: "ok" }]);
+	});
 });

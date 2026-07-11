@@ -4,10 +4,8 @@ import {
 	GitBranch,
 	GitCommitHorizontal,
 } from "lucide-react";
-import { type ReactElement, useEffect } from "react";
-import { FileViewer } from "../components/file-viewer/file-viewer.tsx";
-import { GitCommitViewer } from "../components/git-commit-viewer/git-commit-viewer.tsx";
-import { GitDiffViewer } from "../components/git-diff-viewer/git-diff-viewer.tsx";
+import { lazy, type ReactElement, Suspense, useEffect } from "react";
+import { FeatureLoading } from "../components/ui/feature-loading.tsx";
 import { fileNameFromPath } from "../lib/path-display.ts";
 import {
 	type MobileOverlayDoc,
@@ -15,6 +13,19 @@ import {
 } from "../stores/mobile-nav.ts";
 
 const HISTORY_STATE_KEY = "mobileOverlay";
+
+const FileViewer = lazy(async () => {
+	const module = await import("../components/document-viewers.tsx");
+	return { default: module.FileViewer };
+});
+const GitCommitViewer = lazy(async () => {
+	const module = await import("../components/document-viewers.tsx");
+	return { default: module.GitCommitViewer };
+});
+const GitDiffViewer = lazy(async () => {
+	const module = await import("../components/document-viewers.tsx");
+	return { default: module.GitDiffViewer };
+});
 
 interface OverlayHeaderProps {
 	doc: MobileOverlayDoc;
@@ -115,7 +126,9 @@ export function MobileOverlay() {
 		<div className="absolute inset-0 z-30 flex flex-col bg-dark-950">
 			<OverlayHeader doc={overlayDoc} onClose={closeOverlay} />
 			<div className="min-h-0 flex-1 overflow-hidden">
-				<OverlayBody doc={overlayDoc} />
+				<Suspense fallback={<FeatureLoading label="preview" />}>
+					<OverlayBody doc={overlayDoc} />
+				</Suspense>
 			</div>
 		</div>
 	);
