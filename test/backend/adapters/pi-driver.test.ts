@@ -283,7 +283,7 @@ describe("Pi driver", () => {
 				id: "anthropic/claude-sonnet-4-5",
 				model: "anthropic/claude-sonnet-4-5",
 				defaultReasoningEffort: "medium",
-				supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
+				supportedReasoningEfforts: ["low", "medium", "high"],
 			});
 			await drainRun(
 				driver.run({
@@ -561,6 +561,38 @@ describe("Pi driver", () => {
 					id: "openai/fast",
 					defaultReasoningEffort: "medium",
 					supportedReasoningEfforts: [],
+				}),
+			]);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("exposes max when the Pi SDK model capability map supports it", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () =>
+				createModelListSdk([
+					sdkModel("openai-codex", "gpt-5.6", {
+						thinkingLevelMap: {
+							minimal: "low",
+							xhigh: "xhigh",
+							max: "max",
+						},
+					}),
+				]),
+		});
+
+		try {
+			if (!driver.listModels) {
+				throw new Error("Pi driver should support model listing");
+			}
+
+			await expect(driver.listModels()).resolves.toEqual([
+				expect.objectContaining({
+					id: "openai-codex/gpt-5.6",
+					supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
 				}),
 			]);
 		} finally {

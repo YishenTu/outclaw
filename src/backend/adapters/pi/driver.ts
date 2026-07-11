@@ -920,16 +920,14 @@ function supportedOutclawEfforts(model: SdkModel): EffortLevel[] {
 	if (!model.reasoning) {
 		return [];
 	}
-	const levels = ["minimal", "low", "medium", "high", "xhigh"];
+	const levels = ["minimal", "low", "medium", "high", "xhigh", "max"];
 	const efforts = new Set<EffortLevel>();
-	if (!model.thinkingLevelMap) {
-		for (const level of levels) {
-			addOutclawEffort(efforts, level);
-		}
-		return [...efforts];
-	}
 	for (const level of levels) {
-		if (model.thinkingLevelMap[level] !== null) {
+		const mapped = model.thinkingLevelMap?.[level];
+		if (
+			mapped !== null &&
+			(level !== "xhigh" && level !== "max" ? true : mapped !== undefined)
+		) {
 			addOutclawEffort(efforts, level);
 		}
 	}
@@ -956,6 +954,8 @@ function outclawEffortForPiThinkingLevel(
 			return "high";
 		case "xhigh":
 			return "xhigh";
+		case "max":
+			return "max";
 		default:
 			return undefined;
 	}
@@ -969,6 +969,7 @@ function normalizeThinkingLevel(effort: string): SdkThinkingLevel {
 		case "medium":
 		case "high":
 		case "xhigh":
+		case "max":
 			return effort as SdkThinkingLevel;
 		default:
 			return "medium" as SdkThinkingLevel;
