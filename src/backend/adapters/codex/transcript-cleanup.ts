@@ -17,8 +17,26 @@ export function stripOaiMemoryCitationBlocks(text: string): string {
 
 export function normalizeCodexJsonlUserPromptText(text: string): string {
 	return stripCodexSkillBlocks(
-		stripCodexEnvironmentContextBlocks(stripCodexSessionBootstrapText(text)),
+		stripCodexEnvironmentContextBlocks(
+			stripCodexSessionBootstrapText(stripCodexRecommendedPluginsBlock(text)),
+		),
 	);
+}
+
+function stripCodexRecommendedPluginsBlock(text: string): string {
+	const trimmedStart = text.trimStart();
+	if (!trimmedStart.startsWith("<recommended_plugins>")) {
+		return text;
+	}
+
+	const blockEnd = trimmedStart.indexOf("</recommended_plugins>");
+	if (blockEnd === -1) {
+		return text;
+	}
+
+	return trimmedStart
+		.slice(blockEnd + "</recommended_plugins>".length)
+		.trimStart();
 }
 
 function stripCodexSkillBlocks(text: string): string {

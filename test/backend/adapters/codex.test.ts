@@ -1441,6 +1441,44 @@ describe("CodexAdapter", () => {
 		]);
 	});
 
+	test("hides recommended plugin metadata from Codex JSONL user prompts", () => {
+		const jsonl = JSON.stringify({
+			type: "response_item",
+			payload: {
+				type: "message",
+				role: "user",
+				content: [
+					{
+						type: "input_text",
+						text: [
+							"<recommended_plugins>",
+							"- Figma (figma@openai-curated-remote)",
+							"</recommended_plugins># AGENTS.md instructions for /work/repo",
+							"",
+							"<INSTRUCTIONS>",
+							"Use tabs.",
+							"</INSTRUCTIONS>",
+							"<environment_context>",
+							"  <cwd>/work/repo</cwd>",
+							"</environment_context>",
+							"fix the tests",
+						].join("\n"),
+					},
+				],
+			},
+		});
+
+		expect(
+			normalizeCodexJsonlEvents(jsonl, { sessionId: "codex-thread-123" }),
+		).toEqual([
+			{
+				type: "user_prompt",
+				text: "fix the tests",
+				sessionId: "codex-thread-123",
+			},
+		]);
+	});
+
 	test("rehydrates Codex JSONL context_compacted events as compact boundaries", () => {
 		const jsonl = [
 			{
