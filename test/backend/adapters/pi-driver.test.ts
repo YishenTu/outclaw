@@ -527,6 +527,43 @@ describe("Pi driver", () => {
 		}
 	});
 
+	test("runs /compact through the Pi compaction API", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const session = new ImmediateSession();
+		const driver = createPiDriver({
+			paths: piTestPaths(homeDir),
+			loadSdk: async () => createResourceSdk(session, {}),
+			now: () => 1000,
+		});
+
+		try {
+			const events = [];
+			for await (const event of driver.run({
+				prompt: "/compact",
+				instructionMode: "provider_default",
+				model: "anthropic/claude-sonnet-4-5",
+			})) {
+				events.push(event);
+			}
+
+			expect(session.compactCalls).toBe(1);
+			expect(session.promptText).toBeUndefined();
+			expect(events).toEqual([
+				{ type: "session_started", sessionId: "pi-session" },
+				{ type: "compaction_started", sessionId: "pi-session" },
+				{ type: "compaction_finished", sessionId: "pi-session" },
+				{
+					type: "done",
+					sessionId: "pi-session",
+					durationMs: 0,
+					timestamp: 1000,
+				},
+			]);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
 	test("does not expose provider-native effort names in model catalogs", async () => {
 		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
 		const driver = createPiDriver({
@@ -1543,8 +1580,10 @@ function piTestPaths(homeDir: string) {
 class ImmediateSession {
 	readonly sessionId = "pi-session";
 	disposed = false;
+	compactCalls = 0;
 	promptText: string | undefined;
 	promptOptions: unknown;
+	private readonly listeners: Array<(event: unknown) => void> = [];
 
 	dispose() {
 		this.disposed = true;
@@ -1555,10 +1594,30 @@ class ImmediateSession {
 		this.promptOptions = options;
 	}
 
+	async compact() {
+		this.compactCalls += 1;
+		for (const listener of this.listeners) {
+			listener({ type: "compaction_start", reason: "manual" });
+			listener({
+				type: "compaction_end",
+				reason: "manual",
+				result: {},
+				aborted: false,
+				willRetry: false,
+			});
+		}
+	}
+
 	async abort() {}
 
-	subscribe() {
-		return () => {};
+	subscribe(listener: (event: unknown) => void) {
+		this.listeners.push(listener);
+		return () => {
+			const index = this.listeners.indexOf(listener);
+			if (index >= 0) {
+				this.listeners.splice(index, 1);
+			}
+		};
 	}
 }
 

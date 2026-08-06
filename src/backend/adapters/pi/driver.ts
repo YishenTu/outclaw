@@ -1,5 +1,9 @@
 import { dirname, join } from "node:path";
-import { DEFAULT_EFFORT, type EffortLevel } from "../../../common/commands.ts";
+import {
+	canonicalizePromptSlashCommand,
+	DEFAULT_EFFORT,
+	type EffortLevel,
+} from "../../../common/commands.ts";
 import { OUTCLAW_NATIVE_TOOL_CATALOG } from "../../../common/native-tools.ts";
 import {
 	type AssistantMessageSegment,
@@ -202,13 +206,17 @@ class PiDriverImpl implements PiDriver {
 			}
 			params.abortSignal?.addEventListener("abort", abort, { once: true });
 
-			const prompt = (async () => {
+			const operation = (async () => {
 				try {
-					const images = await loadPromptImages(params.images);
-					await session.prompt(params.prompt, {
-						expandPromptTemplates: false,
-						...(images ? { images } : {}),
-					});
+					if (canonicalizePromptSlashCommand(params.prompt) === "/compact") {
+						await session.compact();
+					} else {
+						const images = await loadPromptImages(params.images);
+						await session.prompt(params.prompt, {
+							expandPromptTemplates: false,
+							...(images ? { images } : {}),
+						});
+					}
 				} catch (err) {
 					if (abortRequested) {
 						return;
@@ -226,7 +234,7 @@ class PiDriverImpl implements PiDriver {
 			for await (const event of queue) {
 				yield event;
 			}
-			await prompt;
+			await operation;
 
 			if (!failed && !abortRequested) {
 				const finalUsage = projectSessionStatsUsage(session, model);
@@ -447,6 +455,7 @@ interface SdkSessionLike {
 	sessionId: string;
 	dispose(): void;
 	prompt(text: string, options?: SdkPromptOptions): Promise<void>;
+	compact(): Promise<unknown>;
 	abort(): Promise<void>;
 	subscribe(listener: (event: SdkAgentSessionEvent) => void): () => void;
 	getSessionStats?(): unknown;
