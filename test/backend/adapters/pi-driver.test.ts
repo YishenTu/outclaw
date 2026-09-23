@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPiDriver } from "../../../src/backend/adapters/pi/driver.ts";
@@ -293,6 +293,81 @@ describe("Pi driver", () => {
 				}),
 			);
 		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("resolves new Pi scoped models through the shared model runtime", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const paths = piTestPaths(homeDir);
+		const model = sdkModel("openai-codex", "gpt-6-sol");
+		const driver = createPiDriver({
+			paths,
+			loadSdk: async () =>
+				({
+					ModelRuntime: {
+						create: async (options: {
+							authPath: string;
+							modelsPath: string;
+						}) => {
+							expect(options).toEqual({
+								authPath: paths.sharedAuthFile,
+								modelsPath: join(homeDir, ".pi", "agent", "models.json"),
+							});
+							return { getAvailable: async () => [model] };
+						},
+					},
+					SettingsManager: {
+						create: () => ({
+							getEnabledModels: () => ["openai-codex/gpt-6-sol"],
+						}),
+					},
+					resolveModelScopeWithDiagnostics: async () => ({
+						scopedModels: [{ model }],
+						diagnostics: [],
+					}),
+				}) as never,
+		});
+
+		try {
+			expect(
+				(await driver.listScopedModels?.())?.map((entry) => entry.id),
+			).toEqual(["openai-codex/gpt-6-sol"]);
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test("reads updated Pi gpt-6 scopes with the installed SDK", async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), "outclaw-pi-sdk-home-"));
+		const sharedDir = join(homeDir, ".pi", "agent");
+		mkdirSync(sharedDir, { recursive: true });
+		writeFileSync(
+			join(sharedDir, "auth.json"),
+			JSON.stringify({ openai: { type: "api_key", key: "test-key" } }),
+		);
+		const settingsFile = join(sharedDir, "settings.json");
+		const driver = createPiDriver({ paths: piTestPaths(homeDir) });
+
+		try {
+			writeFileSync(
+				settingsFile,
+				JSON.stringify({ enabledModels: ["openai/gpt-6-sol"] }),
+			);
+			expect(
+				(await driver.listScopedModels?.())?.map((model) => model.id),
+			).toEqual(["openai/gpt-6-sol"]);
+			expect(await driver.getDefaultModel?.()).toBe("openai/gpt-6-sol");
+
+			writeFileSync(
+				settingsFile,
+				JSON.stringify({ enabledModels: ["openai/gpt-6-luna"] }),
+			);
+			expect(
+				(await driver.listScopedModels?.())?.map((model) => model.id),
+			).toEqual(["openai/gpt-6-luna"]);
+		} finally {
+			driver.dispose?.();
 			rmSync(homeDir, { recursive: true, force: true });
 		}
 	});
@@ -1737,13 +1812,9 @@ function createResourceSdk(
 			open: () => ({ getSessionId: () => session.sessionId }),
 			listAll: async () => [{ id: session.sessionId, path: "/session" }],
 		},
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAll: () => [sdkModel("anthropic", "claude-sonnet-4-5")],
-				getAvailable: () => [sdkModel("anthropic", "claude-sonnet-4-5")],
-			}),
-		},
+		ModelRuntime: mockModelRuntime([
+			sdkModel("anthropic", "claude-sonnet-4-5"),
+		]),
 		SettingsManager: { inMemory: () => ({}) },
 		DefaultResourceLoader: ReloadableResourceLoader,
 		createAgentSession: async (options: {
@@ -1768,13 +1839,10 @@ function createResourceLoaderOptionsSdk(
 			open: () => ({ getSessionId: () => session.sessionId }),
 			listAll: async () => [{ id: session.sessionId, path: "/session" }],
 		},
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAll: () => [sdkModel("anthropic", "claude-sonnet-4-5")],
-				getAvailable: () => [],
-			}),
-		},
+		ModelRuntime: mockModelRuntime(
+			[sdkModel("anthropic", "claude-sonnet-4-5")],
+			[],
+		),
 		SettingsManager: { inMemory: () => settingsManager },
 		DefaultResourceLoader: class extends ReloadableResourceLoader {
 			constructor(options: Record<string, unknown>) {
@@ -1804,13 +1872,10 @@ function createAgentDirEnvSdk(
 			open: () => ({ getSessionId: () => session.sessionId }),
 			listAll: async () => [{ id: session.sessionId, path: "/session" }],
 		},
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAll: () => [sdkModel("anthropic", "claude-sonnet-4-5")],
-				getAvailable: () => [],
-			}),
-		},
+		ModelRuntime: mockModelRuntime(
+			[sdkModel("anthropic", "claude-sonnet-4-5")],
+			[],
+		),
 		SettingsManager: { inMemory: () => ({}) },
 		DefaultResourceLoader: class extends ReloadableResourceLoader {
 			override async reload() {
@@ -1832,13 +1897,10 @@ function createRunSdk(session: AbortResolvingSession) {
 			open: () => ({ getSessionId: () => session.sessionId }),
 			listAll: async () => [{ id: session.sessionId, path: "/session" }],
 		},
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAll: () => [sdkModel("anthropic", "claude-sonnet-4-5")],
-				getAvailable: () => [],
-			}),
-		},
+		ModelRuntime: mockModelRuntime(
+			[sdkModel("anthropic", "claude-sonnet-4-5")],
+			[],
+		),
 		SettingsManager: { inMemory: () => ({}) },
 		DefaultResourceLoader: class {
 			async reload() {}
@@ -1854,18 +1916,15 @@ function createUsageSdk(session: UsageSession) {
 			open: () => ({ getSessionId: () => session.sessionId }),
 			listAll: async () => [{ id: session.sessionId, path: "/session" }],
 		},
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAll: () => [
-					sdkModel("anthropic", "claude-sonnet-4-5", {
-						contextWindow: 200_000,
-						maxTokens: 32_000,
-					}),
-				],
-				getAvailable: () => [],
-			}),
-		},
+		ModelRuntime: mockModelRuntime(
+			[
+				sdkModel("anthropic", "claude-sonnet-4-5", {
+					contextWindow: 200_000,
+					maxTokens: 32_000,
+				}),
+			],
+			[],
+		),
 		SettingsManager: { inMemory: () => ({}) },
 		DefaultResourceLoader: ReloadableResourceLoader,
 		createAgentSession: async () => ({ session }),
@@ -1882,13 +1941,10 @@ function createModelFallbackSdk(
 			open: () => ({ getSessionId: () => session.sessionId }),
 			listAll: async () => [{ id: session.sessionId, path: "/session" }],
 		},
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAll: () => [sdkModel("anthropic", "claude-sonnet-4-5")],
-				getAvailable: () => [],
-			}),
-		},
+		ModelRuntime: mockModelRuntime(
+			[sdkModel("anthropic", "claude-sonnet-4-5")],
+			[],
+		),
 		SettingsManager: { inMemory: () => ({}) },
 		DefaultResourceLoader: ReloadableResourceLoader,
 		createAgentSession: async () => ({ session, modelFallbackMessage }),
@@ -1905,13 +1961,7 @@ function createSessionStartEventSdk(
 			open: () => ({ getSessionId: () => session.sessionId }),
 			listAll: async () => [{ id: session.sessionId, path: "/session" }],
 		},
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAll: () => [sdkModel("openai-codex", "gpt-5.5")],
-				getAvailable: () => [],
-			}),
-		},
+		ModelRuntime: mockModelRuntime([sdkModel("openai-codex", "gpt-5.5")], []),
 		SettingsManager: { inMemory: () => ({}) },
 		DefaultResourceLoader: ReloadableResourceLoader,
 		createAgentSession: async (options: { sessionStartEvent?: unknown }) => {
@@ -1932,13 +1982,10 @@ function createSessionEnvSdk(
 			open: () => ({ getSessionId: () => session.sessionId }),
 			listAll: async () => [{ id: session.sessionId, path: "/session" }],
 		},
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAll: () => [sdkModel("anthropic", "claude-sonnet-4-5")],
-				getAvailable: () => [],
-			}),
-		},
+		ModelRuntime: mockModelRuntime(
+			[sdkModel("anthropic", "claude-sonnet-4-5")],
+			[],
+		),
 		SettingsManager: { inMemory: () => ({}) },
 		DefaultResourceLoader: ReloadableResourceLoader,
 		createBashToolDefinition: (
@@ -1990,13 +2037,10 @@ function createNativeToolSdk(
 			open: () => ({ getSessionId: () => session.sessionId }),
 			listAll: async () => [{ id: session.sessionId, path: "/session" }],
 		},
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAll: () => [sdkModel("anthropic", "claude-sonnet-4-5")],
-				getAvailable: () => [],
-			}),
-		},
+		ModelRuntime: mockModelRuntime(
+			[sdkModel("anthropic", "claude-sonnet-4-5")],
+			[],
+		),
 		SettingsManager: { inMemory: () => ({}) },
 		DefaultResourceLoader: ReloadableResourceLoader,
 		defineTool: (definition: CapturedPiTool) => definition,
@@ -2147,14 +2191,7 @@ function createReadSdk(entries: unknown[], branchEntries?: unknown[]) {
 }
 
 function createModelListSdk(models: unknown[]) {
-	return {
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAvailable: () => models,
-			}),
-		},
-	} as never;
+	return { ModelRuntime: mockModelRuntime(models) } as never;
 }
 
 function createScopedModelListSdk(params: {
@@ -2162,12 +2199,7 @@ function createScopedModelListSdk(params: {
 	enabledModels: string[] | undefined;
 }) {
 	return {
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAvailable: () => params.availableModels,
-			}),
-		},
+		ModelRuntime: mockModelRuntime(params.availableModels),
 		SettingsManager: {
 			create: (_cwd: string, agentDir: string) => ({
 				agentDir,
@@ -2176,10 +2208,9 @@ function createScopedModelListSdk(params: {
 		},
 		resolveModelScopeWithDiagnostics: async (
 			patterns: string[],
-			modelRegistry: { getAvailable(): unknown[] },
+			modelRuntime: { getAvailable(): Promise<unknown[]> },
 		) => ({
-			scopedModels: modelRegistry
-				.getAvailable()
+			scopedModels: (await modelRuntime.getAvailable())
 				.filter((model) =>
 					patterns.includes(
 						`${(model as { provider: string }).provider}/${(model as { id: string }).id}`,
@@ -2198,21 +2229,8 @@ function createDefaultModelSdk(params: {
 	enabledModels?: string[];
 	sdkSelectedModel?: unknown;
 }) {
-	const availableModels = params.availableModels as Array<{
-		id: string;
-		provider: string;
-	}>;
 	return {
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAvailable: () => params.availableModels,
-				find: (provider: string, id: string) =>
-					availableModels.find(
-						(model) => model.provider === provider && model.id === id,
-					),
-			}),
-		},
+		ModelRuntime: mockModelRuntime(params.availableModels),
 		SettingsManager: {
 			create: () => ({
 				getDefaultModel: () => params.defaultModel,
@@ -2263,17 +2281,29 @@ function createSessionManagerChoiceSdk(
 			},
 			listAll: async () => [{ id: session.sessionId, path: "/session" }],
 		},
-		AuthStorage: { create: () => ({}) },
-		ModelRegistry: {
-			inMemory: () => ({
-				getAll: () => [sdkModel("anthropic", "claude-sonnet-4-5")],
-				getAvailable: () => [],
-			}),
-		},
+		ModelRuntime: mockModelRuntime(
+			[sdkModel("anthropic", "claude-sonnet-4-5")],
+			[],
+		),
 		SettingsManager: { inMemory: () => ({}) },
 		DefaultResourceLoader: ReloadableResourceLoader,
 		createAgentSession: async () => ({ session }),
 	} as never;
+}
+
+function mockModelRuntime(models: unknown[], availableModels = models) {
+	return {
+		create: async () => ({
+			getModels: () => models,
+			getAvailable: async () => availableModels,
+			getModel: (provider: string, id: string) =>
+				models.find(
+					(model) =>
+						(model as { provider: string; id: string }).provider === provider &&
+						(model as { provider: string; id: string }).id === id,
+				),
+		}),
+	};
 }
 
 function sdkModel(

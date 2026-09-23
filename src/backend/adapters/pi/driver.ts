@@ -108,10 +108,9 @@ class PiDriverImpl implements PiDriver {
 							? { id: params.preferredSessionId }
 							: {}),
 					});
-		const authStorage = sdk.AuthStorage.create(this.paths.sharedAuthFile);
-		const modelRegistry = sdk.ModelRegistry.inMemory(authStorage);
+		const modelRuntime = await this.createModelRuntime(sdk);
 		const model = params.model
-			? findSdkModel(modelRegistry.getAll(), params.model)
+			? findSdkModel(modelRuntime.getModels(), params.model)
 			: undefined;
 		if (params.model && !model) {
 			throw new Error(`Pi model ${params.model} is not configured`);
@@ -135,8 +134,7 @@ class PiDriverImpl implements PiDriver {
 		const { session, modelFallbackMessage } = await sdk.createAgentSession({
 			cwd,
 			agentDir: this.paths.agentDir,
-			authStorage,
-			modelRegistry,
+			modelRuntime,
 			...(model ? { model } : {}),
 			...(params.effort
 				? { thinkingLevel: normalizeThinkingLevel(params.effort) }
@@ -282,15 +280,13 @@ class PiDriverImpl implements PiDriver {
 
 	async listModels(): Promise<PiDriverModel[]> {
 		const sdk = await this.getSdk();
-		const authStorage = sdk.AuthStorage.create(this.paths.sharedAuthFile);
-		const modelRegistry = sdk.ModelRegistry.inMemory(authStorage);
-		return modelRegistry.getAvailable().map(projectSdkModel);
+		const modelRuntime = await this.createModelRuntime(sdk);
+		return (await modelRuntime.getAvailable()).map(projectSdkModel);
 	}
 
 	async getDefaultModel(): Promise<string | undefined> {
 		const sdk = await this.getSdk();
-		const authStorage = sdk.AuthStorage.create(this.paths.sharedAuthFile);
-		const modelRegistry = sdk.ModelRegistry.inMemory(authStorage);
+		const modelRuntime = await this.createModelRuntime(sdk);
 		const settingsManager = sdk.SettingsManager.create(
 			this.paths.agentDir,
 			dirname(this.paths.sharedAuthFile),
@@ -300,13 +296,13 @@ class PiDriverImpl implements PiDriver {
 		if (enabledModels && enabledModels.length > 0) {
 			const { scopedModels } = await sdk.resolveModelScopeWithDiagnostics(
 				enabledModels,
-				modelRegistry,
+				modelRuntime,
 			);
 			const savedProvider = settingsManager.getDefaultProvider();
 			const savedModelId = settingsManager.getDefaultModel();
 			const savedModel =
 				savedProvider && savedModelId
-					? modelRegistry.find(savedProvider, savedModelId)
+					? modelRuntime.getModel(savedProvider, savedModelId)
 					: undefined;
 			const scopedDefault =
 				scopedModels.find(
@@ -330,8 +326,7 @@ class PiDriverImpl implements PiDriver {
 		const { session } = await sdk.createAgentSession({
 			cwd: this.paths.agentDir,
 			agentDir: this.paths.agentDir,
-			authStorage,
-			modelRegistry,
+			modelRuntime,
 			resourceLoader,
 			settingsManager,
 			sessionManager: sdk.SessionManager.inMemory(this.paths.agentDir),
@@ -346,9 +341,8 @@ class PiDriverImpl implements PiDriver {
 
 	async listScopedModels(): Promise<PiDriverModel[]> {
 		const sdk = await this.getSdk();
-		const authStorage = sdk.AuthStorage.create(this.paths.sharedAuthFile);
-		const modelRegistry = sdk.ModelRegistry.inMemory(authStorage);
-		const availableModels = modelRegistry.getAvailable();
+		const modelRuntime = await this.createModelRuntime(sdk);
+		const availableModels = await modelRuntime.getAvailable();
 		const settingsManager = sdk.SettingsManager.create(
 			this.paths.agentDir,
 			dirname(this.paths.sharedAuthFile),
@@ -360,7 +354,7 @@ class PiDriverImpl implements PiDriver {
 		}
 		const { scopedModels } = await sdk.resolveModelScopeWithDiagnostics(
 			enabledModels,
-			modelRegistry,
+			modelRuntime,
 		);
 		return (
 			scopedModels.length > 0
@@ -380,6 +374,13 @@ class PiDriverImpl implements PiDriver {
 		configurePiSdkEnvironment(this.paths);
 		this.sdk ??= await this.loadSdk();
 		return this.sdk;
+	}
+
+	private async createModelRuntime(sdk: PiSdkModule) {
+		return await sdk.ModelRuntime.create({
+			authPath: this.paths.sharedAuthFile,
+			modelsPath: join(dirname(this.paths.sharedAuthFile), "models.json"),
+		});
 	}
 
 	private sessionDir(): string {
@@ -908,7 +909,7 @@ interface SdkModel {
 }
 
 function findSdkModel(
-	models: unknown[],
+	models: readonly unknown[],
 	modelId: string,
 ): SdkSessionModel | undefined {
 	for (const model of models) {
